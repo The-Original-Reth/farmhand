@@ -381,6 +381,8 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
         delete_bundle(db, bundle.id)
         return True
     paths = [version.threemf_path, version.gcode_path, version.thumbnail_path]
+    if bundle.star_row is not None and bundle.star_row.version_id == version.id:
+        bundle.star_row = None  # the starred version is going: so is its star
     db.delete(version)
     db.commit()
     storage.delete_files(paths)
@@ -390,15 +392,30 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
 # ------------------------------------------------------------------ starring a 3MF
 
 
-def set_starred(db: Session, bundle_id: int, starred: bool) -> Bundle:
-    """Star or un-star a 3MF. Doing what's already the case is fine (starring twice leaves it starred)."""
+class StarNotAllowed(ValueError):
+    """The version can't be starred (not part of this 3MF, or its initial version)."""
+
+
+def set_starred_version(db: Session, bundle_id: int, version_id: int | None) -> Bundle:
+    """
+    Star one version of a 3MF (gold), or clear the star with None. Only one version per 3MF is starred: starring
+    another moves the star there. Version 1, the initial upload, can't be starred (it always shows as silver).
+    """
     bundle = get_bundle(db, bundle_id)
     if bundle is None:
         raise ValueError(f"No bundle with id {bundle_id}")
-    if starred and bundle.star_row is None:
-        bundle.star_row = BundleStar(bundle_id=bundle.id)
-    elif not starred and bundle.star_row is not None:
+    if version_id is None:
         bundle.star_row = None  # delete-orphan removes the row
+    else:
+        version = db.get(BundleVersion, version_id)
+        if version is None or version.bundle_id != bundle.id:
+            raise StarNotAllowed(f"Version {version_id} isn't a version of this 3MF")
+        if version.version == 1:
+            raise StarNotAllowed("The initial version can't be starred")
+        if bundle.star_row is None:
+            bundle.star_row = BundleStar(bundle_id=bundle.id, version_id=version.id)
+        else:
+            bundle.star_row.version_id = version.id
     db.commit()
     db.refresh(bundle)
     return bundle

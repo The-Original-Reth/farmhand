@@ -100,9 +100,12 @@ def add_bundle_version(
 
 
 @router.put("/{bundle_id}/star", response_model=BundleOut)
-def set_starred(bundle_id: int, payload: StarUpdate, db: Session = Depends(get_db)):
+def set_starred_version(bundle_id: int, payload: StarUpdate, db: Session = Depends(get_db)):
+    """Star one version of this 3MF (only one at a time; never version 1), or send version_id: null to clear it."""
     try:
-        return bundle_service.set_starred(db, bundle_id, payload.starred)
+        return bundle_service.set_starred_version(db, bundle_id, payload.version_id)
+    except bundle_service.StarNotAllowed as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
