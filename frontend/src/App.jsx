@@ -2370,14 +2370,11 @@ function sortModelRows(rows, { key, dir }) {
   return [...rows].sort((a, b) => sign * primary(a, b) || byName(a, b));
 }
 
-// An entry with this many versions or fewer shows them all by default (newest on top); a longer history
-// shows just the newest, with a toggle for the rest. Clicking the toggle overrides either way.
-const SHOW_ALL_UP_TO = 3;
-
-// Which 3MF entries show all their versions. Only entries someone has explicitly opened or closed are remembered
-// (in this browser); the rest follow the default above. Shared by the model page and the printer page, so
-// closing an entry on one is closed on the other too.
-const EXPANSION_KEY = "farmhand.bundleExpanded";
+// Which 3MF entries show all their versions. By default an entry shows just its newest version, with a toggle for
+// the older ones. Only entries someone has explicitly opened or closed are remembered (in this browser). Shared by
+// the model page and the printer page, so opening an entry on one opens it on the other too.
+// (The key changed when "hidden" became the default for every entry, so choices made under the old default reset.)
+const EXPANSION_KEY = "farmhand.bundleExpanded.v2";
 function readExpansion() {
   try {
     const v = JSON.parse(localStorage.getItem(EXPANSION_KEY));
@@ -2389,7 +2386,7 @@ function readExpansion() {
 function useBundleExpansion() {
   const { bundles } = useData();
   const [explicit, setExplicit] = useState(readExpansion);
-  const isExpanded = (id, versionCount) => (typeof explicit[id] === "boolean" ? explicit[id] : versionCount <= SHOW_ALL_UP_TO);
+  const isExpanded = (id) => explicit[id] === true; // older versions start hidden
   const apply = (changes) =>
     setExplicit((prev) => {
       const live = new Set(bundles.map((b) => String(b.id)));
@@ -2483,11 +2480,11 @@ function writeDraft(kind, id, draft) {
   }
 }
 
-// Whether a model's or printer's notes are folded down to their first two lines. Every one STARTS folded; opening or
-// closing one is remembered for that model/printer, in this browser. (Earlier versions only recorded "folded", and
-// that still means folded; anything unreadable also means folded.)
+// Whether a model's, printer's or 3MF's notes are folded down to their first line. Every one STARTS folded; opening
+// or closing one is remembered for that model/printer/3MF, in this browser. Anything unreadable means folded.
+// (The keys changed when folding went from two lines to one, so notes left open before that start folded again.)
 const notesCollapsedKey = (kind) =>
-  kind === "printer" ? "farmhand.printerNotesCollapsed" : kind === "bundle" ? "farmhand.bundleNotesCollapsed" : "farmhand.notesCollapsed";
+  kind === "printer" ? "farmhand.printerNotesCollapsed.v2" : kind === "bundle" ? "farmhand.bundleNotesCollapsed.v2" : "farmhand.notesCollapsed.v2";
 function readNotesCollapsed(kind, id) {
   try {
     const choice = JSON.parse(localStorage.getItem(notesCollapsedKey(kind)))?.[id];
@@ -2671,7 +2668,7 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
               data-testid="notes-preview"
               role="button"
               tabIndex={0}
-              aria-label="Notes, first two lines shown. Click to expand and edit."
+              aria-label="Notes, first line shown. Click to expand and edit."
               title="Click to expand and edit"
               onClick={() => {
                 focusOnExpand.current = true;
@@ -2687,7 +2684,7 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
               style={{
                 ...ui, fontSize: fs(14), lineHeight: 1.6, cursor: "pointer", color: text ? c.textPrimary : c.textFaint,
                 whiteSpace: "pre-wrap", overflowWrap: "anywhere",
-                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", // the first two lines, then "…"
+                display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden", // the first line, then "…"
               }}
             >
               {text}
@@ -3480,7 +3477,7 @@ function ModelsSection({ path, setPath, compareSelection, toggleCompareSelect, s
   const hasFile = sourceList.length > 0; // a folder can exist with no file yet
   const sourceLatest = sourceList[0];
   const sourceRest = sourceList.slice(1);
-  const sourceExpanded = sourceOverride ?? sourceList.length <= SHOW_ALL_UP_TO;
+  const sourceExpanded = sourceOverride ?? false; // older versions start hidden
   // Grouped by printer, and under each printer the most recently updated entry first
   const modelBundles = [...bundlesForModel(model.id)].sort((a, b) => {
     const pa = printers.find((p) => p.id === a.printerId)?.name || "";
