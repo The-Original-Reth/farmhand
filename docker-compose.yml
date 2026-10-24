@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - farmhand
+    environment:
+      POSTGRES_USER: farmhand
+      POSTGRES_PASSWORD: farmhand
+      POSTGRES_DB: farmhand
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # optional — lets you psql in from the host
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farmhand -d farmhand"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    networks:
+      - farmhand
+    # Lets Farmhand mount the NAS shares you add on the Storage page, from inside the app.
+    # SYS_ADMIN is what mounting needs. DAC_READ_SEARCH is also required for SMB: mount.cifs
+    # keeps just those two permissions while it drops the rest, and fails with "Unable to
+    # apply new capability set" if the container doesn't have both. Without them the Storage
+    # page says so and nothing else is affected. (A real privilege for this container — see
+    # the README.)
+    cap_add:
+      - SYS_ADMIN
+      - DAC_READ_SEARCH
+    # Only matters on hosts running AppArmor (e.g. Ubuntu), where its default profile blocks
+    # mounting; harmless on Raspberry Pi OS.
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FARMHAND_DATABASE_URL: postgresql+psycopg://farmhand:farmhand@db:5432/farmhand
+      FARMHAND_STORAGE_ROOT: /data/storage
+      # Shares you add are mounted under /data/nas, and the Storage page may only pick folders under /data
+      FARMHAND_STORAGE_BROWSE_ROOT: /data
+      FARMHAND_HOST: 0.0.0.0
+      FARMHAND_PORT: 5546
+      FARMHAND_FULL_FILE_VERSION_WINDOW: 5
+    ports:
+      - "5546:5546"
+    volumes:
+      - storage_data:/data/storage
+
+  web:
+    build:
+      context: ./frontend
+      # No VITE_API_BASE passed here on purpose — the frontend detects the
+      # right API host at runtime from the browser's own URL, which works
+      # whether this is opened via localhost, a LAN IP, or a hostname.
+      # Only set one here if the API needs a genuinely different host than
+      # whatever the frontend was loaded from.
+    restart: unless-stopped
+    networks:
+      - farmhand
+    depends_on:
+      - api
+    ports:
+      - "3636:3636"
+
+networks:
+  farmhand:
+    driver: bridge
+
+volumes:
+  db_data:
+  storage_data:

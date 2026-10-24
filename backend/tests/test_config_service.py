@@ -1,0 +1,252 @@
+from __future__ import annotations
+
+import json
+import os
+
+import pytest
+
+from app import config, config_store as cs, storage
+from app.models import NetworkShare
+from app.services import config_service as svc
+from app.services import network_shares_service as shares
+
+
+@pytest.fixture()
+def share(tmp_path, monkeypatch):
+    """A connected-looking NAS share (a mount point) inside the browsable area."""
+    area = tmp_path / "data"
+    nas = area / "nas" / "lab"
+    nas.mkdir(parents=True)
+    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
+    real = str(nas.resolve())
+    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
+    svc._last_mirror.update(ok=None, error=None, at=None)
+    return nas
+
+
+def _folder(share, name="settings"):
+    d = share / name
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def _file(folder):
+    return json.loads((folder / cs.CONFIG_FILENAME).read_text())
+
+
+# ------------------------------------------------------------------ the settings themselves
+
+
+def test_settings_default_save_merge_and_clean(db_session):
+    assert svc.get_config(db_session) == cs.normalize_config({})
+    out = svc.save_config(db_session, {"appearance": {"scheme": "violet", "contrast": 300, "font": "play", "size": "large"}})
+    assert out["appearance"] == {"scheme": "violet", "contrast": 100, "font": "play", "size": "large"}
+    svc.save_config(db_session, {"preferences": {"model_sort": {"key": "added", "dir": "desc"}}})
+    again = svc.get_config(db_session)
+    assert again["appearance"]["scheme"] == "violet"  # the earlier part is kept when only the other is given
+    assert again["preferences"]["model_sort"] == {"key": "added", "dir": "desc"}
+
+
+# ------------------------------------------------------------------ choosing the network folder
+
+
+def test_choosing_a_folder_writes_the_copy_there_and_marks_the_folder(db_session, share):
+    svc.save_config(db_session, {"appearance": {"scheme": "midnight", "contrast": 20, "font": "play", "size": "default"}})
+    folder = _folder(share)
+
+    out = svc.set_location(db_session, str(folder))
+
+    assert out["saved"] and not out["needs_choice"]
+    assert (folder / storage.MARKER_NAME).is_file()
+    assert _file(folder)["appearance"]["scheme"] == "midnight"
+    assert out["location"]["is_set"] and out["location"]["status"]["ready"] and out["location"]["file"]["exists"]
+
+
+def test_every_later_change_refreshes_the_copy(db_session, share):
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    svc.save_config(db_session, {"appearance": {"scheme": "violet", "contrast": 0, "font": "archivo", "size": "default"}})
+    result = svc.mirror(db_session)
+    assert result["ok"] and _file(folder)["appearance"]["scheme"] == "violet"
+
+
+def test_a_folder_that_isnt_on_a_share_is_refused(db_session, share, tmp_path):
+    plain = tmp_path / "data" / "elsewhere"
+    plain.mkdir(parents=True)
+    with pytest.raises(ValueError, match="lost when the container restarts|isn't under"):
+        svc.set_location(db_session, str(plain))
+    assert svc.location_path(db_session) is None
+
+
+def test_clearing_the_location_keeps_the_file_that_was_written(db_session, share):
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    svc.set_location(db_session, None)
+    assert svc.location_path(db_session) is None
+    assert (folder / cs.CONFIG_FILENAME).is_file()  # nothing on the network is ever deleted
+    assert svc.mirror(db_session)["skipped"] is True
+
+
+# ------------------------------------------------------------------ an existing settings file is never overwritten unasked
+
+
+def _existing_file(folder, scheme="violet"):
+    cs.write_document(folder, cs.build_document(cs.normalize_config({"appearance": {"scheme": scheme}}), None, None,
+                                                 [{"name": "Backup NAS", "protocol": "nfs", "server": "10.0.0.6", "share": "/vol1"}]))
+    return (folder / cs.CONFIG_FILENAME).read_text()
+
+
+def test_pointing_at_a_folder_with_settings_in_it_asks_first_and_changes_nothing(db_session, share):
+    folder = _folder(share)
+    original = _existing_file(folder)
+
+    out = svc.set_location(db_session, str(folder))  # if_exists defaults to "ask"
+
+    assert out["needs_choice"] and not out["saved"]
+    assert out["found"]["file_valid"] and out["found"]["summary"]["scheme"] == "violet" and out["found"]["summary"]["shares"] == 1
+    assert (folder / cs.CONFIG_FILENAME).read_text() == original  # untouched
+    assert svc.location_path(db_session) is None  # and not saved either
+
+
+def test_choosing_overwrite_replaces_it_with_the_current_settings(db_session, share):
+    folder = _folder(share)
+    _existing_file(folder, "violet")
+    svc.save_config(db_session, {"appearance": {"scheme": "light", "contrast": 0, "font": "archivo", "size": "default"}})
+    svc.set_location(db_session, str(folder), "overwrite")
+    assert _file(folder)["appearance"]["scheme"] == "light"
+
+
+def test_choosing_restore_loads_the_file_and_keeps_it(db_session, share):
+    folder = _folder(share)
+    _existing_file(folder, "violet")
+    out = svc.set_location(db_session, str(folder), "restore")
+    assert out["saved"] and "appearance" in out["restored"]["restored"]
+    assert svc.get_config(db_session)["appearance"]["scheme"] == "violet"
+    assert out["restored"]["shares_added"] == ["Backup NAS"]
+    assert _file(folder)["appearance"]["scheme"] == "violet"  # the file now simply reflects what's in force
+
+
+def test_a_damaged_settings_file_can_be_replaced_but_not_restored(db_session, share):
+    folder = _folder(share)
+    (folder / cs.CONFIG_FILENAME).write_text("not json {")
+    ask = svc.set_location(db_session, str(folder))
+    assert ask["needs_choice"] and ask["found"]["file_valid"] is False and "can't be read" in ask["found"]["error"]
+    with pytest.raises(ValueError, match="can't be read"):
+        svc.set_location(db_session, str(folder), "restore")
+    assert svc.location_path(db_session) is None
+    svc.set_location(db_session, str(folder), "overwrite")
+    assert _file(folder)["farmhand_config"] == 1
+
+
+# ------------------------------------------------------------------ restoring a fresh install from the file
+
+
+def test_restore_brings_back_everything_but_never_a_password(db_session, share):
+    folder = _folder(share)
+    stl = _folder(share, "stl")
+    cs.write_document(folder, cs.build_document(
+        cs.normalize_config({"appearance": {"scheme": "midnight", "contrast": 30, "font": "play", "size": "large"},
+                             "preferences": {"model_sort": {"key": "added", "dir": "desc"}}}),
+        str(stl), None,
+        [{"name": "Lab NAS", "protocol": "smb", "server": "10.0.0.5", "share": "farmhand", "username": "alice"},
+         {"name": "Backup", "protocol": "nfs", "server": "10.0.0.6", "share": "/vol1"},
+         {"name": "../bad", "protocol": "smb", "server": "x", "share": "y"}]))
+    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+
+    out = svc.restore(db_session)
+
+    cfg = svc.get_config(db_session)
+    assert cfg["appearance"] == {"scheme": "midnight", "contrast": 30, "font": "play", "size": "large"}
+    assert cfg["preferences"]["model_sort"] == {"key": "added", "dir": "desc"}
+    assert storage.custom_path("stl") == str(stl.resolve()) and "STL folder" in out["restored"]
+    assert sorted(out["shares_added"]) == ["Backup", "Lab NAS"]
+    assert out["needs_password"] == ["Lab NAS"]  # an SMB share with a login needs its password typed in
+    assert any("bad" in w for w in out["warnings"])  # the unusable entry is reported, not fatal
+    lab = db_session.query(NetworkShare).filter_by(name="Lab NAS").one()
+    assert lab.password is None
+    listed = {s["name"]: s for s in shares.list_shares(db_session)["shares"]}
+    assert not listed["Lab NAS"]["mounted"] and "password" in listed["Lab NAS"]["error"]
+
+
+def test_restore_keeps_a_share_that_is_already_there(db_session, share):
+    folder = _folder(share)
+    cs.write_document(folder, cs.build_document(cs.normalize_config({}), None, None,
+                                                 [{"name": "Backup", "protocol": "nfs", "server": "10.0.0.6", "share": "/vol1"}]))
+    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+    first = svc.restore(db_session)
+    second = svc.restore(db_session)  # running it again is harmless
+    assert first["shares_added"] == ["Backup"] and second["shares_added"] == [] and second["shares_kept"] == ["Backup"]
+    assert db_session.query(NetworkShare).count() == 1
+
+
+def test_restore_puts_folders_back_even_when_their_share_is_not_connected_yet(db_session, share):
+    folder = _folder(share)
+    gone = share / "stl-not-here-yet"  # does not exist right now
+    cs.write_document(folder, cs.build_document(cs.normalize_config({}), str(gone), None, []))
+    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+    out = svc.restore(db_session)
+    assert "STL folder" in out["restored"] and storage.custom_path("stl") == str(gone.resolve())
+    with pytest.raises(storage.StorageUnavailableError):  # ...and uploads are still refused until it's really there
+        storage.source_model_version_dir(1, 1)
+
+
+def test_restore_refuses_overlapping_folders_in_the_file(db_session, share):
+    folder = _folder(share)
+    same = _folder(share, "same")
+    cs.write_document(folder, cs.build_document(cs.normalize_config({}), str(same), str(same), []))
+    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+    out = svc.restore(db_session)
+    assert "STL folder" not in out["restored"] and any("overlap" in w for w in out["warnings"])
+    assert storage.custom_path("stl") is None
+
+
+def test_restore_needs_a_folder_and_a_file(db_session, share):
+    with pytest.raises(ValueError, match="Choose a settings folder first"):
+        svc.restore(db_session)
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder), "overwrite")
+    (folder / cs.CONFIG_FILENAME).unlink()
+    with pytest.raises(ValueError, match="no settings file"):
+        svc.restore(db_session)
+
+
+# ------------------------------------------------------------------ when the network is not there
+
+
+def test_an_unmounted_share_does_not_lose_settings_or_get_written_to(db_session, share):
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    (folder / storage.MARKER_NAME).unlink()  # the share dropped: only the bare folder underneath is left
+    (folder / cs.CONFIG_FILENAME).unlink()
+
+    svc.save_config(db_session, {"appearance": {"scheme": "violet", "contrast": 0, "font": "archivo", "size": "default"}})
+    result = svc.mirror(db_session)
+
+    assert not result["ok"] and "marker" in result["error"]
+    assert not (folder / cs.CONFIG_FILENAME).exists()  # nothing was written into the empty folder
+    assert svc.get_config(db_session)["appearance"]["scheme"] == "violet"  # the server still has them
+    assert svc.describe(db_session)["last_write"]["ok"] is False
+
+
+def test_a_share_with_a_stored_password_never_leaks_it_into_the_file(db_session, share):
+    db_session.add(NetworkShare(name="Lab", protocol="smb", server="10.0.0.5", share="farmhand", username="alice", password="hunter2-secret"))
+    db_session.commit()
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    text = (folder / cs.CONFIG_FILENAME).read_text()
+    assert "hunter2-secret" not in text and '"username": "alice"' in text
+
+
+def test_changing_storage_folders_or_shares_refreshes_the_copy(db_session, share):
+    from app.services import storage_settings_service as sss
+
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    stl = _folder(share, "stl")
+    sss.save(db_session, {"stl_path": str(stl)})
+    svc.mirror(db_session)
+    assert _file(folder)["storage"]["stl_path"] == str(stl.resolve())
