@@ -11,16 +11,17 @@ from sqlalchemy.exc import OperationalError
 from . import storage
 from .database import Base, SessionLocal, engine
 from .mount_supervisor import supervisor
-from .routers import bundles, config_settings, printers, source_models, storage_settings
-from .services import storage_settings_service
+from .printer_poller import poller
+from .routers import bundles, config_settings, moonraker, printers, source_models, storage_settings
+from .services import moonraker_service, storage_settings_service
 
 logger = logging.getLogger("farmhand.startup")
 
 app = FastAPI(
     title="Farmhand",
     description=(
-        "Read-only cataloging and versioning system for a 3D print farm's "
-        "3MF files. Does not slice, does not talk to printers."
+        "Cataloging and versioning system for a 3D print farm's 3MF files. Does not slice or send jobs to "
+        "printers; it reads each printer's print history from Moonraker and shares maintenance reminders with it."
     ),
     version="0.1.0",
 )
@@ -46,6 +47,13 @@ app.include_router(source_models.router)
 app.include_router(bundles.router)
 app.include_router(storage_settings.router)
 app.include_router(config_settings.router)
+app.include_router(moonraker.router)
+
+
+@app.exception_handler(moonraker_service.MoonrakerError)
+async def moonraker_error_handler(request: Request, exc: moonraker_service.MoonrakerError):
+    # the printer couldn't be reached or refused: a clear 502 saying which, not a generic 500
+    return JSONResponse(status_code=502, content={"detail": str(exc), "kind": exc.kind})
 
 
 @app.exception_handler(storage.StorageUnavailableError)
@@ -81,6 +89,8 @@ def on_startup() -> None:
             # Re-mount saved network shares (and keep them mounted). In a thread: a slow
             # or unreachable NAS must never delay the API coming up.
             supervisor.start()
+            # Sync every printer's history and power meter now and then, so energy figures build up on their own
+            poller.start()
             return
         except OperationalError as e:
             last_error = e
@@ -98,6 +108,7 @@ def on_startup() -> None:
 @app.on_event("shutdown")
 def on_shutdown() -> None:
     supervisor.stop()
+    poller.stop()
 
 
 @app.get("/health")

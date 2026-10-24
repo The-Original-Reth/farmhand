@@ -27,6 +27,10 @@ import {
   Server,
   Search,
   ArrowDown,
+  Wrench,
+  RefreshCw,
+  ExternalLink,
+  Check,
 } from "lucide-react";
 
 import { c, ui, mono, fs } from "./theme.js";
@@ -77,6 +81,19 @@ import {
   savePrinterNotes,
   saveBundleNotes,
   setStarredVersion,
+  getMoonrakerStatus,
+  syncPrinterHistory,
+  getPrintStats,
+  getEnergy,
+  getPrintJobs,
+  getMaintenance,
+  addMaintenance,
+  updateMaintenance,
+  performMaintenance,
+  deleteMaintenance,
+  serviceDone,
+  setServiceEnabled,
+  saveServiceNotes,
   saveConfigOnExit,
   restoreConfig,
   bundle3mfUrl,
@@ -155,6 +172,7 @@ function Badge({ children, tone = "muted" }) {
     amber: { bg: c.amberDim, fg: c.amber, border: c.amberBorder },
     teal: { bg: c.tealDim, fg: c.teal, border: c.tealBorder },
     green: { bg: c.greenDim, fg: c.green, border: c.greenBorder },
+    danger: { bg: c.dangerDim, fg: c.danger, border: c.danger },
   };
   const t = tones[tone];
   return (
@@ -791,6 +809,859 @@ function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compareSelec
 // ---------------------------------------------------------------------------
 // Printers section
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// A printer's Moonraker: connection, statistics, maintenance, print history
+// ---------------------------------------------------------------------------
+const fmtDuration = (s) => {
+  if (!s) return "0m";
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  return h ? `${h.toLocaleString()}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+};
+const fmtMetres = (mm) => `${((mm || 0) / 1000).toLocaleString(undefined, { maximumFractionDigits: (mm || 0) >= 100000 ? 0 : 1 })} m`;
+const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
+const fmtUnix = (s) => (s ? new Date(s * 1000).toLocaleString() : "—");
+const headerButton = () => ({
+  display: "flex", alignItems: "center", gap: 5, ...ui, fontSize: fs(12), background: "none", color: c.textMuted,
+  border: `1px solid ${c.border}`, borderRadius: 3, padding: "0 9px", height: 26, cursor: "pointer", flexShrink: 0,
+  textDecoration: "none", boxSizing: "border-box",
+});
+
+// The printer's Moonraker as the printer page sees it. On opening a printer: check the connection, show what
+// Farmhand already has, then sync the history in the background if the printer answers. `key` restarts all of it
+// when the printer or its address changes.
+// onSynced: called after each successful sync (the page reloads the printer, whose service hours have moved on)
+function useMoonraker(printerId, key, onSynced) {
+  const [status, setStatus] = useState(null); // GET /printers/{id}/moonraker
+  const [stats, setStats] = useState(null); // GET /printers/{id}/print-stats
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
+  const [syncTick, setSyncTick] = useState(0); // goes up after every sync, so the history list reloads
+  const current = useRef(null);
+
+  const sync = async (id = printerId) => {
+    setSyncing(true);
+    try {
+      await syncPrinterHistory(id);
+      if (current.current === key) setSyncError(null);
+      await onSynced?.();
+    } catch (e) {
+      if (current.current === key) setSyncError(e.message || String(e));
+    }
+    try {
+      const s = await getPrintStats(id);
+      if (current.current === key) setStats(s);
+    } catch {
+      /* the stats stay as they were */
+    }
+    if (current.current === key) {
+      setSyncing(false);
+      setSyncTick((t) => t + 1);
+    }
+  };
+
+  useEffect(() => {
+    if (!printerId) return undefined;
+    current.current = key;
+    setStatus(null);
+    setStats(null);
+    setSyncError(null);
+    (async () => {
+      const [s, st] = await Promise.all([
+        getMoonrakerStatus(printerId).catch((e) => ({ reachable: false, error: e.message || String(e) })),
+        getPrintStats(printerId).catch(() => null),
+      ]);
+      if (current.current !== key) return;
+      setStatus(s);
+      setStats(st);
+      if (s.reachable) await sync(printerId);
+    })();
+    return () => {
+      current.current = null;
+    };
+  }, [key]);
+
+  return { status, stats, syncing, syncError, syncTick, sync: () => sync() };
+}
+
+function StatTile({ label, value, hint }) {
+  return (
+    <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: "10px 12px", background: c.panelAlt, minWidth: 0 }} title={hint}>
+      <div style={{ ...ui, fontSize: fs(11), color: c.textFaint, marginBottom: 4 }}>{label}</div>
+      <div style={{ ...mono, fontSize: fs(16), color: c.heading, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    </div>
+  );
+}
+
+// Connection + the printer's own lifetime statistics, with "Open Mainsail" and "Sync now"
+function MoonrakerCard({ printer, mr }) {
+  const { status, stats, syncing, syncError } = mr;
+  const totals = stats?.totals;
+  const archive = stats?.archive;
+  let dot = c.textFaint;
+  let line = "Checking the connection…";
+  if (status) {
+    if (status.reachable) {
+      const ready = status.klippy_state === "ready";
+      dot = ready ? c.green : c.amber;
+      line = `Connected${status.klippy_state ? ` · Klipper ${status.klippy_state}` : ""}${status.moonraker_version ? ` · Moonraker ${status.moonraker_version}` : ""}`;
+    } else {
+      dot = c.danger;
+      line = status.error || "Can't reach Moonraker.";
+    }
+  }
+  const failed = archive ? archive.jobs - (archive.by_status.completed || 0) - (archive.by_status.in_progress || 0) - (archive.by_status.cancelled || 0) : 0;
+  const lastSync = stats?.last_sync_at || status?.last_sync_at;
+  const lastSyncError = syncError || stats?.last_sync_error;
+
+  return (
+    <div data-testid="moonraker-card">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Moonraker</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {printer.mainsailUrl && (
+            <a data-testid="open-mainsail" href={printer.mainsailUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.mainsailUrl}>
+              <ExternalLink size={12} />
+              Open Mainsail
+            </a>
+          )}
+          <button
+            data-testid="moonraker-sync"
+            onClick={mr.sync}
+            disabled={syncing || !status?.reachable}
+            title={status?.reachable ? "Copy the printer's latest print history into Farmhand" : "The printer can't be reached right now"}
+            style={{ ...headerButton(), opacity: syncing || !status?.reachable ? 0.55 : 1, cursor: syncing || !status?.reachable ? "default" : "pointer" }}
+          >
+            <RefreshCw size={12} style={syncing ? { animation: "fh-spin 1s linear infinite" } : undefined} />
+            {syncing ? "Syncing…" : "Sync now"}
+          </button>
+        </div>
+      </div>
+      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+        <div data-testid="moonraker-status" style={{ display: "flex", alignItems: "flex-start", gap: 8, ...ui, fontSize: fs(13), color: status?.reachable ? c.textPrimary : c.textMuted, lineHeight: 1.5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0, marginTop: 6 }} />
+          <span>
+            {line}
+            {status?.reachable && printer.moonrakerUrl && (
+              <span style={{ ...mono, fontSize: fs(11), color: c.textFaint, marginLeft: 8 }}>{printer.moonrakerUrl}</span>
+            )}
+          </span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginTop: 12 }}>
+          <StatTile label="Prints" value={totals ? totals.total_jobs.toLocaleString() : "—"} hint="All jobs the printer has recorded" />
+          <StatTile label="Print time" value={totals ? fmtDuration(totals.total_print_time) : "—"} hint="Time spent printing (pauses not counted)" />
+          <StatTile label="Filament used" value={totals ? fmtMetres(totals.total_filament_used) : "—"} />
+          <StatTile label="Longest print" value={totals ? fmtDuration(totals.longest_print) : "—"} />
+        </div>
+
+        <div data-testid="moonraker-sync-state" style={{ ...ui, fontSize: fs(12), color: lastSyncError ? c.amber : c.textFaint, marginTop: 10, lineHeight: 1.6 }}>
+          {lastSyncError
+            ? `Last sync failed: ${lastSyncError}${lastSync ? ` The figures above are from ${fmtWhen(lastSync)}.` : ""}`
+            : lastSync
+              ? `Statistics from the printer, as of ${fmtWhen(lastSync)}.`
+              : "Not synced yet."}
+          {archive && archive.jobs > 0 && (
+            <div>
+              Farmhand has {archive.jobs.toLocaleString()} print{archive.jobs === 1 ? "" : "s"} on record:{" "}
+              {(archive.by_status.completed || 0).toLocaleString()} completed, {(archive.by_status.cancelled || 0).toLocaleString()} cancelled,{" "}
+              {failed.toLocaleString()} failed{archive.by_status.in_progress ? `, ${archive.by_status.in_progress} in progress` : ""}.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- energy: per print (from the history) and the whole printer (from the power meter's readings) ----
+const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 2 : v < 100 ? 1 : 0 })} kWh`);
+const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+const periodLabel = (key, by) =>
+  by === "year" ? key : new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+
+// Totals per month or year, in this browser's time zone. Prints: each print's energy, by when it started. Whole
+// printer: the meter's rise between one reading and the next, counted in the period of the later reading (a meter
+// that went backwards was reset, so its new value is what it used since). The period holding the first reading only
+// covers part of it, and is marked so.
+function energyByPeriod({ jobs, readings }, by) {
+  const rows = {};
+  const row = (key) => (rows[key] ??= { key, prints: 0, printCount: 0, whole: null, partial: false });
+  jobs.forEach(([at, kwh]) => {
+    if (!at) return;
+    const r = row(periodKey(new Date(at), by));
+    r.prints += kwh;
+    r.printCount += 1;
+  });
+  for (let i = 1; i < readings.length; i++) {
+    const [, before] = readings[i - 1];
+    const [at, now] = readings[i];
+    const r = row(periodKey(new Date(at), by));
+    r.whole = (r.whole ?? 0) + (now >= before ? now - before : now);
+  }
+  if (readings.length) {
+    const first = row(periodKey(new Date(readings[0][0]), by));
+    first.partial = true;
+    first.whole ??= 0;
+  }
+  return Object.values(rows).sort((a, b) => (a.key < b.key ? 1 : -1)); // newest first
+}
+
+function EnergyPanel({ printer, syncTick }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [by, setBy] = useState("month");
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    getEnergy(printer.id)
+      .then((d) => live && (setData(d), setError(null)))
+      .catch((e) => live && setError(e.message || String(e)));
+    return () => {
+      live = false;
+    };
+  }, [printer.id, syncTick]);
+
+  const hasAny = data && (data.meter || data.jobs.length > 0);
+  const periods = hasAny ? energyByPeriod(data, by) : [];
+  const shown = showAll ? periods : periods.slice(0, by === "month" ? 12 : 5);
+  const max = Math.max(1e-9, ...periods.map((p) => Math.max(p.prints, p.whole ?? 0)));
+  const now = new Date();
+  const thisPeriod = periods.find((p) => p.key === periodKey(now, by));
+  const printsKwh = data?.print_total_kwh ?? (data ? data.jobs.reduce((s, [, k]) => s + k, 0) : null);
+  const cols = "90px minmax(0, 1fr) 100px 110px 60px";
+
+  return (
+    <div data-testid="energy-panel">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Energy</div>
+        {hasAny && (
+          <div data-testid="energy-by" style={{ display: "flex", gap: 6 }}>
+            {[{ value: "month", label: "By month" }, { value: "year", label: "By year" }].map((o) => (
+              <button
+                key={o.value}
+                onClick={() => {
+                  setBy(o.value);
+                  setShowAll(false);
+                }}
+                aria-pressed={by === o.value}
+                style={{
+                  ...headerButton(), border: `1px solid ${by === o.value ? c.amber : c.border}`,
+                  background: by === o.value ? c.amberDim : "none", color: by === o.value ? c.amber : c.textMuted,
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+        {error ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.amber }}>Couldn't load energy: {error}</div>
+        ) : !data ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Loading…</div>
+        ) : !hasAny ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.textMuted, lineHeight: 1.6 }}>
+            No energy figures yet. They appear once the printer has a power meter set up in Moonraker (a [sensor] with an
+            energy value and history fields, e.g. a smart plug) and Farmhand has synced it.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+              <StatTile
+                label="Whole printer (meter)"
+                value={fmtKwh(data.meter?.energy_kwh)}
+                hint={data.meter ? `${data.meter.sensor}, read ${fmtWhen(data.meter.taken_at)}. Idle time included.` : "No meter reading yet"}
+              />
+              <StatTile label="Used by prints" value={fmtKwh(printsKwh)} hint="All prints the printer has recorded" />
+              <StatTile label={by === "month" ? "This month, prints" : "This year, prints"} value={fmtKwh(thisPeriod?.prints ?? 0)} />
+              <StatTile
+                label={by === "month" ? "This month, whole printer" : "This year, whole printer"}
+                value={thisPeriod?.whole != null ? fmtKwh(thisPeriod.whole) : "—"}
+                hint="From the meter readings Farmhand has taken"
+              />
+            </div>
+
+            <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, marginTop: 12, overflowX: "auto" }}>
+              <div style={{ minWidth: 460 }}>
+                <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "7px 12px", fontSize: fs(11), color: c.textFaint, background: c.panelAlt, borderBottom: `1px solid ${c.border}`, ...ui }}>
+                  <div>{by === "month" ? "Month" : "Year"}</div>
+                  <div />
+                  <div>Prints</div>
+                  <div>Whole printer</div>
+                  <div>Prints #</div>
+                </div>
+                {shown.map((p, i) => (
+                  <div
+                    key={p.key}
+                    data-testid="energy-period"
+                    data-period={p.key}
+                    style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "6px 12px", borderTop: i ? `1px solid ${c.border}` : "none" }}
+                  >
+                    <div style={{ ...ui, fontSize: fs(12), color: c.textPrimary }}>{periodLabel(p.key, by)}</div>
+                    <div style={{ position: "relative", height: 10 }}>
+                      {p.whole != null && (
+                        <div style={{ position: "absolute", inset: 0, width: `${(p.whole / max) * 100}%`, background: c.tealDim, borderRadius: 2 }} />
+                      )}
+                      <div style={{ position: "absolute", top: 2, bottom: 2, left: 0, width: `${(p.prints / max) * 100}%`, background: c.amber, borderRadius: 2 }} />
+                    </div>
+                    <div style={{ ...mono, fontSize: fs(12), color: c.textPrimary }}>{fmtKwh(p.prints)}</div>
+                    <div style={{ ...mono, fontSize: fs(12), color: p.whole == null ? c.textFaint : c.teal }} title={p.partial ? "Readings started part-way through this period" : undefined}>
+                      {p.whole == null ? "—" : `${p.partial ? "≥ " : ""}${fmtKwh(p.whole)}`}
+                    </div>
+                    <div style={{ ...mono, fontSize: fs(12), color: c.textMuted }}>{p.printCount || ""}</div>
+                  </div>
+                ))}
+                {periods.length > shown.length && (
+                  <button
+                    onClick={() => setShowAll(true)}
+                    style={{ display: "block", width: "100%", padding: "7px 12px", border: "none", borderTop: `1px solid ${c.border}`, background: "none", color: c.textMuted, ...ui, fontSize: fs(12), cursor: "pointer" }}
+                  >
+                    Show all {periods.length} {by === "month" ? "months" : "years"}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginTop: 8, lineHeight: 1.6 }}>
+              <span style={{ display: "inline-block", width: 10, height: 6, background: c.amber, borderRadius: 1, marginRight: 5 }} />
+              Prints: each print's own energy, from the printer's history.{" "}
+              <span style={{ display: "inline-block", width: 10, height: 6, background: c.tealDim, border: `1px solid ${c.teal}`, borderRadius: 1, margin: "0 5px 0 6px" }} />
+              Whole printer, idle included: from the power meter readings Farmhand takes
+              {data.meter ? ` (since ${new Date(data.meter.first_reading_at).toLocaleDateString()}; “≥” where they began part-way through).` : ", once there are some."}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- maintenance: lives on the printer, shared with Mainsail ----
+const REMINDER_PARTS = [
+  { key: "printtime", label: "Print time", unit: "hours" },
+  { key: "filament", label: "Filament", unit: "metres" },
+  { key: "date", label: "Time passed", unit: "days" },
+];
+const emptyReminder = () => ({
+  type: null,
+  filament: { bool: false, value: null },
+  printtime: { bool: false, value: null },
+  date: { bool: false, value: null },
+});
+
+function MaintenanceForm({ initial, onSubmit, onClose, actionLabel }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [note, setNote] = useState(initial?.note || "");
+  const [reminder, setReminder] = useState(() => {
+    const r = { ...emptyReminder(), ...(initial?.reminder || {}) };
+    REMINDER_PARTS.forEach(({ key }) => (r[key] = { bool: !!r[key]?.bool, value: r[key]?.value ?? null }));
+    return r;
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const setPart = (key, change) => setReminder((r) => ({ ...r, [key]: { ...r[key], ...change } }));
+
+  const submit = async () => {
+    setErrorMsg(null);
+    if (!name.trim()) return setErrorMsg("Give the maintenance a name.");
+    if (reminder.type && !REMINDER_PARTS.some(({ key }) => reminder[key].bool)) {
+      return setErrorMsg("Pick at least one of print time, filament or days for the reminder.");
+    }
+    setSubmitting(true);
+    try {
+      const r = { type: reminder.type };
+      REMINDER_PARTS.forEach(({ key }) => {
+        const on = !!reminder.type && reminder[key].bool;
+        r[key] = { bool: on, value: on ? Number(reminder[key].value) : null };
+      });
+      await onSubmit({ name: name.trim(), note: note.trim(), reminder: r });
+      onClose();
+    } catch (e) {
+      setErrorMsg(e.message || String(e));
+      setSubmitting(false);
+    }
+  };
+
+  const input = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
+  return (
+    <>
+      <TextField label="Name" value={name} onChange={setName} placeholder="e.g. Lubricate linear rails" />
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginBottom: 5 }}>Note (optional)</div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+          placeholder="What to do, what to use"
+          style={{ ...input, width: "100%", boxSizing: "border-box", padding: "8px 10px", resize: "vertical", lineHeight: 1.5 }}
+        />
+      </div>
+      <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginBottom: 5 }}>Reminder</div>
+      <SegmentedToggle
+        options={[{ value: "none", label: "No reminder" }, { value: "one-time", label: "Once" }, { value: "repeat", label: "Repeating" }]}
+        value={reminder.type || "none"}
+        onChange={(v) => setReminder((r) => ({ ...r, type: v === "none" ? null : v }))}
+      />
+      {reminder.type && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+          <div style={{ ...ui, fontSize: fs(12), color: c.textMuted, lineHeight: 1.5 }}>
+            Due when any of these is reached, counted from now{reminder.type === "repeat" ? " and again each time it's done" : ""}:
+          </div>
+          {REMINDER_PARTS.map(({ key, label, unit }) => (
+            <label key={key} style={{ display: "flex", alignItems: "center", gap: 10, ...ui, fontSize: fs(13), color: c.textMuted }}>
+              <input type="checkbox" checked={reminder[key].bool} onChange={(e) => setPart(key, { bool: e.target.checked })} style={{ accentColor: c.amber }} />
+              <span style={{ width: 90 }}>{label}</span>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={reminder[key].value ?? ""}
+                disabled={!reminder[key].bool}
+                onChange={(e) => setPart(key, { value: e.target.value === "" ? null : e.target.value })}
+                style={{ ...input, width: 100, padding: "5px 8px", opacity: reminder[key].bool ? 1 : 0.5 }}
+              />
+              <span>{unit}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div style={{ ...ui, fontSize: fs(11), color: c.textFaint, marginBottom: 14, lineHeight: 1.5 }}>
+        Saved on the printer, the same way Mainsail keeps its maintenance list, so it shows there too.
+      </div>
+      <ModalActions onClose={onClose} onSubmit={submit} actionLabel={actionLabel} submitting={submitting} errorMsg={errorMsg} submittingLabel="Saving…" />
+    </>
+  );
+}
+
+// message: replaces the usual "marks it done on the printer" explanation (the 1500-hour service lives in Farmhand)
+function PerformMaintenanceForm({ entry, onSubmit, onClose, message }) {
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const submit = async () => {
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      await onSubmit({ note: note.trim() });
+      onClose();
+    } catch (e) {
+      setErrorMsg(e.message || String(e));
+      setSubmitting(false);
+    }
+  };
+  return (
+    <>
+      <div style={{ ...ui, fontSize: fs(13), color: c.textMuted, lineHeight: 1.6, marginBottom: 12 }}>
+        {message || (
+          <>
+            Marks <b style={{ color: c.heading }}>{entry.name}</b> as done on the printer, now. Mainsail will show it as done too.
+            {entry.reminder?.type === "repeat" && " Its next round starts counting straight away."}
+          </>
+        )}
+      </div>
+      <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginBottom: 5 }}>What was done (optional)</div>
+      <textarea
+        data-testid="maintenance-done-note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={3}
+        autoFocus
+        style={{ width: "100%", boxSizing: "border-box", background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, padding: "8px 10px", fontSize: fs(13), ...ui, resize: "vertical", marginBottom: 14 }}
+      />
+      <ModalActions onClose={onClose} onSubmit={submit} actionLabel="Mark done" submitting={submitting} errorMsg={errorMsg} submittingLabel="Saving…" />
+    </>
+  );
+}
+
+// "12 / 50 hours printed", "3.4 / 10 m of filament", "8 / 30 days"
+const checkText = (ch) => {
+  const n = (v) => v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 1 : 0 });
+  const label = { printtime: "hours printed", filament: "m of filament", date: "days" }[ch.kind];
+  return `${n(Math.max(0, ch.used))} / ${n(ch.limit)} ${label}`;
+};
+
+function MaintenanceRow({ entry, onDone, onEdit, onDelete }) {
+  const done = entry.state === "done";
+  return (
+    <div data-testid="maintenance-row" data-state={entry.state} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", borderTop: `1px solid ${c.border}` }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ ...ui, fontSize: fs(14), color: done ? c.textMuted : c.heading }}>{entry.name}</span>
+          {entry.state === "due" && <Badge tone="danger">due</Badge>}
+          {entry.state === "ok" && <Badge tone="green">ok</Badge>}
+          {entry.reminder?.type === "repeat" && <Badge>repeats</Badge>}
+          {done && <Badge>done {fmtUnix(entry.end_time)}</Badge>}
+        </div>
+        {entry.note && <div style={{ ...ui, fontSize: fs(12), color: c.textMuted, marginTop: 3, whiteSpace: "pre-wrap" }}>{entry.note}</div>}
+        {entry.checks?.length > 0 && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+            {entry.checks.map((ch) => (
+              <span key={ch.kind} style={{ ...mono, fontSize: fs(11), color: ch.due ? c.danger : c.textFaint }}>
+                {checkText(ch)}
+              </span>
+            ))}
+          </div>
+        )}
+        {done && entry.perform_note && <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginTop: 3 }}>“{entry.perform_note}”</div>}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        {!done && (
+          <button data-testid="maintenance-done" onClick={onDone} style={{ ...headerButton(), color: entry.state === "due" ? c.amber : c.textMuted, borderColor: entry.state === "due" ? c.amber : c.border }}>
+            <Check size={12} />
+            Done
+          </button>
+        )}
+        {!done && (
+          <button onClick={onEdit} title="Edit" aria-label="Edit" style={{ ...headerButton(), padding: 0, width: 26, justifyContent: "center" }}>
+            <Pencil size={12} />
+          </button>
+        )}
+        <TrashButton title="Delete this maintenance entry" onClick={onDelete} />
+      </div>
+    </div>
+  );
+}
+
+// The 1500-hour service, kept in Farmhand: due once the printer's synced print time has grown by 1500 hours since
+// the count started (its first sync, or the last time this was marked done). Shown whether or not the printer answers.
+function ServiceReminder({ printer }) {
+  const { refresh } = useData();
+  const [dialog, setDialog] = useState(null); // "done" | null
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const s = printer.service;
+  const interval = s.interval_hours;
+  const since = s.hours_since ?? 0;
+  const pct = Math.min(100, (since / interval) * 100);
+  const n = (v) => Math.floor(v).toLocaleString();
+
+  const toggle = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await setServiceEnabled(printer.id, !s.enabled);
+      await refresh();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  let text;
+  if (s.state === "waiting") text = "Starts counting once the printer's print time has been synced.";
+  else if (s.state === "off") text = `Switched off for this printer. ${n(since)} print hours since it was last reset.`;
+  else text = `${n(since)} / ${n(interval)} print hours since ${s.last_done ? "the last service" : "counting started"}${s.started_at ? ` (${new Date(s.started_at).toLocaleDateString()})` : ""}.`;
+
+  return (
+    <div data-testid="service-reminder" data-state={s.state}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ ...ui, fontSize: fs(14), color: s.state === "off" ? c.textMuted : c.heading }}>{n(interval)}-hour service</span>
+          {s.state === "due" && <Badge tone="danger">due</Badge>}
+          {s.state === "ok" && <Badge tone="green">ok</Badge>}
+          {s.state === "off" && <Badge>off</Badge>}
+          <Badge>repeats · kept in Farmhand</Badge>
+        </div>
+        <div style={{ ...mono, fontSize: fs(11), color: s.state === "due" ? c.danger : c.textFaint, marginTop: 4 }}>{text}</div>
+        {(s.state === "ok" || s.state === "due") && (
+          <div style={{ height: 4, borderRadius: 2, background: c.panelAlt, marginTop: 6, maxWidth: 320, overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: s.state === "due" ? c.danger : c.teal }} />
+          </div>
+        )}
+        {s.last_done && (
+          <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginTop: 4 }}>
+            Last done {new Date(s.last_done.done_at).toLocaleDateString()}, after {n(s.last_done.hours)} hours{s.last_done.note ? ` — “${s.last_done.note}”` : ""}
+          </div>
+        )}
+        {error && <div style={{ ...ui, fontSize: fs(12), color: c.amber, marginTop: 4 }}>{error}</div>}
+      </div>
+      {s.state !== "waiting" && (
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {s.enabled && (
+            <button
+              data-testid="service-done"
+              onClick={() => setDialog("done")}
+              style={{ ...headerButton(), color: s.state === "due" ? c.amber : c.textMuted, borderColor: s.state === "due" ? c.amber : c.border }}
+            >
+              <Check size={12} />
+              Done
+            </button>
+          )}
+          <button data-testid="service-toggle" onClick={toggle} disabled={busy} style={{ ...headerButton(), opacity: busy ? 0.55 : 1 }}>
+            {s.enabled ? "Turn off" : "Turn on"}
+          </button>
+        </div>
+      )}
+    </div>
+      <div data-testid="service-notes" style={{ padding: "0 14px 12px" }}>
+        <NotesSection
+          key={printer.id}
+          kind="service"
+          ownerId={printer.id}
+          saved={s.notes}
+          rev={s.notes_revision}
+          updatedAt={s.notes_updated_at}
+          onSave={({ notes, baseRevision }) => saveServiceNotes({ printerId: printer.id, notes, baseRevision })}
+          description={`About this printer's ${n(interval)}-hour service: what it involves, parts to have ready.`}
+          placeholder="Nothing written yet. Notes you add here are kept in Farmhand with this printer's service."
+        />
+      </div>
+      {dialog === "done" && (
+        <Modal title={`${n(interval)}-hour service done`} onClose={() => setDialog(null)} width={440}>
+          <PerformMaintenanceForm
+            entry={{ name: `the ${n(interval)}-hour service`, reminder: { type: null } }}
+            message={`The next ${n(interval)} print hours count from the printer's print time now. This is kept in Farmhand, not on the printer.`}
+            onClose={() => setDialog(null)}
+            onSubmit={async ({ note }) => {
+              await serviceDone(printer.id, { note });
+              await refresh();
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function MaintenanceSection({ printer, reachable }) {
+  const [data, setData] = useState(null); // { entries, totals }
+  const [error, setError] = useState(null);
+  const [dialog, setDialog] = useState(null); // { kind: "add" | "edit" | "done" | "delete", entry }
+  const [showDone, setShowDone] = useState(false);
+
+  const load = async () => {
+    try {
+      setData(await getMaintenance(printer.id));
+      setError(null);
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  };
+  useEffect(() => {
+    setData(null);
+    setError(null);
+    setShowDone(false);
+    if (reachable) load();
+  }, [printer.id, reachable]);
+
+  const entries = data?.entries || [];
+  const order = { due: 0, ok: 1, no_reminder: 2 };
+  const open = entries.filter((e) => e.state !== "done").sort((a, b) => order[a.state] - order[b.state]);
+  const done = entries.filter((e) => e.state === "done");
+  const dueCount = open.filter((e) => e.state === "due").length + (printer.service.state === "due" ? 1 : 0);
+  const close = () => setDialog(null);
+
+  return (
+    <div data-testid="maintenance-section">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textFaint }}>
+          Maintenance
+          {dueCount > 0 && <Badge tone="danger">{dueCount} due</Badge>}
+        </div>
+        <button
+          data-testid="maintenance-add"
+          onClick={() => setDialog({ kind: "add" })}
+          disabled={!reachable || !data}
+          style={{ ...headerButton(), opacity: reachable && data ? 1 : 0.55, cursor: reachable && data ? "pointer" : "default" }}
+        >
+          <Wrench size={12} />
+          Add maintenance
+        </button>
+      </div>
+      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel }}>
+        <ServiceReminder printer={printer} />
+        <div style={{ borderTop: `1px solid ${c.border}` }}>
+        {!reachable ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.textMuted, padding: 14, lineHeight: 1.6 }}>
+            The rest of the maintenance is kept on the printer (shared with Mainsail), so it shows once the printer can be reached.
+          </div>
+        ) : error ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.amber, padding: 14 }}>Couldn't load maintenance: {error}</div>
+        ) : !data ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.textFaint, padding: 14 }}>Loading…</div>
+        ) : entries.length === 0 ? (
+          <div style={{ ...ui, fontSize: fs(13), color: c.textMuted, padding: 14 }}>No other maintenance recorded on this printer yet.</div>
+        ) : (
+          <div style={{ marginTop: -1 }}>
+            {open.map((e) => (
+              <MaintenanceRow
+                key={e.id}
+                entry={e}
+                onDone={() => setDialog({ kind: "done", entry: e })}
+                onEdit={() => setDialog({ kind: "edit", entry: e })}
+                onDelete={() => setDialog({ kind: "delete", entry: e })}
+              />
+            ))}
+            {done.length > 0 && (
+              <button
+                data-testid="maintenance-show-done"
+                onClick={() => setShowDone(!showDone)}
+                style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", padding: "8px 14px", border: "none", borderTop: `1px solid ${c.border}`, background: "none", color: c.textMuted, ...ui, fontSize: fs(12), cursor: "pointer" }}
+              >
+                <ChevronRight size={12} style={{ transform: showDone ? "rotate(90deg)" : "none" }} />
+                {showDone ? "Hide" : "Show"} {done.length} done
+              </button>
+            )}
+            {showDone && done.map((e) => <MaintenanceRow key={e.id} entry={e} onDelete={() => setDialog({ kind: "delete", entry: e })} />)}
+          </div>
+        )}
+        </div>
+      </div>
+
+      {dialog?.kind === "add" && (
+        <Modal title="Add maintenance" onClose={close} width={480}>
+          <MaintenanceForm actionLabel="Add" onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
+        </Modal>
+      )}
+      {dialog?.kind === "edit" && (
+        <Modal title="Edit maintenance" onClose={close} width={480}>
+          <MaintenanceForm
+            initial={dialog.entry}
+            actionLabel="Save"
+            onClose={close}
+            onSubmit={async (v) => setData(await updateMaintenance(printer.id, dialog.entry.id, v))}
+          />
+        </Modal>
+      )}
+      {dialog?.kind === "done" && (
+        <Modal title="Maintenance done" onClose={close} width={440}>
+          <PerformMaintenanceForm entry={dialog.entry} onClose={close} onSubmit={async (v) => setData(await performMaintenance(printer.id, dialog.entry.id, v))} />
+        </Modal>
+      )}
+      {dialog?.kind === "delete" && (
+        <ConfirmDialog title="Delete maintenance" onClose={close} onConfirm={async () => setData(await deleteMaintenance(printer.id, dialog.entry.id))}>
+          Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b> from the printer? It's removed from Mainsail too. This can't be undone.
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
+// ---- print history: Farmhand's copy ----
+const JOB_STATUS_TONE = { completed: "green", in_progress: "teal", cancelled: "muted" };
+const JOB_FILTERS = [
+  { value: "", label: "All" },
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+const HISTORY_PAGE = 25;
+
+function PrintHistory({ printer, syncTick }) {
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("");
+  const [jobs, setJobs] = useState([]);
+  const [total, setTotal] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const ask = useRef(0);
+
+  const load = async (offset) => {
+    const mine = ++ask.current;
+    setLoading(true);
+    try {
+      const r = await getPrintJobs(printer.id, { limit: HISTORY_PAGE, offset, status, q });
+      if (mine !== ask.current) return;
+      setJobs((prev) => (offset ? [...prev, ...r.jobs] : r.jobs));
+      setTotal(r.total);
+      setError(null);
+    } catch (e) {
+      if (mine === ask.current) setError(e.message || String(e));
+    } finally {
+      if (mine === ask.current) setLoading(false);
+    }
+  };
+  useEffect(() => {
+    const t = setTimeout(() => load(0), q ? 250 : 0); // a short pause while typing
+    return () => clearTimeout(t);
+  }, [printer.id, status, q, syncTick]);
+
+  const control = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
+  const cols = "minmax(140px, 170px) minmax(200px, 1fr) 100px 90px 80px 80px"; // below ~730px wide the table scrolls sideways
+  return (
+    <div data-testid="print-history">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>
+          Print history{total != null && <span style={{ marginLeft: 8 }}>{total.toLocaleString()} {total === 1 ? "print" : "prints"}</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            data-testid="print-history-search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search file names…"
+            aria-label="Search print history"
+            style={{ ...control, padding: "5px 9px", width: 200 }}
+          />
+          <select data-testid="print-history-filter" value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...control, padding: "5px 8px" }}>
+            {JOB_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflowX: "auto", background: c.panel }}>
+        <div style={{ minWidth: 730 }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "7px 14px", fontSize: fs(11), color: c.textFaint, background: c.panelAlt, borderBottom: `1px solid ${c.border}`, ...ui }}>
+          <div>Started</div>
+          <div>File</div>
+          <div>Status</div>
+          <div>Print time</div>
+          <div>Filament</div>
+          <div>Energy</div>
+        </div>
+        {error && <div style={{ ...ui, fontSize: fs(13), color: c.amber, padding: 14 }}>Couldn't load the history: {error}</div>}
+        {!error && jobs.length === 0 && (
+          <div style={{ ...ui, fontSize: fs(13), color: c.textMuted, padding: 14 }}>
+            {loading ? "Loading…" : q || status ? "No prints match." : "No print history yet. It's copied from the printer when it can be reached."}
+          </div>
+        )}
+        {jobs.map((j, i) => (
+          <div
+            key={j.id}
+            data-testid="print-job"
+            data-status={j.status}
+            style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "7px 14px", borderTop: i ? `1px solid ${c.border}` : "none" }}
+          >
+            <div style={{ ...mono, fontSize: fs(12), color: c.textMuted }}>{fmtWhen(j.start_time)}</div>
+            <div style={{ ...mono, fontSize: fs(12), color: c.textPrimary, overflowWrap: "anywhere" }} title={j.filename}>
+              {j.filename}
+            </div>
+            <div>
+              <Badge tone={JOB_STATUS_TONE[j.status] || "danger"}>{j.status.replace(/_/g, " ")}</Badge>
+            </div>
+            <div style={{ ...mono, fontSize: fs(12), color: c.textMuted }}>{fmtDuration(j.print_duration)}</div>
+            <div style={{ ...mono, fontSize: fs(12), color: c.textMuted }}>{fmtMetres(j.filament_used)}</div>
+            <div
+              style={{ ...mono, fontSize: fs(12), color: j.energy_kwh == null ? c.textFaint : c.textMuted }}
+              title={j.avg_power_w != null ? `Average ${Math.round(j.avg_power_w)} W${j.max_power_w != null ? `, peak ${Math.round(j.max_power_w)} W` : ""}` : undefined}
+            >
+              {j.energy_kwh == null ? "—" : fmtKwh(j.energy_kwh)}
+            </div>
+          </div>
+        ))}
+        {total != null && jobs.length < total && (
+          <button
+            data-testid="print-history-more"
+            onClick={() => load(jobs.length)}
+            disabled={loading}
+            style={{ display: "block", width: "100%", padding: "8px 14px", border: "none", borderTop: `1px solid ${c.border}`, background: "none", color: c.textMuted, ...ui, fontSize: fs(12), cursor: loading ? "default" : "pointer" }}
+          >
+            {loading ? "Loading…" : `Show ${Math.min(HISTORY_PAGE, total - jobs.length)} more`}
+          </button>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddPrinterForm({ onClose }) {
   const { refresh } = useData();
   const [name, setName] = useState("");
@@ -836,9 +1707,13 @@ function EditPrinterForm({ printer, onClose }) {
   const [wiredIp, setWiredIp] = useState(printer.wired || "");
   const [wirelessIp, setWirelessIp] = useState(printer.wireless || "");
   const [decommissioned, setDecommissioned] = useState(!!printer.decommissioned);
+  const [moonrakerUrl, setMoonrakerUrl] = useState(printer.moonrakerUrlOverride || "");
+  const [apiKey, setApiKey] = useState(""); // blank = keep whatever is saved
+  const [removeKey, setRemoveKey] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const hasFiles = bundlesForPrinter(printer.id).length > 0;
+  const ip = wiredIp.trim() || wirelessIp.trim();
 
   const handleSubmit = async () => {
     setErrorMsg(null);
@@ -851,6 +1726,8 @@ function EditPrinterForm({ printer, onClose }) {
         wiredIp: wiredIp.trim(),
         wirelessIp: wirelessIp.trim(),
         decommissioned,
+        moonrakerUrl: moonrakerUrl.trim(),
+        moonrakerApiKey: removeKey ? "" : apiKey.trim() || undefined,
       });
       await refresh();
       onClose();
@@ -867,6 +1744,29 @@ function EditPrinterForm({ printer, onClose }) {
       <TextField label="Type" value={kind} onChange={setKind} placeholder="e.g. Prusa MK4 (OctoPrint)" />
       <TextField label="Wired IP" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
+      <TextField
+        label="Moonraker address (optional)"
+        value={moonrakerUrl}
+        onChange={setMoonrakerUrl}
+        placeholder={ip ? `Leave blank to use http://${ip}:7125` : "Add an IP above, or give the address here"}
+      />
+      <TextField
+        label="Moonraker API key (optional)"
+        type="password"
+        value={apiKey}
+        onChange={(v) => {
+          setApiKey(v);
+          if (v) setRemoveKey(false);
+        }}
+        disabled={removeKey}
+        placeholder={printer.hasMoonrakerApiKey ? "A key is saved. Type a new one to replace it." : "Only needed if Moonraker asks for one"}
+      />
+      {printer.hasMoonrakerApiKey && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginTop: -6, marginBottom: 14, cursor: "pointer" }}>
+          <input type="checkbox" checked={removeKey} onChange={(e) => setRemoveKey(e.target.checked)} style={{ accentColor: c.amber }} />
+          Remove the saved API key
+        </label>
+      )}
       <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginBottom: 14, cursor: "pointer" }}>
         <input
           type="checkbox"
@@ -901,7 +1801,7 @@ function bundleMatches(bundle, models, words) {
 }
 
 function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect }) {
-  const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle } = useData();
+  const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle, refresh } = useData();
   const view = path[1]; // {printerId}
   const expansion = useBundleExpansion();
   const [addPrinterOpen, setAddPrinterOpen] = useState(false);
@@ -912,6 +1812,10 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
   useEffect(() => {
     setQuery(""); // a fresh search for each printer
   }, [view?.printerId]);
+
+  // The open printer's Moonraker; starts over if its address or API key changes
+  const viewed = view ? printers.find((p) => p.id === view.printerId) : null;
+  const mr = useMoonraker(viewed?.id, viewed ? `${viewed.id}|${viewed.moonrakerUrl}|${viewed.hasMoonrakerApiKey}` : null, refresh);
 
   if (!view) {
     return (
@@ -979,6 +1883,14 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
                   {p.notes && (
                     <span data-testid="printer-has-notes" title={`Has notes: ${p.notes.slice(0, 120)}${p.notes.length > 120 ? "…" : ""}`} style={{ display: "flex" }}>
                       <StickyNote size={13} color={c.textFaint} />
+                    </span>
+                  )}
+                  {p.service.state === "due" && (
+                    <span data-testid="printer-service-due" title={`${Math.floor(p.service.hours_since).toLocaleString()} print hours since the last service`}>
+                      <Badge tone="danger">
+                        <Wrench size={11} />
+                        {p.service.interval_hours.toLocaleString()} h service due
+                      </Badge>
                     </span>
                   )}
                 </div>
@@ -1128,6 +2040,12 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
 
       <PrinterNotes key={printer.id} printer={printer} />
 
+      <MoonrakerCard printer={printer} mr={mr} />
+
+      <EnergyPanel printer={printer} syncTick={mr.syncTick} />
+
+      <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} />
+
       <div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <SectionLabel>3MF files on {printer.name}</SectionLabel>
@@ -1206,6 +2124,8 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
           })}
         </div>
       </div>
+
+      <PrintHistory printer={printer} syncTick={mr.syncTick} />
     </div>
   );
 }
@@ -2460,8 +3380,14 @@ const newestFirst = (a, b) => (Date.parse(b.updated) || 0) - (Date.parse(a.updat
 
 // ---- notes about a model ----
 const NOTES_MAX = 20000;
-const draftKey = (kind, id) =>
-  kind === "printer" ? `farmhand.printerNotesDraft.${id}` : kind === "bundle" ? `farmhand.bundleNotesDraft.${id}` : `farmhand.notesDraft.${id}`;
+// (kind "service": the notes kept with a printer's 1500-hour service, so its id is the printer's)
+const NOTES_STORAGE = {
+  printer: { draft: "farmhand.printerNotesDraft", collapsed: "farmhand.printerNotesCollapsed.v2" },
+  bundle: { draft: "farmhand.bundleNotesDraft", collapsed: "farmhand.bundleNotesCollapsed.v2" },
+  service: { draft: "farmhand.serviceNotesDraft", collapsed: "farmhand.serviceNotesCollapsed" },
+  model: { draft: "farmhand.notesDraft", collapsed: "farmhand.notesCollapsed.v2" },
+};
+const draftKey = (kind, id) => `${(NOTES_STORAGE[kind] || NOTES_STORAGE.model).draft}.${id}`;
 function readDraft(kind, id) {
   try {
     const d = JSON.parse(localStorage.getItem(draftKey(kind, id)));
@@ -2483,8 +3409,7 @@ function writeDraft(kind, id, draft) {
 // Whether a model's, printer's or 3MF's notes are folded down to their first line. Every one STARTS folded; opening
 // or closing one is remembered for that model/printer/3MF, in this browser. Anything unreadable means folded.
 // (The keys changed when folding went from two lines to one, so notes left open before that start folded again.)
-const notesCollapsedKey = (kind) =>
-  kind === "printer" ? "farmhand.printerNotesCollapsed.v2" : kind === "bundle" ? "farmhand.bundleNotesCollapsed.v2" : "farmhand.notesCollapsed.v2";
+const notesCollapsedKey = (kind) => (NOTES_STORAGE[kind] || NOTES_STORAGE.model).collapsed;
 function readNotesCollapsed(kind, id) {
   try {
     const choice = JSON.parse(localStorage.getItem(notesCollapsedKey(kind)))?.[id];

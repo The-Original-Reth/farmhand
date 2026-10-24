@@ -39,6 +39,16 @@ export const normalizePrinter = (p) => ({
   notes: p.notes || "", // free text about the printer
   notesRevision: p.notes_revision || 0, // names one exact version of the text: a save is refused if it has moved on
   notesUpdatedAt: p.notes_updated_at || null,
+  moonrakerUrl: p.moonraker_url || null, // where Farmhand reaches its Moonraker (set, else <IP>:7125)
+  moonrakerUrlOverride: p.moonraker_url_override || null, // only what was set for it
+  mainsailUrl: p.mainsail_url || null,
+  hasMoonrakerApiKey: !!p.has_moonraker_api_key, // the key itself never comes back
+  // The 1500-hour service reminder Farmhand keeps: { state: waiting | off | ok | due, enabled, interval_hours,
+  // hours_since, started_at, last_done: { done_at, hours, note } | null }
+  service: p.service || {
+    state: "waiting", enabled: true, interval_hours: 1500, hours_since: null, started_at: null, last_done: null,
+    notes: "", notes_revision: 0, notes_updated_at: null,
+  },
 });
 
 // After previews are redrawn their URLs don't change, so the browser would keep showing the old image.
@@ -196,7 +206,8 @@ export const addBundleVersion = ({ bundleId, threemf, gcode }) => {
   return request(`/bundles/${bundleId}/versions`, { method: "POST", body: form });
 };
 
-export const updatePrinter = (id, { name, kind, wiredIp, wirelessIp, decommissioned }) =>
+// moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
+export const updatePrinter = (id, { name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey }) =>
   request(`/printers/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -207,8 +218,50 @@ export const updatePrinter = (id, { name, kind, wiredIp, wirelessIp, decommissio
       wired_ip: wiredIp || null,
       wireless_ip: wirelessIp || null,
       decommissioned: !!decommissioned,
+      ...(moonrakerUrl !== undefined ? { moonraker_url: moonrakerUrl || null } : {}),
+      ...(moonrakerApiKey !== undefined ? { moonraker_api_key: moonrakerApiKey } : {}),
     }),
   });
+
+// ---- a printer's Moonraker: connection, print history (Farmhand's copy), statistics, maintenance ----
+// A printer that can't be reached answers 502 with { detail, kind } (no_address | unreachable | unauthorized | ...).
+
+export const getMoonrakerStatus = (printerId) => request(`/printers/${printerId}/moonraker`);
+export const syncPrinterHistory = (printerId) => request(`/printers/${printerId}/moonraker/sync`, { method: "POST" });
+export const getPrintStats = (printerId) => request(`/printers/${printerId}/print-stats`);
+// { meter: { sensor, energy_kwh, taken_at, first_reading_at } | null, print_total_kwh, jobs: [[iso, kWh]],
+//   readings: [[iso, kWh]] } — raw, so the page can total by month/year in the viewer's own time zone
+export const getEnergy = (printerId) => request(`/printers/${printerId}/energy`);
+
+// status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name
+export const getPrintJobs = (printerId, { limit = 25, offset = 0, status = "", q = "" } = {}) => {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) params.set("status", status);
+  if (q.trim()) params.set("q", q.trim());
+  return request(`/printers/${printerId}/print-jobs?${params}`);
+};
+
+// The 1500-hour service lives in Farmhand. Both resolve to the printer as it now stands.
+export const serviceDone = (printerId, { note }) => request(`/printers/${printerId}/service/done`, jsonBody("POST", { note }));
+export const setServiceEnabled = (printerId, enabled) => request(`/printers/${printerId}/service`, jsonBody("PATCH", { enabled }));
+// Notes kept with the service: the same rules as other notes (a save names the revision it started from; 409 if moved
+// on). Resolves to the printer; NotesSection reads `notes` / `notes_revision` from what onSave returns, hence the reshape.
+export const saveServiceNotes = async ({ printerId, notes, baseRevision }) => {
+  const p = await request(`/printers/${printerId}/service/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
+  return { notes: p.service.notes, notes_revision: p.service.notes_revision };
+};
+
+// Maintenance lives in the printer's Moonraker, in Mainsail's own format: Mainsail shows the same list.
+// reminder: { type: null | "one-time" | "repeat", filament / printtime / date: { bool, value } } in metres / hours / days
+export const getMaintenance = (printerId) => request(`/printers/${printerId}/maintenance`);
+export const addMaintenance = (printerId, { name, note, reminder }) =>
+  request(`/printers/${printerId}/maintenance`, jsonBody("POST", { name, note, reminder }));
+export const updateMaintenance = (printerId, entryId, { name, note, reminder }) =>
+  request(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}`, jsonBody("PUT", { name, note, reminder }));
+export const performMaintenance = (printerId, entryId, { note }) =>
+  request(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}/done`, jsonBody("POST", { note }));
+export const deleteMaintenance = (printerId, entryId) =>
+  request(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}?confirm=true`, { method: "DELETE" });
 
 export const addSourceModelVersion = ({ modelId, file, note }) => {
   const form = new FormData();

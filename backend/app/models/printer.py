@@ -35,6 +35,79 @@ class Printer(Base):
         back_populates="printer", cascade="all, delete-orphan", uselist=False
     )
 
+    # How to reach its Moonraker (see PrinterConnection) and its print history as last synced. Both go with it.
+    connection_row: Mapped["PrinterConnection | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
+    print_jobs: Mapped[list["PrintJob"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan"
+    )
+    # Its 1500-hour service reminder, kept in Farmhand (see PrinterServiceReminder)
+    service_row: Mapped["PrinterServiceReminder | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
+    service_note_row: Mapped["PrinterServiceNote | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
+    energy_readings: Mapped[list["PrinterEnergyReading"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan"
+    )
+
+    @property
+    def service(self) -> dict:
+        """
+        Where its 1500-hour service stands, from the print time last synced:
+        state is "waiting" (no totals synced yet), "off", "ok" or "due".
+        """
+        from .printer_connection import SERVICE_INTERVAL_HOURS
+
+        row = self.service_row
+        totals = self.connection_row.totals if self.connection_row else None
+        out = {
+            "state": "waiting", "enabled": row.enabled if row else True,
+            "interval_hours": row.interval_hours if row else SERVICE_INTERVAL_HOURS,
+            "hours_since": None, "started_at": _utc_iso(row.started_at) if row else None,
+            "last_done": row.history[-1] if row and row.history else None,
+            # notes kept with the service (PrinterServiceNote); revision 0 = never had any
+            "notes": self.service_note_row.body if self.service_note_row else "",
+            "notes_revision": self.service_note_row.revision if self.service_note_row else 0,
+            "notes_updated_at": _utc_iso(self.service_note_row.updated_at) if self.service_note_row else None,
+        }
+        if row is None or totals is None:
+            return out
+        out["hours_since"] = max(0.0, (float(totals.get("total_print_time") or 0) - row.start_printtime) / 3600)
+        if not row.enabled:
+            out["state"] = "off"
+        else:
+            out["state"] = "due" if out["hours_since"] >= row.interval_hours else "ok"
+        return out
+
+    @property
+    def moonraker_url_override(self) -> str | None:
+        return self.connection_row.moonraker_url if self.connection_row else None
+
+    @property
+    def moonraker_url(self) -> str | None:
+        """Where its Moonraker is: the address set for it, else port 7125 of its IP (wired preferred). None = no IP."""
+        if self.moonraker_url_override:
+            return self.moonraker_url_override.rstrip("/")
+        return f"http://{_host(self.preferred_ip)}:7125" if self.preferred_ip else None
+
+    @property
+    def mainsail_url(self) -> str | None:
+        """Mainsail is served on port 80 of the same machine as Moonraker."""
+        base = self.moonraker_url
+        if not base:
+            return None
+        from urllib.parse import urlsplit
+
+        host = urlsplit(base).hostname
+        return f"http://{_host(host)}/" if host else None
+
+    @property
+    def has_moonraker_api_key(self) -> bool:
+        return bool(self.connection_row and self.connection_row.api_key)
+
     @property
     def notes(self) -> str:
         return self.note_row.body if self.note_row else ""
@@ -52,3 +125,13 @@ class Printer(Base):
     def preferred_ip(self) -> str | None:
         """Wired is always preferred when both are available, per spec."""
         return self.wired_ip or self.wireless_ip
+
+
+def _utc_iso(value: dt.datetime) -> str:
+    """SQLite hands times back without a timezone (they're stored as UTC); say so, so browsers read them right."""
+    return (value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)).isoformat()
+
+
+def _host(host: str) -> str:
+    """An IPv6 address needs square brackets inside a URL."""
+    return f"[{host}]" if ":" in host and not host.startswith("[") else host
