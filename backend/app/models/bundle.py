@@ -40,7 +40,8 @@ class Bundle(Base):
         back_populates="bundle", order_by="BundleVersion.version.desc()", cascade="all, delete-orphan"
     )
 
-    # Notes about this 3MF and whether it's starred (see BundleNote / BundleStar). Both go when the bundle does.
+    # Notes about this 3MF and which of its versions is starred (see BundleNote / BundleStar). Both go when the
+    # bundle does.
     note_row: Mapped["BundleNote | None"] = relationship(  # noqa: F821
         back_populates="bundle", cascade="all, delete-orphan", uselist=False
     )
@@ -62,8 +63,8 @@ class Bundle(Base):
         return self.note_row.updated_at if self.note_row else None
 
     @property
-    def starred(self) -> bool:
-        return self.star_row is not None
+    def starred_version_id(self) -> int | None:
+        return self.star_row.version_id if self.star_row else None
 
     @property
     def source_models(self) -> list["SourceModel"]:

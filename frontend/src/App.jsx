@@ -76,7 +76,7 @@ import {
   saveModelNotes,
   savePrinterNotes,
   saveBundleNotes,
-  setBundleStarred,
+  setStarredVersion,
   saveConfigOnExit,
   restoreConfig,
   bundle3mfUrl,
@@ -488,32 +488,48 @@ function DeleteBundleButton({ bundle }) {
   );
 }
 
-// Star / un-star a 3MF entry — the star in a bundle's header. Starred entries are listed first.
-// The star changes at once; if the save fails it goes back and says why.
-function StarBundleButton({ bundle }) {
+// Stars are real metal colours, not theme roles: the initial version is silver and the starred version is gold in
+// every scheme (the theme's "amber" is blue or violet in some of them). Each has a darker edge so it holds up on
+// light backgrounds.
+const STAR_GOLD = "#F2C230";
+const STAR_GOLD_EDGE = "#B8860B";
+const STAR_SILVER = "#C9CDD3";
+const STAR_SILVER_EDGE = "#868B93";
+
+// The star beside a 3MF version's thumbnail. v1, the initial upload, is always silver. Every later version has an
+// outline star; clicking one turns it gold, and only one version of a 3MF is gold at a time, so starring another
+// moves it. Clicking the gold one clears it. The star changes at once; if the save fails it goes back and says why.
+function VersionStar({ bundle, ver }) {
   const { refresh } = useData();
-  const [pending, setPending] = useState(null); // the state being saved, shown until the refresh brings it back
+  const [pending, setPending] = useState(undefined); // the starred version id being saved (null = clearing)
   const [error, setError] = useState(null);
   const [hover, setHover] = useState(false);
-  const starred = pending ?? bundle.starred;
-  const label = error ? `Couldn't save the star: ${error}` : starred ? "Starred — click to un-star" : "Star this 3MF";
+
+  if (ver.v === 1) {
+    return <Star data-testid="initial-star" size={13} color={STAR_SILVER_EDGE} fill={STAR_SILVER} aria-label="Initial version" />;
+  }
+
+  const busy = pending !== undefined;
+  const starred = (busy ? pending : bundle.starredVersionId) === ver.id;
+  const label = error ? `Couldn't save the star: ${error}` : starred ? "Starred — click to un-star" : `Star v${ver.v}`;
   const toggle = async (e) => {
     e.stopPropagation();
-    if (pending !== null) return;
+    if (busy) return;
+    const next = starred ? null : ver.id;
     setError(null);
-    setPending(!starred);
+    setPending(next);
     try {
-      await setBundleStarred({ bundleId: bundle.id, starred: !starred });
+      await setStarredVersion({ bundleId: bundle.id, versionId: next });
       await refresh();
     } catch (err) {
       setError(err.message || String(err));
     } finally {
-      setPending(null);
+      setPending(undefined);
     }
   };
   return (
     <button
-      data-testid="bundle-star"
+      data-testid="version-star"
       data-starred={starred ? "true" : "false"}
       aria-pressed={starred}
       onClick={toggle}
@@ -522,20 +538,15 @@ function StarBundleButton({ bundle }) {
       title={label}
       aria-label={label}
       style={{
-        display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, flexShrink: 0, borderRadius: 3,
-        border: `1px solid ${error ? c.danger : hover || starred ? c.amber : c.border}`,
-        background: hover ? c.amberDim : "transparent",
-        color: starred || hover ? c.amber : c.textFaint,
-        cursor: pending !== null ? "default" : "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0,
+        border: "none", background: "none", cursor: busy ? "default" : "pointer",
+        color: error ? c.danger : starred ? STAR_GOLD_EDGE : hover ? c.textMuted : c.textFaint,
       }}
     >
-      <Star size={13} fill={starred ? c.amber : "none"} />
+      <Star size={13} fill={starred ? STAR_GOLD : "none"} />
     </button>
   );
 }
-
-// Starred entries first; otherwise the order given by `then`
-const starredFirst = (then) => (a, b) => Number(b.starred) - Number(a.starred) || then(a, b);
 
 // Notes about one 3MF entry (shared by all its versions), at the foot of its card. Starts folded, like every notes box.
 function BundleNotes({ bundle }) {
@@ -680,7 +691,7 @@ function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compareSelec
       }}
     >
       {showFileStatus && <Thumb src={ver.thumb} size={36} plateGrid />}
-      <div>{ver.monument && <Star size={13} color={c.amber} fill={c.amber} />}</div>
+      <div>{isBundleRow && <VersionStar bundle={bundle} ver={ver} />}</div>
       <div style={{ ...mono, fontSize: fs(13), color: isLatest ? c.heading : c.textPrimary }}>
         v{ver.v}
       </div>
@@ -993,7 +1004,7 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
   }
 
   const printer = printers.find((p) => p.id === view.printerId);
-  const allBundles = [...bundlesForPrinter(printer.id)].sort(starredFirst(newestFirst));
+  const allBundles = [...bundlesForPrinter(printer.id)].sort(newestFirst);
   const words = searchWords(query);
   const searching = words.length > 0;
   const pBundles = allBundles.filter((b) => bundleMatches(b, modelsForBundle(b), words));
@@ -1006,6 +1017,51 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
         <Modal title="Edit printer" onClose={() => setEditPrinterOpen(false)}>
           <EditPrinterForm printer={printer} onClose={() => setEditPrinterOpen(false)} />
         </Modal>
+      )}
+      {/* searches this printer's 3MF files (listed further down); at the top so it's the first thing to hand */}
+      {allBundles.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 460 }}>
+            <Search size={15} color={c.textFaint} style={{ position: "absolute", left: 11, top: 10, pointerEvents: "none" }} />
+            <input
+              ref={searchRef}
+              data-testid="printer-3mf-search"
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  if (query) setQuery("");
+                  else e.currentTarget.blur();
+                }
+              }}
+              placeholder={`Search 3MF files on ${printer.name}…`}
+              aria-label={`Search 3MF files on ${printer.name}`}
+              autoComplete="off"
+              spellCheck={false}
+              style={{ ...control, width: "100%", boxSizing: "border-box", padding: "8px 34px 8px 34px" }}
+            />
+            {query && (
+              <button
+                data-testid="printer-3mf-search-clear"
+                onClick={() => {
+                  setQuery("");
+                  searchRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                title="Clear search (Esc)"
+                style={{ position: "absolute", right: 6, top: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: c.textMuted, cursor: "pointer", padding: 0 }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {searching && (
+            <span data-testid="printer-3mf-count" style={{ ...ui, fontSize: fs(12), color: c.textFaint }}>
+              {pBundles.length} of {allBundles.length} 3MF files
+            </span>
+          )}
+        </div>
       )}
       <div>
         <SectionLabel>Printer</SectionLabel>
@@ -1077,50 +1133,6 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
           <SectionLabel>3MF files on {printer.name}</SectionLabel>
           <VersionsToggleAll bundleList={pBundles} expansion={expansion} />
         </div>
-        {allBundles.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-            <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 460 }}>
-              <Search size={15} color={c.textFaint} style={{ position: "absolute", left: 11, top: 10, pointerEvents: "none" }} />
-              <input
-                ref={searchRef}
-                data-testid="printer-3mf-search"
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    if (query) setQuery("");
-                    else e.currentTarget.blur();
-                  }
-                }}
-                placeholder={`Search 3MF files on ${printer.name}…`}
-                aria-label={`Search 3MF files on ${printer.name}`}
-                autoComplete="off"
-                spellCheck={false}
-                style={{ ...control, width: "100%", boxSizing: "border-box", padding: "8px 34px 8px 34px" }}
-              />
-              {query && (
-                <button
-                  data-testid="printer-3mf-search-clear"
-                  onClick={() => {
-                    setQuery("");
-                    searchRef.current?.focus();
-                  }}
-                  aria-label="Clear search"
-                  title="Clear search (Esc)"
-                  style={{ position: "absolute", right: 6, top: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: c.textMuted, cursor: "pointer", padding: 0 }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            {searching && (
-              <span data-testid="printer-3mf-count" style={{ ...ui, fontSize: fs(12), color: c.textFaint }}>
-                {pBundles.length} of {allBundles.length} 3MF files
-              </span>
-            )}
-          </div>
-        )}
         {searching && pBundles.length === 0 && (
           <div data-testid="printer-3mf-search-empty" style={{ ...ui, fontSize: fs(13), color: c.textMuted, padding: "12px 4px", lineHeight: 1.7 }}>
             No 3MF files on {printer.name} match <b style={{ color: c.heading }}>“{query.trim()}”</b>. Every word has to match a file name, a model, the slicer or the notes.{" "}
@@ -1177,15 +1189,14 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
                     <span style={{ ...ui, fontSize: fs(12), color: c.textFaint }}>
                       {vlist.length} version{vlist.length === 1 ? "" : "s"}
                     </span>
-                    <StarBundleButton bundle={b} />
+                    {rest.length > 0 && (
+                      <VersionsToggle open={isExpanded} olderCount={rest.length} controlsId={`versions-${b.id}`} onToggle={() => expansion.set(b.id, !isExpanded)} />
+                    )}
                     <NewVersionButton bundle={b} />
                     <DeleteBundleButton bundle={b} />
                   </div>
                 </div>
                 {latest && <VersionRow ver={latest} isLatest showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={toggleCompareSelect} />}
-                {rest.length > 0 && (
-                  <VersionsToggle open={isExpanded} olderCount={rest.length} controlsId={`versions-${b.id}`} onToggle={() => expansion.set(b.id, !isExpanded)} />
-                )}
                 <div id={`versions-${b.id}`}>
                   {isExpanded && rest.map((v) => <VersionRow key={v.v} ver={v} showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={toggleCompareSelect} />)}
                 </div>
@@ -2400,7 +2411,7 @@ function useBundleExpansion() {
   };
 }
 
-// The labelled button between an entry's newest version and its older ones
+// Shows or hides an entry's older versions — a button in its header, beside "New version"
 function VersionsToggle({ open, olderCount, onToggle, controlsId }) {
   const [hover, setHover] = useState(false);
   const word = `older version${olderCount === 1 ? "" : "s"}`;
@@ -2409,16 +2420,19 @@ function VersionsToggle({ open, olderCount, onToggle, controlsId }) {
       data-testid="versions-toggle"
       aria-expanded={open}
       aria-controls={controlsId}
-      onClick={onToggle}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", cursor: "pointer",
-        padding: "8px 16px", border: "none", borderTop: `1px solid ${c.border}`,
-        background: hover ? c.panelAlt : c.panel, color: c.textMuted, ...ui, fontSize: fs(12),
+        display: "flex", alignItems: "center", gap: 5, ...ui, fontSize: fs(12), cursor: "pointer", flexShrink: 0,
+        background: hover ? c.panel : "none", color: c.textMuted, border: `1px solid ${c.border}`, borderRadius: 3,
+        padding: "0 9px", height: 26,
       }}
     >
-      <ChevronRight size={14} color={c.textFaint} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s ease" }} />
+      <ChevronRight size={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s ease" }} />
       {open ? `Hide ${olderCount} ${word}` : `Show ${olderCount} ${word}`}
     </button>
   );
@@ -2619,15 +2633,18 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
     };
   } else if (rev > 0 && saved) status = { tone: "good", text: `Saved. Last edited ${when(updatedAt)}.` };
   else if (rev > 0) status = { tone: "faint", text: `Notes cleared ${when(updatedAt)}.` };
-  else status = { tone: "faint", text: "No notes yet." };
+  else status = { tone: "faint", text: "" }; // never had notes: nothing to say
+
+  // Folded with nothing written (and nothing to warn about), the section is just its heading and the Expand button
+  const showBody = !collapsed || !!text || busy || status.tone === "warn";
 
   const button = { ...ui, fontSize: fs(13), borderRadius: 4, padding: "7px 14px" };
   return (
     <div data-testid="notes-section" data-notes-kind={kind} data-dirty={dirty ? "true" : "false"}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-        <SectionLabel>Notes</SectionLabel>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: showBody ? 10 : 0, flexWrap: "wrap" }}>
+        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Notes</div>
         {!collapsed && (
-          <span style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginBottom: 10 }}>
+          <span style={{ ...ui, fontSize: fs(12), color: c.textFaint }}>
             {description}
           </span>
         )}
@@ -2637,7 +2654,7 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
           aria-controls={bodyId}
           onClick={() => setCollapsed(!collapsed)}
           style={{
-            display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", marginBottom: 10, ...ui, fontSize: fs(12),
+            display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", ...ui, fontSize: fs(12),
             background: "none", color: c.textMuted, border: `1px solid ${c.border}`, borderRadius: 4, padding: "5px 10px", cursor: "pointer",
           }}
         >
@@ -2645,9 +2662,11 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
           {collapsed ? "Expand" : "Collapse"}
         </button>
       </div>
+      {showBody && (
       <div id={bodyId} style={{ border: `1px solid ${dirty ? c.amber : c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
         {collapsed ? (
           <div data-testid="notes-collapsed">
+            {text && (
             <div
               data-testid="notes-preview"
               role="button"
@@ -2671,10 +2690,11 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", // the first two lines, then "…"
               }}
             >
-              {text || "No notes yet. Click to add some."}
+              {text}
             </div>
+            )}
             {(busy || status.tone === "warn") && (
-              <div data-testid="notes-collapsed-status" style={{ ...ui, fontSize: fs(12), lineHeight: 1.5, marginTop: 8, color: status.tone === "warn" ? c.amber : c.textFaint }}>
+              <div data-testid="notes-collapsed-status" style={{ ...ui, fontSize: fs(12), lineHeight: 1.5, marginTop: text ? 8 : 0, color: status.tone === "warn" ? c.amber : c.textFaint }}>
                 {status.text}
                 {status.tone === "warn" && !busy ? " Expand to review." : ""}
               </div>
@@ -2764,6 +2784,7 @@ function NotesSection({ kind, ownerId, saved, rev, updatedAt, onSave, descriptio
           </>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -3460,11 +3481,11 @@ function ModelsSection({ path, setPath, compareSelection, toggleCompareSelect, s
   const sourceLatest = sourceList[0];
   const sourceRest = sourceList.slice(1);
   const sourceExpanded = sourceOverride ?? sourceList.length <= SHOW_ALL_UP_TO;
-  // Grouped by printer, and under each printer the starred entries, then the most recently updated, first
+  // Grouped by printer, and under each printer the most recently updated entry first
   const modelBundles = [...bundlesForModel(model.id)].sort((a, b) => {
     const pa = printers.find((p) => p.id === a.printerId)?.name || "";
     const pb = printers.find((p) => p.id === b.printerId)?.name || "";
-    return nameCollator.compare(pa, pb) || starredFirst(newestFirst)(a, b);
+    return nameCollator.compare(pa, pb) || newestFirst(a, b);
   });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
@@ -3630,15 +3651,14 @@ function ModelsSection({ path, setPath, compareSelection, toggleCompareSelect, s
                     <span style={{ ...ui, fontSize: fs(12), color: c.textFaint }}>
                       {vlist.length} version{vlist.length === 1 ? "" : "s"}
                     </span>
-                    <StarBundleButton bundle={b} />
+                    {rest.length > 0 && (
+                      <VersionsToggle open={isExpanded} olderCount={rest.length} controlsId={`versions-${b.id}`} onToggle={() => expansion.set(b.id, !isExpanded)} />
+                    )}
                     <NewVersionButton bundle={b} />
                     <DeleteBundleButton bundle={b} />
                   </div>
                 </div>
                 <VersionRow ver={latest} isLatest showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={toggleCompareSelect} />
-                {rest.length > 0 && (
-                  <VersionsToggle open={isExpanded} olderCount={rest.length} controlsId={`versions-${b.id}`} onToggle={() => expansion.set(b.id, !isExpanded)} />
-                )}
                 <div id={`versions-${b.id}`}>
                   {isExpanded && rest.map((v) => <VersionRow key={v.v} ver={v} showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={toggleCompareSelect} />)}
                 </div>

@@ -94,7 +94,7 @@ export const normalizeBundle = (b) => {
     printerId: b.printer_id,
     sourceModelIds: (b.source_models || []).map((m) => m.id),
     versions,
-    starred: !!b.starred,
+    starredVersionId: b.starred_version_id ?? null, // the one version starred gold, if any (never v1)
     notes: b.notes || "", // free text about this 3MF, shared by all its versions
     notesRevision: b.notes_revision || 0, // names one exact version of the text: a save is refused if it has moved on
     notesUpdatedAt: b.notes_updated_at || null,
@@ -231,7 +231,9 @@ export const savePrinterNotes = ({ printerId, notes, baseRevision }) =>
 export const saveBundleNotes = ({ bundleId, notes, baseRevision }) =>
   request(`/bundles/${bundleId}/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
 
-export const setBundleStarred = ({ bundleId, starred }) => request(`/bundles/${bundleId}/star`, jsonBody("PUT", { starred }));
+// Star one version of a 3MF (only one per 3MF; never v1), or pass versionId: null to clear the star
+export const setStarredVersion = ({ bundleId, versionId }) =>
+  request(`/bundles/${bundleId}/star`, jsonBody("PUT", { version_id: versionId }));
 
 // ---- deletes ----
 // The API refuses deletes without confirm=true; the UI's own confirmation

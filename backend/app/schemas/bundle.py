@@ -38,14 +38,14 @@ class BundleOut(BaseModel):
     created_at: dt.datetime
     source_models: list[SourceModelOut] = []
     versions: list[BundleVersionOut] = []
-    starred: bool = False
+    starred_version_id: int | None = None  # the one version starred gold, if any (never version 1)
     notes: str = ""
     notes_revision: int = 0
     notes_updated_at: dt.datetime | None = None
 
 
 class StarUpdate(BaseModel):
-    starred: bool
+    version_id: int | None  # the version to star; null clears the star
 
 
 class MonumentUpdate(BaseModel):
