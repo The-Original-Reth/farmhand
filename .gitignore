@@ -5,3 +5,6 @@
 **/dist/
 **/.env
 backend/storage/
+# sample STL/3MF files for app.seed: kept locally, not on GitHub (the folder stays so the Docker build's COPY works)
+backend/seed_data/*
+!backend/seed_data/README.md

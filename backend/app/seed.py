@@ -121,8 +121,25 @@ def seed() -> None:
         db.close()
 
 
+SEED_FILES = [
+    "MMMini_GreatWhiteShark_v01.stl",
+    "MMMini_Frog_verticalEyes_v01.stl",
+    "MMMini_Frog_horizontalEyes_Keychain_v01.stl",
+    "VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.3mf",
+    "V2_BOG_-_Prusa_Slicer_-_MMMini_GreatWhiteShark_v01.3mf",
+    "VT_1190_-_prusa_slicer_-_MMMini_Frog.3mf",
+]
+
+
 if __name__ == "__main__":
     if not SEED_DIR.exists():
         print(f"seed_data/ not found at {SEED_DIR} — nothing to seed", file=sys.stderr)
+        sys.exit(1)
+    # The sample files aren't in the repository (see seed_data/README.md), so say plainly what's missing
+    missing = [name for name in SEED_FILES if not (SEED_DIR / name).exists()]
+    if missing:
+        print(f"seed_data/ at {SEED_DIR} is missing the sample files — nothing was seeded. Missing:", file=sys.stderr)
+        for name in missing:
+            print(f"  {name}", file=sys.stderr)
         sys.exit(1)
     seed()

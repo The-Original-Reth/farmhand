@@ -16,7 +16,9 @@ docker compose up --build
 
 The frontend starts up and immediately asks the API for printers/models/
 bundles — on a brand-new database that's an empty archive, which is a
-valid (if boring) state. Load the real farm data it was built against:
+valid (if boring) state. Load the real farm data it was built against
+(the sample STL/3MF files aren't in the repository — copy them into
+`backend/seed_data/` first; that folder's README lists them):
 
 ```bash
 docker compose exec api python -m app.seed
