@@ -6,10 +6,11 @@ import tempfile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import notes as notes_helper
 from .. import storage
 from . import printer_service
 from ..config import settings
-from ..models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
+from ..models import Bundle, BundleNote, BundleSourceModel, BundleStar, BundleVersion, Printer, SourceModel
 from ..parsers import parse_3mf
 
 
@@ -384,3 +385,42 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
     db.commit()
     storage.delete_files(paths)
     return False
+
+
+# ------------------------------------------------------------------ starring a 3MF
+
+
+def set_starred(db: Session, bundle_id: int, starred: bool) -> Bundle:
+    """Star or un-star a 3MF. Doing what's already the case is fine (starring twice leaves it starred)."""
+    bundle = get_bundle(db, bundle_id)
+    if bundle is None:
+        raise ValueError(f"No bundle with id {bundle_id}")
+    if starred and bundle.star_row is None:
+        bundle.star_row = BundleStar(bundle_id=bundle.id)
+    elif not starred and bundle.star_row is not None:
+        bundle.star_row = None  # delete-orphan removes the row
+    db.commit()
+    db.refresh(bundle)
+    return bundle
+
+
+# ------------------------------------------------------------------ notes about a 3MF
+
+
+class NotesConflict(Exception):
+    """The notes were saved by someone else since the person started editing them."""
+
+    def __init__(self, bundle: Bundle):
+        super().__init__("These notes were changed by someone else while you were editing.")
+        self.bundle = bundle
+
+
+def set_notes(db: Session, bundle_id: int, notes: str, base_revision: int) -> Bundle:
+    """Save the notes for a 3MF (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
+    bundle = get_bundle(db, bundle_id)
+    if bundle is None:
+        raise ValueError(f"No bundle with id {bundle_id}")
+    return notes_helper.save(
+        db, owner=bundle, note_cls=BundleNote, owner_key="bundle_id", base_revision=base_revision,
+        notes=notes, conflict=NotesConflict, reload=lambda: get_bundle(db, bundle_id),
+    )

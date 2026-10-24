@@ -4,11 +4,12 @@ import json
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, ThreeMFInspection
+from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
+from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service
 
 router = APIRouter(prefix="/bundles", tags=["bundles"])
@@ -96,6 +97,38 @@ def add_bundle_version(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return bundle_service.get_bundle(db, bundle_id)
+
+
+@router.put("/{bundle_id}/star", response_model=BundleOut)
+def set_starred(bundle_id: int, payload: StarUpdate, db: Session = Depends(get_db)):
+    try:
+        return bundle_service.set_starred(db, bundle_id, payload.starred)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.put("/{bundle_id}/notes", response_model=BundleOut, responses={409: {"model": NotesConflictOut}})
+def save_notes(bundle_id: int, payload: NotesUpdate, db: Session = Depends(get_db)):
+    """
+    Save the notes about a 3MF. Send the revision the text was based on: if someone else has saved since, this
+    answers 409 with their current notes (nothing is overwritten) so the person can decide what to do.
+    """
+    try:
+        return bundle_service.set_notes(db, bundle_id, payload.notes, payload.base_revision)
+    except bundle_service.NotesConflict as c:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(c),
+                "current": {
+                    "notes": c.bundle.notes,
+                    "notes_revision": c.bundle.notes_revision,
+                    "notes_updated_at": c.bundle.notes_updated_at.isoformat() if c.bundle.notes_updated_at else None,
+                },
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404 if "No bundle" in str(e) else 422, detail=str(e))
 
 
 @router.get("/versions/{version_id}", response_model=BundleVersionDetailOut)

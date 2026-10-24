@@ -40,6 +40,31 @@ class Bundle(Base):
         back_populates="bundle", order_by="BundleVersion.version.desc()", cascade="all, delete-orphan"
     )
 
+    # Notes about this 3MF and whether it's starred (see BundleNote / BundleStar). Both go when the bundle does.
+    note_row: Mapped["BundleNote | None"] = relationship(  # noqa: F821
+        back_populates="bundle", cascade="all, delete-orphan", uselist=False
+    )
+    star_row: Mapped["BundleStar | None"] = relationship(  # noqa: F821
+        back_populates="bundle", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def notes(self) -> str:
+        return self.note_row.body if self.note_row else ""
+
+    @property
+    def notes_revision(self) -> int:
+        """0 = never had notes. Counts up with every save, so it names one exact version of the text."""
+        return self.note_row.revision if self.note_row else 0
+
+    @property
+    def notes_updated_at(self) -> dt.datetime | None:
+        return self.note_row.updated_at if self.note_row else None
+
+    @property
+    def starred(self) -> bool:
+        return self.star_row is not None
+
     @property
     def source_models(self) -> list["SourceModel"]:
         return [link.source_model for link in self.source_model_links]

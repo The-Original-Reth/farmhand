@@ -1,6 +1,7 @@
 from ..database import Base
 from .app_setting import AppSetting
 from .bundle import Bundle, BundleSourceModel
+from .bundle_note import BundleNote, BundleStar
 from .bundle_version import BundleVersion
 from .network_share import NetworkShare
 from .printer import Printer
@@ -20,5 +21,7 @@ __all__ = [
     "SourceFileType",
     "Bundle",
     "BundleSourceModel",
+    "BundleNote",
+    "BundleStar",
     "BundleVersion",
 ]
