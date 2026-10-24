@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import notes as notes_helper
-from ..models import Bundle, BundleVersion, Printer, PrinterNote
+from ..models import Bundle, BundleVersion, Printer, PrinterConnection, PrinterNote
 
 
 def list_printers(db: Session) -> list[Printer]:
@@ -82,6 +82,14 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
 
     if changes.get("decommissioned") is not None:
         printer.decommissioned = changes["decommissioned"]
+
+    if "moonraker_url" in changes or "moonraker_api_key" in changes:
+        conn = printer.connection_row or PrinterConnection(printer_id=printer.id)
+        printer.connection_row = conn
+        if "moonraker_url" in changes:
+            conn.moonraker_url = changes["moonraker_url"]  # already tidied; None = the default address
+        if changes.get("moonraker_api_key") is not None:
+            conn.api_key = changes["moonraker_api_key"].strip() or None
 
     db.commit()
     db.refresh(printer)
