@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from .database import SessionLocal
 from .models import Printer
-from .services import moonraker_service
+from .services import config_service, moonraker_service
 
 log = logging.getLogger("farmhand.printers")
 
@@ -52,6 +52,7 @@ class PrinterPoller:
                     moonraker_service.sync_history(db, printer)
                 except moonraker_service.MoonrakerError as e:
                     log.debug("Couldn't sync printer %s: %s", printer.name, e)
+        config_service.request_mirror()  # each printer's file on the NAS picks up what came in
 
     def _run(self) -> None:
         self._stop.wait(30)  # let the API finish starting first

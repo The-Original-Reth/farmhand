@@ -13,7 +13,7 @@ from .database import Base, SessionLocal, engine
 from .mount_supervisor import supervisor
 from .printer_poller import poller
 from .routers import bundles, config_settings, moonraker, printers, source_models, storage_settings
-from .services import moonraker_service, storage_settings_service
+from .services import config_service, moonraker_service, storage_settings_service
 
 logger = logging.getLogger("farmhand.startup")
 
@@ -41,6 +41,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def keep_settings_copy_current(request: Request, call_next):
+    # A change to a printer, a model or a 3MF file (notes, stars, settings, a sync...) is copied to the settings
+    # folder's printers/ and models/ files shortly after, in the background (config_service.request_mirror)
+    response = await call_next(request)
+    if (
+        request.method in ("POST", "PUT", "PATCH", "DELETE")
+        and response.status_code < 400
+        and request.url.path.startswith(("/printers", "/bundles", "/source-models"))
+    ):
+        config_service.request_mirror()
+    return response
+
 
 app.include_router(printers.router)
 app.include_router(source_models.router)
@@ -91,6 +105,9 @@ def on_startup() -> None:
             supervisor.start()
             # Sync every printer's history and power meter now and then, so energy figures build up on their own
             poller.start()
+            # Changes to printers and models get copied to the settings folder in the background, and once now
+            config_service.enable_background_mirror()
+            config_service.request_mirror()
             return
         except OperationalError as e:
             last_error = e

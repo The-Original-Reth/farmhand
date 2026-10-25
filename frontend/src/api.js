@@ -425,6 +425,17 @@ const normalizeRestore = (r) =>
     sharesKept: r.shares_kept,
     needsPassword: r.needs_password,
     warnings: r.warnings,
+    // from the printers/ and models/ files
+    records: r.records && {
+      printersAdded: r.records.printers_added || [],
+      printersFilled: r.records.printers_filled || [],
+      printsAdded: r.records.prints_added || 0,
+      readingsAdded: r.records.readings_added || 0,
+      modelNotes: r.records.model_notes || 0,
+      threemfNotes: r.records.threemf_notes || 0,
+      stars: r.records.stars || 0,
+      modelsMissing: r.records.models_missing || [],
+    },
   };
 
 const normalizeFound = (f) =>
@@ -440,6 +451,8 @@ const normalizeFound = (f) =>
       shares: f.summary.shares,
       hasStlFolder: f.summary.has_stl_folder,
       hasThreemfFolder: f.summary.has_threemf_folder,
+      printers: f.summary.printers || 0, // printer files in its printers/ folder
+      models: f.summary.models || 0,
     },
   };
 

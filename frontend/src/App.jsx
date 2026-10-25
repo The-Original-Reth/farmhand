@@ -917,7 +917,7 @@ function MoonrakerCard({ printer, mr }) {
   return (
     <div data-testid="moonraker-card">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Moonraker</div>
+        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Connection and statistics</div>
         <div style={{ display: "flex", gap: 8 }}>
           {printer.mainsailUrl && (
             <a data-testid="open-mainsail" href={printer.mainsailUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.mainsailUrl}>
@@ -1427,7 +1427,8 @@ function ServiceReminder({ printer }) {
   );
 }
 
-function MaintenanceSection({ printer, reachable }) {
+// onDueCount(n): told how many reminders are due (the 1500-hour service included), for the folded group's heading
+function MaintenanceSection({ printer, reachable, onDueCount }) {
   const [data, setData] = useState(null); // { entries, totals }
   const [error, setError] = useState(null);
   const [dialog, setDialog] = useState(null); // { kind: "add" | "edit" | "done" | "delete", entry }
@@ -1454,6 +1455,9 @@ function MaintenanceSection({ printer, reachable }) {
   const done = entries.filter((e) => e.state === "done");
   const dueCount = open.filter((e) => e.state === "due").length + (printer.service.state === "due" ? 1 : 0);
   const close = () => setDialog(null);
+  useEffect(() => {
+    onDueCount?.(dueCount);
+  }, [dueCount]);
 
   return (
     <div data-testid="maintenance-section">
@@ -1551,7 +1555,8 @@ const JOB_FILTERS = [
 ];
 const HISTORY_PAGE = 25;
 
-function PrintHistory({ printer, syncTick }) {
+// open / onToggle: whether the list is folded away (only its heading and count show then)
+function PrintHistory({ printer, syncTick, open = true, onToggle }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [jobs, setJobs] = useState([]);
@@ -1584,10 +1589,12 @@ function PrintHistory({ printer, syncTick }) {
   const cols = "minmax(140px, 170px) minmax(200px, 1fr) 100px 90px 80px 80px"; // below ~730px wide the table scrolls sideways
   return (
     <div data-testid="print-history">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>
-          Print history{total != null && <span style={{ marginLeft: 8 }}>{total.toLocaleString()} {total === 1 ? "print" : "prints"}</span>}
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+        <SectionToggle open={open} onToggle={onToggle} controlsId="print-history-body" testId="toggle-history">
+          Print history
+          {total != null && <span style={{ color: c.textFaint }}>({total.toLocaleString()} {total === 1 ? "print" : "prints"})</span>}
+        </SectionToggle>
+        {open && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             data-testid="print-history-search"
@@ -1605,8 +1612,9 @@ function PrintHistory({ printer, syncTick }) {
             ))}
           </select>
         </div>
+        )}
       </div>
-      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflowX: "auto", background: c.panel }}>
+      <div id="print-history-body" style={{ display: open ? "block" : "none", border: `1px solid ${c.border}`, borderRadius: 4, overflowX: "auto", background: c.panel }}>
         <div style={{ minWidth: 730 }}>
         <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "7px 14px", fontSize: fs(11), color: c.textFaint, background: c.panelAlt, borderBottom: `1px solid ${c.border}`, ...ui }}>
           <div>Started</div>
@@ -1800,6 +1808,52 @@ function bundleMatches(bundle, models, words) {
   return words.every((w) => haystack.includes(w));
 }
 
+const PRINTER_SORT_KEY = "farmhand.printerSort";
+
+// Which parts of a printer page are folded away: { moonraker, threemf, history } (true = folded). The same on every
+// printer, remembered in this browser; all start folded until opened.
+// (The key changed when "folded" became the start, so sections left open under the old default start folded again.)
+const PRINTER_SECTIONS_KEY = "farmhand.printerSections.v2";
+function usePrinterSections() {
+  const [folded, setFolded] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(PRINTER_SECTIONS_KEY));
+      return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+    } catch {
+      return {};
+    }
+  });
+  const isFolded = (state, name) => state[name] !== false; // folded unless opened
+  const toggle = (name) =>
+    setFolded((prev) => {
+      const next = { ...prev, [name]: !isFolded(prev, name) };
+      try {
+        localStorage.setItem(PRINTER_SECTIONS_KEY, JSON.stringify(next));
+      } catch {
+        /* storage unavailable: it just isn't remembered */
+      }
+      return next;
+    });
+  return { isOpen: (name) => !isFolded(folded, name), toggle };
+}
+
+// A section heading that folds the section away or opens it again
+function SectionToggle({ open, onToggle, controlsId, testId, children }) {
+  return (
+    <button
+      data-testid={testId}
+      aria-expanded={open}
+      aria-controls={controlsId}
+      onClick={onToggle}
+      title={open ? "Fold away" : "Show"}
+      style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", ...ui, fontSize: fs(13), color: open ? c.textFaint : c.textMuted, textAlign: "left" }}
+    >
+      <ChevronRight size={14} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s ease", flexShrink: 0 }} />
+      {children}
+    </button>
+  );
+}
+
 function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect }) {
   const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle, refresh } = useData();
   const view = path[1]; // {printerId}
@@ -1808,10 +1862,29 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
   const searchRef = useRef(null);
+  // The printer list's order by name ("asc" A→Z | "desc" Z→A), remembered in this browser
+  const [printerSort, setPrinterSortState] = useState(() => {
+    try {
+      return localStorage.getItem(PRINTER_SORT_KEY) === "desc" ? "desc" : "asc";
+    } catch {
+      return "asc";
+    }
+  });
+  const setPrinterSort = (dir) => {
+    setPrinterSortState(dir);
+    try {
+      localStorage.setItem(PRINTER_SORT_KEY, dir);
+    } catch {
+      /* storage unavailable: it just isn't remembered */
+    }
+  };
 
   useEffect(() => {
     setQuery(""); // a fresh search for each printer
   }, [view?.printerId]);
+
+  const sections = usePrinterSections();
+  const [maintenanceDue, setMaintenanceDue] = useState(0); // reported by the maintenance list, for when it's folded
 
   // The open printer's Moonraker; starts over if its address or API key changes
   const viewed = view ? printers.find((p) => p.id === view.printerId) : null;
@@ -1858,13 +1931,22 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
             background: c.panelAlt,
           }}
         >
-          <div>Name</div>
+          <button
+            data-testid="printer-sort-name"
+            onClick={() => setPrinterSort(printerSort === "asc" ? "desc" : "asc")}
+            title={printerSort === "asc" ? "Sorted A→Z — click for Z→A" : "Sorted Z→A — click for A→Z"}
+            aria-label={printerSort === "asc" ? "Name, sorted A to Z. Click to reverse" : "Name, sorted Z to A. Click to reverse"}
+            style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 0, color: c.textMuted, cursor: "pointer", ...ui, fontSize: fs(12), justifySelf: "start" }}
+          >
+            Name
+            {printerSort === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+          </button>
           <div>Type</div>
           <div>Wired IP</div>
           <div>Wireless IP</div>
           <div>Status</div>
         </div>
-        {printers.map((p) => {
+        {[...printers].sort((a, b) => (printerSort === "desc" ? -1 : 1) * nameCollator.compare(a.name, b.name)).map((p) => {
           const bCount = bundlesForPrinter(p.id).length;
           return (
             <Row key={p.id} onClick={() => setPath([{ label: "Printers" }, { printerId: p.id }])}>
@@ -2040,17 +2122,40 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
 
       <PrinterNotes key={printer.id} printer={printer} />
 
-      <MoonrakerCard printer={printer} mr={mr} />
-
-      <EnergyPanel printer={printer} syncTick={mr.syncTick} />
-
-      <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} />
-
-      <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <SectionLabel>3MF files on {printer.name}</SectionLabel>
-          <VersionsToggleAll bundleList={pBundles} expansion={expansion} />
+      {/* Everything from the printer's Moonraker, foldable as one. Folded, it stays mounted (just hidden), so it
+          keeps what it loaded and can still say if maintenance is due. */}
+      <div data-testid="moonraker-group">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: sections.isOpen("moonraker") ? 14 : 0, flexWrap: "wrap" }}>
+          <SectionToggle open={sections.isOpen("moonraker")} onToggle={() => sections.toggle("moonraker")} controlsId="moonraker-body" testId="toggle-moonraker">
+            Moonraker: connection, energy and maintenance
+          </SectionToggle>
+          {!sections.isOpen("moonraker") && (
+            <>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textFaint }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: !mr.status ? c.textFaint : mr.status.reachable ? c.green : c.danger }} />
+                {!mr.status ? "checking…" : mr.status.reachable ? "connected" : "not reachable"}
+              </span>
+              {maintenanceDue > 0 && <Badge tone="danger">{maintenanceDue} maintenance due</Badge>}
+            </>
+          )}
         </div>
+        <div id="moonraker-body" style={{ display: sections.isOpen("moonraker") ? "flex" : "none", flexDirection: "column", gap: 28 }}>
+          <MoonrakerCard printer={printer} mr={mr} />
+          <EnergyPanel printer={printer} syncTick={mr.syncTick} />
+          <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} />
+        </div>
+      </div>
+
+      <div data-testid="threemf-group">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sections.isOpen("threemf") ? 10 : 0 }}>
+          <SectionToggle open={sections.isOpen("threemf")} onToggle={() => sections.toggle("threemf")} controlsId="threemf-body" testId="toggle-threemf">
+            3MF files on {printer.name}
+            <span style={{ color: c.textFaint }}>({allBundles.length})</span>
+          </SectionToggle>
+          {sections.isOpen("threemf") && <VersionsToggleAll bundleList={pBundles} expansion={expansion} />}
+        </div>
+        {sections.isOpen("threemf") && (
+        <div id="threemf-body">
         {searching && pBundles.length === 0 && (
           <div data-testid="printer-3mf-search-empty" style={{ ...ui, fontSize: fs(13), color: c.textMuted, padding: "12px 4px", lineHeight: 1.7 }}>
             No 3MF files on {printer.name} match <b style={{ color: c.heading }}>“{query.trim()}”</b>. Every word has to match a file name, a model, the slicer or the notes.{" "}
@@ -2123,9 +2228,11 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
             );
           })}
         </div>
+        </div>
+        )}
       </div>
 
-      <PrintHistory printer={printer} syncTick={mr.syncTick} />
+      <PrintHistory printer={printer} syncTick={mr.syncTick} open={sections.isOpen("history")} onToggle={() => sections.toggle("history")} />
     </div>
   );
 }
@@ -5043,9 +5150,10 @@ function ConfigLocationCard({ info, onChoose, onSaveNow, onRestore, onClear, err
         </div>
       </div>
       <div style={{ ...ui, fontSize: fs(12), color: c.textFaint, lineHeight: 1.6, marginBottom: 12 }}>
-        Farmhand keeps its settings on the server: the look of the site, display preferences, and your storage and share
-        setup. Choose a folder on the network and a copy is written there after every change, so they survive a rebuild and
-        can be restored. Passwords are never written to it.
+        Farmhand keeps its settings on the server: the look of the site, display preferences, your storage and share setup,
+        your printers (with their notes, 1500-hour service, print history and energy readings) and the notes on your models
+        and 3MF files. Choose a folder on the network and a copy is written there after every change, so they survive a
+        rebuild and can be restored. Passwords and Moonraker API keys are never written to it.
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: `1px solid ${c.border}`, borderRadius: 4, background: c.panelAlt, marginBottom: 10 }}>
@@ -5059,7 +5167,8 @@ function ConfigLocationCard({ info, onChoose, onSaveNow, onRestore, onClear, err
         <div data-testid="config-file" style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginBottom: 10 }}>
           {info.file?.exists ? (
             <>
-              <span style={mono}>farmhand-config.json</span> — last written {when(info.file.modifiedAt)}
+              <span style={mono}>farmhand-config.json</span> — last written {when(info.file.modifiedAt)}. Next to it, a file per
+              printer in <span style={mono}>printers/</span> and per model in <span style={mono}>models/</span>.
             </>
           ) : (
             <>No settings file in this folder yet.</>
@@ -5110,10 +5219,38 @@ function RestoreResult({ result }) {
           Needs its password (passwords are never saved in the settings): {list(result.needsPassword)}. Use Edit on the share above.
         </div>
       )}
+      {result.records && <RestoredRecords r={result.records} list={list} />}
       {result.warnings.map((w) => (
         <div key={w} style={{ color: c.amber }}>{w}</div>
       ))}
     </div>
+  );
+}
+
+// What came back from the printers/ and models/ files (restoring only ever adds what was missing)
+function RestoredRecords({ r, list }) {
+  const n = (count, one, many) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
+  const notes = [
+    r.modelNotes && n(r.modelNotes, "model's notes", "models' notes"),
+    r.threemfNotes && n(r.threemfNotes, "3MF file's notes", "3MF files' notes"),
+    r.stars && n(r.stars, "starred version", "starred versions"),
+  ].filter(Boolean);
+  return (
+    <>
+      {r.printersAdded.length > 0 && <div>Printers added: {list(r.printersAdded)}.</div>}
+      {r.printersFilled.length > 0 && <div>Printers already here, with what they were missing filled in: {list(r.printersFilled)}.</div>}
+      {(r.printsAdded > 0 || r.readingsAdded > 0) && (
+        <div>
+          Brought back {n(r.printsAdded, "print", "prints")} from the history and {n(r.readingsAdded, "power meter reading", "power meter readings")}.
+        </div>
+      )}
+      {notes.length > 0 && <div>Notes put back: {notes.join(", ")}.</div>}
+      {r.modelsMissing.length > 0 && (
+        <div style={{ color: c.textFaint }}>
+          Notes kept for models that aren't in Farmhand (they go back once the model is added again and you restore): {list(r.modelsMissing)}.
+        </div>
+      )}
+    </>
   );
 }
 
@@ -5388,7 +5525,9 @@ function StorageSection({ onSettingsRestored }) {
                 That folder already has a Farmhand settings file
                 {configFound.summary?.savedAt ? <> (saved {new Date(configFound.summary.savedAt).toLocaleString()})</> : null}: colour scheme{" "}
                 <b style={{ color: c.heading }}>{configFound.summary?.scheme}</b>
-                {configFound.summary?.shares ? `, ${configFound.summary.shares} network share${configFound.summary.shares === 1 ? "" : "s"}` : ""}. What
+                {configFound.summary?.shares ? `, ${configFound.summary.shares} network share${configFound.summary.shares === 1 ? "" : "s"}` : ""}
+                {configFound.summary?.printers ? `, ${configFound.summary.printers} printer${configFound.summary.printers === 1 ? "" : "s"}` : ""}
+                {configFound.summary?.models ? `, notes for ${configFound.summary.models} model${configFound.summary.models === 1 ? "" : "s"}` : ""}. What
                 should Farmhand do with it?
               </>
             ) : (
