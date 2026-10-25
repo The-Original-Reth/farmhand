@@ -20,6 +20,7 @@ export const PRESETS = [
       textPrimary: "#F4F5F4", textMuted: "#CBCED0", textFaint: "#A3A7AA", heading: "#FFFFFF",
       amber: "#E39F3A", amberDim: "#4A3A20", amberBorder: "#6B5428",
       teal: "#69A0A6", tealDim: "#1F2E30", tealBorder: "#2C4548",
+      fileName: "#6AAEF5", // file names (e.g. 3MF files)
       green: "#6FBE7A", greenDim: "#233A26", greenBorder: "#345F3C",
       danger: "#E27A72", dangerDim: "#3A2321",
       onAccent: "#241A08", onTeal: "#0B2224", onDanger: "#1B0A09",
@@ -37,6 +38,7 @@ export const PRESETS = [
       textPrimary: "#ECEDEC", textMuted: "#989C9E", textFaint: "#6C6F71", heading: "#FFFFFF",
       amber: "#E39F3A", amberDim: "#4A3A20", amberBorder: "#5A4626",
       teal: "#69A0A6", tealDim: "#233335", tealBorder: "#2C4548",
+      fileName: "#6AAEF5", // file names (e.g. 3MF files)
       green: "#6FBE7A", greenDim: "#233A26", greenBorder: "#345F3C",
       danger: "#D9675F", dangerDim: "#3A2321",
       onAccent: "#241A08", onTeal: "#0B2224", onDanger: "#1B0A09",
@@ -53,6 +55,7 @@ export const PRESETS = [
       textPrimary: "#FFFFFF", textMuted: "#EFEFEF", textFaint: "#D2D2D2", heading: "#FFFFFF",
       amber: "#FFB000", amberDim: "#4D3600", amberBorder: "#9A6B00",
       teal: "#4FD1DC", tealDim: "#0F3A3E", tealBorder: "#1F7F87",
+      fileName: "#5CB8FF", // file names (e.g. 3MF files)
       green: "#5CE17A", greenDim: "#11381A", greenBorder: "#2A8F45",
       danger: "#FF7A70", dangerDim: "#47110D",
       onAccent: "#1A1000", onTeal: "#021A1C", onDanger: "#220503",
@@ -69,6 +72,7 @@ export const PRESETS = [
       textPrimary: "#F2F5FB", textMuted: "#C8D2E6", textFaint: "#9DABC8", heading: "#FFFFFF",
       amber: "#6AB0FF", amberDim: "#1F3A5F", amberBorder: "#2F5A92",
       teal: "#FFB86B", tealDim: "#4A3216", tealBorder: "#7A5424",
+      fileName: "#8CC8FF", // file names (e.g. 3MF files)
       green: "#6FD98F", greenDim: "#1A3B28", greenBorder: "#2E6B47",
       danger: "#FF8A80", dangerDim: "#3E1B1B",
       onAccent: "#06182E", onTeal: "#2A1600", onDanger: "#2B0A07",
@@ -85,6 +89,7 @@ export const PRESETS = [
       textPrimary: "#F5F3FA", textMuted: "#CFC9E0", textFaint: "#A8A1C0", heading: "#FFFFFF",
       amber: "#B99BFF", amberDim: "#3A2D63", amberBorder: "#5A47A0",
       teal: "#5FD3C8", tealDim: "#12393A", tealBorder: "#1F6A66",
+      fileName: "#7FB2FF", // file names (e.g. 3MF files)
       green: "#7AD99B", greenDim: "#1B3A29", greenBorder: "#2F6B49",
       danger: "#FF8F85", dangerDim: "#40201E",
       onAccent: "#1B0F3A", onTeal: "#04201E", onDanger: "#2B0A07",
@@ -101,6 +106,7 @@ export const PRESETS = [
       textPrimary: "#16181A", textMuted: "#3A4045", textFaint: "#566066", heading: "#000000",
       amber: "#9A5600", amberDim: "#FBE6C8", amberBorder: "#E1B070",
       teal: "#1C737C", tealDim: "#DDF1F3", tealBorder: "#8CC3C8",
+      fileName: "#1A5FB4", // file names (e.g. 3MF files)
       green: "#1E7432", greenDim: "#D7EFDC", greenBorder: "#8CCB99",
       danger: "#B3342A", dangerDim: "#FADDDA",
       onAccent: "#FFFFFF", onTeal: "#FFFFFF", onDanger: "#FFFFFF",
@@ -124,4 +130,17 @@ export const SIZES = [
   { id: "xlarge", name: "Extra large", scale: 1.25 },
 ];
 
-export const DEFAULT_APPEARANCE = { scheme: "farmhand", contrast: 0, font: "archivo", size: "default" };
+// file_name_color: the colour of 3MF file names — "auto" (the scheme's own fileName blue) or a #RRGGBB chosen
+export const DEFAULT_APPEARANCE = { scheme: "farmhand", contrast: 0, font: "archivo", size: "default", file_name_color: "auto" };
+
+// Ready-made choices for the 3MF file name colour (any colour can also be picked)
+export const FILE_NAME_COLORS = [
+  { id: "#4A90E2", name: "Blue" },
+  { id: "#5AC8FA", name: "Sky" },
+  { id: "#3CB4A8", name: "Teal" },
+  { id: "#5CB85C", name: "Green" },
+  { id: "#E6C229", name: "Yellow" },
+  { id: "#F08A24", name: "Orange" },
+  { id: "#E66AA8", name: "Pink" },
+  { id: "#9B7BE0", name: "Purple" },
+];

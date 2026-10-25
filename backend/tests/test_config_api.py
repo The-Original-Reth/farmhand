@@ -52,7 +52,7 @@ def test_settings_round_trip_over_the_api(client):
     assert first["config"]["appearance"]["scheme"] == "farmhand" and first["location"]["is_set"] is False
     r = c.put("/settings/config", json={"appearance": {"scheme": "violet", "contrast": 55, "font": "play", "size": "large"}})
     assert r.status_code == 200 and r.json()["mirror"]["skipped"] is True  # no network folder chosen yet
-    assert c.get("/settings/config").json()["config"]["appearance"] == {"scheme": "violet", "contrast": 55, "font": "play", "size": "large"}
+    assert c.get("/settings/config").json()["config"]["appearance"] == {"scheme": "violet", "contrast": 55, "font": "play", "size": "large", "file_name_color": "auto"}
 
 
 def test_the_whole_network_folder_flow(client):
@@ -97,3 +97,10 @@ def test_a_request_of_the_wrong_shape_is_rejected(client):
     c, _ = client
     assert c.put("/settings/config", json={"preferences": 7}).status_code == 422  # a number where an object belongs
     assert c.put("/settings/config/location", json={"path": None, "if_exists": "maybe"}).status_code == 422
+
+
+def test_the_3mf_file_name_colour_is_saved_and_returned(client):
+    c, _ = client
+    r = c.put("/settings/config", json={"appearance": {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "#9B7BE0"}})
+    assert r.status_code == 200 and r.json()["config"]["appearance"]["file_name_color"] == "#9B7BE0"
+    assert c.get("/settings/config").json()["config"]["appearance"]["file_name_color"] == "#9B7BE0"

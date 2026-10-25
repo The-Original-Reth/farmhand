@@ -270,6 +270,12 @@ export const addSourceModelVersion = ({ modelId, file, note }) => {
   return request(`/source-models/${modelId}/versions`, { method: "POST", body: form });
 };
 
+// ---- renaming: what a file is shown, searched and downloaded as (the stored file keeps its own name) ----
+export const renameModel = (modelId, name) => request(`/source-models/${modelId}`, jsonBody("PATCH", { name }));
+// ".3mf" is added if left off
+export const renameBundleVersion = (versionId, filename) =>
+  request(`/bundles/versions/${versionId}`, jsonBody("PATCH", { filename }));
+
 // ---- notes about a model ----
 // baseRevision is the revision the text was written from (0 = there were none). If someone else has saved since, the
 // server answers 409 and the error's .body.current holds their version: nothing is overwritten.

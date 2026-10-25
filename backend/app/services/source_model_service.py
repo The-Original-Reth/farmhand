@@ -328,6 +328,23 @@ class NotesConflict(Exception):
         self.model = model
 
 
+def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
+    """
+    Change the name a model is shown, searched and downloaded by; its extension (.stl, .obj, .step) always stays.
+    Its stored file keeps its own name.
+    """
+    from ..names import TYPE_EXTENSIONS, clean_file_name, extension_of
+
+    model = get_source_model(db, source_model_id)
+    if model is None:
+        raise LookupError(f"No source model with id {source_model_id}")
+    file_type = model.file_type.value if hasattr(model.file_type, "value") else str(model.file_type)
+    model.name = clean_file_name(name, extension=extension_of(model.name, TYPE_EXTENSIONS.get(file_type, ".stl")))
+    db.commit()
+    db.refresh(model)
+    return model
+
+
 def set_notes(db: Session, source_model_id: int, notes: str, base_revision: int) -> SourceModel:
     """Save the notes for a model (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
     model = get_source_model(db, source_model_id)

@@ -40,7 +40,7 @@ def _file(folder):
 def test_settings_default_save_merge_and_clean(db_session):
     assert svc.get_config(db_session) == cs.normalize_config({})
     out = svc.save_config(db_session, {"appearance": {"scheme": "violet", "contrast": 300, "font": "play", "size": "large"}})
-    assert out["appearance"] == {"scheme": "violet", "contrast": 100, "font": "play", "size": "large"}
+    assert out["appearance"] == {"scheme": "violet", "contrast": 100, "font": "play", "size": "large", "file_name_color": "auto"}
     svc.save_config(db_session, {"preferences": {"model_sort": {"key": "added", "dir": "desc"}}})
     again = svc.get_config(db_session)
     assert again["appearance"]["scheme"] == "violet"  # the earlier part is kept when only the other is given
@@ -145,7 +145,7 @@ def test_restore_brings_back_everything_but_never_a_password(db_session, share):
     folder = _folder(share)
     stl = _folder(share, "stl")
     cs.write_document(folder, cs.build_document(
-        cs.normalize_config({"appearance": {"scheme": "midnight", "contrast": 30, "font": "play", "size": "large"},
+        cs.normalize_config({"appearance": {"scheme": "midnight", "contrast": 30, "font": "play", "size": "large", "file_name_color": "#5CB85C"},
                              "preferences": {"model_sort": {"key": "added", "dir": "desc"}}}),
         str(stl), None,
         [{"name": "Lab NAS", "protocol": "smb", "server": "10.0.0.5", "share": "farmhand", "username": "alice"},
@@ -157,7 +157,7 @@ def test_restore_brings_back_everything_but_never_a_password(db_session, share):
     out = svc.restore(db_session)
 
     cfg = svc.get_config(db_session)
-    assert cfg["appearance"] == {"scheme": "midnight", "contrast": 30, "font": "play", "size": "large"}
+    assert cfg["appearance"] == {"scheme": "midnight", "contrast": 30, "font": "play", "size": "large", "file_name_color": "#5CB85C"}
     assert cfg["preferences"]["model_sort"] == {"key": "added", "dir": "desc"}
     assert storage.custom_path("stl") == str(stl.resolve()) and "STL folder" in out["restored"]
     assert sorted(out["shares_added"]) == ["Backup", "Lab NAS"]

@@ -24,10 +24,12 @@ FORMAT_MARKER = "farmhand_config"  # the key that says "this is one of ours"
 FORMAT_VERSION = 1
 MAX_FILE_BYTES = 1_000_000
 
-DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default"}
+# file_name_color: the colour of 3MF file names, "auto" (the scheme's own) or a #RRGGBB chosen on the Appearance page
+DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "auto"}
 DEFAULT_PREFERENCES = {"model_sort": {"key": "name", "dir": "asc"}}
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _SHARE_FIELDS = ("name", "protocol", "server", "share", "username", "domain", "version")
 
 
@@ -52,6 +54,8 @@ def normalize_appearance(raw) -> dict:
         "contrast": min(100, max(0, contrast)),
         "font": _id(a.get("font"), DEFAULT_APPEARANCE["font"]),
         "size": _id(a.get("size"), DEFAULT_APPEARANCE["size"]),
+        "file_name_color": a["file_name_color"].upper() if isinstance(a.get("file_name_color"), str) and _HEX.match(a["file_name_color"])
+        else DEFAULT_APPEARANCE["file_name_color"],
     }
 
 

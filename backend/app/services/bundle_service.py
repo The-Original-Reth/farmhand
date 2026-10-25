@@ -389,6 +389,25 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
     return False
 
 
+# ------------------------------------------------------------------ renaming a 3MF version
+
+
+def rename_version(db: Session, version_id: int, filename: str) -> BundleVersion:
+    """
+    Change the file name a 3MF version is shown and downloaded as; it always stays a .3mf. The stored file keeps
+    the name it was saved under, so nothing on disk moves.
+    """
+    from ..names import clean_file_name
+
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise LookupError(f"No bundle version with id {version_id}")
+    version.filename = clean_file_name(filename, extension=".3mf")
+    db.commit()
+    db.refresh(version)
+    return version
+
+
 # ------------------------------------------------------------------ starring a 3MF
 
 

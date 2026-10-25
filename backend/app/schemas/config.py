@@ -10,6 +10,7 @@ class AppearanceData(BaseModel):
     contrast: int
     font: str
     size: str
+    file_name_color: str = "auto"  # 3MF file names: "auto" (the scheme's own) or #RRGGBB
 
 
 class SortData(BaseModel):

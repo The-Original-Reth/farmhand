@@ -1,6 +1,6 @@
 import React from "react";
 import { c, ui, mono, fs } from "./theme.js";
-import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE } from "./palettes.js";
+import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE, FILE_NAME_COLORS } from "./palettes.js";
 
 // The Appearance controls, as a section of the Storage page. The page re-renders in the new look as each
 // choice is made, so the page itself is the preview; the sample at the bottom just shows the kinds of
@@ -46,6 +46,12 @@ function SchemeCard({ preset, selected, onPick }) {
   );
 }
 
+// A small colour sample for the 3MF file name colour choices
+function Swatch({ color }) {
+  return <span style={{ width: 14, height: 14, borderRadius: 3, background: color, border: `1px solid ${c.borderStrong}`, flexShrink: 0 }} />;
+}
+const isCustom = (value) => value !== "auto" && !FILE_NAME_COLORS.some((col) => col.id === value);
+
 function ChoiceButton({ id, selected, onPick, children, style }) {
   return (
     <button
@@ -90,7 +96,7 @@ function saveStatusLine(saveState, locationPath) {
 export function AppearanceSection({ appearance, saved, onChange, onSave, onDiscard, saveState, locationPath }) {
   const set = (patch) => onChange({ ...appearance, ...patch });
   const preset = PRESETS.find((p) => p.id === appearance.scheme) || PRESETS[0];
-  const dirty = ["scheme", "contrast", "font", "size"].some((k) => appearance[k] !== saved[k]);
+  const dirty = ["scheme", "contrast", "font", "size", "file_name_color"].some((k) => appearance[k] !== saved[k]);
   const saving = saveState?.phase === "saving";
   const status = dirty
     ? { tone: "warn", text: "Not saved yet. What you see is a preview: press Save to keep it. Leaving this page without saving undoes it." }
@@ -148,12 +154,65 @@ export function AppearanceSection({ appearance, saved, onChange, onSave, onDisca
         ))}
       </div>
 
+      <Heading>3MF file name colour</Heading>
+      <div role="radiogroup" aria-label="3MF file name colour" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <ChoiceButton
+          id="filename-color-auto"
+          selected={appearance.file_name_color === "auto"}
+          onPick={() => set({ file_name_color: "auto" })}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", fontSize: fs(12) }}
+        >
+          <Swatch color={preset.colors.fileName} />
+          Auto
+          <span style={{ fontSize: fs(11), opacity: 0.8 }}>(scheme's blue)</span>
+        </ChoiceButton>
+        {FILE_NAME_COLORS.map((col) => (
+          <ChoiceButton
+            key={col.id}
+            id={`filename-color-${col.name.toLowerCase()}`}
+            selected={appearance.file_name_color === col.id}
+            onPick={() => set({ file_name_color: col.id })}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", fontSize: fs(12) }}
+          >
+            <Swatch color={col.id} />
+            {col.name}
+          </ChoiceButton>
+        ))}
+        <label
+          data-testid="filename-color-custom"
+          title="Pick any colour"
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", fontSize: fs(12), cursor: "pointer", borderRadius: 4,
+            border: `1px solid ${isCustom(appearance.file_name_color) ? c.amber : c.border}`,
+            background: isCustom(appearance.file_name_color) ? c.amberDim : "transparent",
+            color: isCustom(appearance.file_name_color) ? c.heading : c.textMuted,
+          }}
+        >
+          <input
+            type="color"
+            value={appearance.file_name_color === "auto" ? preset.colors.fileName : appearance.file_name_color}
+            onChange={(e) => set({ file_name_color: e.target.value.toUpperCase() })}
+            aria-label="Custom 3MF file name colour"
+            style={{ width: 22, height: 22, padding: 0, border: "none", background: "none", cursor: "pointer" }}
+          />
+          Custom…
+        </label>
+      </div>
+
       <Heading>Preview</Heading>
       <div data-testid="appearance-preview" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.bg, padding: 14 }}>
-        <div style={{ fontSize: fs(15), color: c.heading, marginBottom: 2 }}>MMMini_GreatWhiteShark_v01.stl</div>
+        <div style={{ fontSize: fs(15), fontWeight: 700, color: c.heading, marginBottom: 2 }}>MMMini_GreatWhiteShark_v01.stl</div>
         <div style={{ fontSize: fs(13), color: c.textPrimary }}>Sliced for VT 1190 · 2 versions · PrusaSlicer 2.9.5</div>
         <div style={{ fontSize: fs(12), color: c.textMuted, marginTop: 2 }}>Sort by name · 3 models</div>
         <div style={{ fontSize: fs(11), color: c.textFaint, marginTop: 2 }}>Added Oct 23</div>
+        <div style={{ marginTop: 8 }}>
+          <span
+            data-testid="preview-3mf-name"
+            style={{ ...mono, fontSize: fs(13), color: c.fileName, border: `1px solid ${c.borderStrong}`, borderRadius: 3, background: c.panel, padding: "2px 7px" }}
+          >
+            VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.3mf
+          </span>
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
           <Chip fg={c.green} bg={c.greenDim} border={c.greenBorder}>ready</Chip>
           <Chip fg={c.amber} bg={c.amberDim} border={c.amberBorder}>0.18</Chip>

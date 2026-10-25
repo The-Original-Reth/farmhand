@@ -1,4 +1,4 @@
-// Choosing and applying a look: colour scheme, text brightness, font, text size. Saved per browser.
+// Choosing and applying a look: colour scheme, text brightness, font, text size, 3MF file name colour. Saved per browser.
 import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE } from "./palettes.js";
 import { c, ui, setFontScale } from "./theme.js";
 
@@ -16,6 +16,9 @@ export function normalizeAppearance(raw) {
     contrast: Number.isFinite(contrast) ? clamp(Math.round(contrast), 0, 100) : DEFAULT_APPEARANCE.contrast,
     font: FONTS.some((f) => f.id === a.font) ? a.font : DEFAULT_APPEARANCE.font,
     size: SIZES.some((s) => s.id === a.size) ? a.size : DEFAULT_APPEARANCE.size,
+    file_name_color: typeof a.file_name_color === "string" && /^#[0-9a-fA-F]{6}$/.test(a.file_name_color)
+      ? a.file_name_color.toUpperCase()
+      : DEFAULT_APPEARANCE.file_name_color, // "auto" = the scheme's own blue
   };
 }
 
@@ -55,6 +58,7 @@ export function paletteFor(scheme, contrast) {
 export function applyAppearance(appearance) {
   const a = normalizeAppearance(appearance);
   const { colors, mode } = paletteFor(a.scheme, a.contrast);
+  if (a.file_name_color !== "auto") colors.fileName = a.file_name_color; // a colour of their own for 3MF names
   Object.assign(c, colors);
   ui.fontFamily = FONTS.find((f) => f.id === a.font).stack;
   setFontScale(SIZES.find((s) => s.id === a.size).scale);

@@ -4,9 +4,11 @@ import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..names import download_name
 from ..models import SourceFileType
 from ..schemas.bundle import BundleOut
 from ..schemas.source_model import NotesConflictOut, NotesUpdate, SourceModelOut
@@ -63,6 +65,21 @@ def get_source_model(source_model_id: int, db: Session = Depends(get_db)):
     if model is None:
         raise HTTPException(status_code=404, detail="Source model not found")
     return model
+
+
+class Rename(BaseModel):
+    name: str
+
+
+@router.patch("/{source_model_id}", response_model=SourceModelOut)
+def rename_source_model(source_model_id: int, payload: Rename, db: Session = Depends(get_db)):
+    """Rename a model (what it's shown, searched and downloaded as; its extension stays, and its stored file keeps its own name)."""
+    try:
+        return source_model_service.rename(db, source_model_id, payload.name)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Source model not found")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.put("/{source_model_id}/notes", response_model=SourceModelOut, responses={409: {"model": NotesConflictOut}})
@@ -123,7 +140,7 @@ def download_source_model_version(source_model_id: int, version: int, db: Sessio
             detail="That file isn't available right now. If it's stored on a network share, check that "
             "the share is mounted and reachable.",
         )
-    return FileResponse(v.file_path, filename=os.path.basename(v.file_path))
+    return FileResponse(v.file_path, filename=download_name(v.source_model.name, v.file_path))  # under its current name
 
 
 @router.get("/{source_model_id}/versions/{version}/thumbnail")

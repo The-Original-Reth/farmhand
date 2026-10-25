@@ -5,9 +5,11 @@ import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..names import download_name
 from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service
@@ -155,6 +157,27 @@ def set_monument(version_id: int, payload: MonumentUpdate, db: Session = Depends
         raise HTTPException(status_code=422, detail=str(e))
 
 
+class Rename(BaseModel):
+    filename: str
+
+
+@router.patch("/versions/{version_id}", response_model=BundleVersionDetailOut)
+def rename_version(version_id: int, payload: Rename, db: Session = Depends(get_db)):
+    """Rename a 3MF version (what it's shown and downloaded as; it always stays a .3mf). Files stay put."""
+    try:
+        return bundle_service.rename_version(db, version_id, payload.filename)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Bundle version not found")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+def _version_filename(db: Session, version_id: int) -> str:
+    from ..models import BundleVersion
+
+    return db.get(BundleVersion, version_id).filename
+
+
 @router.get("/versions/{version_id}/download/3mf")
 def download_3mf(version_id: int, db: Session = Depends(get_db)):
     try:
@@ -162,7 +185,8 @@ def download_3mf(version_id: int, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     _require_readable(threemf_path)
-    return FileResponse(threemf_path, filename=os.path.basename(threemf_path))
+    # downloaded under its current name (it may have been renamed since it was stored)
+    return FileResponse(threemf_path, filename=download_name(_version_filename(db, version_id), threemf_path))
 
 
 @router.get("/versions/{version_id}/download/gcode")
@@ -174,7 +198,8 @@ def download_gcode(version_id: int, db: Session = Depends(get_db)):
     if gcode_path is None:
         raise HTTPException(status_code=404, detail="No gcode file was uploaded for this version")
     _require_readable(gcode_path)
-    return FileResponse(gcode_path, filename=os.path.basename(gcode_path))
+    stem = os.path.splitext(_version_filename(db, version_id))[0]  # the gcode follows its 3MF's name
+    return FileResponse(gcode_path, filename=download_name(stem, gcode_path))
 
 
 @router.get("/versions/{version_id}/thumbnail")

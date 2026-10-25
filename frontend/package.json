@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "mock": "vite --mode mock",
     "build": "vite build",
     "preview": "vite preview",
     "check:themes": "node scripts/check-themes.mjs"

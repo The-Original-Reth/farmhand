@@ -17,7 +17,7 @@ def _doc(**over):
 def test_defaults_and_clean_up():
     assert cs.normalize_config({}) == {"appearance": cs.DEFAULT_APPEARANCE, "preferences": cs.DEFAULT_PREFERENCES}
     a = cs.normalize_appearance({"scheme": "midnight", "contrast": "400", "font": "play", "size": "large"})
-    assert a == {"scheme": "midnight", "contrast": 100, "font": "play", "size": "large"}  # contrast clamped
+    assert a == {"scheme": "midnight", "contrast": 100, "font": "play", "size": "large", "file_name_color": "auto"}  # contrast clamped
     junk = cs.normalize_appearance({"scheme": "../../etc", "contrast": "x", "font": 3, "size": None})
     assert junk == cs.DEFAULT_APPEARANCE  # anything not shaped like an id, or not a number, falls back
     assert cs.normalize_appearance({"contrast": -5})["contrast"] == 0
@@ -91,3 +91,10 @@ def test_a_hand_edited_or_hostile_file_is_cleaned_up_on_read(tmp_path):
     assert got["appearance"]["scheme"] == "farmhand" and got["appearance"]["contrast"] == 100 and got["appearance"]["font"] == "play"
     assert got["storage"] == {"stl_path": None, "threemf_path": "/data/x"}
     assert len(got["shares"]) == 1 and "password" not in got["shares"][0] and "evil" not in got["shares"][0]
+
+
+def test_the_3mf_file_name_colour_is_auto_or_a_colour():
+    assert cs.normalize_appearance({})["file_name_color"] == "auto"
+    assert cs.normalize_appearance({"file_name_color": "#4a90e2"})["file_name_color"] == "#4A90E2"
+    for bad in ("blue", "#12345", "#GGGGGG", 5, None):
+        assert cs.normalize_appearance({"file_name_color": bad})["file_name_color"] == "auto"
