@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
+import threading
+import time
 from pathlib import Path
 
 from sqlalchemy import select
@@ -9,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from .. import config_store, storage
 from ..models import AppSetting, NetworkShare
-from . import network_shares_service, storage_settings_service
+from . import network_shares_service, records_service, storage_settings_service
+
+log = logging.getLogger("farmhand.settings")
 
 KEY_CONFIG = "config_json"  # the settings themselves (appearance + preferences), as the server holds them
 KEY_LOCATION = "config_storage_dir"  # the network folder a copy is written to
@@ -78,13 +83,17 @@ def build_document(db: Session) -> dict:
 
 
 def mirror(db: Session) -> dict:
-    """Write the copy now. Never raises: the settings are safe on the server whatever happens to the share."""
+    """
+    Write the copy now: the settings file, plus a file per printer and per model (records_service). Never raises:
+    everything is safe on the server whatever happens to the share.
+    """
     path = location_path(db)
     if not path:
         return {"ok": True, "skipped": True, "path": None, "error": None}
     try:
         folder = storage.ensure_ready_folder(path, "settings folder")
         config_store.write_document(folder, build_document(db))
+        records_service.write_all(db, folder)
         error = None
     except storage.StorageUnavailableError as e:
         error = str(e)
@@ -100,6 +109,48 @@ def mirror_quietly(db: Session) -> None:
         mirror(db)
     except Exception:  # noqa: BLE001 — keeping a copy up to date must never break the change that triggered it
         pass
+
+
+# Printers, models and notes change all the time (every edit, every 15-minute sync). Rather than each of those
+# writing the files itself, they ask for a copy and a background thread writes one shortly after, once, however
+# many changes came in meanwhile.
+MIRROR_DELAY_SECONDS = 3.0
+_mirror_wanted = threading.Event()
+_mirror_thread: threading.Thread | None = None
+_mirror_lock = threading.Lock()
+
+
+_background_mirror = False  # switched on when the app starts (not in tests, which have no settings folder)
+
+
+def enable_background_mirror() -> None:
+    global _background_mirror
+    _background_mirror = True
+
+
+def request_mirror() -> None:
+    """Something changed: write the copy (settings, printers, models) in a few seconds, in the background."""
+    global _mirror_thread
+    if not _background_mirror:
+        return
+    _mirror_wanted.set()
+    with _mirror_lock:
+        if _mirror_thread is None or not _mirror_thread.is_alive():
+            _mirror_thread = threading.Thread(target=_mirror_worker, name="settings-copy", daemon=True)
+            _mirror_thread.start()
+
+
+def _mirror_worker() -> None:
+    from ..database import SessionLocal
+
+    while _mirror_wanted.wait(timeout=60):
+        time.sleep(MIRROR_DELAY_SECONDS)  # let a burst of changes settle into one write
+        _mirror_wanted.clear()
+        try:
+            with SessionLocal() as db:
+                mirror(db)
+        except Exception:  # noqa: BLE001 — a background copy must never take anything down
+            log.exception("Writing the settings copy failed")
 
 
 def describe(db: Session) -> dict:
@@ -130,6 +181,7 @@ def inspect_location(raw: str) -> dict:
                 "shares": len(doc["shares"]),
                 "has_stl_folder": bool(doc["storage"]["stl_path"]),
                 "has_threemf_folder": bool(doc["storage"]["threemf_path"]),
+                **records_service.count_records(real),  # "printers": n, "models": n
             }
         except config_store.ConfigFileError as e:
             out["file_valid"] = False
@@ -191,4 +243,13 @@ def restore(db: Session) -> dict:
                 result["needs_password"].append(label)
         else:
             result["shares_kept"].append(label)
+
+    # The printers/ and models/ files: only ever adds what Farmhand is missing
+    records = records_service.restore_all(db, path)
+    result["warnings"] += records.pop("warnings")
+    if records["printers_added"] or records["printers_filled"]:
+        result["restored"].append("printers")
+    if records["model_notes"] or records["threemf_notes"] or records["stars"]:
+        result["restored"].append("notes and stars")
+    result["records"] = records
     return result
