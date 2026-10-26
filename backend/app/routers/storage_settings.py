@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..database import get_db
+from ..errors import answer_errors
 from ..mounts import MountError
 from ..schemas.network_share import FolderCreate, NetworkShareCreate, NetworkShareOut, NetworkShareUpdate, SharesOut
 from ..schemas.storage import BrowseOut, MigrationResult, StorageSettingsOut, StorageSettingsUpdate
@@ -21,10 +22,8 @@ def get_storage_settings(db: Session = Depends(get_db)):
 @router.put("", response_model=StorageSettingsOut)
 def update_storage_settings(payload: StorageSettingsUpdate, db: Session = Depends(get_db)):
     """Choose where STL files and/or 3MF files are stored. null resets a location to its default."""
-    try:
+    with answer_errors():
         out = storage_settings_service.save(db, payload.model_dump(exclude_unset=True))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
     config_service.mirror_quietly(db)  # keep the settings copy current
     return out
 
@@ -32,10 +31,8 @@ def update_storage_settings(payload: StorageSettingsUpdate, db: Session = Depend
 @router.get("/browse", response_model=BrowseOut)
 def browse_folders(path: str | None = Query(None, description="Folder to list; omit for the top level")):
     """Sub-folders for the folder picker. Only folders under the configured browse root are visible."""
-    try:
+    with answer_errors():
         return storage.list_subdirs(path)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("/migrate", response_model=MigrationResult)
@@ -47,11 +44,9 @@ def migrate_existing_files(db: Session = Depends(get_db)):
 @router.post("/folders", response_model=BrowseOut, status_code=201)
 def create_folder(payload: FolderCreate):
     """Make a folder (the picker's "New folder"); returns that new folder's listing so the picker can step into it."""
-    try:
+    with answer_errors():
         made = storage.create_folder(payload.parent, payload.name)
         return storage.list_subdirs(str(made))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 # ---- network shares: connect a NAS from the web interface ----

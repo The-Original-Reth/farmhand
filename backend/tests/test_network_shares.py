@@ -13,6 +13,8 @@ from app.services import network_shares_service as shares
 from app.services import source_model_service
 from app.services import storage_settings_service as storage_settings
 
+from .conftest import posix_only
+
 SMB = dict(name="Lab NAS", protocol="smb", server="10.0.0.5", share="farmhand", username="alice", password="s3cret!")
 
 
@@ -63,6 +65,7 @@ def nas(tmp_path, monkeypatch):
 # ------------------------------------------------------------------ adding
 
 
+@posix_only  # the mount point is a / path
 def test_adding_a_share_mounts_it_saves_it_and_never_returns_the_password(db_session, nas):
     out = shares.create_share(db_session, SMB)
 

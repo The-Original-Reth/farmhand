@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { classifyPrusa, humanizeLabel, PRUSA_SECTIONS } from "../settingsLayout.js";
-import { fetchVersionSettings } from "../api.js";
+import { errorText, fetchVersionSettings } from "../api.js";
 
 // ---------------------------------------------------------------------------
 // Small building blocks
@@ -52,7 +52,7 @@ export function SettingsViewer({ bundle, ver }) {
     setLoadError(null);
     fetchVersionSettings(ver.id)
       .then((s) => !cancelled && setSettings(s))
-      .catch((e) => !cancelled && setLoadError(e.message || String(e)));
+      .catch((e) => !cancelled && setLoadError(errorText(e)));
     return () => {
       cancelled = true;
     };

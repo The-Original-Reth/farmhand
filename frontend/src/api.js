@@ -24,6 +24,16 @@ async function request(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// The words to show for a failed request (or anything else that went wrong)
+export const errorText = (e) => e.message || String(e);
+
+// A request whose body is JSON
+const jsonBody = (method, data) => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(data),
+});
+
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
 
@@ -165,22 +175,18 @@ export const fileTypeFor = ({ name, file }) => {
 export const createPrinter = ({
   name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,
 }) =>
-  request("/printers", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      kind: kind || null,
-      wired_ip: wiredIp || null,
-      wireless_ip: wirelessIp || null,
-      connection_type: connectionType || "moonraker",
-      ...(moonrakerUrl ? { moonraker_url: moonrakerUrl } : {}),
-      ...(moonrakerApiKey ? { moonraker_api_key: moonrakerApiKey } : {}),
-      ...(prusalinkUrl ? { prusalink_url: prusalinkUrl } : {}),
-      ...(prusalinkUsername ? { prusalink_username: prusalinkUsername } : {}),
-      ...(prusalinkPassword ? { prusalink_password: prusalinkPassword } : {}),
-    }),
-  });
+  request("/printers", jsonBody("POST", {
+    name,
+    kind: kind || null,
+    wired_ip: wiredIp || null,
+    wireless_ip: wirelessIp || null,
+    connection_type: connectionType || "moonraker",
+    ...(moonrakerUrl ? { moonraker_url: moonrakerUrl } : {}),
+    ...(moonrakerApiKey ? { moonraker_api_key: moonrakerApiKey } : {}),
+    ...(prusalinkUrl ? { prusalink_url: prusalinkUrl } : {}),
+    ...(prusalinkUsername ? { prusalink_username: prusalinkUsername } : {}),
+    ...(prusalinkPassword ? { prusalink_password: prusalinkPassword } : {}),
+  }));
 
 export const createSourceModel = ({ name, file }) => {
   const form = new FormData();
@@ -226,24 +232,20 @@ export const updatePrinter = (
   id,
   { name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey, connectionType, prusalinkUrl, prusalinkUsername, prusalinkPassword },
 ) =>
-  request(`/printers/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    // Blank optional fields are sent as null so they actually clear
-    body: JSON.stringify({
-      name,
-      kind: kind || null,
-      wired_ip: wiredIp || null,
-      wireless_ip: wirelessIp || null,
-      decommissioned: !!decommissioned,
-      ...(moonrakerUrl !== undefined ? { moonraker_url: moonrakerUrl || null } : {}),
-      ...(moonrakerApiKey !== undefined ? { moonraker_api_key: moonrakerApiKey } : {}),
-      ...(connectionType !== undefined ? { connection_type: connectionType } : {}),
-      ...(prusalinkUrl !== undefined ? { prusalink_url: prusalinkUrl || null } : {}),
-      ...(prusalinkUsername !== undefined ? { prusalink_username: prusalinkUsername } : {}),
-      ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
-    }),
-  });
+  // Blank optional fields are sent as null so they actually clear
+  request(`/printers/${id}`, jsonBody("PATCH", {
+    name,
+    kind: kind || null,
+    wired_ip: wiredIp || null,
+    wireless_ip: wirelessIp || null,
+    decommissioned: !!decommissioned,
+    ...(moonrakerUrl !== undefined ? { moonraker_url: moonrakerUrl || null } : {}),
+    ...(moonrakerApiKey !== undefined ? { moonraker_api_key: moonrakerApiKey } : {}),
+    ...(connectionType !== undefined ? { connection_type: connectionType } : {}),
+    ...(prusalinkUrl !== undefined ? { prusalink_url: prusalinkUrl || null } : {}),
+    ...(prusalinkUsername !== undefined ? { prusalink_username: prusalinkUsername } : {}),
+    ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
+  }));
 
 // ---- a PrusaLink printer (Prusa Core One...): live status and sending it a print. Its history, statistics, service
 // and maintenance use the same calls as a Moonraker printer's (below); its maintenance is kept in Farmhand. ----
@@ -374,13 +376,7 @@ export const saveStorageSettings = async ({ stlPath, threemfPath }) => {
   const body = {};
   if (stlPath !== undefined) body.stl_path = stlPath;
   if (threemfPath !== undefined) body.threemf_path = threemfPath;
-  return normalizeStorage(
-    await request("/settings/storage", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-  );
+  return normalizeStorage(await request("/settings/storage", jsonBody("PUT", body)));
 };
 
 const normalizeBrowse = (r) => ({
@@ -395,13 +391,7 @@ export const browseStorage = async (path) =>
 
 // Make a folder inside `parent` (the picker's "New folder"); resolves to that new folder's listing.
 export const createFolder = async ({ parent, name }) =>
-  normalizeBrowse(
-    await request("/settings/storage/folders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parent, name }),
-    })
-  );
+  normalizeBrowse(await request("/settings/storage/folders", jsonBody("POST", { parent, name })));
 
 // ---- network shares: connect a NAS from the web interface ----
 
@@ -427,12 +417,6 @@ export const getShares = async () => {
   const r = await request("/settings/storage/shares");
   return { shares: r.shares.map(normalizeShare), capability: r.capability };
 };
-
-const jsonBody = (method, data) => ({
-  method,
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(data),
-});
 
 // Mounts the share first and only saves it if that worked, so errors here are the real reason.
 export const createShare = async (data) => normalizeShare(await request("/settings/storage/shares", jsonBody("POST", data)));
@@ -561,16 +545,8 @@ export const importScannedFiles = async (paths) => {
   };
 };
 
-export const setMonument = ({ versionId, monument, note, confirm }) =>
-  request(`/bundles/versions/${versionId}/monument`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ monument, note: note || null, confirm: !!confirm }),
-  });
-
 // ---- download URLs (plain links; the browser handles the download) ----
 
 export const bundle3mfUrl = (versionId) => `${API_BASE}/bundles/versions/${versionId}/download/3mf`;
-export const bundleGcodeUrl = (versionId) => `${API_BASE}/bundles/versions/${versionId}/download/gcode`;
 export const sourceModelDownloadUrl = (modelId, version) =>
   `${API_BASE}/source-models/${modelId}/versions/${version}/download`;

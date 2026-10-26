@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowUp, Folder, FolderPlus, Server } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { cancelButton, monoText, primaryButton, uiText } from "../styles.js";
-import { browseStorage, createFolder } from "../api.js";
+import { browseStorage, createFolder, errorText } from "../api.js";
 
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge } from "../components/common/ui.jsx";
@@ -21,7 +21,7 @@ export function FolderPicker({ title, startPath, shares = [], onSelect, onClose 
     try {
       setListing(await browseStorage(path));
     } catch (e) {
-      setError(e.message || String(e));
+      setError(errorText(e));
     }
   };
 
@@ -29,7 +29,7 @@ export function FolderPicker({ title, startPath, shares = [], onSelect, onClose 
     // Open where the current choice is; if that's gone or out of bounds, start from the top
     browseStorage(startPath)
       .then(setListing)
-      .catch(() => browseStorage(null).then(setListing).catch((e) => setError(e.message || String(e))));
+      .catch(() => browseStorage(null).then(setListing).catch((e) => setError(errorText(e))));
   }, []);
 
   const makeFolder = async () => {
@@ -40,7 +40,7 @@ export function FolderPicker({ title, startPath, shares = [], onSelect, onClose 
       setNewOpen(false);
       setNewName("");
     } catch (e) {
-      setError(e.message || String(e));
+      setError(errorText(e));
     } finally {
       setCreating(false);
     }
@@ -53,7 +53,7 @@ export function FolderPicker({ title, startPath, shares = [], onSelect, onClose 
       await onSelect(listing.path);
       onClose();
     } catch (e) {
-      setError(e.message || String(e));
+      setError(errorText(e));
       setBusy(false);
     }
   };

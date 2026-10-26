@@ -1,31 +1,25 @@
 from __future__ import annotations
 
-import io
-
 import pytest
 from sqlalchemy import create_engine
 
 from app.database import Base
-from app.main import app
-from app.models import Bundle, BundleNote, BundleStar, SourceFileType
+from app.errors import NotFound
+from app.models import Bundle, BundleNote, BundleStar
 from app.schemas.bundle import BundleOut
 from app.services import bundle_service as svc
-from app.services import printer_service
-from app.services import source_model_service as models_svc
+
+from . import factories as make
 
 
 def _bundle(db, sample_3mf_paths, key="frog_vt1190", printer_name="VT 1190"):
-    printer = printer_service.find_by_name(db, printer_name) or printer_service.create_printer(
-        db, name=printer_name, kind="Voron", wired_ip=None, wireless_ip=None
-    )
-    sm = models_svc.create_source_model(db, name=f"{key}.stl", file_type=SourceFileType.stl, file_obj=io.BytesIO(b"x" * 64))
-    with open(sample_3mf_paths[key], "rb") as f:
-        return svc.create_bundle(db, printer_id=printer.id, source_model_ids=[sm.id], threemf_file_obj=f, threemf_filename=f"{key}.3mf")
+    printer = make.printer(db, printer_name)
+    model = make.model(db, f"{key}.stl", b"x" * 64)
+    return make.bundle(db, sample_3mf_paths[key], [model], f"{key}.3mf", gcode=None, printer_id=printer.id)
 
 
 def _add_version(db, sample_3mf_paths, bundle, key="frog_vt1190"):
-    with open(sample_3mf_paths[key], "rb") as f:
-        return svc.add_bundle_version(db, bundle_id=bundle.id, threemf_file_obj=f, threemf_filename=f"{key}_next.3mf")
+    return make.add_version(db, bundle, sample_3mf_paths[key], f"{key}_next.3mf", gcode=None)
 
 
 # ------------------------------------------------------------------ stars: one version per 3MF, never v1
@@ -73,7 +67,7 @@ def test_a_version_of_another_3mf_cannot_be_starred(db_session, sample_3mf_paths
 
 
 def test_starring_an_unknown_3mf_is_an_error(db_session):
-    with pytest.raises(ValueError, match="No bundle with id 99"):
+    with pytest.raises(NotFound, match="No bundle with id 99"):
         svc.set_starred_version(db_session, 99, None)
 
 
@@ -90,22 +84,6 @@ def test_deleting_the_starred_version_clears_the_star(db_session, sample_3mf_pat
 
 
 # ------------------------------------------------------------------ notes
-
-
-def test_a_new_3mf_has_no_notes(db_session, sample_3mf_paths):
-    b = _bundle(db_session, sample_3mf_paths)
-    assert b.notes == "" and b.notes_revision == 0 and b.notes_updated_at is None
-    assert db_session.query(BundleNote).count() == 0
-
-
-def test_saving_notes_counts_revisions_and_refuses_stale_saves(db_session, sample_3mf_paths):
-    b = _bundle(db_session, sample_3mf_paths)
-    out = svc.set_notes(db_session, b.id, "  Prints best at 0.2 layers.\r\n\n", 0)
-    assert out.notes == "  Prints best at 0.2 layers." and out.notes_revision == 1
-    with pytest.raises(svc.NotesConflict) as caught:
-        svc.set_notes(db_session, b.id, "mine", 0)
-    assert caught.value.current["notes"] == "  Prints best at 0.2 layers."
-    assert svc.set_notes(db_session, b.id, "", 1).notes_revision == 2  # clearing keeps the revision moving
 
 
 def test_notes_survive_a_new_version_and_are_shared_by_every_version(db_session, sample_3mf_paths):
@@ -185,17 +163,3 @@ def test_star_over_the_api(client, sample_3mf_paths):
     assert c.put(f"/bundles/{bid}/star", json={"version_id": 9999}).status_code == 422
     assert c.put("/bundles/999/star", json={"version_id": None}).status_code == 404
     assert c.put(f"/bundles/{bid}/star", json={}).status_code == 422
-
-
-def test_notes_over_the_api(client):
-    c, bid = client
-    r = c.put(f"/bundles/{bid}/notes", json={"notes": "Use the textured sheet.", "base_revision": 0})
-    assert r.status_code == 200 and r.json()["notes"] == "Use the textured sheet." and r.json()["notes_revision"] == 1
-    assert {b["id"]: b for b in c.get("/bundles").json()}[bid]["notes"] == "Use the textured sheet."
-
-    conflict = c.put(f"/bundles/{bid}/notes", json={"notes": "mine", "base_revision": 0})
-    assert conflict.status_code == 409
-    assert conflict.json()["current"]["notes"] == "Use the textured sheet." and conflict.json()["current"]["notes_revision"] == 1
-
-    assert c.put("/bundles/999/notes", json={"notes": "x", "base_revision": 0}).status_code == 404
-    assert c.put(f"/bundles/{bid}/notes", json={"notes": "a" * 20001, "base_revision": 1}).status_code == 422

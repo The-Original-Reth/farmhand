@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, uiText } from "../styles.js";
-import { getEnergy } from "../api.js";
+import { errorText, getEnergy } from "../api.js";
 
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtKwh, fmtWhen } from "../lib/format.js";
@@ -47,7 +47,7 @@ export function EnergyPanel({ printer, syncTick }) {
     let live = true;
     getEnergy(printer.id)
       .then((d) => live && (setData(d), setError(null)))
-      .catch((e) => live && setError(e.message || String(e)));
+      .catch((e) => live && setError(errorText(e)));
     return () => {
       live = false;
     };

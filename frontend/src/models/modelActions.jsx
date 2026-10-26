@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
 import { toolButton, uiText } from "../styles.js";
-import { addSourceModelVersion, deleteSourceModel } from "../api.js";
+import { addSourceModelVersion, deleteSourceModel, errorText } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { ConfirmDialog, DeleteWarning, ModalActions } from "../components/common/dialogs.jsx";
@@ -82,7 +82,7 @@ export function AddModelFileForm({ model, isNewVersion = false, onClose }) {
       await refresh();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }

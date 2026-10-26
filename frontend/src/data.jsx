@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { fetchAll } from "./api.js";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { errorText, fetchAll } from "./api.js";
 
 const DataContext = createContext(null);
 
@@ -13,7 +13,7 @@ export function DataProvider({ children }) {
       setError(null);
       setState(await fetchAll());
     } catch (e) {
-      setError(e.message || String(e));
+      setError(errorText(e));
     } finally {
       setLoading(false);
     }

@@ -1,14 +1,15 @@
 import { useRef, useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
-import { linkButton, uiText } from "../styles.js";
 import {
   addBundleVersion,
   createBundle,
   createPrinter,
   createSourceModel,
+  errorText,
   inspectThreemf,
   normalizePrinter,
 } from "../api.js";
+import { linkButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { newestFirst } from "./versions.jsx";
@@ -78,7 +79,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
       setExistingPrinterId("");
     } catch (e) {
       if (seq !== inspectSeq.current) return;
-      setInspectError(e.message || String(e));
+      setInspectError(errorText(e));
     } finally {
       if (seq === inspectSeq.current) setInspecting(false);
     }
@@ -100,7 +101,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
         await refresh();
         onClose();
       } catch (e) {
-        setErrorMsg(e.message || String(e));
+        setErrorMsg(errorText(e));
       } finally {
         setSubmitting(false);
       }
@@ -154,7 +155,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
       await refresh();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }

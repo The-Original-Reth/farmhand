@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
+import { errorText } from "../api.js";
 import { toolButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
@@ -140,7 +141,7 @@ export function NotesSection({ kind, owner }) {
         setConflict({ notes: e.body.current.notes, revision: e.body.current.notes_revision, updatedAt: e.body.current.notes_updated_at });
         setPhase("idle");
       } else {
-        setError(e.message || String(e));
+        setError(errorText(e));
         setPhase("error");
       }
     }

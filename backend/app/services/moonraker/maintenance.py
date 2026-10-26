@@ -10,6 +10,7 @@ import uuid
 
 from sqlalchemy.orm import object_session
 
+from ...errors import NotFound
 from ...models import MaintenanceEntry, Printer
 from .client import MoonrakerError, _call, job_totals
 
@@ -183,7 +184,7 @@ def _new_entry(name: str, note: str, reminder: dict, totals: dict, *, last_entry
 def _get_entry(printer: Printer, key: str) -> dict:
     entry = _entries(printer).get(key)
     if entry is None:
-        raise LookupError("That maintenance entry isn't on the printer any more. It may have been deleted in Mainsail.")
+        raise NotFound("That maintenance entry isn't on the printer any more. It may have been deleted in Mainsail.")
     return entry
 
 

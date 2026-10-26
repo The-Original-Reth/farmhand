@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Server } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
-import { createShare, updateShare } from "../api.js";
+import { createShare, errorText, updateShare } from "../api.js";
 import { describeLocation, parseLocation } from "../location.js";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
@@ -53,7 +53,7 @@ export function ShareForm({ existing, capability, onClose, onSaved }) {
       await onSaved();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }

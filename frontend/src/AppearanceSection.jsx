@@ -1,4 +1,3 @@
-import React from "react";
 import { c, ui, mono, fs } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE, FILE_NAME_COLORS } from "./palettes.js";

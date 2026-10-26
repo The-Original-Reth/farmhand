@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from app import storage
+from app.errors import NotFound
 from app.models import SourceFileType
 from app.services import source_model_service as svc
 
@@ -87,5 +88,5 @@ def test_an_unreadable_file_keeps_the_preview_it_already_had(db_session):
 
 
 def test_an_unknown_version_is_a_clear_error(db_session):
-    with pytest.raises(ValueError, match="No version"):
+    with pytest.raises(NotFound, match="No version"):
         svc.regenerate_thumbnail(db_session, 999, 1)

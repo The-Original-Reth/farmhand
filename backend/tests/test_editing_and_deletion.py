@@ -1,56 +1,14 @@
 from __future__ import annotations
 
-import io
 import os
 
 import pytest
 from sqlalchemy import func, select
 
-from app.models import Bundle, BundleVersion, SourceFileType, SourceModel
+from app.models import Bundle, BundleVersion, SourceModel
 from app.services import bundle_service, printer_service, source_model_service
 
-
-def _gcode():
-    return io.BytesIO(b"G28\n")
-
-
-def _printer(db, name="VT 1190"):
-    return printer_service.find_by_name(db, name) or printer_service.create_printer(
-        db, name=name, kind=None, wired_ip=None, wireless_ip=None
-    )
-
-
-def _model(db, name="Model.stl", with_file=False):
-    return source_model_service.create_source_model(
-        db,
-        name=name,
-        file_type=SourceFileType.stl,
-        file_obj=io.BytesIO(b"not a real stl, thumbnailing just fails soft") if with_file else None,
-    )
-
-
-def _bundle(db, threemf_path, models):
-    with open(threemf_path, "rb") as f:
-        return bundle_service.create_bundle(
-            db,
-            source_model_ids=[m.id for m in models],
-            threemf_file_obj=f,
-            threemf_filename="a.3mf",
-            gcode_file_obj=_gcode(),
-            gcode_filename="a.gcode",
-        )
-
-
-def _add_version(db, bundle, threemf_path):
-    with open(threemf_path, "rb") as f:
-        return bundle_service.add_bundle_version(
-            db,
-            bundle_id=bundle.id,
-            threemf_file_obj=f,
-            threemf_filename="a.3mf",
-            gcode_file_obj=_gcode(),
-            gcode_filename="a.gcode",
-        )
+from . import factories as make
 
 
 # ------------------------------------------------------------------ printers
@@ -79,8 +37,8 @@ def test_update_printer_rejects_duplicate_name(db_session):
 
 def test_renamed_printer_still_matches_files_sliced_under_old_name(db_session, sample_3mf_paths):
     path = sample_3mf_paths["shark_vt1190"]  # sliced for "VT 1190"
-    printer = _printer(db_session, "VT 1190")
-    bundle = _bundle(db_session, path, [_model(db_session)])
+    printer = make.printer(db_session, "VT 1190")
+    bundle = make.bundle(db_session, path, [make.model(db_session)])
 
     printer_service.update_printer(db_session, printer.id, {"name": "Trident"})
 
@@ -90,7 +48,7 @@ def test_renamed_printer_still_matches_files_sliced_under_old_name(db_session, s
     assert result["matched_printer"].id == printer.id
 
     # ...and an "Update" to the existing bundle is not rejected as a wrong-printer file
-    v2 = _add_version(db_session, bundle, path)
+    v2 = make.add_version(db_session, bundle, path)
     assert v2.version == 2
 
 
@@ -99,9 +57,9 @@ def test_renamed_printer_still_matches_files_sliced_under_old_name(db_session, s
 
 def test_delete_version_removes_its_files_but_keeps_bundle(db_session, sample_3mf_paths):
     path = sample_3mf_paths["shark_vt1190"]
-    _printer(db_session)
-    bundle = _bundle(db_session, path, [_model(db_session)])
-    _add_version(db_session, bundle, path)
+    make.printer(db_session)
+    bundle = make.bundle(db_session, path, [make.model(db_session)])
+    make.add_version(db_session, bundle, path)
     db_session.refresh(bundle)
 
     v1 = next(v for v in bundle.versions if v.version == 1)
@@ -117,8 +75,8 @@ def test_delete_version_removes_its_files_but_keeps_bundle(db_session, sample_3m
 
 
 def test_deleting_the_only_version_deletes_the_whole_bundle(db_session, sample_3mf_paths):
-    _printer(db_session)
-    bundle = _bundle(db_session, sample_3mf_paths["shark_vt1190"], [_model(db_session)])
+    make.printer(db_session)
+    bundle = make.bundle(db_session, sample_3mf_paths["shark_vt1190"], [make.model(db_session)])
     bundle_id = bundle.id
     only_version = bundle.versions[0]
     path_on_disk = only_version.threemf_path
@@ -132,9 +90,9 @@ def test_deleting_the_only_version_deletes_the_whole_bundle(db_session, sample_3
 
 def test_delete_bundle_removes_all_versions_and_files(db_session, sample_3mf_paths):
     path = sample_3mf_paths["shark_vt1190"]
-    _printer(db_session)
-    bundle = _bundle(db_session, path, [_model(db_session)])
-    _add_version(db_session, bundle, path)
+    make.printer(db_session)
+    bundle = make.bundle(db_session, path, [make.model(db_session)])
+    make.add_version(db_session, bundle, path)
     db_session.refresh(bundle)
     bundle_id = bundle.id
     files = [v.threemf_path for v in bundle.versions]
@@ -155,9 +113,9 @@ def test_delete_bundle_removes_all_versions_and_files(db_session, sample_3mf_pat
 
 
 def test_delete_source_model_refused_while_a_bundle_depends_only_on_it(db_session, sample_3mf_paths):
-    _printer(db_session)
-    model = _model(db_session)
-    _bundle(db_session, sample_3mf_paths["shark_vt1190"], [model])
+    make.printer(db_session)
+    model = make.model(db_session)
+    make.bundle(db_session, sample_3mf_paths["shark_vt1190"], [model])
 
     with pytest.raises(ValueError, match="sliced only from this model"):
         source_model_service.delete_source_model(db_session, model.id, cascade=False)
@@ -165,9 +123,9 @@ def test_delete_source_model_refused_while_a_bundle_depends_only_on_it(db_sessio
 
 
 def test_delete_source_model_with_cascade_also_deletes_its_exclusive_bundles(db_session, sample_3mf_paths):
-    _printer(db_session)
-    model = _model(db_session, with_file=True)
-    bundle = _bundle(db_session, sample_3mf_paths["shark_vt1190"], [model])
+    make.printer(db_session)
+    model = make.model(db_session, data=b"not a real stl, thumbnailing just fails soft")
+    bundle = make.bundle(db_session, sample_3mf_paths["shark_vt1190"], [model])
     model_id, bundle_id = model.id, bundle.id
 
     deleted = source_model_service.delete_source_model(db_session, model_id, cascade=True)
@@ -179,10 +137,10 @@ def test_delete_source_model_with_cascade_also_deletes_its_exclusive_bundles(db_
 
 
 def test_delete_source_model_keeps_mixed_plate_bundles_just_unlinked(db_session, sample_3mf_paths):
-    _printer(db_session)
-    frog_v = _model(db_session, "Frog_vertical.stl")
-    frog_h = _model(db_session, "Frog_horizontal.stl")
-    bundle = _bundle(db_session, sample_3mf_paths["frog_vt1190"], [frog_v, frog_h])
+    make.printer(db_session)
+    frog_v = make.model(db_session, "Frog_vertical.stl")
+    frog_h = make.model(db_session, "Frog_horizontal.stl")
+    bundle = make.bundle(db_session, sample_3mf_paths["frog_vt1190"], [frog_v, frog_h])
     bundle_id, frog_h_id = bundle.id, frog_h.id
 
     # No cascade needed: the bundle also uses another model, so it survives
@@ -195,7 +153,7 @@ def test_delete_source_model_keeps_mixed_plate_bundles_just_unlinked(db_session,
 
 
 def test_delete_source_model_version_keeps_the_folder(db_session):
-    model = _model(db_session, with_file=True)
+    model = make.model(db_session, data=b"not a real stl, thumbnailing just fails soft")
     version = model.versions[0]
     file_path = version.file_path
     assert os.path.exists(file_path)

@@ -4,7 +4,7 @@ import { c, fs, ui } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance.js";
 import { AppearanceSection } from "./AppearanceSection.jsx";
-import { API_BASE, getConfig, saveConfig, saveConfigOnExit } from "./api.js";
+import { API_BASE, errorText, getConfig, saveConfig, saveConfigOnExit } from "./api.js";
 import { DataProvider, useData } from "./data.jsx";
 
 import { CompareTray } from "./compare/CompareTray.jsx";
@@ -181,7 +181,7 @@ function FarmhandApp() {
     } catch (e) {
       pendingSave.current = { ...patch, ...pendingSave.current }; // not delivered: keep it, newer values winning
       rememberPending(pendingSave.current);
-      setSaveState({ phase: "error", message: e.message || String(e) });
+      setSaveState({ phase: "error", message: errorText(e) });
     }
   };
   // A slider drags through many values: wait for it to settle rather than rewriting the network file for each

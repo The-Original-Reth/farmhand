@@ -1,26 +1,23 @@
 import { useEffect, useState } from "react";
 import { HardDrive } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { cancelButton, monoText, primaryButton, uiText } from "../styles.js";
 import {
   deleteShare,
+  errorText,
   getConfig,
   getShares,
   getStorageSettings,
-  inspectConfigFolder,
   migrateStorage,
   reconnectShare,
-  restoreConfig,
-  saveConfigNow,
   saveStorageSettings,
-  setConfigLocation,
 } from "../api.js";
+import { monoText, uiText } from "../styles.js";
 
 import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialogs.jsx";
 import { Badge, SectionLabel } from "../components/common/ui.jsx";
 import { formatBytes } from "../lib/format.js";
-import { ConfigLocationCard, RestoreResult } from "./ConfigLocationCard.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
+import { SettingsCopy } from "./SettingsCopy.jsx";
 import { ShareForm, SharesCard } from "./Shares.jsx";
 
 function LocationCard({ title, blurb, location, onChange, onReset }) {
@@ -92,13 +89,7 @@ export function StorageSection({ onSettingsRestored }) {
   const [removing, setRemoving] = useState(null); // null | share
   const [shareBusy, setShareBusy] = useState(null);
   const [shareError, setShareError] = useState(null);
-  const [configInfo, setConfigInfo] = useState(null); // where the settings copy goes
-  const [configPicker, setConfigPicker] = useState(false);
-  const [configFound, setConfigFound] = useState(null); // the folder just chosen already holds a settings file
-  const [configRestoreOpen, setConfigRestoreOpen] = useState(false);
-  const [configResult, setConfigResult] = useState(null);
-  const [configBusy, setConfigBusy] = useState(false);
-  const [configError, setConfigError] = useState(null);
+  const [configInfo, setConfigInfo] = useState(null); // where the settings copy goes, as first loaded
 
   useEffect(() => {
     Promise.all([getStorageSettings(), getShares(), getConfig().catch(() => null)])
@@ -107,7 +98,7 @@ export function StorageSection({ onSettingsRestored }) {
         setSharesInfo(sharesData);
         setConfigInfo(config ? config.location : null);
       })
-      .catch((e) => setError(e.message || String(e)));
+      .catch((e) => setError(errorText(e)));
   }, []);
 
   if (error) {
@@ -123,61 +114,13 @@ export function StorageSection({ onSettingsRestored }) {
     setInfo(storageInfo);
     setSharesInfo(sharesData);
   };
-  const refreshConfigInfo = async () => {
-    try {
-      setConfigInfo((await getConfig()).location);
-    } catch {
-      /* leave what's shown */
-    }
-  };
-  const chooseConfigFolder = async (path) => {
-    setConfigError(null);
-    const found = await inspectConfigFolder(path); // refuses (with the reason) a folder that can't be used
-    if (found.fileExists) {
-      setConfigFound(found); // never overwrite settings that are already there without being told to
-      return;
-    }
-    setConfigInfo((await setConfigLocation({ path })).location);
-  };
-  const resolveFound = async (choice) => {
-    setConfigBusy(true);
-    setConfigError(null);
-    try {
-      const r = await setConfigLocation({ path: configFound.path, ifExists: choice });
-      setConfigInfo(r.location);
-      if (r.restored) {
-        setConfigResult(r.restored);
-        onSettingsRestored();
-        await reloadAll();
-      }
-      setConfigFound(null);
-    } catch (e) {
-      setConfigError(e.message || String(e));
-    } finally {
-      setConfigBusy(false);
-    }
-  };
-  const clearConfigFolder = async () => {
-    setConfigError(null);
-    setConfigInfo((await setConfigLocation({ path: null })).location);
-  };
-  const saveConfigCopyNow = async () => {
-    setConfigError(null);
-    try {
-      const r = await saveConfigNow();
-      if (!r.ok) setConfigError(r.error);
-    } catch (e) {
-      setConfigError(e.message || String(e));
-    }
-    await refreshConfigInfo();
-  };
   const reconnect = async (sh) => {
     setShareError(null);
     setShareBusy(sh.id);
     try {
       await reconnectShare(sh.id);
     } catch (e) {
-      setShareError(`${sh.name}: ${e.message || e}`);
+      setShareError(`${sh.name}: ${errorText(e)}`);
     } finally {
       setShareBusy(null);
       await reloadAll().catch(() => {});
@@ -190,7 +133,7 @@ export function StorageSection({ onSettingsRestored }) {
     try {
       setInfo(await saveStorageSettings(body(kind, null)));
     } catch (e) {
-      setActionError(e.message || String(e));
+      setActionError(errorText(e));
     }
   };
   const outsideStl = info.outside.stl;
@@ -293,98 +236,7 @@ export function StorageSection({ onSettingsRestored }) {
         </div>
       </div>
 
-      <SectionLabel>Settings</SectionLabel>
-      <ConfigLocationCard
-        info={configInfo}
-        error={configError}
-        onChoose={() => setConfigPicker(true)}
-        onSaveNow={saveConfigCopyNow}
-        onRestore={() => setConfigRestoreOpen(true)}
-        onClear={clearConfigFolder}
-      />
-      {configResult && <RestoreResult result={configResult} />}
-
-      {configPicker && (
-        <FolderPicker
-          title="Choose the folder for Farmhand's settings"
-          startPath={configInfo?.isSet ? configInfo.path : null}
-          shares={sharesInfo.shares}
-          onSelect={chooseConfigFolder}
-          onClose={() => setConfigPicker(false)}
-        />
-      )}
-
-      {configFound && (
-        <Modal title="Settings already in that folder" onClose={() => (configBusy ? undefined : setConfigFound(null))} width={580}>
-          <div data-testid="config-found" style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 14 })}>
-            {configFound.fileValid ? (
-              <>
-                That folder already has a Farmhand settings file
-                {configFound.summary?.savedAt ? <> (saved {new Date(configFound.summary.savedAt).toLocaleString()})</> : null}: colour scheme{" "}
-                <b style={{ color: c.heading }}>{configFound.summary?.scheme}</b>
-                {configFound.summary?.shares ? `, ${configFound.summary.shares} network share${configFound.summary.shares === 1 ? "" : "s"}` : ""}
-                {configFound.summary?.printers ? `, ${configFound.summary.printers} printer${configFound.summary.printers === 1 ? "" : "s"}` : ""}
-                {configFound.summary?.models ? `, notes for ${configFound.summary.models} model${configFound.summary.models === 1 ? "" : "s"}` : ""}. What
-                should Farmhand do with it?
-              </>
-            ) : (
-              <>
-                That folder has a settings file Farmhand can't use: <span style={{ color: c.amber }}>{configFound.error}</span> It can be
-                replaced with the current settings, or you can pick another folder.
-              </>
-            )}
-          </div>
-          {configError && <div style={uiText(12, c.amber, { marginBottom: 10 })}>{configError}</div>}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => setConfigFound(null)}
-              disabled={configBusy}
-              style={cancelButton()}
-            >
-              Cancel
-            </button>
-            <button
-              data-testid="config-found-overwrite"
-              onClick={() => resolveFound("overwrite")}
-              disabled={configBusy}
-              style={{ ...ui, fontSize: fs(13), background: "none", color: c.amber, border: `1px solid ${c.amber}`, borderRadius: 3, padding: "7px 14px", cursor: "pointer" }}
-            >
-              Replace with current settings
-            </button>
-            {configFound.fileValid && (
-              <button
-                data-testid="config-found-restore"
-                onClick={() => resolveFound("restore")}
-                disabled={configBusy}
-                style={primaryButton()}
-              >
-                {configBusy ? "Working…" : "Use those settings"}
-              </button>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {configRestoreOpen && (
-        <ConfirmDialog
-          title="Restore settings from the network folder"
-          confirmLabel="Restore"
-          tone="primary"
-          onClose={() => setConfigRestoreOpen(false)}
-          onConfirm={async () => {
-            const result = await restoreConfig();
-            setConfigResult(result);
-            onSettingsRestored();
-            await reloadAll();
-          }}
-        >
-          <div>
-            Load the settings saved in that folder? This replaces the current look and display preferences with the saved
-            ones, puts back the STL and 3MF folders it lists, and adds any network shares that aren't already here. Passwords
-            aren't saved, so those shares will need theirs typed in.
-          </div>
-        </ConfirmDialog>
-      )}
+      <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
 
       {picker && (
         <FolderPicker

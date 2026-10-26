@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..errors import answer_errors
 from ..names import download_name
-from ..notes import NotesConflict, conflict_response
 from ..models import SourceFileType
 from ..schemas.bundle import BundleOut
 from ..schemas.source_model import NotesConflictOut, NotesUpdate, SourceModelOut
@@ -37,12 +37,10 @@ def create_source_model(
     file is optional here — a folder can be created (e.g. from within a
     3MF upload) and filled in with the actual STL/OBJ/STEP later.
     """
-    try:
+    with answer_errors(409):
         return source_model_service.create_source_model(
             db, name=name, file_type=file_type, file_obj=file.file if file else None, note=note
         )
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.post("/scan", response_model=ScanOut)
@@ -75,12 +73,8 @@ class Rename(BaseModel):
 @router.patch("/{source_model_id}", response_model=SourceModelOut)
 def rename_source_model(source_model_id: int, payload: Rename, db: Session = Depends(get_db)):
     """Rename a model (what it's shown, searched and downloaded as; its extension stays, and its stored file keeps its own name)."""
-    try:
+    with answer_errors():
         return source_model_service.rename(db, source_model_id, payload.name)
-    except LookupError:
-        raise HTTPException(status_code=404, detail="Source model not found")
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.put("/{source_model_id}/notes", response_model=SourceModelOut, responses={409: {"model": NotesConflictOut}})
@@ -89,12 +83,8 @@ def save_notes(source_model_id: int, payload: NotesUpdate, db: Session = Depends
     Save the notes about a model. Send the revision the text was based on: if someone else has saved since, this
     answers 409 with their current notes (nothing is overwritten) so the person can decide what to do.
     """
-    try:
+    with answer_errors():
         return source_model_service.set_notes(db, source_model_id, payload.notes, payload.base_revision)
-    except NotesConflict as c:
-        return conflict_response(c)
-    except ValueError as e:
-        raise HTTPException(status_code=404 if "No source model" in str(e) else 422, detail=str(e))
 
 
 @router.post("/{source_model_id}/versions", response_model=SourceModelOut, status_code=201)
@@ -104,12 +94,10 @@ def add_source_model_version(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    try:
+    with answer_errors():
         source_model_service.add_source_model_version(
             db, source_model_id=source_model_id, file_obj=file.file, filename=file.filename, note=note
         )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
     return source_model_service.get_source_model(db, source_model_id)
 
 
@@ -149,10 +137,8 @@ def redraw_source_model_version_thumbnail(source_model_id: int, version: int, db
     """Redraw this version's preview from its file with the current renderer."""
     if source_model_service.get_source_model_version(db, source_model_id, version) is None:
         raise HTTPException(status_code=404, detail="Source model version not found")
-    try:
+    with answer_errors():
         return {"updated": source_model_service.regenerate_thumbnail(db, source_model_id, version)}
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 # ---- deletion: permanent, so each requires an explicit confirm=true ----
@@ -189,8 +175,6 @@ def delete_source_model(
     _require_confirm(confirm)
     if source_model_service.get_source_model(db, source_model_id) is None:
         raise HTTPException(status_code=404, detail="Source model not found")
-    try:
+    with answer_errors(409):
         source_model_service.delete_source_model(db, source_model_id, cascade=cascade)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
     return Response(status_code=204)

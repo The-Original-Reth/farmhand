@@ -9,6 +9,8 @@ import pytest
 from app import config, mounts, storage
 from app.mounts import MountError, ShareSpec
 
+from .conftest import posix_only
+
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
@@ -185,6 +187,7 @@ def test_the_device_argument_can_never_look_like_an_option():
 # ---------------------------------------------------------------- running mount
 
 
+@posix_only  # 0o600 file permissions
 def test_credentials_file_is_private_holds_the_login_and_is_removed(isolated, monkeypatch):
     seen = {}
 

@@ -1,0 +1,137 @@
+"""A 3MF's versions over time: the rolling window that prunes old files (monuments excepted), downloading a version,
+renaming one, and deleting a version or a whole 3MF.
+"""
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ...errors import NotFound
+from ... import storage
+from ...config import settings
+from ...models import Bundle, BundleVersion
+from .queries import get_bundle
+
+
+def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
+    """
+    Per spec: the full-file window always covers the most recent N
+    versions (N = settings.full_file_version_window, default 5). Any
+    version older than that window gets its 3MF/gcode deleted — UNLESS
+    it's flagged as a monument, which exempts it from pruning entirely.
+    Parsed settings and the thumbnail are always kept, pruned or not.
+    """
+    db.flush()
+    all_versions = list(
+        db.scalars(
+            select(BundleVersion)
+            .where(BundleVersion.bundle_id == bundle.id)
+            .order_by(BundleVersion.version.desc())
+        )
+    )
+
+    window = settings.full_file_version_window
+    outside_window = all_versions[window:]
+
+    for v in outside_window:
+        if v.full_files_retained and not v.monument:
+            storage.delete_files([v.threemf_path, v.gcode_path])
+            v.threemf_path = None
+            v.gcode_path = None
+            v.full_files_retained = False
+            db.add(v)
+
+
+def set_monument(
+    db: Session, *, version_id: int, monument: bool, note: str | None = None, confirm: bool = False
+) -> BundleVersion:
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+
+    if monument:
+        if not note:
+            raise ValueError("Monumenting a version requires a note explaining why it matters")
+        version.monument = True
+        version.monument_note = note
+    else:
+        if not confirm:
+            raise ValueError(
+                "Un-monumenting re-exposes this version to pruning — pass confirm=True to proceed"
+            )
+        version.monument = False
+
+    db.commit()
+    db.refresh(version)
+    return version
+
+
+def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | None]:
+    """
+    Returns (threemf_path, gcode_path) — gcode_path may be None if gcode
+    was never uploaded for this version (it's optional). Raises if this
+    version has been pruned (no files left for either).
+    """
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+    if not version.full_files_retained:
+        raise ValueError(
+            "This version's original files were pruned (parsed parameters are still available, "
+            "but there's no 3MF/gcode left to download) — flag it as a monument before this "
+            "happens to keep it downloadable"
+        )
+    return version.threemf_path, version.gcode_path
+
+
+def delete_bundle(db: Session, bundle_id: int) -> None:
+    """Permanently delete a bundle: every version's row, parsed settings, and stored files."""
+    bundle = get_bundle(db, bundle_id)
+    if bundle is None:
+        raise NotFound(f"No bundle with id {bundle_id}")
+    paths = [p for v in bundle.versions for p in (v.threemf_path, v.gcode_path, v.thumbnail_path)]
+    db.delete(bundle)  # cascades to its versions and its source-model links
+    db.commit()
+    # Files go after the DB commit: if this fails the records are already
+    # consistent, and a few orphaned files on disk are harmless. Only the files
+    # recorded for these versions are removed (wherever they live).
+    storage.delete_files(paths)
+
+
+def delete_bundle_version(db: Session, version_id: int) -> bool:
+    """
+    Permanently delete one version (its 3MF, gcode, thumbnail, and parsed
+    settings). If it was the bundle's only version, the whole bundle goes
+    with it — a bundle with no versions has nothing left to show.
+    Returns True if the whole bundle was deleted.
+    """
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+    bundle = version.bundle
+    if len(bundle.versions) <= 1:
+        delete_bundle(db, bundle.id)
+        return True
+    paths = [version.threemf_path, version.gcode_path, version.thumbnail_path]
+    if bundle.star_row is not None and bundle.star_row.version_id == version.id:
+        bundle.star_row = None  # the starred version is going: so is its star
+    db.delete(version)
+    db.commit()
+    storage.delete_files(paths)
+    return False
+
+
+def rename_version(db: Session, version_id: int, filename: str) -> BundleVersion:
+    """
+    Change the file name a 3MF version is shown and downloaded as; it always stays a .3mf. The stored file keeps
+    the name it was saved under, so nothing on disk moves.
+    """
+    from ...names import clean_file_name
+
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+    version.filename = clean_file_name(filename, extension=".3mf")
+    db.commit()
+    db.refresh(version)
+    return version

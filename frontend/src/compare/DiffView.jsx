@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { categorizeKey, formatVal } from "../settingsLayout.js";
-import { fetchVersionSettings } from "../api.js";
+import { errorText, fetchVersionSettings } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { Badge } from "../components/common/ui.jsx";
@@ -95,7 +95,7 @@ export function DiffView({ left, right, onClose }) {
           setRightSettings(r);
         }
       })
-      .catch((e) => !cancelled && setLoadError(e.message || String(e)));
+      .catch((e) => !cancelled && setLoadError(errorText(e)));
     return () => {
       cancelled = true;
     };

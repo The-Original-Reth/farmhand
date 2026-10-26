@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, uiText } from "../styles.js";
-import { getMoonrakerStatus, getPrintStats, syncPrinterHistory } from "../api.js";
+import { errorText, getMoonrakerStatus, getPrintStats, syncPrinterHistory } from "../api.js";
 
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, fmtMetres, fmtWhen } from "../lib/format.js";
@@ -26,7 +26,7 @@ export function useMoonraker(printerId, key, onSynced) {
       if (current.current === key) setSyncError(null);
       await onSynced?.();
     } catch (e) {
-      if (current.current === key) setSyncError(e.message || String(e));
+      if (current.current === key) setSyncError(errorText(e));
     }
     try {
       const s = await getPrintStats(id);
@@ -48,7 +48,7 @@ export function useMoonraker(printerId, key, onSynced) {
     setSyncError(null);
     (async () => {
       const [s, st] = await Promise.all([
-        getMoonrakerStatus(printerId).catch((e) => ({ reachable: false, error: e.message || String(e) })),
+        getMoonrakerStatus(printerId).catch((e) => ({ reachable: false, error: errorText(e) })),
         getPrintStats(printerId).catch(() => null),
       ]);
       if (current.current !== key) return;

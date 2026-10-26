@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Pencil, X } from "lucide-react";
 import { c } from "../theme.js";
+import { errorText } from "../api.js";
 import { uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
@@ -47,7 +48,7 @@ export function EditableName({ value, onSave, label, textStyle, testId, extensio
       await refresh();
       setEditing(false);
     } catch (e) {
-      setError(e.message || String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

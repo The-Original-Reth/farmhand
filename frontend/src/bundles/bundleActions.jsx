@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Upload } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { addBundleVersion, deleteBundle } from "../api.js";
+import { addBundleVersion, deleteBundle, errorText } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
@@ -27,7 +27,7 @@ function NewBundleVersionDialog({ bundle, onClose }) {
       await refresh();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }

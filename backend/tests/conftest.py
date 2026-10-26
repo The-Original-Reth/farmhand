@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -14,6 +15,21 @@ from app import config, models  # noqa: F401 registers all models on Base
 from app import storage
 from app.database import Base, get_db
 from app.main import app
+
+
+# Tests of POSIX behaviour (file permissions, "/" paths, real mounts) only mean something on Linux, where Farmhand
+# runs (Docker). Elsewhere they're skipped, saying why.
+posix_only = pytest.mark.skipif(os.name == "nt", reason="checks POSIX behaviour (file permissions, / paths); runs on Linux and in Docker")
+
+
+def symlink(target, link) -> None:
+    """os.symlink, or skip the test where symlinks can't be made (Windows without Developer Mode or admin rights)."""
+    try:
+        os.symlink(target, link)
+    except OSError as e:
+        if os.name == "nt":
+            pytest.skip(f"symlinks can't be made here ({e.strerror}); runs on Linux and in Docker")
+        raise
 
 
 @pytest.fixture()

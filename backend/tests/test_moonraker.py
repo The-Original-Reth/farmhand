@@ -6,7 +6,6 @@ import httpx
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from app.main import app
 from app.models import PrinterConnection, PrinterEnergyReading, PrinterServiceReminder, PrintJob
 from app.schemas.printer import PrinterOut
 from app.services import moonraker as mr

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..notes import NotesConflict, conflict_response
+from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate
@@ -23,10 +23,8 @@ def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
     """A new printer. Its connection (Mainsail / Moonraker, or PrusaLink) and login can be given at once."""
     base = payload.model_dump(include={"name", "kind", "wired_ip", "wireless_ip"})
     link = payload.model_dump(exclude=set(base), exclude_none=True)
-    try:
+    with answer_errors(409):
         printer = printer_service.create_printer(db, **base)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
     if link.get("connection_type") == "moonraker" and len(link) == 1:
         return printer  # the default: nothing more to set
     return printer_service.update_printer(db, printer.id, link)
@@ -44,18 +42,14 @@ def get_printer(printer_id: int, db: Session = Depends(get_db)):
 def update_printer(printer_id: int, payload: PrinterUpdate, db: Session = Depends(get_db)):
     if printer_service.get_printer(db, printer_id) is None:
         raise HTTPException(status_code=404, detail="Printer not found")
-    try:
+    with answer_errors(409):
         return printer_service.update_printer(db, printer_id, payload.model_dump(exclude_unset=True))
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.patch("/{printer_id}/decommission", response_model=PrinterOut)
 def set_decommissioned(printer_id: int, payload: PrinterDecommission, db: Session = Depends(get_db)):
-    try:
+    with answer_errors():
         return printer_service.set_decommissioned(db, printer_id, payload.decommissioned)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{printer_id}/bundles", response_model=list[BundleOut])
@@ -71,9 +65,5 @@ def save_notes(printer_id: int, payload: NotesUpdate, db: Session = Depends(get_
     Save the notes about a printer. Send the revision the text was based on: if someone else has saved since, this
     answers 409 with their current notes (nothing is overwritten) so the person can decide what to do.
     """
-    try:
+    with answer_errors():
         return printer_service.set_notes(db, printer_id, payload.notes, payload.base_revision)
-    except NotesConflict as c:
-        return conflict_response(c)
-    except ValueError as e:
-        raise HTTPException(status_code=404 if "No printer" in str(e) else 422, detail=str(e))

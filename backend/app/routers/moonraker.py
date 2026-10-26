@@ -6,8 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..errors import answer_errors
 from ..models import Printer, PrinterEnergyReading, PrintJob
-from ..notes import NotesConflict, conflict_response
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
 from ..services import moonraker as mr
@@ -171,7 +171,8 @@ class ServiceUpdate(BaseModel):
 def service_done(printer_id: int, payload: ServiceDone, db: Session = Depends(get_db)):
     """The 1500-hour service was done: the next 1500 print hours count from now. Returns the printer."""
     printer = _printer(db, printer_id)
-    _maintenance_errors(lambda: mr.service_done(db, printer, note=payload.note))
+    with answer_errors():
+        mr.service_done(db, printer, note=payload.note)
     return PrinterOut.model_validate(printer_service.get_printer(db, printer_id))
 
 
@@ -182,19 +183,16 @@ def service_notes(printer_id: int, payload: NotesUpdate, db: Session = Depends(g
     saved since, this answers 409 with their current notes (nothing is overwritten). Returns the printer.
     """
     printer = _printer(db, printer_id)
-    try:
+    with answer_errors():
         saved = mr.set_service_notes(db, printer, payload.notes, payload.base_revision)
-    except NotesConflict as c:
-        return conflict_response(c)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
     return PrinterOut.model_validate(saved)
 
 
 @router.patch("/{printer_id}/service")
 def service_update(printer_id: int, payload: ServiceUpdate, db: Session = Depends(get_db)):
     printer = _printer(db, printer_id)
-    _maintenance_errors(lambda: mr.set_service_enabled(db, printer, payload.enabled))
+    with answer_errors():
+        mr.set_service_enabled(db, printer, payload.enabled)
     return PrinterOut.model_validate(printer_service.get_printer(db, printer_id))
 
 
@@ -224,14 +222,6 @@ class PerformIn(BaseModel):
     note: str = Field("", max_length=5000)
 
 
-def _maintenance_errors(fn):
-    try:
-        return fn()
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
 
 @router.get("/{printer_id}/maintenance")
 def list_maintenance(printer_id: int, db: Session = Depends(get_db)):
@@ -242,7 +232,8 @@ def list_maintenance(printer_id: int, db: Session = Depends(get_db)):
 def add_maintenance(printer_id: int, payload: MaintenanceIn, db: Session = Depends(get_db)):
     printer = _printer(db, printer_id)
     reminder = payload.reminder.model_dump() if payload.reminder else None
-    key = _maintenance_errors(lambda: mr.add_maintenance(printer, name=payload.name, note=payload.note, reminder=reminder))
+    with answer_errors():
+        key = mr.add_maintenance(printer, name=payload.name, note=payload.note, reminder=reminder)
     return {"id": key, **mr.list_maintenance(printer)}
 
 
@@ -250,9 +241,8 @@ def add_maintenance(printer_id: int, payload: MaintenanceIn, db: Session = Depen
 def update_maintenance(printer_id: int, entry_id: str, payload: MaintenanceUpdate, db: Session = Depends(get_db)):
     printer = _printer(db, printer_id)
     reminder = payload.reminder.model_dump() if payload.reminder else None
-    _maintenance_errors(
-        lambda: mr.update_maintenance(printer, entry_id, name=payload.name, note=payload.note, reminder=reminder)
-    )
+    with answer_errors():
+        mr.update_maintenance(printer, entry_id, name=payload.name, note=payload.note, reminder=reminder)
     return mr.list_maintenance(printer)
 
 
@@ -260,7 +250,8 @@ def update_maintenance(printer_id: int, entry_id: str, payload: MaintenanceUpdat
 def perform_maintenance(printer_id: int, entry_id: str, payload: PerformIn, db: Session = Depends(get_db)):
     """Mark it done on the printer (Mainsail sees it too). A repeating reminder starts its next round."""
     printer = _printer(db, printer_id)
-    next_id = _maintenance_errors(lambda: mr.perform_maintenance(printer, entry_id, note=payload.note))
+    with answer_errors():
+        next_id = mr.perform_maintenance(printer, entry_id, note=payload.note)
     return {"next_id": next_id, **mr.list_maintenance(printer)}
 
 
@@ -269,5 +260,6 @@ def delete_maintenance(printer_id: int, entry_id: str, confirm: bool = Query(Fal
     if not confirm:
         raise HTTPException(status_code=409, detail="Deleting is permanent (in Mainsail too) — pass confirm=true to proceed")
     printer = _printer(db, printer_id)
-    _maintenance_errors(lambda: mr.delete_maintenance(printer, entry_id))
+    with answer_errors():
+        mr.delete_maintenance(printer, entry_id)
     return mr.list_maintenance(printer)

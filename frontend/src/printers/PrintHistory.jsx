@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
-import { getPrintJobs } from "../api.js";
+import { errorText, getPrintJobs } from "../api.js";
 
 import { Badge, SectionToggle } from "../components/common/ui.jsx";
 import { fmtDuration, fmtKwh, fmtMetres, fmtWhen } from "../lib/format.js";
@@ -36,7 +36,7 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
       setTotal(r.total);
       setError(null);
     } catch (e) {
-      if (mine === ask.current) setError(e.message || String(e));
+      if (mine === ask.current) setError(errorText(e));
     } finally {
       if (mine === ask.current) setLoading(false);
     }

@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..errors import answer_errors
 from ..names import download_name
-from ..notes import NotesConflict, conflict_response
 from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service
@@ -44,10 +44,8 @@ def list_bundles(db: Session = Depends(get_db)):
 @router.post("/inspect", response_model=ThreeMFInspection)
 def inspect_threemf(threemf: UploadFile = File(...), db: Session = Depends(get_db)):
     """Parse a 3MF without storing it: which printer was it sliced for, and is that printer registered?"""
-    try:
+    with answer_errors():
         return bundle_service.inspect_3mf(db, threemf.file)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("", response_model=BundleOut, status_code=201)
@@ -58,7 +56,7 @@ def create_bundle(
     gcode: UploadFile | None = File(None, description="Optional — can be added later"),
     db: Session = Depends(get_db),
 ):
-    try:
+    with answer_errors():
         return bundle_service.create_bundle(
             db,
             source_model_ids=_parse_source_model_ids(source_model_ids),
@@ -68,8 +66,6 @@ def create_bundle(
             gcode_filename=gcode.filename if gcode else None,
             printer_id=printer_id,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/{bundle_id}", response_model=BundleOut)
@@ -88,7 +84,7 @@ def add_bundle_version(
     db: Session = Depends(get_db),
 ):
     """The 'Update' button — printer is already locked, no printer_id here."""
-    try:
+    with answer_errors():
         bundle_service.add_bundle_version(
             db,
             bundle_id=bundle_id,
@@ -97,20 +93,14 @@ def add_bundle_version(
             gcode_file_obj=gcode.file if gcode else None,
             gcode_filename=gcode.filename if gcode else None,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
     return bundle_service.get_bundle(db, bundle_id)
 
 
 @router.put("/{bundle_id}/star", response_model=BundleOut)
 def set_starred_version(bundle_id: int, payload: StarUpdate, db: Session = Depends(get_db)):
     """Star one version of this 3MF (only one at a time; never version 1), or send version_id: null to clear it."""
-    try:
+    with answer_errors():
         return bundle_service.set_starred_version(db, bundle_id, payload.version_id)
-    except bundle_service.StarNotAllowed as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.put("/{bundle_id}/notes", response_model=BundleOut, responses={409: {"model": NotesConflictOut}})
@@ -119,12 +109,8 @@ def save_notes(bundle_id: int, payload: NotesUpdate, db: Session = Depends(get_d
     Save the notes about a 3MF. Send the revision the text was based on: if someone else has saved since, this
     answers 409 with their current notes (nothing is overwritten) so the person can decide what to do.
     """
-    try:
+    with answer_errors():
         return bundle_service.set_notes(db, bundle_id, payload.notes, payload.base_revision)
-    except NotesConflict as c:
-        return conflict_response(c)
-    except ValueError as e:
-        raise HTTPException(status_code=404 if "No bundle" in str(e) else 422, detail=str(e))
 
 
 @router.get("/versions/{version_id}", response_model=BundleVersionDetailOut)
@@ -140,12 +126,10 @@ def get_bundle_version(version_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/versions/{version_id}/monument", response_model=BundleVersionDetailOut)
 def set_monument(version_id: int, payload: MonumentUpdate, db: Session = Depends(get_db)):
-    try:
+    with answer_errors():
         return bundle_service.set_monument(
             db, version_id=version_id, monument=payload.monument, note=payload.note, confirm=payload.confirm
         )
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 class Rename(BaseModel):
@@ -155,12 +139,8 @@ class Rename(BaseModel):
 @router.patch("/versions/{version_id}", response_model=BundleVersionDetailOut)
 def rename_version(version_id: int, payload: Rename, db: Session = Depends(get_db)):
     """Rename a 3MF version (what it's shown and downloaded as; it always stays a .3mf). Files stay put."""
-    try:
+    with answer_errors():
         return bundle_service.rename_version(db, version_id, payload.filename)
-    except LookupError:
-        raise HTTPException(status_code=404, detail="Bundle version not found")
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
 
 
 def _version_filename(db: Session, version_id: int) -> str:
@@ -171,10 +151,8 @@ def _version_filename(db: Session, version_id: int) -> str:
 
 @router.get("/versions/{version_id}/download/3mf")
 def download_3mf(version_id: int, db: Session = Depends(get_db)):
-    try:
+    with answer_errors(409):
         threemf_path, _ = bundle_service.download_bundle_version(db, version_id)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
     _require_readable(threemf_path)
     # downloaded under its current name (it may have been renamed since it was stored)
     return FileResponse(threemf_path, filename=download_name(_version_filename(db, version_id), threemf_path))
@@ -182,10 +160,8 @@ def download_3mf(version_id: int, db: Session = Depends(get_db)):
 
 @router.get("/versions/{version_id}/download/gcode")
 def download_gcode(version_id: int, db: Session = Depends(get_db)):
-    try:
+    with answer_errors(409):
         _, gcode_path = bundle_service.download_bundle_version(db, version_id)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
     if gcode_path is None:
         raise HTTPException(status_code=404, detail="No gcode file was uploaded for this version")
     _require_readable(gcode_path)

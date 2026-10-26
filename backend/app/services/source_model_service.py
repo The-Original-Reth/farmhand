@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..errors import NotFound
 from .. import notes as notes_helper
 from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from .. import scanner, storage
@@ -60,7 +61,7 @@ def add_source_model_version(
 ) -> SourceModelVersion:
     model = get_source_model(db, source_model_id)
     if model is None:
-        raise ValueError(f"No source model with id {source_model_id}")
+        raise NotFound(f"No source model with id {source_model_id}")
 
     next_version = (model.latest_version.version + 1) if model.latest_version else 1
     dest_dir = storage.source_model_version_dir(source_model_id, next_version)
@@ -93,7 +94,7 @@ def delete_source_model_version(db: Session, source_model_id: int, version: int)
     """Delete one version's file. The folder stays, even if that was its only version."""
     v = get_source_model_version(db, source_model_id, version)
     if v is None:
-        raise ValueError(f"No version {version} of source model {source_model_id}")
+        raise NotFound(f"No version {version} of source model {source_model_id}")
     file_path, thumbnail_path = v.file_path, v.thumbnail_path
     managed = storage.is_managed_layout(file_path, v.source_model_id, v.version)
     db.delete(v)
@@ -113,7 +114,7 @@ def delete_source_model(db: Session, source_model_id: int, cascade: bool = False
     """
     model = get_source_model(db, source_model_id)
     if model is None:
-        raise ValueError(f"No source model with id {source_model_id}")
+        raise NotFound(f"No source model with id {source_model_id}")
 
     exclusive = [
         b for b in bundle_service.list_bundles_for_source_model(db, source_model_id)
@@ -159,7 +160,7 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
     """
     v = get_source_model_version(db, source_model_id, version)
     if v is None:
-        raise ValueError(f"No version {version} of source model {source_model_id}")
+        raise NotFound(f"No version {version} of source model {source_model_id}")
     if v.source_model.file_type != SourceFileType.stl:
         return False
     if not os.path.isfile(v.file_path):
@@ -330,7 +331,7 @@ def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
 
     model = get_source_model(db, source_model_id)
     if model is None:
-        raise LookupError(f"No source model with id {source_model_id}")
+        raise NotFound(f"No source model with id {source_model_id}")
     file_type = model.file_type.value if hasattr(model.file_type, "value") else str(model.file_type)
     model.name = clean_file_name(name, extension=extension_of(model.name, TYPE_EXTENSIONS.get(file_type, ".stl")))
     db.commit()
@@ -342,7 +343,7 @@ def set_notes(db: Session, source_model_id: int, notes: str, base_revision: int)
     """Save the notes for a model (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
     model = get_source_model(db, source_model_id)
     if model is None:
-        raise ValueError(f"No source model with id {source_model_id}")
+        raise NotFound(f"No source model with id {source_model_id}")
     return notes_helper.save(
         db, owner=model, note_cls=SourceModelNote, owner_key="source_model_id", base_revision=base_revision,
         notes=notes, reload=lambda: get_source_model(db, source_model_id),

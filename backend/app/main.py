@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 from . import storage
 from .database import Base, SessionLocal, engine
 from .mount_supervisor import supervisor
+from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
 from .services import config_service, storage_settings_service
@@ -65,6 +66,12 @@ app.include_router(storage_settings.router)
 app.include_router(config_settings.router)
 app.include_router(moonraker.router)
 app.include_router(prusalink.router)
+
+
+@app.exception_handler(NotesConflict)
+async def notes_conflict_handler(request: Request, exc: NotesConflict):
+    # a notes save that lost to someone else's: 409 with the notes as they now stand (nothing was overwritten)
+    return conflict_response(exc)
 
 
 @app.exception_handler(MoonrakerError)

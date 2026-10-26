@@ -250,7 +250,7 @@ def test_unmonumenting_requires_confirmation(db_session, sample_3mf_paths):
 
 def test_mixed_plate_bundle_links_multiple_source_models(db_session, sample_3mf_paths):
     """The corrected many-to-many relationship — one 3MF, multiple source models."""
-    printer = printer_service.create_printer(
+    printer_service.create_printer(  # the printer the 3MF was sliced for has to be registered
         db_session, name="VT 1190", kind="Test printer", wired_ip=None, wireless_ip=None
     )
     frog_v = source_model_service.create_source_model(

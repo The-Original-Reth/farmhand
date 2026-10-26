@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { addSourceModelVersion, createSourceModel } from "../api.js";
+import { addSourceModelVersion, createSourceModel, errorText } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
@@ -44,7 +44,7 @@ export function UploadStlForm({ onClose }) {
       await refresh();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }

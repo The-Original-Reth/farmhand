@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..errors import NotFound
 from .. import notes as notes_helper
 from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from ..models import Bundle, BundleVersion, Printer, PrinterConnection, PrinterNote, PrusaLinkConnection
@@ -35,7 +36,7 @@ def create_printer(
 def set_decommissioned(db: Session, printer_id: int, decommissioned: bool) -> Printer:
     printer = get_printer(db, printer_id)
     if printer is None:
-        raise ValueError(f"No printer with id {printer_id}")
+        raise NotFound(f"No printer with id {printer_id}")
     printer.decommissioned = decommissioned
     db.commit()
     db.refresh(printer)
@@ -66,7 +67,7 @@ def find_by_profile_name(db: Session, profile_name: str) -> Printer | None:
 def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
     printer = get_printer(db, printer_id)
     if printer is None:
-        raise ValueError(f"No printer with id {printer_id}")
+        raise NotFound(f"No printer with id {printer_id}")
 
     new_name = changes.get("name")
     if new_name is not None and new_name != printer.name:
@@ -118,7 +119,7 @@ def set_notes(db: Session, printer_id: int, notes: str, base_revision: int) -> P
     """Save the notes for a printer (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
     printer = get_printer(db, printer_id)
     if printer is None:
-        raise ValueError(f"No printer with id {printer_id}")
+        raise NotFound(f"No printer with id {printer_id}")
     return notes_helper.save(
         db, owner=printer, note_cls=PrinterNote, owner_key="printer_id", base_revision=base_revision,
         notes=notes, reload=lambda: get_printer(db, printer_id),

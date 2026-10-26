@@ -10,6 +10,8 @@ from app.models import AppSetting, SourceFileType
 from app.services import bundle_service, printer_service, source_model_service
 from app.services import storage_settings_service as svc
 
+from . import factories as make
+
 
 @pytest.fixture()
 def share(tmp_path, monkeypatch):
@@ -27,26 +29,6 @@ def _folder(share, name):
     d = share / name
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def _model_with_file(db, name="Model.stl"):
-    return source_model_service.create_source_model(
-        db, name=name, file_type=SourceFileType.stl, file_obj=io.BytesIO(b"stl-bytes" * 50)
-    )
-
-
-def _bundle(db, threemf_path):
-    printer_service.create_printer(db, name="VT 1190", kind=None, wired_ip=None, wireless_ip=None)
-    model = source_model_service.create_source_model(db, name="B.stl", file_type=SourceFileType.stl)
-    with open(threemf_path, "rb") as f:
-        return bundle_service.create_bundle(
-            db,
-            source_model_ids=[model.id],
-            threemf_file_obj=f,
-            threemf_filename="a.3mf",
-            gcode_file_obj=io.BytesIO(b"G28\n"),
-            gcode_filename="a.gcode",
-        )
 
 
 # ------------------------------------------------------------------ choosing locations
@@ -114,14 +96,14 @@ def test_a_folder_outside_the_share_area_is_rejected(db_session, share, tmp_path
 
 
 def test_new_files_go_to_the_chosen_location_and_old_ones_stay_where_they_were(db_session, share):
-    old = _model_with_file(db_session, "Old.stl")
+    old = make.model(db_session, "Old.stl", data=b"stl-bytes" * 50)
     old_path = old.versions[0].file_path
 
     stl = _folder(share, "stl")
     out = svc.save(db_session, {"stl_path": str(stl)})
     assert out["outside"]["stl"] == 1  # the old file is now outside the selected location
 
-    new = _model_with_file(db_session, "New.stl")
+    new = make.model(db_session, "New.stl", data=b"stl-bytes" * 50)
     assert storage.is_inside(new.versions[0].file_path, stl)
     assert os.path.exists(old_path)  # untouched, still readable at its recorded path
 
@@ -150,8 +132,9 @@ def test_uploading_to_an_unmounted_chosen_folder_is_refused_and_nothing_is_writt
 
 
 def test_migrate_moves_everything_into_the_chosen_locations(db_session, share, sample_3mf_paths):
-    model = _model_with_file(db_session)
-    bundle = _bundle(db_session, sample_3mf_paths["shark_vt1190"])
+    model = make.model(db_session, data=b"stl-bytes" * 50)
+    make.printer(db_session)
+    bundle = make.bundle(db_session, sample_3mf_paths["shark_vt1190"], [make.model(db_session, "B.stl")])
     stl_file = model.versions[0].file_path
     v = bundle.versions[0]
     old_3mf, old_gcode = v.threemf_path, v.gcode_path
@@ -176,7 +159,7 @@ def test_migrate_moves_everything_into_the_chosen_locations(db_session, share, s
 
 
 def test_migrate_reports_a_file_that_isnt_where_the_database_says_without_failing(db_session, share):
-    model = _model_with_file(db_session)
+    model = make.model(db_session, data=b"stl-bytes" * 50)
     os.remove(model.versions[0].file_path)  # lost out from under us
 
     svc.save(db_session, {"stl_path": str(_folder(share, "stl"))})

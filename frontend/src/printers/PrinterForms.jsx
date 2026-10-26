@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { createPrinter, updatePrinter } from "../api.js";
+import { createPrinter, errorText, updatePrinter } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
@@ -103,7 +103,7 @@ export function AddPrinterForm({ onClose }) {
       await refresh();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }
@@ -152,7 +152,7 @@ export function EditPrinterForm({ printer, onClose }) {
       await refresh();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
     } finally {
       setSubmitting(false);
     }

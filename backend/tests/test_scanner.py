@@ -6,6 +6,8 @@ import pytest
 
 from app import scanner
 
+from .conftest import symlink
+
 
 def _touch(path, size=10):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -32,8 +34,8 @@ def tree(tmp_path):
     _touch(root / "stl")  # no extension, just a name
     for skipped in (".cache", "@eaDir", "#recycle", "@Recycle", "System Volume Information", "$RECYCLE.BIN"):
         _touch(root / skipped / "inside.stl")
-    os.symlink(root / "Frog.stl", root / "link.stl")  # a link to a file
-    os.symlink(root / "Animals", root / "linkdir")  # a link to a folder (would double-count its contents)
+    symlink(root / "Frog.stl", root / "link.stl")  # a link to a file
+    symlink(root / "Animals", root / "linkdir")  # a link to a folder (would double-count its contents)
     return root
 
 

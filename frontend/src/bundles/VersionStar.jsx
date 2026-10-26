@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
 import { c } from "../theme.js";
-import { setStarredVersion } from "../api.js";
+import { errorText, setStarredVersion } from "../api.js";
 import { useData } from "../data.jsx";
 
 // Stars are real metal colours, not theme roles: the initial version is silver and the starred version is gold in
@@ -38,7 +38,7 @@ export function VersionStar({ bundle, ver }) {
       await setStarredVersion({ bundleId: bundle.id, versionId: next });
       await refresh();
     } catch (err) {
-      setError(err.message || String(err));
+      setError(errorText(err));
     } finally {
       setPending(undefined);
     }

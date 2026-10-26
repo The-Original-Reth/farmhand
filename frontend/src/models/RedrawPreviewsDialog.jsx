@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { bustThumbnails, redrawPreview } from "../api.js";
+import { bustThumbnails, errorText, redrawPreview } from "../api.js";
 import { useData } from "../data.jsx";
 
 // Previews drawn by older versions of Farmhand (the first one thinned detailed models, leaving them
@@ -26,7 +26,7 @@ export function RedrawPreviewsDialog({ onClose }) {
         if (r.updated) redrawn += 1;
         else skipped += 1;
       } catch (e) {
-        failed.push({ name: m.name, error: e.message || String(e) });
+        failed.push({ name: m.name, error: errorText(e) });
       }
       setDone(i + 1);
     }

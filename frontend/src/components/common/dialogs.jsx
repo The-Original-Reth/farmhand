@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { c, fs, ui } from "../../theme.js";
+import { errorText } from "../../api.js";
 import { cancelButton, primaryButton, uiText } from "../../styles.js";
 
 // Every destructive action goes through this: say exactly what will happen,
@@ -16,7 +17,7 @@ export function ConfirmDialog({ title, confirmLabel = "Delete", tone = "danger",
       await onConfirm();
       onClose();
     } catch (e) {
-      setErrorMsg(e.message || String(e));
+      setErrorMsg(errorText(e));
       setSubmitting(false);
     }
   };

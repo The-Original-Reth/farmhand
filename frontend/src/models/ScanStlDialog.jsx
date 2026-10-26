@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
 import { cancelButton, monoText, uiText } from "../styles.js";
-import { importScannedFiles, scanStlFolder } from "../api.js";
+import { errorText, importScannedFiles, scanStlFolder } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { Badge } from "../components/common/ui.jsx";
@@ -26,7 +26,7 @@ export function ScanStlDialog({ onClose }) {
         setPhase("results");
       })
       .catch((e) => {
-        setError(e.message || String(e));
+        setError(errorText(e));
         setPhase("error");
       });
   }, []);
@@ -53,7 +53,7 @@ export function ScanStlDialog({ onClose }) {
         setProgress(Math.min(i + SCAN_BATCH, chosen.length));
       }
     } catch (e) {
-      stopped = e.message || String(e); // e.g. the share went away part-way; what was added is kept
+      stopped = errorText(e); // e.g. the share went away part-way; what was added is kept
     }
     await refresh().catch(() => {});
     setSummary({ added, failed, stopped });

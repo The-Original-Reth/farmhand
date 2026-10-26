@@ -7,6 +7,8 @@ import pytest
 
 from app import config, storage
 
+from .conftest import symlink
+
 
 @pytest.fixture(autouse=True)
 def isolated_storage(tmp_path, monkeypatch):
@@ -129,7 +131,7 @@ def test_a_symlink_cannot_be_used_to_escape_the_browse_root(isolated_storage, tm
     outside = tmp_path / "outside"
     outside.mkdir()
     link = isolated_storage / "link"
-    os.symlink(outside, link)
+    symlink(outside, link)
     with pytest.raises(ValueError, match="isn't under"):
         storage.validate_location(str(link))
 
@@ -180,7 +182,7 @@ def test_list_subdirs(isolated_storage, tmp_path):
     (data / "readme.txt").write_text("not a folder")
     outside = tmp_path / "outside"
     outside.mkdir()
-    os.symlink(outside, data / "sneaky")
+    symlink(outside, data / "sneaky")
 
     top = storage.list_subdirs(None)
     assert top["parent"] is None and top["path"] == top["root"]

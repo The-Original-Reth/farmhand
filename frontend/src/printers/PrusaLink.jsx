@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Upload } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, uiText } from "../styles.js";
-import { getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
+import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { StatTile } from "../components/common/ui.jsx";
-import { fmtDuration } from "../lib/format.js";
+import { fmtDuration, formatBytes } from "../lib/format.js";
 
 // ---- a PrusaLink printer (Prusa Core One, MK4, XL...) ----
 const PRUSALINK_LOOK_MS = 10000; // how often the open printer page looks at the printer
@@ -33,7 +33,7 @@ export function usePrusaLink(printerId, key, onChanged) {
     try {
       s = await getPrusaLinkStatus(id);
     } catch (e) {
-      s = { reachable: false, error: e.message || String(e) };
+      s = { reachable: false, error: errorText(e) };
     }
     if (current.current !== key) return;
     setStatus(s);
@@ -71,7 +71,6 @@ export function usePrusaLink(printerId, key, onChanged) {
 }
 
 const fmtTemp = (now, target) => (now == null ? "—" : `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ""}`);
-const fmtBytes = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 // Live status (state, temperatures, the print running), Farmhand's statistics for it, "Open PrusaLink" and "Send a print"
 export function PrusaLinkCard({ printer, pl }) {
@@ -189,7 +188,7 @@ export function PrusaLinkCard({ printer, pl }) {
             await pl.look();
           }}
         >
-          Send <b style={{ color: c.heading }}>{chosen.name}</b> ({fmtBytes(chosen.size)}) to <b style={{ color: c.heading }}>{printer.name}</b> and
+          Send <b style={{ color: c.heading }}>{chosen.name}</b> ({formatBytes(chosen.size)}) to <b style={{ color: c.heading }}>{printer.name}</b> and
           start printing it now? Make sure the bed is clear and the right filament is loaded. It goes on the printer's USB
           drive, replacing a file of the same name.
         </ConfirmDialog>

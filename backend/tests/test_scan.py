@@ -13,6 +13,8 @@ from app.models import SourceFileType, SourceModel, SourceModelVersion
 from app.services import source_model_service as svc
 from app.services import storage_settings_service as storage_settings
 
+from .conftest import symlink
+
 
 def _write_tetrahedron(path):
     """A small but valid binary STL, so thumbnailing really runs."""
@@ -276,7 +278,7 @@ def test_a_path_from_the_browser_is_never_trusted(db_session, stl_root, tmp_path
     outside = _write_tetrahedron(tmp_path / "elsewhere" / "Outside.stl")
     (stl_root / "readme.txt").write_text("x")
     link = stl_root / "link.stl"
-    os.symlink(good, link)
+    symlink(good, link)
     known = svc.create_source_model(db_session, name="K.stl", file_type=SourceFileType.stl, file_obj=io.BytesIO(b"x" * 50))
     deep = _write_tetrahedron(stl_root.joinpath(*["d" * 100] * 5) / "x.stl")  # a 500+ character path: it's filed under a short one now
 

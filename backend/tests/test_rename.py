@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 from urllib.parse import unquote
 
 import pytest
