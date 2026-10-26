@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from fastapi import FastAPI, Request
@@ -14,7 +15,7 @@ from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
-from .services import config_service, storage_settings_service
+from .services import config_service, source_model_service, storage_settings_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
 
@@ -87,6 +88,24 @@ async def storage_unavailable_handler(request: Request, exc: storage.StorageUnav
     return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
+def _keep_previews_beside_models() -> None:
+    """
+    Models from before previews were kept next to their files get a copy there: a minute after starting (once the
+    saved network shares are mounted), then every hour for shares that come back later. Only missing ones are written.
+    """
+    wait = 60
+    while True:
+        time.sleep(wait)
+        wait = 3600
+        try:
+            with SessionLocal() as db:
+                saved = source_model_service.save_missing_previews_beside(db)
+            if saved:
+                logger.info("Saved %d model preview(s) next to their files", saved)
+        except Exception:  # noqa: BLE001 - this must never stop; it tries again in an hour
+            logger.exception("Saving model previews next to their files failed")
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     # Simple create_all for now, appropriate for this stage. Move to real
@@ -119,6 +138,7 @@ def on_startup() -> None:
             # Changes to printers and models get copied to the settings folder in the background, and once now
             config_service.enable_background_mirror()
             config_service.request_mirror()
+            threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
             return
         except OperationalError as e:
             last_error = e

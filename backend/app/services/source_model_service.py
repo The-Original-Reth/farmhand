@@ -76,6 +76,7 @@ def add_source_model_version(
         if thumb_bytes:
             thumb_dir = storage.source_model_thumbnail_dir(source_model_id, next_version)
             thumbnail_path = storage.save_bytes(thumb_dir, "thumbnail.png", thumb_bytes)
+            storage.save_preview_beside(file_path, thumb_bytes)  # and a copy with the STL, on the NAS if it's there
 
     version = SourceModelVersion(
         source_model_id=source_model_id,
@@ -99,7 +100,8 @@ def delete_source_model_version(db: Session, source_model_id: int, version: int)
     managed = storage.is_managed_layout(file_path, v.source_model_id, v.version)
     db.delete(v)
     db.commit()
-    storage.delete_files([file_path], prune=managed)  # a scanned-in file's folders are the owner's, not ours
+    # a scanned-in file's folders are the owner's, not ours; its preview beside it goes with it
+    storage.delete_files([file_path, storage.preview_beside(file_path)], prune=managed)
     storage.delete_files([thumbnail_path])
 
 
@@ -141,7 +143,7 @@ def delete_source_model(db: Session, source_model_id: int, cascade: bool = False
     db.delete(model)
     db.commit()
     for file_path, managed, thumbnail_path in doomed:
-        storage.delete_files([file_path], prune=managed)
+        storage.delete_files([file_path, storage.preview_beside(file_path)], prune=managed)
         storage.delete_files([thumbnail_path])
     return deleted_bundle_ids
 
@@ -170,6 +172,7 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
     image = render_stl_thumbnail(v.file_path)
     if not image:
         return False  # keep whatever preview there was
+    storage.save_preview_beside(v.file_path, image)
     new_path = storage.save_bytes(storage.source_model_thumbnail_dir(source_model_id, version), "thumbnail.png", image)
     old_path = v.thumbnail_path
     if old_path != new_path:
@@ -178,6 +181,25 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
         if old_path:
             storage.delete_files([old_path])  # an older preview that lived beside the model file
     return True
+
+
+def save_missing_previews_beside(db: Session) -> int:
+    """
+    Copy each model's preview next to its file where there isn't one yet (models from before previews were kept with
+    their files). Files that can't be reached right now (a share that's offline) are just skipped. Returns how many.
+    """
+    saved = 0
+    for v in db.scalars(select(SourceModelVersion).where(SourceModelVersion.thumbnail_path.isnot(None))):
+        beside = storage.preview_beside(v.file_path)
+        if not beside or os.path.exists(beside) or not os.path.isfile(v.file_path) or not os.path.isfile(v.thumbnail_path):
+            continue
+        try:
+            png = Path(v.thumbnail_path).read_bytes()
+        except OSError:
+            continue
+        if storage.save_preview_beside(v.file_path, png):
+            saved += 1
+    return saved
 
 
 # ------------------------------------------------------------------ scanning the STL folder
@@ -255,7 +277,7 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
     db.add(model)
     db.flush()  # the id names the folder it will be filed in
 
-    thumbnail_path = None
+    thumbnail_path = thumb_bytes = None
     if file_type == "STL":
         thumb_bytes = render_stl_thumbnail(full)  # fails soft: no preview is better than no import
         if thumb_bytes:
@@ -279,6 +301,8 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
             )
         )
         db.commit()
+        if thumb_bytes:
+            storage.save_preview_beside(moved_to, thumb_bytes)
     except BaseException as e:
         db.rollback()
         if moved_to is not None:  # moved, but the record couldn't be saved: put the file back where it was

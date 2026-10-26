@@ -231,7 +231,8 @@ export function StorageSection({ onSettingsRestored }) {
           than silently filling the local disk.
         </div>
         <div style={{ marginTop: 6 }}>
-          <b style={{ color: c.textMuted }}>Thumbnails</b> always stay on the app's local disk, so browsing keeps working
+          <b style={{ color: c.textMuted }}>STL previews</b> are saved next to each STL file (Frog.stl gets Frog.stl.png), so
+          they're on the NAS with the model. The app keeps its own copy of every preview too, so browsing keeps working
           if a share is offline.
         </div>
       </div>

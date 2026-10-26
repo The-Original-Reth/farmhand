@@ -167,3 +167,19 @@ def test_migrate_reports_a_file_that_isnt_where_the_database_says_without_failin
 
     assert result["moved_stl"] == 0 and result["failed"] == []
     assert result["missing"] == ["Model.stl v1"]
+
+
+def test_moving_an_stl_moves_the_preview_next_to_it(db_session, share):
+    from .test_redraw_previews import _cube_stl_bytes
+
+    model = make.model(db_session, data=_cube_stl_bytes())
+    old = model.versions[0].file_path
+    assert os.path.exists(old + ".png")
+    stl = _folder(share, "stl")
+    svc.save(db_session, {"stl_path": str(stl)})
+    assert svc.migrate(db_session)["moved_stl"] == 1
+
+    db_session.expire_all()
+    new = source_model_service.get_source_model(db_session, model.id).versions[0].file_path
+    assert storage.is_inside(new + ".png", stl) and os.path.exists(new + ".png")  # it moved with its file
+    assert not os.path.exists(old + ".png") and not os.path.exists(old)

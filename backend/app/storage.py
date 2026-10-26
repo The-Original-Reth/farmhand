@@ -178,6 +178,31 @@ def save_upload(dest_dir: Path, filename: str, file_obj) -> str:
     return str(dest)
 
 
+def preview_beside(model_file: str | None) -> str | None:
+    """Where a model file's preview is kept next to it: "Frog.stl" -> "Frog.stl.png" (on the NAS if that's where it is)."""
+    return f"{model_file}.png" if model_file else None
+
+
+def save_preview_beside(model_file: str, png: bytes) -> str | None:
+    """
+    Keep a copy of a model's preview next to its file. The local copy is the one the page shows (so browsing keeps
+    working when a share is offline), so this fails soft: a folder that can't be written to just goes without.
+    """
+    target = Path(preview_beside(model_file))
+    part = target.with_name(target.name + ".part")
+    try:
+        part.write_bytes(png)
+        os.replace(part, target)
+        return str(target)
+    except OSError as e:
+        log.warning("Couldn't save the preview next to %s: %s", model_file, e)
+        try:
+            part.unlink()
+        except OSError:
+            pass
+        return None
+
+
 def save_bytes(dest_dir: Path, filename: str, data: bytes) -> str:
     dest = Path(dest_dir) / _safe_name(filename)
     dest.write_bytes(data)

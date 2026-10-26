@@ -174,6 +174,10 @@ def migrate(db: Session) -> dict:
             if new_file:
                 v.file_path = new_file
                 stale.append((old_file, managed_before))
+                old_preview = storage.preview_beside(old_file)
+                if os.path.isfile(old_preview):  # the preview kept with the file moves with it
+                    copies.append(storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png"))
+                    stale.append((old_preview, managed_before))
             new_thumb, old_thumb = relocate(
                 v.thumbnail_path, thumbs_root, lambda: storage.source_model_thumbnail_dir(sid, ver), copies
             )
