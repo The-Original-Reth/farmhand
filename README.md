@@ -1,8 +1,9 @@
 # Farmhand
 
-Read-only cataloging and versioning system for a 3D print farm's 3MF
-files. Backend (FastAPI/SQLAlchemy/PostgreSQL) in `backend/`, frontend
-(React/Vite) in `frontend/`.
+Cataloging and versioning for a 3D print farm: every STL model and every 3MF sliced from it, version by
+version, per printer — plus the printers themselves (Klipper/Moonraker and Prusa/PrusaLink): their print
+history, maintenance, energy use, and sending them a G-code to print. Backend (FastAPI/SQLAlchemy/PostgreSQL)
+in `backend/`, frontend (React/Vite) in `frontend/`.
 
 ## Run everything
 
@@ -12,7 +13,7 @@ docker compose up --build
 
 - Frontend: **http://localhost:3636**
 - API: **http://localhost:4545** (docs at `/docs`)
-- Postgres: `localhost:2727` (user/pass/db all `farmhand`)
+- Postgres: `localhost:2727` (user/pass/db all `farmhand`). Inside Docker the API reaches it at `db:5432`.
 
 The frontend starts up and immediately asks the API for printers/models/
 bundles — on a brand-new database that's an empty archive, which is a
@@ -28,63 +29,80 @@ Then refresh the frontend — 2 printers, 3 STL source models (with real
 auto-generated thumbnails), and 3 real 3MF bundles (including the
 mixed-plate Frog case) should appear.
 
-## What's wired up vs. what's still a stub
+To pick up code changes, rebuild: `docker compose up -d --build`. Your data is kept in Docker volumes.
 
-**Real, working, end to end:**
-- Browsing printers and STL folders, drilling into 3MF version history
-- The 3MF settings viewer (PrusaSlicer-tab-style) and the cross-file
-  compare/diff — both fetch real parsed settings from the API per version
-- Uploading a new STL/OBJ/STEP source model
-- Uploading a new 3MF bundle, either to an existing source model or a
-  newly-created one. Dropping the file reads its embedded printer profile:
-  if that printer is registered it's used automatically; if not, you choose
-  between creating it from the file (named exactly as the profile, so later
-  uploads match) or picking an existing printer. gcode is optional.
-- Downloading a bundle's `.3mf` (grays out once a version's files have
-  been pruned by the rolling window) and a source model's geometry file
-- Connecting a NAS (SMB or NFS) and choosing where files are stored — separately
-  for the STL files and for the 3MF/gcode files — entirely from the **Storage**
-  page: add the share, then pick or create folders on it (see "Network storage")
-- **Versions.** A newer 3MF or STL becomes a *new version* of the entry it replaces, shown
-  **above** the older ones (see "Versions" below).
-- **The Models list** is a two-column list (one column on a narrow screen), **sortable**
-  by name, date added, number of 3MF files, number of printers, or type, in either
-  direction. Names sort naturally (Part 2 before Part 10), and your choice is remembered.
-- **Solid STL previews.** Previews are drawn from *every* triangle of the model, in solid
-  shading, on white — binary and ASCII STL both. (Earlier versions thinned out detailed
-  models to save time, which left them see-through. After updating, press **Redraw
-  previews** on the Models page once to redraw the ones already made; your files aren't
-  touched.)
-- **Scan STL folder** (Models page): finds model files that were put into the STL
-  folder from outside Farmhand, and adds the ones you tick to the library (see
-  "Scanning the STL folder")
-- Editing a printer (name, type, IPs, decommissioned) from its page
+## Mockup mode (the real web UI on sample data)
+
+```bash
+cd frontend
+npm run mock
+```
+
+Opens **http://localhost:3637**: the real web interface, running on a built-in sample farm (printers including
+a Core One, models, 3MF files with versions and G-code, print history, energy, maintenance, notes). No backend,
+database or Docker is needed, and changes to the code show up live. Changes you make in the page (notes, stars,
+maintenance…) last until the mockup restarts; **Reset sample data** (in the sidebar) starts afresh. Things that
+need real files or hardware (uploading, mounting a NAS) answer "not available in the mockup". The fake backend
+lives in `frontend/mock/` and is never part of a build or the Docker image.
+
+## What's in it
+
+**Models and 3MF files**
+- Browsing STL folders and printers, and each 3MF's version history
+- Uploading an STL/OBJ/STEP model, or a 3MF to an existing model or a new one. Dropping a 3MF reads its
+  embedded printer profile: if that printer is registered it's used automatically; if not, you choose between
+  creating it from the file (named exactly as the profile, so later uploads match) or picking an existing one
+- **Version numbers in names.** A new 3MF version is saved as `Goldfish ver 1.3mf`, the next one as
+  `Goldfish ver 2.3mf` (a "ver N" the uploaded name already ends with is replaced, not added to). Files
+  uploaded before this keep their names.
+- **Renaming** a model or a 3MF with the pencil beside its name. The extension can't change (an STL stays
+  `.stl`, a 3MF stays `.3mf`); downloads use the new name. The stored file keeps its own name.
+- **Stars.** A 3MF's first version has a silver star. Any later version can be starred gold — one per 3MF,
+  clicking another moves it, clicking the gold one clears it.
+- **G-code** (see "G-code" below): uploaded for a 3MF, shown under it, downloaded, or sent to the printer
+- The 3MF settings viewer (PrusaSlicer-tab-style) and the compare/diff between any two versions
+- Downloading a 3MF (greyed out once a version's files are pruned by the rolling window), its G-code, and a
+  model's file
+- **The Models list** is sortable by name, date added, number of 3MF files, number of printers, or type, in
+  either direction. Names sort naturally (Part 2 before Part 10), and your choice is remembered.
+- **Solid STL previews**, drawn from every triangle; **Redraw previews** on the Models page redraws them all
+- **Scan STL folder** (see "Scanning the STL folder")
+- **Notes** on every model, printer and 3MF (see "Notes")
+- **Search**: the Models search box, and a search box on each printer's page for its 3MF files
 - Deleting — always behind a confirmation that says exactly what will go:
-  - a single 3MF version (trash icon on its row), or a whole 3MF with all its
-    versions (trash icon in its header). Deleting a bundle's last version
-    removes the whole bundle. Monument versions can be deleted too; the
-    dialog warns first.
-  - a single STL version (trash icon on its row — the folder stays, and can
-    have a file added again), or a whole STL folder ("Delete folder"). 3MFs
-    that were sliced *only* from that folder are deleted with it (the dialog
-    lists them); mixed-plate 3MFs that also use other models are kept, just
-    unlinked from it.
-  - Deleting removes the stored files and parsed settings for good.
-  Note: deleting a bundle's newest version and then uploading again reuses
-  that version number.
+  - a single 3MF version, or a whole 3MF with all its versions. Deleting a 3MF's last version removes the
+    whole 3MF. Monument versions can be deleted too; the dialog warns first.
+  - a single STL version (the folder stays, and can have a file added again), or a whole STL folder
+    ("Delete folder"). 3MFs sliced *only* from that model are deleted with it (the dialog lists them);
+    mixed-plate 3MFs that also use other models are kept, just unlinked from it.
+  - Deleting removes the stored files (and their previews) and parsed settings for good.
+
+**Printers** (see "Printers" below)
+- Sorted by name (A→Z or Z→A, remembered); add, edit and decommission
+- Each printer page: its details and notes, its 3MF files (with a search), its print history, and its
+  Moonraker or PrusaLink section — each folds away, and all start folded
+- **Moonraker (Klipper)**: connection, lifetime statistics, print history, energy, maintenance shared with
+  Mainsail, and the 1500-hour service
+- **PrusaLink (Prusa Core One, MK4, XL…)**: live status, sending a print, a print history Farmhand records,
+  maintenance and the 1500-hour service
+
+**Power** — the whole farm's energy use (see "Power")
+
+**Storage** — connecting a NAS (SMB or NFS) and choosing where STL and 3MF files go (see "Network storage"),
+and where a copy of Farmhand's settings and records is kept
 
 **Not wired into the UI yet** (the API supports these, nothing calls them):
-- Monument flagging/unflagging (`PATCH /bundles/versions/{id}/monument`)
-  — the UI shows the monument star read-only, no toggle control yet.
-- Deleting printers (retire one with "Decommissioned" instead — its history
-  stays). Printers can be added from the Printers page or straight from a
-  3MF upload.
+- Monument flagging/unflagging (`PATCH /bundles/versions/{id}/monument`) — the UI shows monuments read-only.
+- Deleting printers (retire one with "Decommissioned" instead — its history stays). Printers can be added
+  from the Printers page or straight from a 3MF upload.
 
 ## Project layout
 
 ```
-backend/     FastAPI + SQLAlchemy + the real 3MF parser — see backend/README.md
+backend/     FastAPI + SQLAlchemy + the 3MF parser — see backend/README.md
 frontend/    React + Vite, talks to the backend over HTTP
+  src/       the app: one folder per area (models, bundles, printers, power, storage, notes, compare, …)
+  mock/      the fake backend for mockup mode
 docker-compose.yml   brings up Postgres + both services together
 ```
 
@@ -99,26 +117,20 @@ cd frontend
 npm install
 VITE_API_BASE=http://localhost:4545 npm run dev
 ```
-Vite's dev server also runs on 3636 (configured in `vite.config.js`).
+Vite's dev server also runs on 3636 (configured in `vite.config.js`). For working on the interface without a
+backend at all, use mockup mode (above).
 
-## Honest limitations
+## Testing
 
-This was built and syntax/dependency-verified in a sandboxed environment
-with no network access — `npm install` and `docker build` were never
-actually run here. What WAS verified:
-- Every backend Python file compiles; the parser and versioning-engine
-  logic was traced by hand and partially executed directly (see
-  `backend/README.md`)
-- Every frontend file was bundled with esbuild (external-ing only the
-  two packages that need `npm install`, react and lucide-react) with
-  zero errors — this confirms all imports/exports resolve and the JSX is
-  syntactically valid across the whole dependency graph, which is most of
-  what a first `npm run dev` would catch
-
-What wasn't verified: an actual browser render, an actual network
-round-trip between frontend and backend, and `docker compose up` itself.
-Treat the first real run as the final check, same as the backend.
-
+- **Backend:** `cd backend` then `python -m pytest -q`. A handful of tests check Linux-only behaviour (POSIX
+  file permissions, symlinks, real mounts); on Windows they're skipped, saying why, and they run in the API's
+  Docker image (Linux). Printers are tested against stand-ins for Moonraker and PrusaLink
+  (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`).
+- **Frontend:** `npm run build` builds it; `npm run check:themes` checks every colour scheme's contrast.
+- **Real hardware:** NAS mounting (SMB and NFS) and Moonraker history/maintenance have been used against real
+  devices. The PrusaLink connection and sending G-code to a Klipper printer follow the printers' published APIs
+  but haven't been tried against a real printer yet; if one fails, its message on the page is the printer's own
+  answer, translated.
 
 ## Versions
 
@@ -142,32 +154,106 @@ upload buttons just work:
 Notes:
 - An entry is locked to its printer. A file sliced for a different printer is refused, with
   the reason, rather than quietly filed in the wrong place.
-- Only the most recent versions keep their full files (the 3MF and gcode); older ones keep
-  their parsed settings — and anything flagged as a monument is kept in full.
+- Only the most recent versions keep their full files (the 3MF and G-code); older ones keep
+  their parsed settings and preview — and anything flagged as a monument is kept in full.
 - A new version is not a monument; the first one an entry ever had is.
+- A 3MF version's name gets its version number: `Goldfish ver 2.3mf` (see "What's in it").
 
 **What you see.** Versions run newest to oldest, top to bottom, whatever order the server
 returns them in. Entries on a model page are grouped by printer, and under each printer the most
 recently updated comes first; a printer's own page lists its entries newest first.
 
-**Collapsing the versions.** Any entry with more than one version has a labelled button right
-under its newest version: **Hide 3 older versions** / **Show 3 older versions**. Collapsed, an entry
-shows just its **most recent 3MF** (with all its own buttons), and the header still says how many
-versions there are. Clicking the entry's header does the same. **Collapse all versions / Expand all
-versions** (beside *Upload 3MF*) does every entry on the page at once, on both the model page and the
-printer page.
-- An entry with up to 3 versions starts expanded; a longer history starts collapsed. Once you've
-  opened or closed an entry that choice is **remembered in this browser** — across reloads, and
+**Collapsing the versions.** Older versions start hidden: each entry shows its **most recent 3MF**, and a
+**Show 3 older versions** / **Hide 3 older versions** button beside **New version** opens them. Clicking the
+entry's header does the same. **Collapse all versions / Expand all versions** (beside *Upload 3MF*) does every
+entry on the page at once, on both the model page and the printer page.
+- Once you've opened or closed an entry that choice is **remembered in this browser** — across reloads, and
   between the model page and the printer page — even if the entry later gains versions.
 - A version you've picked for compare stays picked while its entry is collapsed (the tray still
   lists it, and the entry keeps its highlight).
-- Only entries that still exist are remembered; a damaged saved state is ignored.
+
+## G-code
+
+- **Upload G-code** sits next to **Upload 3MF** (on the Models list and on a model's page). Pick the 3MF it was
+  sliced from and drop in the `.gcode` or `.bgcode`: it goes with that 3MF's **newest version**, replacing a
+  G-code that version already had. A G-code can also come with a 3MF when the 3MF is uploaded.
+- It's named after its 3MF: `Goldfish ver 2.3mf` has `Goldfish ver 2.gcode`, whatever the slicer called it.
+- Each version that has one shows it on a line under the version, with **Download** and **Send to
+  &lt;printer&gt;** (the printer the 3MF was sliced for).
+- **Sending** asks first (it starts printing straight away), then:
+  - a **PrusaLink** printer gets the file on its USB drive and starts it; the print is added to its history
+    at once
+  - a **Klipper/Moonraker** printer gets it uploaded through Moonraker and started. A `.bgcode` (Prusa's binary
+    G-code) is refused for it, saying to slice a plain `.gcode`.
+  - A printer that's busy (printing, paused, waiting for someone) is refused and sent nothing.
+
+## Printers
+
+The **Printers** list is sorted by name (click *Name* to reverse it; remembered in this browser). A printer
+with notes has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
+and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink**
+section, its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
+notes), and its **print history**.
+
+**Connection.** In **Add printer** or **Edit**, choose **Mainsail (Moonraker / Klipper)** or **PrusaLink
+(Prusa Core One, MK4, XL…)**:
+- Moonraker: the address defaults to port 7125 of the printer's IP (wired preferred); an API key is only needed
+  if Moonraker asks for one.
+- PrusaLink: the address defaults to the printer's IP; the username is usually `maker`, and the password is
+  shown on the printer (Settings › Network › PrusaLink).
+API keys and passwords are stored as-is (they're needed for every call) but never sent back to the browser or
+written to the copy on the NAS.
+
+### Moonraker (Klipper) printers
+
+- **Connection and statistics:** whether Klipper is ready, the printer's lifetime totals, and **Open
+  Mainsail**. **Sync now** copies the latest print history; Farmhand also syncs every printer by itself every
+  15 minutes, so nobody has to open its page.
+- **Print history:** Farmhand's own copy (kept even if the printer forgets it), searchable and filterable by
+  completed / failed / cancelled, with each print's energy if the printer has a power meter.
+- **Energy:** from a Moonraker `[sensor]` with an energy value (e.g. a smart plug): the whole printer
+  (idle included, from meter readings Farmhand takes) and each print's own energy, **by month or by year**.
+- **Maintenance:** kept in Moonraker's own database in Mainsail's format, so Mainsail shows the same list.
+  Reminders by print time, filament and/or days, once or repeating; **Done** closes one (a repeating one starts
+  its next round).
+
+### PrusaLink printers (Prusa Core One…)
+
+- **Live status:** printing / idle / error, nozzle and bed temperatures, the running print's file, progress,
+  time printed and time left. The page looks every 10 seconds while it's open.
+- **Send a print:** a sliced `.bgcode`/`.gcode` from your computer, onto the printer's USB drive, started
+  straight away (asked first; refused while the printer is busy). G-code kept with a 3MF can be sent the same
+  way (see "G-code").
+- **Print history:** PrusaLink keeps none, so Farmhand records each print while it runs — every minute in the
+  background, and every few seconds while the page is open. A print that starts and ends between two looks is
+  missed; one whose end wasn't seen is recorded as completed if it was last seen at 99 % or more, else as
+  unknown. The printer's total print time is what Farmhand has recorded.
+- **Maintenance:** kept in Farmhand (PrusaLink has nowhere to keep it), counted against the recorded print
+  time. No filament reminders: PrusaLink doesn't report filament use.
+
+### The 1500-hour service
+
+Every printer has a service reminder kept in Farmhand: due once 1500 print hours have been added since the
+count started (the first sync) or since it was last marked **Done**. It has its own notes, and can be turned off
+for a printer.
+
+## Power
+
+**Power** (in the sidebar, under Storage) is the whole farm's energy use: every printer's power meter and print
+energy (the same figures as each printer's Energy section), added up.
+- **By month / By year**, a row per month or year: a bar split by printer (each in its own colour; hover for
+  each one's kWh), the farm's print energy and its total.
+- **Look at any month or year:** click its row, or use the **‹ ›** arrows and the list at the top. The tiles and
+  the **By printer** table follow it: the whole farm's use, print energy and number of prints, and for each
+  printer its meter reading, its use, its share of the farm's, and its print energy.
+- "≥" marks a period in which a meter's readings began part-way through. Printers with no figures say why
+  (e.g. PrusaLink doesn't report energy). Retired printers aren't counted.
 
 ## Appearance and settings
 
-**Appearance** is its own item in the left-hand menu, directly below **Storage**. The **Settings
+**Appearance** is its own item in the left-hand menu, below **Storage** and **Power**. The **Settings
 location** (where a copy of the settings is kept on the network) is on the Storage page itself,
-since it's about where things are stored. Nothing is on the right-hand side.
+since it's about where things are stored.
 
 ### Appearance
 
@@ -179,6 +265,8 @@ since it's about where things are stored. Nothing is on the right-hand side.
 - **Font:** Archivo, your system's font, Verdana, Arial, **Play**, or monospace. Play is bundled
   with the app (served by Farmhand itself, open-source OFL licence), so it needs no internet.
 - **Text size:** Small, Default, Large or Extra large (up to 25% bigger).
+- **3MF file name colour:** 3MF names are shown bold in a box; their colour is the scheme's own, a preset, or
+  any colour you pick.
 - **Reset to defaults** puts everything back. A preview shows the text and colours side by side.
 
 Changes are a **live preview**: the whole page takes on the new look the moment you choose it, but
@@ -193,7 +281,7 @@ The original grey is kept exactly as it was and isn't held to the check — its 
 measures about 2.6:1, which is why the default changed. The colours live in
 `frontend/src/palettes.js`, if you want to add a scheme.
 
-### Where settings are kept
+### Where settings and records are kept
 
 Farmhand's settings are: the look of the site (above), display preferences (the Models sort
 order), and your storage setup (the STL and 3MF folders and the network shares).
@@ -204,16 +292,20 @@ order), and your storage setup (the STL and 3MF folders and the network shares).
   folder…**, jump to a share and pick (or make) a folder. Farmhand writes
   `farmhand-config.json` there straight away and **after every change**, so the settings
   survive a rebuild or a lost database.
-- **Passwords are never written to it.** A share's login has to be known before the share can be
-  mounted, so it couldn't live only on the share anyway. The file lists each share's name,
-  address and login *name*; a restored share comes back saved but not connected, and says it
-  needs its password (use **Edit** on it).
+- **Printers and models are copied there too:** a file per printer in `printers/` (its setup, notes, print
+  history, energy readings, the 1500-hour service and Farmhand-kept maintenance) and a file per model in
+  `models/` (its notes, and each of its 3MF files' notes and starred version). **Restore** brings back what's
+  missing and never overwrites what's already there.
+- **Passwords are never written to it** — not a share's, not a Moonraker API key, not a PrusaLink password. A
+  restored share comes back saved but not connected and says it needs its password (use **Edit** on it); a
+  restored PrusaLink printer needs its password typed in again.
 - **A folder that already holds settings is never overwritten without asking.** Pointing at one
   asks: *Use those settings* (restore them), or *Replace with current settings*. Until you
   choose, nothing is changed. A damaged file can only be replaced.
 - **Restore** (also offered as a button once a folder is chosen) loads the file back: the look,
   the display preferences, the STL/3MF folders (even if their share hasn't reconnected yet — uploads
-  stay refused until it's really there) and any shares not already present. It's safe to run twice.
+  stay refused until it's really there), any shares not already present, and the printer and model records.
+  It's safe to run twice.
 - **If the share is down** the settings are still saved on the server, the page says the copy
   couldn't be updated and why, and nothing is written into the empty folder underneath. **Save a
   copy now** catches it up once the share is back.
@@ -223,12 +315,13 @@ The folder must be on a connected share or in Farmhand's own storage — the sam
 folders. After a total loss: re-add the share, choose the same settings folder, and pick *Use
 those settings*.
 
-## Notes on a model, and on a printer
+## Notes
 
-Every model page has a **Notes** section, between the model file and its 3MF files, for
-anything worth remembering about the model as a whole: print settings that work, where it came
-from, its licence, reminders. It's plain text (up to 20,000 characters); what you type is shown
-exactly as typed and never treated as HTML.
+Every **model**, **printer** and **3MF** has a **Notes** section, and so does each printer's **1500-hour
+service** — for anything worth remembering: print settings that work, where a model came from, its licence,
+a printer's nozzle and bed, what the service involves. It's plain text (up to 20,000 characters); what you
+type is shown exactly as typed and never treated as HTML. A 3MF's notes belong to the 3MF, shared by all its
+versions.
 
 - **Write, then press Save** (or **Ctrl/⌘ + S**). **Discard changes** goes back to what's saved.
   The box has an amber outline and says *Unsaved changes* while they're pending. Emptying the box
@@ -240,37 +333,16 @@ exactly as typed and never treated as HTML.
   it started from. If someone else saved in the meantime, nothing is overwritten: you see their
   version beside yours and choose *Use their version* or *Keep mine and overwrite theirs*. This
   holds even if two saves arrive at the very same instant — the database lets exactly one through.
-- **Notes start collapsed.** Every model's and printer's notes open folded down to their **first two
-  lines** (as they look on screen, so a long paragraph counts as two lines too, with a "…" when
-  there's more) — or *No notes yet. Click to add some.* when there are none. **Expand** (or clicking
-  the preview, which also puts the cursor in the notes) opens the editor; **Collapse** folds it again.
-  Each choice is remembered for that model or printer in that browser, so one you've opened stays
-  open and one you've never touched stays collapsed. Folding never loses anything: unsaved edits are
-  kept, and an unsaved draft restored from last time shows in the folded view — its first two lines,
-  flagged *Restored your unsaved draft … Expand to review* — so it can't be missed. Save/Discard work
-  as before once you expand. (A browser that holds a "folded" choice from an earlier version keeps it;
-  anything unreadable means folded.)
-- **Printers have the same notes.** A printer's page has the same **Notes** section, between its
-  details and its 3MF files — for nozzle and bed, calibration, maintenance, quirks, where it lives.
-  It is the very same component and the very same server rules as a model's, so everything above
-  holds for it: Save/Discard and Ctrl/⌘ + S, the kept draft and the close-tab warning, the
-  *someone else saved meanwhile* protection, the 20,000-character limit, and starting collapsed to
-  the first two lines. A printer and a model can share an id number; their drafts and folded state
-  are kept apart, and a printer's notes are never shown on a model's page or the other way round.
-  Printers with notes get the same small note icon in the **Printers** list. Editing or
-  decommissioning a printer leaves its notes alone. (Printer notes aren't searched: the search box
-  is for models.)
-- **Models with notes are marked** in the Models list (a small note icon; hover for the start of
-  them), and **notes are searched** by the Models search box.
-- Notes belong to the **model**, so they stay put when you upload a new version of the file. This
-  is separate from the short note you can add to each file *version* when uploading, which
-  describes that one file (and is where a scan records where a file was moved from).
-- Technically they're new tables (`source_model_notes`, and `printer_notes` for printers), added to
-  an existing database automatically on the next start. Nothing existing is altered, so upgrading
-  needs no migration. (Tested by building a database with the previous version and starting the new
-  one on it.) The save rules — tidying, the length limit and the conflict check, including the
-  guarantee that two people saving at the same instant can't both win — live in one place,
-  `backend/app/notes.py`, shared by both kinds.
+- **Notes start folded** to their **first line** (with a "…" when there's more); **Expand** (or clicking the
+  line) opens the editor, **Collapse** folds it again. Each choice is remembered for that model, printer or
+  3MF in that browser. Folding never loses anything: unsaved edits are kept, and a restored draft is flagged in
+  the folded view so it can't be missed.
+- Models and printers with notes have a small note icon in their lists. **Model and 3MF notes are searched**
+  by the Models search box (a printer's 3MF search looks at 3MF notes too).
+- A model's notes stay put when you upload a new version of its file. This is separate from the short note
+  you can add to each file *version* when uploading, which describes that one file.
+- Every kind of notes follows the same rules, kept in one place: `backend/app/notes.py` on the server and
+  `frontend/src/notes/` in the page.
 
 ## Searching models
 
@@ -281,8 +353,8 @@ the page to jump to it, and **Esc** to clear it (a second **Esc** leaves the box
   other: `great white` finds *GreatWhiteShark*; `frog shark` finds nothing.
 - **A word matches the model's own name first.** If not, it can match the name of one of its **3MF
   files**, a **printer** it's sliced for, the **slicer** (so `vt 1190`, `prusa` or `2.9.5` are
-  useful searches too), or its **notes** (see below). A model found that way says why under its
-  name — *Matched: printer VT 1190*, or *Matched: note “…keep supports off…”* — so a result is
+  useful searches too), or its **notes**. A model found that way says why under its name —
+  *Matched: printer VT 1190*, or *Matched: note “…keep supports off…”* — so a result is
   never a mystery.
 - The matched text is highlighted, the count reads *2 of 3 models*, and the search works together
   with the sort order.
@@ -304,14 +376,12 @@ two versions it's showing, lists every setting with the differences highlighted 
   differ", and **Previous / Next difference** step through the changes (wrapping round, scrolling
   each into view) from a header that stays visible as you scroll. *Only show differences* hides
   everything else.
-- Values are compared **exactly**, in full. (Earlier the comparison looked only at the first 70
-  characters of a long value, so a change further in — late in a start G-code or in the printer
-  notes — was reported as no difference.)
+- Variable names are shown exactly as in the 3MF, underscores and all.
+- Values are compared **exactly**, in full.
 - A version whose files were pruned ("params only") can still be compared: its settings are
-  kept even when its 3MF and gcode are not.
+  kept even when its 3MF and G-code are not.
 - Compare is between two: ticking a third replaces the oldest pick.
 - Deleting a version that's ticked removes it from the selection.
-- The Compare buttons are on the version rows themselves, on the model page and the printer page.
 
 ## Scanning the STL folder
 
@@ -323,7 +393,7 @@ library**.
 
 - **Each file is moved into Farmhand's own folder layout**, filed exactly the way
   an upload is: `<STL folder>/<number>/v1/<file name>`. A new model is made for it,
-  named after the file, with a preview (STL only) kept on local disk. It's a
+  named after the file, with a preview (STL only) next to it. It's a
   *move*, not a copy: the file is no longer where you left it, so there's only
   ever one copy. The dialog says so before you press the button.
 - **Your folders are left exactly as they are** — even if moving a file empties
@@ -348,7 +418,7 @@ library**.
   named. At most 500 files are listed per scan; move them and scan again for more.
 - If the STL folder is on a share that isn't connected, the scan says so rather
   than reporting "no new files".
-- **Deleting a model deletes its file**, as for any model in the library, and
+- **Deleting a model deletes its file** (and its preview), as for any model in the library, and
   tidies away the `<number>/v1` folders Farmhand made for it — but still never the
   folders it was originally in.
 - Files that an earlier version of Farmhand imported *in place* keep working where
@@ -380,13 +450,26 @@ computer running Farmhand, no files to edit.
    **Use this folder**. The two are chosen separately, and must be different folders.
 3. Files you already have stay where they are and keep working. The page shows
    how many are in a previous location and offers **Move them now** (copy → check
-   the size → update → delete the original).
+   the size → update → delete the original). Each file's preview moves with it.
 
 Farmhand remembers its shares and **re-mounts them after every restart**, and
 checks every 30 seconds — so a NAS that was switched on a little after the
 computer is picked up on its own. A share shows as *not connected*, with the
 reason, until it is; **Reconnect** retries immediately. (A wrong password is the
 one thing it won't keep retrying by itself, so it can't lock the NAS account.)
+
+### Previews live next to their files
+
+Every preview image is saved **next to its file**, so it's on the NAS with the file: `Frog.stl` has
+`Frog.stl.png`, `Goldfish ver 2.3mf` has `Goldfish ver 2.3mf.png`. A preview is written when its file arrives
+(upload, scan, Redraw previews), deleted with it, and moved with it when the folder changes. When old 3MF
+versions are pruned, the preview next to the pruned 3MF goes with it.
+
+Farmhand also keeps **its own copy of every preview on local disk** — that's what the page shows, so browsing
+keeps working while the NAS is off — and falls back to the one next to the file if its own is missing (e.g.
+after a rebuild). Files from before this get theirs copied next to them a minute after Farmhand starts, then
+hourly (for shares that come back later). A folder that can't be written to just goes without; the upload
+isn't affected.
 
 ### What this needs, and what it costs
 
@@ -425,7 +508,9 @@ share.
 | GET | `/settings/config/location/inspect?path=` | Look at a folder before choosing it: usable? already holds settings? |
 | PUT | `/settings/config/location` | Choose the network folder (`null` = none); `if_exists`: `ask` (default), `restore`, `overwrite` |
 | POST | `/settings/config/save-now` | Write the copy again now |
-| POST | `/settings/config/restore` | Load the settings file in the chosen folder |
+| POST | `/settings/config/restore` | Load the settings file (and printer and model records) in the chosen folder |
+
+The full API, with every route, is described at **http://localhost:4545/docs**.
 
 ### Safety checks
 
@@ -435,8 +520,8 @@ share.
 - Chosen folders get a small `.farmhand-storage` marker. If a share drops and
   leaves an empty folder behind, the marker is missing and uploads are refused
   with a clear message instead of quietly filling the local disk.
-- **Thumbnails always stay on local disk**, so browsing keeps working while the
-  NAS is off. Downloads and new uploads of the big files need it online.
+- Browsing keeps working while the NAS is off (previews are shown from Farmhand's own copy). Downloads, new
+  uploads and sending G-code need it online.
 - Deleting only ever removes the exact files Farmhand recorded — never a folder.
 
 ### What has been verified
