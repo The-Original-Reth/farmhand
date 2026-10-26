@@ -6,10 +6,12 @@ extension can change: a model stays .stl / .obj / .step and a 3MF stays .3mf.
 from __future__ import annotations
 
 import os
+import re
 
 MAX_LENGTH = 255
 _FORBIDDEN = set('/\\:*?"<>|')
 TYPE_EXTENSIONS = {"STL": ".stl", "OBJ": ".obj", "STEP": ".step"}
+_VERSION_SUFFIX = re.compile(r"\s*\bver\s*\d+$", re.IGNORECASE)  # " ver 2" at the end of a name
 
 
 def clean_file_name(raw: str, *, extension: str) -> str:
@@ -31,6 +33,17 @@ def clean_file_name(raw: str, *, extension: str) -> str:
     if len(name) > MAX_LENGTH:
         raise ValueError(f"The name can be at most {MAX_LENGTH} characters")
     return name
+
+
+def with_version(filename: str, version: int) -> str:
+    """
+    The name a new 3MF version is kept under: "Goldfish.3mf" uploaded as version 2 is "Goldfish ver 2.3mf". A "ver N"
+    the uploaded name already ends with is replaced, not added to (re-uploading a downloaded "Goldfish ver 1.3mf").
+    """
+    stem, ext = os.path.splitext(filename)
+    stem = _VERSION_SUFFIX.sub("", stem).rstrip(" ._-") or stem
+    suffix = f" ver {version}"
+    return stem[: MAX_LENGTH - len(suffix) - len(ext)] + suffix + ext
 
 
 def extension_of(name: str, fallback: str) -> str:

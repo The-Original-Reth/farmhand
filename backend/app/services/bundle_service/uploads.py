@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ...errors import NotFound
 from ... import storage
 from .. import printer_service
+from ...names import with_version
 from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
 from ...parsers import parse_3mf
 from .queries import get_bundle
@@ -217,6 +218,7 @@ def _store_version(
     monument: bool,
     monument_note: str | None,
 ) -> BundleVersion:
+    threemf_filename = with_version(threemf_filename, version_number)  # "Goldfish ver 2.3mf"
     written: list[str] = []  # everything put on disk so far, to undo if a later step fails
     try:
         # May raise StorageUnavailableError if the chosen 3MF folder looks unmounted

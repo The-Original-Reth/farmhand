@@ -6,6 +6,7 @@ newest first), job totals, and the database items Mainsail keeps maintenance rem
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 
@@ -23,6 +24,8 @@ class FakeMoonraker:
         self.requests: list[tuple[str, str]] = []
         # A power meter like a smart plug over MQTT: None = the printer has none (and no [sensor] at all)
         self.meter_kwh: float | None = None
+        self.print_state = "standby"  # Klipper's print_stats state: standby | printing | paused | complete | ...
+        self.uploads: list[dict] = []  # {filename, size, root, print}
 
     def add_job(self, job_id: str, filename: str, *, status="completed", start=1_700_000_000.0, print_s=3600.0,
                 filament_mm=5000.0, energy_kwh: float | None = None):
@@ -77,6 +80,10 @@ class FakeMoonraker:
             return self._ok({"count": len(self.jobs), "jobs": page})
         if path == "/server/database/item":
             return self._database(request)
+        if path == "/printer/objects/query":
+            return self._ok({"eventtime": 1.0, "status": {"print_stats": {"state": self.print_state}}})
+        if path == "/server/files/upload" and request.method == "POST":
+            return self._upload(request)
         return self._error(404, "Not Found")
 
     def _database(self, request: httpx.Request) -> httpx.Response:
@@ -102,6 +109,19 @@ class FakeMoonraker:
             value = self.db[ns].pop(key)
             return self._ok({"namespace": ns, "key": key, "value": value})
         return self._error(405, "Method not allowed")
+
+    def _upload(self, request: httpx.Request) -> httpx.Response:
+        # just enough multipart reading for a test: the file's name and size, and the root and print fields
+        body = request.content
+        name = re.search(rb'name="file"; filename="([^"]+)"', body).group(1).decode()
+        fields = dict(re.findall(rb'name="(root|print)"\r\n\r\n([^\r]*)', body))
+        part = body.split(b'filename="' + name.encode() + b'"', 1)[1].split(b"\r\n\r\n", 1)[1]
+        size = len(part[: part.index(b"\r\n--")])
+        self.uploads.append({"filename": name, "size": size, "root": fields.get(b"root", b"").decode(), "print": fields.get(b"print", b"").decode()})
+        if fields.get(b"print") == b"true":
+            self.print_state = "printing"
+        # an upload's answer isn't wrapped in "result"
+        return httpx.Response(201, json={"item": {"path": name, "root": "gcodes"}, "print_started": True, "action": "create_file"})
 
     @staticmethod
     def _ok(result) -> httpx.Response:

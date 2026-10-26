@@ -8,7 +8,7 @@ MoonrakerError that says plainly what went wrong (no address, can't connect, nee
 """
 from __future__ import annotations
 
-from .client import MoonrakerError, history_totals, job_totals, meter_reading, server_info
+from .client import MoonrakerError, history_totals, job_totals, meter_reading, print_state, server_info, upload_and_print
 from .history import archive_stats, sync_history
 from .maintenance import add_maintenance, delete_maintenance, list_maintenance, perform_maintenance, update_maintenance
 from .service import NotesConflict, service_done, set_service_enabled, set_service_notes
@@ -16,6 +16,6 @@ from .service import NotesConflict, service_done, set_service_enabled, set_servi
 __all__ = [
     "MoonrakerError", "NotesConflict",
     "add_maintenance", "archive_stats", "delete_maintenance", "history_totals", "job_totals", "list_maintenance",
-    "meter_reading", "perform_maintenance", "server_info", "service_done", "set_service_enabled", "set_service_notes",
+    "meter_reading", "perform_maintenance", "print_state", "upload_and_print", "server_info", "service_done", "set_service_enabled", "set_service_notes",
     "sync_history", "update_maintenance",
 ]

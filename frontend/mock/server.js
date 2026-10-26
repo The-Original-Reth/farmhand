@@ -230,6 +230,35 @@ export function mockApi() {
     return bundleOut(b);
   });
   on("GET", "/bundles/versions/:id", ({ id }) => versionDetail(version(id).v));
+  // A version's G-code: uploading one (named after its 3MF, replacing one it had), and sending it to its printer
+  on("PUT", "/bundles/versions/:id/gcode", ({ id }, body) => {
+    const { b, v } = version(id);
+    const name = body.files?.[0] || "";
+    const ext = (/\.(bgcode|gcode)$/i.exec(name) || [])[0];
+    if (!ext) throw new HttpError(422, "Pick a sliced .gcode or .bgcode file");
+    if (!v.full_files_retained) throw new HttpError(422, "This version's files were pruned, so it can't be given a G-code any more");
+    v.gcode_name = v.filename.replace(/\.3mf$/i, "") + ext.toLowerCase();
+    return bundleOut(b);
+  });
+  on("POST", "/bundles/versions/:id/print", ({ id }) => {
+    const { b, v } = version(id);
+    if (!v.gcode_name) throw new HttpError(422, "This version has no G-code to send. Upload one first.");
+    const p = printer(b.printer_id);
+    if (p.prusalink) {
+      if (liveJob(p)) throw new HttpError(409, `${p.name} isn't ready for a new print (it says PRINTING).`);
+      p.prusalink.finished = null;
+      (farm.jobs[p.id] ??= []).push({
+        job_id: `${42 + farm.jobs[p.id].length}@mock`, filename: v.gcode_name, status: "in_progress", start: nowUnix(), printS: 0, totalS: 0,
+        filamentMm: 0, kwh: null, avgW: null, maxW: null, estimated: 2.5 * HOUR,
+      });
+      return { sent: `usb/${v.gcode_name}`, printer: p.name };
+    }
+    if (/\.bgcode$/i.test(v.gcode_name)) throw new HttpError(422, `${p.name} runs Klipper, which can't print a .bgcode (Prusa's binary G-code). Slice a plain .gcode for it.`);
+    if (!p.moonraker) throw new HttpError(502, "This printer has no IP address or Moonraker address set.", { kind: "no_address" });
+    if (!p.moonraker.reachable) throw new HttpError(502, p.moonraker.error, { kind: p.moonraker.error_kind });
+    if ((farm.jobs[p.id] || []).some((j) => j.status === "in_progress")) throw new HttpError(409, `${p.name} is printing, so a new print can't be started.`);
+    return { sent: `gcodes/${v.gcode_name}`, printer: p.name };
+  });
   on("PATCH", "/bundles/versions/:id/monument", ({ id }, body) => {
     const { v } = version(id);
     if (body.monument) {

@@ -106,8 +106,8 @@ def test_a_models_file_holds_its_notes_and_its_3mf_files_notes_and_stars(db_sess
     records_service.write_all(db_session, tmp_path)
     doc = json.loads((tmp_path / "models" / "Frog.stl.json").read_text(encoding="utf-8"))
     assert doc["notes"] == "Print at 0.2" and doc["file_type"] == "STL"
-    assert doc["threemf"] == [{"printer": "VT 1190", "filenames": ["frog.3mf", "frog-v2.3mf"], "notes": "Textured sheet",
-                               "starred": {"version": 2, "filename": "frog-v2.3mf"}}]
+    assert doc["threemf"] == [{"printer": "VT 1190", "filenames": ["frog ver 1.3mf", "frog-v2 ver 2.3mf"], "notes": "Textured sheet",
+                               "starred": {"version": 2, "filename": "frog-v2 ver 2.3mf"}}]
 
 
 # ------------------------------------------------------------------ restoring: only ever adds

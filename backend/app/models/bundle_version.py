@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -56,3 +57,10 @@ class BundleVersion(Base):
     settings: Mapped[dict] = mapped_column(JSON, nullable=False)  # kept even when pruned
 
     bundle: Mapped["Bundle"] = relationship(back_populates="versions")
+
+    @property
+    def gcode_name(self) -> str | None:
+        """What its G-code is shown and downloaded as: its 3MF's name with the G-code's extension. None = it has none."""
+        if not self.gcode_path or not self.full_files_retained:
+            return None
+        return os.path.splitext(self.filename)[0] + os.path.splitext(self.gcode_path)[1]

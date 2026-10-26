@@ -6,6 +6,7 @@ import httpx
 from ...models import Printer
 
 TIMEOUT = httpx.Timeout(6.0, connect=3.0)
+UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big G-code over the printer's network takes a while
 
 # Tests swap this for an httpx.MockTransport that plays a fake Moonraker
 transport: httpx.BaseTransport | None = None
@@ -19,8 +20,9 @@ class MoonrakerError(Exception):
         self.kind = kind
 
 
-def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None):
-    """One Moonraker request; returns its "result"."""
+def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None,
+          files: dict | None = None, data: dict | None = None, timeout: httpx.Timeout = TIMEOUT, unwrapped: bool = False):
+    """One Moonraker request; returns its "result" (or, unwrapped, the whole answer: an upload's isn't wrapped)."""
     base = printer.moonraker_url
     if not base:
         raise MoonrakerError("no_address", "This printer has no IP address or Moonraker address set.")
@@ -28,8 +30,8 @@ def _call(printer: Printer, method: str, path: str, *, params: dict | None = Non
     if printer.connection_row and printer.connection_row.api_key:
         headers["X-Api-Key"] = printer.connection_row.api_key
     try:
-        with httpx.Client(timeout=TIMEOUT, transport=transport) as client:
-            r = client.request(method, f"{base}{path}", params=params, json=json, headers=headers)
+        with httpx.Client(timeout=timeout, transport=transport) as client:
+            r = client.request(method, f"{base}{path}", params=params, json=json, files=files, data=data, headers=headers)
     except httpx.TimeoutException:
         raise MoonrakerError("unreachable", f"Moonraker at {base} didn't answer in time. Is the printer on?") from None
     except httpx.HTTPError as e:
@@ -45,7 +47,7 @@ def _call(printer: Printer, method: str, path: str, *, params: dict | None = Non
     if r.status_code >= 400:
         raise MoonrakerError("bad_response", f"Moonraker answered {r.status_code}: {_error_text(r)}")
     try:
-        return r.json()["result"]
+        return r.json() if unwrapped else r.json()["result"]
     except (ValueError, KeyError, TypeError):
         raise MoonrakerError("bad_response", f"{base} answered, but not like Moonraker does.") from None
 
@@ -89,3 +91,18 @@ def meter_reading(printer: Printer) -> tuple[str, float] | None:
         if isinstance(value, (int, float)):
             return sensor_id, float(value)
     return None
+
+
+def print_state(printer: Printer) -> str | None:
+    """What Klipper is doing: "standby", "printing", "paused", "complete", "cancelled" or "error"."""
+    status = _call(printer, "GET", "/printer/objects/query", params={"print_stats": "state"}).get("status") or {}
+    return (status.get("print_stats") or {}).get("state")
+
+
+def upload_and_print(printer: Printer, filename: str, data: bytes) -> str:
+    """Put a G-code in the printer's gcodes folder (replacing one of the same name) and start it. Returns where it went."""
+    answer = _call(
+        printer, "POST", "/server/files/upload", files={"file": (filename, data)}, data={"root": "gcodes", "print": "true"},
+        timeout=UPLOAD_TIMEOUT, unwrapped=True,
+    )
+    return f"gcodes/{(answer.get('item') or {}).get('path') or filename}"

@@ -22,6 +22,7 @@ class BundleVersionOut(BaseModel):
     monument_note: str | None
     full_files_retained: bool
     thumbnail_path: str | None
+    gcode_name: str | None = None  # its G-code ("Goldfish ver 2.gcode"); null when it has none
     # settings intentionally omitted from the list view (can be large) —
     # fetch BundleVersionDetailOut for a single version to get it.
 

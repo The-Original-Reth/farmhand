@@ -8,6 +8,7 @@ import { useData } from "../data.jsx";
 import { BundleCard } from "../bundles/BundleCard.jsx";
 import { EditableName } from "../bundles/EditableName.jsx";
 import { Upload3mfForm } from "../bundles/Upload3mfForm.jsx";
+import { UploadGcodeForm } from "../bundles/UploadGcodeForm.jsx";
 import { VersionRow } from "../bundles/VersionRow.jsx";
 import { newestFirst, useBundleExpansion, VersionsToggleAll } from "../bundles/versions.jsx";
 import { Modal } from "../components/common/dialogs.jsx";
@@ -22,7 +23,7 @@ import { AddModelFileForm, DeleteModelButton } from "./modelActions.jsx";
 import { MODEL_SORTS, nameCollator, sortModelRows } from "./modelSort.js";
 import { NotesSection } from "../notes/NotesSection.jsx";
 
-function UploadBar({ onUploadStl, onUploadBundle, onScan, bundleLabel = "Upload 3MF" }) {
+function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleLabel = "Upload 3MF" }) {
   return (
     <div style={{ display: "flex", gap: 8 }}>
       {onScan && (
@@ -49,12 +50,22 @@ function UploadBar({ onUploadStl, onUploadBundle, onScan, bundleLabel = "Upload 
         <Upload size={13} />
         {bundleLabel}
       </button>
+      <button
+        data-testid="upload-gcode"
+        onClick={onUploadGcode}
+        disabled={!onUploadGcode}
+        title={onUploadGcode ? "Upload a G-code sliced from one of the 3MF files" : "Upload a 3MF first: a G-code goes with one"}
+        style={toolButton(13, onUploadGcode ? undefined : { opacity: 0.55, cursor: "default" })}
+      >
+        <Upload size={13} />
+        Upload G-code
+      </button>
     </div>
   );
 }
 
 export function ModelsSection({ path, setPath, compareSelection, toggleCompareSelect, sort, onSortChange }) {
-  const { sourceModels, printers, bundlesForModel, versionsByBundle, sourceVersionsByModel } = useData();
+  const { sourceModels, printers, bundles, bundlesForModel, versionsByBundle, sourceVersionsByModel } = useData();
   const view = path[1];
   const expansion = useBundleExpansion();
   const [sourceOverride, setSourceOverride] = useState(null); // null = the default for its length
@@ -179,6 +190,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
           <UploadBar
             onUploadStl={() => setUploadModal("stl")}
             onUploadBundle={() => setUploadModal("3mf")}
+            onUploadGcode={bundles.length ? () => setUploadModal("gcode") : null}
             onScan={() => setUploadModal("scan")}
           />
         </div>
@@ -234,6 +246,11 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
         {uploadModal === "3mf" && (
           <Modal title="Upload 3MF" onClose={() => setUploadModal(null)}>
             <Upload3mfForm onClose={() => setUploadModal(null)} />
+          </Modal>
+        )}
+        {uploadModal === "gcode" && (
+          <Modal title="Upload G-code" onClose={() => setUploadModal(null)}>
+            <UploadGcodeForm bundles={bundles} onClose={() => setUploadModal(null)} />
           </Modal>
         )}
         {uploadModal === "scan" && (
@@ -365,6 +382,16 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
               <Upload size={12} />
               Upload 3MF
             </button>
+            <button
+              data-testid="upload-gcode"
+              onClick={() => setUploadModal("gcode")}
+              disabled={modelBundles.length === 0}
+              title={modelBundles.length ? "Upload a G-code sliced from one of these 3MF files" : "Upload a 3MF first: a G-code goes with one"}
+              style={toolButton(12, { marginBottom: 10, ...(modelBundles.length ? {} : { opacity: 0.55, cursor: "default" }) })}
+            >
+              <Upload size={12} />
+              Upload G-code
+            </button>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -398,6 +425,11 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
       {uploadModal === "3mf" && (
         <Modal title="Upload 3MF" onClose={() => setUploadModal(null)}>
           <Upload3mfForm presetModel={model} onClose={() => setUploadModal(null)} />
+        </Modal>
+      )}
+      {uploadModal === "gcode" && (
+        <Modal title="Upload G-code" onClose={() => setUploadModal(null)}>
+          <UploadGcodeForm bundles={modelBundles} onClose={() => setUploadModal(null)} />
         </Modal>
       )}
     </div>

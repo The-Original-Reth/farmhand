@@ -3,6 +3,9 @@ renaming one, and deleting a version or a whole 3MF.
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -82,6 +85,30 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
             "happens to keep it downloadable"
         )
     return version.threemf_path, version.gcode_path
+
+
+GCODE_EXTENSIONS = (".gcode", ".bgcode")
+
+
+def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> BundleVersion:
+    """
+    Give a 3MF version its G-code (sliced from it), replacing one it already had. It's kept beside the version's 3MF.
+    """
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+    if os.path.splitext(filename or "")[1].lower() not in GCODE_EXTENSIONS:
+        raise ValueError("Pick a sliced .gcode or .bgcode file")
+    if not version.full_files_retained or not version.threemf_path:
+        raise ValueError("This version's files were pruned, so it can't be given a G-code any more")
+    old = version.gcode_path
+    new = storage.save_upload(Path(version.threemf_path).parent, filename, file_obj)
+    version.gcode_path = new
+    db.commit()
+    if old and os.path.abspath(old) != os.path.abspath(new):
+        storage.delete_files([old])
+    db.refresh(version)
+    return version
 
 
 def delete_bundle(db: Session, bundle_id: int) -> None:

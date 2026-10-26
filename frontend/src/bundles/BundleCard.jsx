@@ -1,14 +1,17 @@
+import { Fragment } from "react";
 import { c } from "../theme.js";
 import { uiText } from "../styles.js";
 
 import { NotesSection } from "../notes/NotesSection.jsx";
 import { DeleteBundleButton, NewVersionButton } from "./bundleActions.jsx";
+import { GcodeRow } from "./GcodeRow.jsx";
 import { VersionRow } from "./VersionRow.jsx";
 import { VersionsToggle } from "./versions.jsx";
 
 // One 3MF file as a card: a heading (`title` on the left, which also shows/hides the older versions when clicked; the
 // version count, that toggle, New version and Delete on the right), its newest version, the older ones when shown,
-// and its notes. The Printers page titles it by file name; a model's page by printer.
+// each version's G-code (if it has one) on a line under it, and its notes. The Printers page titles it by file name;
+// a model's page by printer.
 // versions: newest first. grow: the title takes all the room it can.
 export function BundleCard({ bundle: b, versions: vlist, title, grow = false, expansion, compareSelection, onToggleCompare }) {
   const latest = vlist[0];
@@ -52,8 +55,15 @@ export function BundleCard({ bundle: b, versions: vlist, title, grow = false, ex
         </div>
       </div>
       {latest && <VersionRow ver={latest} isLatest showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />}
+      {latest?.gcodeName && <GcodeRow ver={latest} bundle={b} />}
       <div id={`versions-${b.id}`}>
-        {isExpanded && rest.map((v) => <VersionRow key={v.v} ver={v} showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />)}
+        {isExpanded &&
+          rest.map((v) => (
+            <Fragment key={v.v}>
+              <VersionRow ver={v} showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />
+              {v.gcodeName && <GcodeRow ver={v} bundle={b} />}
+            </Fragment>
+          ))}
       </div>
       <div data-testid="bundle-notes" style={{ borderTop: `1px solid ${c.border}`, padding: "12px 16px 14px", background: c.panel }}>
         <NotesSection key={b.id} kind="bundle" owner={b} />

@@ -130,6 +130,8 @@ export function buildFarm() {
         uploaded_at: iso(NOW - (createdDaysAgo - i * 21) * DAY),
         monument: i === 0, monument_note: i === 0 ? "Initial upload" : null,
         full_files_retained: true, thumbnail_path: slug, thumb: slug,
+        // the newest version of each 3MF has its G-code, named after it
+        gcode_name: i === files.length - 1 ? f.name.replace(/\.3mf$/i, ".gcode") : null,
       };
     });
     return {

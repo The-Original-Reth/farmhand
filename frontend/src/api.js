@@ -109,6 +109,7 @@ export const normalizeBundle = (b) => {
     slicer: v.slicer_display_name,
     uploaded: v.uploaded_at,
     thumb: v.thumbnail_path ? `${API_BASE}/bundles/versions/${v.id}/thumbnail` : null,
+    gcodeName: v.gcode_name || null, // its G-code ("Goldfish ver 2.gcode"), if it has one
   })).sort((x, y) => y.v - x.v); // newest on top, whatever order the server used
   const latest = versions[0];
   return {
@@ -218,6 +219,15 @@ export const inspectThreemf = async (threemf) => {
     matchedPrinter: r.matched_printer ? normalizePrinter(r.matched_printer) : null,
   };
 };
+
+// A 3MF version's G-code (.gcode / .bgcode sliced from it), replacing one it had. Resolves to the whole 3MF.
+export const uploadGcode = (versionId, gcode) => {
+  const form = new FormData();
+  form.append("gcode", gcode);
+  return request(`/bundles/versions/${versionId}/gcode`, { method: "PUT", body: form });
+};
+// Sends a version's G-code to its 3MF's printer and starts it: { sent, printer }. 409 while the printer is busy.
+export const sendGcode = (versionId) => request(`/bundles/versions/${versionId}/print`, { method: "POST" });
 
 export const addBundleVersion = ({ bundleId, threemf, gcode }) => {
   const form = new FormData();
@@ -548,5 +558,6 @@ export const importScannedFiles = async (paths) => {
 // ---- download URLs (plain links; the browser handles the download) ----
 
 export const bundle3mfUrl = (versionId) => `${API_BASE}/bundles/versions/${versionId}/download/3mf`;
+export const bundleGcodeUrl = (versionId) => `${API_BASE}/bundles/versions/${versionId}/download/gcode`;
 export const sourceModelDownloadUrl = (modelId, version) =>
   `${API_BASE}/source-models/${modelId}/versions/${version}/download`;

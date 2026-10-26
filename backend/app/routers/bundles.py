@@ -13,7 +13,7 @@ from ..errors import answer_errors
 from ..names import download_name
 from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
 from ..schemas.notes import NotesConflictOut, NotesUpdate
-from ..services import bundle_service
+from ..services import bundle_service, send_print
 
 router = APIRouter(prefix="/bundles", tags=["bundles"])
 
@@ -167,6 +167,27 @@ def download_gcode(version_id: int, db: Session = Depends(get_db)):
     _require_readable(gcode_path)
     stem = os.path.splitext(_version_filename(db, version_id))[0]  # the gcode follows its 3MF's name
     return FileResponse(gcode_path, filename=download_name(stem, gcode_path))
+
+
+@router.put("/versions/{version_id}/gcode", response_model=BundleOut)
+def upload_gcode(version_id: int, gcode: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Give a 3MF version its G-code (a .gcode or .bgcode sliced from it), replacing one it already had."""
+    with answer_errors():
+        version = bundle_service.attach_gcode(db, version_id, gcode.file, gcode.filename)
+    return bundle_service.get_bundle(db, version.bundle_id)
+
+
+@router.post("/versions/{version_id}/print")
+def send_to_printer(version_id: int, db: Session = Depends(get_db)):
+    """
+    Send the version's G-code to the printer it was sliced for and start printing it. Refused (409) while that
+    printer is busy; a printer that can't be reached answers 502.
+    """
+    with answer_errors():
+        try:
+            return send_print.send_gcode(db, version_id)
+        except send_print.PrinterBusy as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
 
 
 @router.get("/versions/{version_id}/thumbnail")
