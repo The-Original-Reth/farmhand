@@ -38,7 +38,7 @@ def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
 
     for v in outside_window:
         if v.full_files_retained and not v.monument:
-            storage.delete_files([v.threemf_path, v.gcode_path])
+            storage.delete_files([v.threemf_path, v.gcode_path, storage.preview_beside(v.threemf_path)])
             v.threemf_path = None
             v.gcode_path = None
             v.full_files_retained = False
@@ -116,7 +116,7 @@ def delete_bundle(db: Session, bundle_id: int) -> None:
     bundle = get_bundle(db, bundle_id)
     if bundle is None:
         raise NotFound(f"No bundle with id {bundle_id}")
-    paths = [p for v in bundle.versions for p in (v.threemf_path, v.gcode_path, v.thumbnail_path)]
+    paths = [p for v in bundle.versions for p in (v.threemf_path, v.gcode_path, v.thumbnail_path, storage.preview_beside(v.threemf_path))]
     db.delete(bundle)  # cascades to its versions and its source-model links
     db.commit()
     # Files go after the DB commit: if this fails the records are already
@@ -139,7 +139,7 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
     if len(bundle.versions) <= 1:
         delete_bundle(db, bundle.id)
         return True
-    paths = [version.threemf_path, version.gcode_path, version.thumbnail_path]
+    paths = [version.threemf_path, version.gcode_path, version.thumbnail_path, storage.preview_beside(version.threemf_path)]
     if bundle.star_row is not None and bundle.star_row.version_id == version.id:
         bundle.star_row = None  # the starred version is going: so is its star
     db.delete(version)

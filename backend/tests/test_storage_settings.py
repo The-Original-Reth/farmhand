@@ -183,3 +183,18 @@ def test_moving_an_stl_moves_the_preview_next_to_it(db_session, share):
     new = source_model_service.get_source_model(db_session, model.id).versions[0].file_path
     assert storage.is_inside(new + ".png", stl) and os.path.exists(new + ".png")  # it moved with its file
     assert not os.path.exists(old + ".png") and not os.path.exists(old)
+
+
+def test_moving_a_3mf_moves_the_preview_next_to_it(db_session, share, sample_3mf_paths):
+    make.printer(db_session)
+    bundle = make.bundle(db_session, sample_3mf_paths["shark_vt1190"], [make.model(db_session, "B.stl")])
+    old = bundle.versions[0].threemf_path
+    assert os.path.exists(old + ".png")
+    threemf = _folder(share, "3mf")
+    svc.save(db_session, {"threemf_path": str(threemf)})
+    assert svc.migrate(db_session)["moved_threemf"] == 1
+
+    db_session.expire_all()
+    new = bundle_service.get_bundle(db_session, bundle.id).versions[0].threemf_path
+    assert storage.is_inside(new + ".png", threemf) and os.path.exists(new + ".png")  # it moved with its 3MF
+    assert not os.path.exists(old + ".png") and not os.path.exists(old)

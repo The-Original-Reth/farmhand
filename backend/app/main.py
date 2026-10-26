@@ -15,7 +15,7 @@ from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
-from .services import config_service, source_model_service, storage_settings_service
+from .services import config_service, previews, storage_settings_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
 
@@ -90,8 +90,9 @@ async def storage_unavailable_handler(request: Request, exc: storage.StorageUnav
 
 def _keep_previews_beside_models() -> None:
     """
-    Models from before previews were kept next to their files get a copy there: a minute after starting (once the
-    saved network shares are mounted), then every hour for shares that come back later. Only missing ones are written.
+    Models and 3MF files from before previews were kept next to their files get a copy there: a minute after starting
+    (once the saved network shares are mounted), then every hour for shares that come back later. Only missing ones
+    are written.
     """
     wait = 60
     while True:
@@ -99,11 +100,11 @@ def _keep_previews_beside_models() -> None:
         wait = 3600
         try:
             with SessionLocal() as db:
-                saved = source_model_service.save_missing_previews_beside(db)
+                saved = previews.save_missing_beside(db)
             if saved:
-                logger.info("Saved %d model preview(s) next to their files", saved)
+                logger.info("Saved %d preview(s) next to their files", saved)
         except Exception:  # noqa: BLE001 - this must never stop; it tries again in an hour
-            logger.exception("Saving model previews next to their files failed")
+            logger.exception("Saving previews next to their files failed")
 
 
 @app.on_event("startup")

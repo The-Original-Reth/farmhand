@@ -237,6 +237,9 @@ def _store_version(
             thumb_dir = storage.bundle_thumbnail_dir(bundle.id, version_number)
             thumbnail_path = storage.save_bytes(thumb_dir, "thumbnail.png", parsed.thumbnail_bytes)
             written.append(thumbnail_path)
+            beside = storage.save_preview_beside(threemf_path, parsed.thumbnail_bytes)  # with the 3MF, on the NAS if it's there
+            if beside:
+                written.append(beside)
 
         version = BundleVersion(
             bundle_id=bundle.id,

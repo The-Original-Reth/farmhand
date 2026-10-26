@@ -1,6 +1,7 @@
 """
-Each STL's preview is kept next to the STL file too ("Frog.stl.png"), so it sits with the model on the NAS: drawn
-with it, redrawn with it, deleted with it, and served from there if the app's own copy is gone.
+Every preview is kept next to its file too, so it sits with the file on the NAS: "Frog.stl" has "Frog.stl.png" and
+"Goldfish ver 2.3mf" has "Goldfish ver 2.3mf.png". Made with the file, deleted (or pruned) with it, moved with it,
+and served from there if the app's own copy is gone.
 """
 from __future__ import annotations
 
@@ -10,7 +11,10 @@ from pathlib import Path
 
 from app import storage
 from app.models import SourceFileType
+from app.services import previews
 from app.services import source_model_service as svc
+
+from . import factories as make
 
 from .test_redraw_previews import _cube_stl_bytes
 from .test_scan import _write_tetrahedron
@@ -66,9 +70,9 @@ def test_a_scanned_in_stl_gets_its_preview_next_to_it_where_it_was_moved(db_sess
 def test_existing_models_get_their_preview_copied_next_to_them_once(db_session):
     v = _model(db_session).versions[0]
     os.remove(v.file_path + ".png")  # as made before previews were kept with their files
-    assert svc.save_missing_previews_beside(db_session) == 1
+    assert previews.save_missing_beside(db_session) == 1
     assert Path(v.file_path + ".png").read_bytes() == Path(v.thumbnail_path).read_bytes()
-    assert svc.save_missing_previews_beside(db_session) == 0  # nothing more to do
+    assert previews.save_missing_beside(db_session) == 0  # nothing more to do
 
 
 def test_a_preview_that_cant_be_written_next_to_the_stl_doesnt_stop_the_upload(db_session, monkeypatch):
@@ -91,5 +95,65 @@ def test_the_preview_is_served_from_next_to_the_stl_when_the_apps_copy_is_gone(a
     assert api.get(url).content.startswith(PNG)
     for p in Path(storage.thumbnails_root()).rglob("thumbnail.png"):
         p.unlink()  # e.g. the app's disk was rebuilt; the NAS still has its copy
+    r = api.get(url)
+    assert r.status_code == 200 and r.content.startswith(PNG)
+
+
+# ------------------------------------------------------------------ 3MF files
+
+
+def _bundle(db, sample_3mf_paths):
+    make.printer(db)
+    return make.bundle(db, sample_3mf_paths["frog_vt1190"], filename="Goldfish.3mf")
+
+
+def test_an_uploaded_3mf_gets_its_preview_next_to_it(db_session, sample_3mf_paths):
+    v = _bundle(db_session, sample_3mf_paths).versions[0]
+    beside = Path(v.threemf_path + ".png")
+    assert beside.name == "Goldfish ver 1.3mf.png" and beside.parent == Path(v.threemf_path).parent
+    assert beside.read_bytes() == Path(v.thumbnail_path).read_bytes() and beside.read_bytes().startswith(PNG)
+
+
+def test_deleting_a_3mf_version_or_the_whole_3mf_deletes_the_preview_next_to_it(db_session, sample_3mf_paths):
+    from app.services import bundle_service
+
+    b = _bundle(db_session, sample_3mf_paths)
+    v2 = make.add_version(db_session, b, sample_3mf_paths["frog_vt1190"], filename="Goldfish.3mf")
+    v2_3mf, v1_3mf = v2.threemf_path, b.versions[-1].threemf_path
+    bundle_service.delete_bundle_version(db_session, v2.id)
+    assert not os.path.exists(v2_3mf + ".png") and not os.path.exists(Path(v2_3mf).parent)  # folder tidied too
+    bundle_service.delete_bundle(db_session, b.id)
+    assert not os.path.exists(v1_3mf + ".png") and not os.path.exists(v1_3mf)
+
+
+def test_a_pruned_version_loses_the_preview_next_to_its_3mf_but_keeps_showing_its_own(db_session, sample_3mf_paths, monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config.settings, "full_file_version_window", 1)
+    b = _bundle(db_session, sample_3mf_paths)  # v1: a monument, never pruned
+    v2 = make.add_version(db_session, b, sample_3mf_paths["frog_vt1190"], filename="Goldfish.3mf")
+    v2_3mf = v2.threemf_path
+    make.add_version(db_session, b, sample_3mf_paths["frog_vt1190"], filename="Goldfish.3mf")  # pushes v2 out of the window
+    db_session.refresh(v2)
+    assert not v2.full_files_retained and not os.path.exists(v2_3mf) and not os.path.exists(v2_3mf + ".png")
+    assert os.path.isfile(v2.thumbnail_path)  # the preview itself survives pruning, as always
+
+
+def test_existing_3mfs_get_their_preview_copied_next_to_them(db_session, sample_3mf_paths):
+    v = _bundle(db_session, sample_3mf_paths).versions[0]
+    os.remove(v.threemf_path + ".png")  # as uploaded before previews were kept with their files
+    assert previews.save_missing_beside(db_session) == 1
+    assert Path(v.threemf_path + ".png").read_bytes() == Path(v.thumbnail_path).read_bytes()
+
+
+def test_a_3mf_preview_is_served_from_next_to_the_3mf_when_the_apps_copy_is_gone(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    mid = api.post("/source-models", data={"name": "Goldfish.stl", "file_type": "STL"}, files={"file": ("Goldfish.stl", b"x" * 64)}).json()["id"]
+    with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
+        b = api.post("/bundles", data={"source_model_ids": f"[{mid}]", "printer_id": str(pid)}, files={"threemf": ("Goldfish.3mf", f.read())}).json()
+    url = f"/bundles/versions/{b['versions'][0]['id']}/thumbnail"
+    assert api.get(url).content.startswith(PNG)
+    for p in (Path(storage.thumbnails_root()) / "bundles").rglob("thumbnail.png"):
+        p.unlink()  # the app's disk was rebuilt; the NAS still has its copy
     r = api.get(url)
     assert r.status_code == 200 and r.content.startswith(PNG)

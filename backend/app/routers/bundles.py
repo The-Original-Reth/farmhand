@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .. import storage
 from ..database import get_db
 from ..errors import answer_errors
 from ..names import download_name
@@ -200,9 +201,13 @@ def get_version_thumbnail(version_id: int, db: Session = Depends(get_db)):
     from ..models import BundleVersion
 
     version = db.get(BundleVersion, version_id)
-    if version is None or not version.thumbnail_path:
+    # the app's own copy, else the one kept next to the 3MF (e.g. after the app's disk was rebuilt)
+    path = None
+    if version is not None:
+        path = version.thumbnail_path if version.thumbnail_path and os.path.isfile(version.thumbnail_path) else storage.preview_beside(version.threemf_path)
+    if not path or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="No thumbnail for this version")
-    return FileResponse(version.thumbnail_path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
 
 # ---- deletion: permanent, so each requires an explicit confirm=true ----

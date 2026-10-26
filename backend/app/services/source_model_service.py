@@ -183,25 +183,6 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
     return True
 
 
-def save_missing_previews_beside(db: Session) -> int:
-    """
-    Copy each model's preview next to its file where there isn't one yet (models from before previews were kept with
-    their files). Files that can't be reached right now (a share that's offline) are just skipped. Returns how many.
-    """
-    saved = 0
-    for v in db.scalars(select(SourceModelVersion).where(SourceModelVersion.thumbnail_path.isnot(None))):
-        beside = storage.preview_beside(v.file_path)
-        if not beside or os.path.exists(beside) or not os.path.isfile(v.file_path) or not os.path.isfile(v.thumbnail_path):
-            continue
-        try:
-            png = Path(v.thumbnail_path).read_bytes()
-        except OSError:
-            continue
-        if storage.save_preview_beside(v.file_path, png):
-            saved += 1
-    return saved
-
-
 # ------------------------------------------------------------------ scanning the STL folder
 
 SCAN_NOTE = "Found by scanning the STL folder"

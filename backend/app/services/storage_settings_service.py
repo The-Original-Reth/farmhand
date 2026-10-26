@@ -216,6 +216,10 @@ def migrate(db: Session) -> dict:
                     v.threemf_path = new_3mf
                     stale.append(old_3mf)
                     moved_any = True
+                    old_preview = storage.preview_beside(old_3mf)
+                    if os.path.isfile(old_preview):  # the preview kept with the 3MF moves with it
+                        copies.append(storage.copy_verified(old_preview, Path(new_3mf).parent, name=Path(new_3mf).name + ".png"))
+                        stale.append(old_preview)
                 new_gcode, old_gcode = relocate(
                     v.gcode_path, threemf_root, lambda: storage.bundle_version_dir(bid, ver), copies
                 )
