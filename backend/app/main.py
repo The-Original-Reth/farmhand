@@ -31,7 +31,7 @@ app = FastAPI(
 )
 
 # Dev-friendly CORS: the frontend runs on its own port (3636), a different
-# origin from the API (5546), so the browser needs explicit permission.
+# origin from the API (4545), so the browser needs explicit permission.
 # Matching by regex (any host, port 3636) rather than a fixed "localhost"
 # origin, since this is commonly accessed by its LAN IP or hostname (e.g.
 # a Raspberry Pi reached from another machine) rather than literally

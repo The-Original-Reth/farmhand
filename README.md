@@ -11,8 +11,8 @@ docker compose up --build
 ```
 
 - Frontend: **http://localhost:3636**
-- API: **http://localhost:5546** (docs at `/docs`)
-- Postgres: `localhost:5432` (user/pass/db all `farmhand`)
+- API: **http://localhost:4545** (docs at `/docs`)
+- Postgres: `localhost:2727` (user/pass/db all `farmhand`)
 
 The frontend starts up and immediately asks the API for printers/models/
 bundles — on a brand-new database that's an empty archive, which is a
@@ -91,13 +91,13 @@ docker-compose.yml   brings up Postgres + both services together
 ## Local dev without Docker
 
 Backend: see `backend/README.md`'s non-Docker instructions (remember to
-pass `--port 5546`).
+pass `--port 4545`).
 
 Frontend:
 ```bash
 cd frontend
 npm install
-VITE_API_BASE=http://localhost:5546 npm run dev
+VITE_API_BASE=http://localhost:4545 npm run dev
 ```
 Vite's dev server also runs on 3636 (configured in `vite.config.js`).
 

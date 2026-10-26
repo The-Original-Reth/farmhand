@@ -58,8 +58,8 @@ docker compose up --build
 ```
 
 That's it — this starts Postgres and the API together, with the API on
-**http://localhost:5546**. Interactive API docs (Swagger UI) are at
-http://localhost:5546/docs. Data persists in named Docker volumes
+**http://localhost:4545**. Interactive API docs (Swagger UI) are at
+http://localhost:4545/docs. Data persists in named Docker volumes
 (`db_data` for Postgres, `storage_data` for uploaded files) across
 restarts; `docker compose down -v` wipes both if you want a clean slate.
 
@@ -89,12 +89,12 @@ pip install -r requirements.txt
 createdb farmhand   # needs a local Postgres instance
 
 cp .env.example .env
-# edit .env if your Postgres isn't at the default localhost:5432 farmhand/farmhand
+# edit .env if your Postgres isn't at the default localhost:2727 farmhand/farmhand
 
-uvicorn app.main:app --reload --port 5546
+uvicorn app.main:app --reload --port 4545
 ```
 
-Then open http://localhost:5546/docs for interactive API docs (FastAPI's
+Then open http://localhost:4545/docs for interactive API docs (FastAPI's
 auto-generated Swagger UI) — every endpoint below is browsable/testable
 there without writing any client code.
 

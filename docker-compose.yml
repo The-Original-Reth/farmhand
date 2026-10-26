@@ -11,7 +11,7 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"  # optional — lets you psql in from the host
+      - "2727:5432"  # optional — lets you psql in from the host, at localhost:2727
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U farmhand -d farmhand"]
       interval: 5s
@@ -45,10 +45,10 @@ services:
       # Shares you add are mounted under /data/nas, and the Storage page may only pick folders under /data
       FARMHAND_STORAGE_BROWSE_ROOT: /data
       FARMHAND_HOST: 0.0.0.0
-      FARMHAND_PORT: 5546
+      FARMHAND_PORT: 4545
       FARMHAND_FULL_FILE_VERSION_WINDOW: 5
     ports:
-      - "5546:5546"
+      - "4545:4545"
     volumes:
       - storage_data:/data/storage
 

@@ -18,9 +18,9 @@ COPY pyproject.toml .
 
 # Overridable at runtime via FARMHAND_PORT (docker-compose sets this).
 ENV FARMHAND_HOST=0.0.0.0
-ENV FARMHAND_PORT=5546
+ENV FARMHAND_PORT=4545
 ENV FARMHAND_STORAGE_ROOT=/data/storage
 
-EXPOSE 5546
+EXPOSE 4545
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${FARMHAND_PORT:-5546}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${FARMHAND_PORT:-4545}"]

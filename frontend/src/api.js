@@ -2,7 +2,7 @@
 // "localhost" — that breaks the moment this is viewed from a different
 // machine than the one running Docker (e.g. a phone/laptop hitting a
 // Raspberry Pi's LAN IP). VITE_API_BASE still overrides this when set.
-const defaultApiBase = `${window.location.protocol}//${window.location.hostname}:5546`;
+const defaultApiBase = `${window.location.protocol}//${window.location.hostname}:4545`;
 export const API_BASE = import.meta.env.VITE_API_BASE || defaultApiBase;
 
 async function request(path, options = {}) {
