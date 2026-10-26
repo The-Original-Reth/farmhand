@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Archive, HardDrive, Layers, Palette, Printer } from "lucide-react";
+import { Archive, HardDrive, Layers, Palette, Printer, Zap } from "lucide-react";
 import { c, fs, ui } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance.js";
@@ -13,6 +13,7 @@ import { Modal } from "./components/common/dialogs.jsx";
 import { ModelsSection } from "./models/ModelsSection.jsx";
 import { loadModelSort, normalizeModelSort, saveModelSort } from "./models/modelSort.js";
 import { PrintersSection } from "./printers/PrintersSection.jsx";
+import { PowerSection } from "./power/PowerSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
 
 function Crumb({ items, onJump }) {
@@ -289,7 +290,7 @@ function FarmhandApp() {
   };
 
   const path =
-    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: section === "appearance" ? "Appearance" : "Storage" }];
+    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: { appearance: "Appearance", power: "Power" }[section] || "Storage" }];
   const setPath = section === "printers" ? setPrinterPath : section === "models" ? setModelPath : () => {};
   const diffLeft = versionIndex[compareSelection[0]];
   const diffRight = versionIndex[compareSelection[1]];
@@ -372,6 +373,7 @@ function FarmhandApp() {
         {navItem("models", "Models", Layers, sourceModels.length)}
         {navItem("printers", "Printers", Printer, printers.length)}
         {navItem("storage", "Storage", HardDrive, "")}
+        {navItem("power", "Power", Zap, "")}
         {navItem("appearance", "Appearance", Palette, "")}
         <div style={{ borderTop: `1px solid ${c.border}`, marginTop: 12, paddingTop: 12 }}>
           <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
@@ -411,6 +413,8 @@ function FarmhandApp() {
               sort={modelSort}
               onSortChange={changeModelSort}
             />
+          ) : section === "power" ? (
+            <PowerSection />
           ) : section === "appearance" ? (
             <AppearancePage
               appearance={preview || appearance}

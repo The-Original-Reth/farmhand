@@ -6,15 +6,15 @@ import { errorText, getEnergy } from "../api.js";
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtKwh, fmtWhen } from "../lib/format.js";
 
-const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-const periodLabel = (key, by) =>
+export const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+export const periodLabel = (key, by) =>
   by === "year" ? key : new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
 
 // Totals per month or year, in this browser's time zone. Prints: each print's energy, by when it started. Whole
 // printer: the meter's rise between one reading and the next, counted in the period of the later reading (a meter
 // that went backwards was reset, so its new value is what it used since). The period holding the first reading only
 // covers part of it, and is marked so.
-function energyByPeriod({ jobs, readings }, by) {
+export function energyByPeriod({ jobs, readings }, by) {
   const rows = {};
   const row = (key) => (rows[key] ??= { key, prints: 0, printCount: 0, whole: null, partial: false });
   jobs.forEach(([at, kwh]) => {
