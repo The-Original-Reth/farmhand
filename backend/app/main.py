@@ -12,8 +12,10 @@ from . import storage
 from .database import Base, SessionLocal, engine
 from .mount_supervisor import supervisor
 from .printer_poller import poller
-from .routers import bundles, config_settings, moonraker, printers, source_models, storage_settings
-from .services import config_service, moonraker_service, storage_settings_service
+from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
+from .services import config_service, storage_settings_service
+from .services.moonraker import MoonrakerError
+from .services.prusalink import PrusaLinkError
 
 logger = logging.getLogger("farmhand.startup")
 
@@ -62,10 +64,12 @@ app.include_router(bundles.router)
 app.include_router(storage_settings.router)
 app.include_router(config_settings.router)
 app.include_router(moonraker.router)
+app.include_router(prusalink.router)
 
 
-@app.exception_handler(moonraker_service.MoonrakerError)
-async def moonraker_error_handler(request: Request, exc: moonraker_service.MoonrakerError):
+@app.exception_handler(MoonrakerError)
+@app.exception_handler(PrusaLinkError)
+async def printer_error_handler(request: Request, exc: MoonrakerError | PrusaLinkError):
     # the printer couldn't be reached or refused: a clear 502 saying which, not a generic 500
     return JSONResponse(status_code=502, content={"detail": str(exc), "kind": exc.kind})
 

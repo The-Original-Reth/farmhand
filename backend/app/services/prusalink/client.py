@@ -1,0 +1,103 @@
+"""The HTTP side: requests to a printer's PrusaLink (its local API, version 1), logged in with HTTP digest auth."""
+from __future__ import annotations
+
+from urllib.parse import quote
+
+import httpx
+
+from ...models import Printer
+
+TIMEOUT = httpx.Timeout(6.0, connect=3.0)
+UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big .bgcode over the printer's network takes a while
+
+# Tests swap this for an httpx.MockTransport that plays a fake PrusaLink
+transport: httpx.BaseTransport | None = None
+
+
+class PrusaLinkError(Exception):
+    """kind: no_address | unreachable | unauthorized | not_found | busy | bad_response"""
+
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+
+
+def _call(printer: Printer, method: str, path: str, *, content: bytes | None = None, headers: dict | None = None,
+          timeout: httpx.Timeout = TIMEOUT) -> httpx.Response:
+    base = printer.prusalink_url
+    if not base:
+        raise PrusaLinkError("no_address", "This printer has no IP address or PrusaLink address set.")
+    link = printer.prusalink_row
+    auth = httpx.DigestAuth(link.username or "maker", link.password or "") if link and link.password else None
+    try:
+        with httpx.Client(timeout=timeout, transport=transport, auth=auth) as client:
+            r = client.request(method, f"{base}{path}", content=content, headers=headers)
+    except httpx.TimeoutException:
+        raise PrusaLinkError("unreachable", f"PrusaLink at {base} didn't answer in time. Is the printer on?") from None
+    except httpx.HTTPError as e:
+        raise PrusaLinkError("unreachable", f"Couldn't connect to PrusaLink at {base} ({type(e).__name__}).") from None
+    if r.status_code == 401:
+        raise PrusaLinkError(
+            "unauthorized",
+            "PrusaLink refused the login. Check the username (usually maker) and the password shown on the printer "
+            "under Settings > Network > PrusaLink.",
+        )
+    if r.status_code == 404:
+        raise PrusaLinkError("not_found", "Not found on PrusaLink.")
+    if r.status_code == 409:
+        raise PrusaLinkError("busy", "The printer is busy (printing, or waiting for someone at it), so it can't do that now.")
+    if r.status_code >= 400:
+        raise PrusaLinkError("bad_response", f"PrusaLink answered {r.status_code}: {r.text[:200]}")
+    return r
+
+
+def _json(r: httpx.Response) -> dict:
+    if r.status_code == 204:
+        return {}
+    try:
+        data = r.json()
+    except ValueError:
+        raise PrusaLinkError("bad_response", "The printer answered, but not like PrusaLink does.") from None
+    if not isinstance(data, dict):
+        raise PrusaLinkError("bad_response", "The printer answered, but not like PrusaLink does.")
+    return data
+
+
+def version(printer: Printer) -> dict:
+    """{api, server, text, firmware, printer}: what the printer says it is (e.g. text "PrusaLink", printer "COREONE")."""
+    return _json(_call(printer, "GET", "/api/version"))
+
+
+def status(printer: Printer) -> dict:
+    """
+    {printer: {state, temp_nozzle, target_nozzle, temp_bed, target_bed, ...}, job: {id, progress, time_remaining,
+    time_printing} | missing, storage, transfer}. state is one of IDLE, BUSY, PRINTING, PAUSED, FINISHED, STOPPED,
+    ERROR, ATTENTION, READY.
+    """
+    return _json(_call(printer, "GET", "/api/v1/status"))
+
+
+def job(printer: Printer) -> dict | None:
+    """The current job ({id, state, progress, time_printing, time_remaining, file: {name, display_name, ...}}), or None."""
+    return _json(_call(printer, "GET", "/api/v1/job")) or None
+
+
+def _storage(printer: Printer) -> str:
+    """Where a print can be put: the printer's USB drive on a Core One (the first storage that can be written to)."""
+    items = _json(_call(printer, "GET", "/api/v1/storage")).get("storage_list") or []
+    usable = [s for s in items if isinstance(s, dict) and s.get("available") and not s.get("read_only") and s.get("path")]
+    usable.sort(key=lambda s: s.get("type") != "USB")
+    if not usable:
+        raise PrusaLinkError("not_found", "The printer has nowhere to put a file. Is its USB drive plugged in?")
+    return usable[0]["path"].strip("/")
+
+
+def upload_and_print(printer: Printer, filename: str, data: bytes) -> str:
+    """Put the file on the printer (replacing one of the same name) and start printing it. Returns where it went."""
+    storage = _storage(printer)
+    path = f"/api/v1/files/{quote(storage)}/{quote(filename)}"
+    _call(
+        printer, "PUT", path, content=data, timeout=UPLOAD_TIMEOUT,
+        headers={"Content-Type": "application/octet-stream", "Print-After-Upload": "?1", "Overwrite": "?1"},
+    )
+    return f"{storage}/{filename}"

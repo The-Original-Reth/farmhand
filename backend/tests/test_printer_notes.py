@@ -3,13 +3,10 @@ from __future__ import annotations
 import io
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app import config, storage
-from app.database import Base, get_db
+from app.database import Base
 from app.main import app
 from app.models import Printer, PrinterNote, SourceFileType
 from app.schemas.printer import PrinterOut
@@ -55,7 +52,7 @@ def test_a_save_based_on_an_old_revision_is_refused_and_changes_nothing(db_sessi
     svc.set_notes(db_session, p.id, "theirs", 0)
     with pytest.raises(svc.NotesConflict) as caught:
         svc.set_notes(db_session, p.id, "mine", 0)
-    assert caught.value.printer.notes == "theirs" and caught.value.printer.notes_revision == 1
+    assert caught.value.current["notes"] == "theirs" and caught.value.current["notes_revision"] == 1
     assert svc.get_printer(db_session, p.id).notes == "theirs"
 
 
@@ -155,26 +152,10 @@ def test_the_output_schema_carries_the_notes(db_session):
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-    monkeypatch.setattr(config.settings, "storage_root", str(tmp_path / "storage"))
-    storage.reset()
-
-    def override():
-        db = Session()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override
-    c = TestClient(app)
+def client(api):
+    c = api
     printer = c.post("/printers", json={"name": "VT 1190", "kind": "Voron"}).json()
-    yield c, printer["id"]
-    app.dependency_overrides.clear()
-    storage.reset()
+    return c, printer["id"]
 
 
 def test_notes_over_the_api(client):
@@ -260,7 +241,7 @@ def test_a_save_that_loses_a_race_is_a_conflict_not_an_overwrite(db_session, mon
     monkeypatch.undo()
 
     assert state["raced"]
-    assert caught.value.printer.notes == "theirs, saved a moment earlier" and caught.value.printer.notes_revision == 2
+    assert caught.value.current["notes"] == "theirs, saved a moment earlier" and caught.value.current["notes_revision"] == 2
     assert svc.get_printer(db_session, p.id).notes == "theirs, saved a moment earlier"
 
 

@@ -1,7 +1,7 @@
 """
 A stand-in for a printer's Moonraker, enough of it to test Farmhand against: server info, job history (paged,
 newest first), job totals, and the database items Mainsail keeps maintenance reminders in. Plug it in with
-`moonraker_service.transport = httpx.MockTransport(fake.handle)`.
+`moonraker.client.transport = httpx.MockTransport(fake.handle)`.
 """
 from __future__ import annotations
 

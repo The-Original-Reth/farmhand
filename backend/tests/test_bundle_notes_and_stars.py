@@ -3,13 +3,9 @@ from __future__ import annotations
 import io
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app import config, storage
-from app.database import Base, get_db
+from app.database import Base
 from app.main import app
 from app.models import Bundle, BundleNote, BundleStar, SourceFileType
 from app.schemas.bundle import BundleOut
@@ -108,7 +104,7 @@ def test_saving_notes_counts_revisions_and_refuses_stale_saves(db_session, sampl
     assert out.notes == "  Prints best at 0.2 layers." and out.notes_revision == 1
     with pytest.raises(svc.NotesConflict) as caught:
         svc.set_notes(db_session, b.id, "mine", 0)
-    assert caught.value.bundle.notes == "  Prints best at 0.2 layers."
+    assert caught.value.current["notes"] == "  Prints best at 0.2 layers."
     assert svc.set_notes(db_session, b.id, "", 1).notes_revision == 2  # clearing keeps the revision moving
 
 
@@ -159,22 +155,8 @@ def test_an_existing_database_gains_the_new_tables_without_losing_anything():
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch, sample_3mf_paths):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-    monkeypatch.setattr(config.settings, "storage_root", str(tmp_path / "storage"))
-    storage.reset()
-
-    def override():
-        db = Session()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override
-    c = TestClient(app)
+def client(api, sample_3mf_paths):
+    c = api
     printer = c.post("/printers", json={"name": "VT 1190", "kind": "Voron"}).json()
     model = c.post("/source-models", data={"name": "Frog.stl", "file_type": "STL"}, files={"file": ("Frog.stl", b"x" * 64)}).json()
     with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
@@ -183,9 +165,7 @@ def client(tmp_path, monkeypatch, sample_3mf_paths):
             data={"source_model_ids": f"[{model['id']}]", "printer_id": str(printer["id"])},
             files={"threemf": ("frog.3mf", f.read())},
         ).json()
-    yield c, bundle["id"]
-    app.dependency_overrides.clear()
-    storage.reset()
+    return c, bundle["id"]
 
 
 def test_star_over_the_api(client, sample_3mf_paths):

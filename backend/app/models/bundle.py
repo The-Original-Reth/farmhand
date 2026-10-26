@@ -6,9 +6,10 @@ from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..notes import HasNotes
 
 
-class Bundle(Base):
+class Bundle(HasNotes, Base):
     """
     A 3MF bundle's persistent identity — the thing that has a version
     history, per spec's versioning rules (rolling window, monuments, diff).
@@ -48,19 +49,6 @@ class Bundle(Base):
     star_row: Mapped["BundleStar | None"] = relationship(  # noqa: F821
         back_populates="bundle", cascade="all, delete-orphan", uselist=False
     )
-
-    @property
-    def notes(self) -> str:
-        return self.note_row.body if self.note_row else ""
-
-    @property
-    def notes_revision(self) -> int:
-        """0 = never had notes. Counts up with every save, so it names one exact version of the text."""
-        return self.note_row.revision if self.note_row else 0
-
-    @property
-    def notes_updated_at(self) -> dt.datetime | None:
-        return self.note_row.updated_at if self.note_row else None
 
     @property
     def starred_version_id(self) -> int | None:

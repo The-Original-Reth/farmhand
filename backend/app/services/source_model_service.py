@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import notes as notes_helper
+from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from .. import scanner, storage
 from . import bundle_service
 from ..models import SourceFileType, SourceModel, SourceModelNote, SourceModelVersion
@@ -320,14 +321,6 @@ def import_scanned_files(db: Session, paths: list[str]) -> list[dict]:
 MAX_NOTES_LENGTH = notes_helper.MAX_NOTES_LENGTH
 
 
-class NotesConflict(Exception):
-    """The notes were saved by someone else since the person started editing them."""
-
-    def __init__(self, model: SourceModel):
-        super().__init__("These notes were changed by someone else while you were editing.")
-        self.model = model
-
-
 def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
     """
     Change the name a model is shown, searched and downloaded by; its extension (.stl, .obj, .step) always stays.
@@ -352,5 +345,5 @@ def set_notes(db: Session, source_model_id: int, notes: str, base_revision: int)
         raise ValueError(f"No source model with id {source_model_id}")
     return notes_helper.save(
         db, owner=model, note_cls=SourceModelNote, owner_key="source_model_id", base_revision=base_revision,
-        notes=notes, conflict=NotesConflict, reload=lambda: get_source_model(db, source_model_id),
+        notes=notes, reload=lambda: get_source_model(db, source_model_id),
     )

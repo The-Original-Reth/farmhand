@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import datetime as dt
-
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Printer, PrinterEnergyReading, PrintJob
+from ..notes import NotesConflict, conflict_response
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
-from ..services import moonraker_service as mr
+from ..services import moonraker as mr
 from ..services import printer_service
+from ..timeutil import utc_iso
 
 # Everything a printer's Moonraker gives Farmhand: its connection, its print history (as copied into Farmhand),
 # its statistics, and its maintenance reminders (kept in Moonraker, shared with Mainsail).
@@ -28,16 +27,10 @@ def _printer(db: Session, printer_id: int) -> Printer:
     return printer
 
 
-def _iso(value: dt.datetime | None) -> str | None:
-    if value is None:
-        return None
-    return (value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)).isoformat()
-
-
 def _sync_state(printer: Printer) -> dict:
     conn = printer.connection_row
     return {
-        "last_sync_at": _iso(conn.last_sync_at) if conn else None,
+        "last_sync_at": utc_iso(conn.last_sync_at) if conn else None,
         "last_sync_error": conn.last_sync_error if conn else None,
         "totals": conn.totals if conn else None,
     }
@@ -80,8 +73,8 @@ def _job_out(j: PrintJob) -> dict:
         "job_id": j.job_id,
         "filename": j.filename,
         "status": j.status,
-        "start_time": _iso(j.start_time),
-        "end_time": _iso(j.end_time),
+        "start_time": utc_iso(j.start_time),
+        "end_time": utc_iso(j.end_time),
         "print_duration": j.print_duration,
         "total_duration": j.total_duration,
         "filament_used": j.filament_used,
@@ -154,12 +147,12 @@ def energy(printer_id: int, db: Session = Depends(get_db)):
     meter = None
     if readings:
         at, kwh, sensor = readings[-1]
-        meter = {"sensor": sensor, "energy_kwh": kwh, "taken_at": _iso(at), "first_reading_at": _iso(readings[0][0])}
+        meter = {"sensor": sensor, "energy_kwh": kwh, "taken_at": utc_iso(at), "first_reading_at": utc_iso(readings[0][0])}
     return {
         "meter": meter,
         "print_total_kwh": print_total,
-        "jobs": [[_iso(at), kwh] for at, kwh in jobs],
-        "readings": [[_iso(at), kwh] for at, kwh, _ in readings],
+        "jobs": [[utc_iso(at), kwh] for at, kwh in jobs],
+        "readings": [[utc_iso(at), kwh] for at, kwh, _ in readings],
     }
 
 
@@ -191,15 +184,8 @@ def service_notes(printer_id: int, payload: NotesUpdate, db: Session = Depends(g
     printer = _printer(db, printer_id)
     try:
         saved = mr.set_service_notes(db, printer, payload.notes, payload.base_revision)
-    except mr.ServiceNotesConflict as c:
-        s = c.printer.service
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": str(c),
-                "current": {"notes": s["notes"], "notes_revision": s["notes_revision"], "notes_updated_at": s["notes_updated_at"]},
-            },
-        )
+    except NotesConflict as c:
+        return conflict_response(c)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return PrinterOut.model_validate(saved)

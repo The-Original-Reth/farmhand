@@ -1,0 +1,91 @@
+"""The HTTP side: one request to a printer's Moonraker, and the few plain questions asked of it."""
+from __future__ import annotations
+
+import httpx
+
+from ...models import Printer
+
+TIMEOUT = httpx.Timeout(6.0, connect=3.0)
+
+# Tests swap this for an httpx.MockTransport that plays a fake Moonraker
+transport: httpx.BaseTransport | None = None
+
+
+class MoonrakerError(Exception):
+    """kind: no_address | unreachable | unauthorized | not_found | bad_response"""
+
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+
+
+def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None):
+    """One Moonraker request; returns its "result"."""
+    base = printer.moonraker_url
+    if not base:
+        raise MoonrakerError("no_address", "This printer has no IP address or Moonraker address set.")
+    headers = {}
+    if printer.connection_row and printer.connection_row.api_key:
+        headers["X-Api-Key"] = printer.connection_row.api_key
+    try:
+        with httpx.Client(timeout=TIMEOUT, transport=transport) as client:
+            r = client.request(method, f"{base}{path}", params=params, json=json, headers=headers)
+    except httpx.TimeoutException:
+        raise MoonrakerError("unreachable", f"Moonraker at {base} didn't answer in time. Is the printer on?") from None
+    except httpx.HTTPError as e:
+        raise MoonrakerError("unreachable", f"Couldn't connect to Moonraker at {base} ({type(e).__name__}).") from None
+    if r.status_code in (401, 403):
+        raise MoonrakerError(
+            "unauthorized",
+            "Moonraker refused the request. Add this printer's Moonraker API key, or add Farmhand's address to "
+            "[authorization] trusted_clients in moonraker.conf.",
+        )
+    if r.status_code == 404:
+        raise MoonrakerError("not_found", "Not found on Moonraker.")
+    if r.status_code >= 400:
+        raise MoonrakerError("bad_response", f"Moonraker answered {r.status_code}: {_error_text(r)}")
+    try:
+        return r.json()["result"]
+    except (ValueError, KeyError, TypeError):
+        raise MoonrakerError("bad_response", f"{base} answered, but not like Moonraker does.") from None
+
+
+def _error_text(r: httpx.Response) -> str:
+    try:
+        return str(r.json()["error"]["message"])
+    except Exception:  # noqa: BLE001 - any shape at all: fall back to the raw text
+        return r.text[:200]
+
+
+def server_info(printer: Printer) -> dict:
+    """Is it reachable, and what state is Klipper in (ready, startup, shutdown, error, disconnected)?"""
+    info = _call(printer, "GET", "/server/info")
+    return {"klippy_state": info.get("klippy_state"), "moonraker_version": info.get("moonraker_version")}
+
+
+def job_totals(printer: Printer) -> dict:
+    return _call(printer, "GET", "/server/history/totals").get("job_totals") or {}
+
+
+def history_totals(printer: Printer) -> tuple[dict, list]:
+    """(job_totals, auxiliary_totals): the second holds e.g. a power meter's energy summed over all prints."""
+    result = _call(printer, "GET", "/server/history/totals")
+    return result.get("job_totals") or {}, result.get("auxiliary_totals") or []
+
+
+def meter_reading(printer: Printer) -> tuple[str, float] | None:
+    """
+    (sensor id, kWh) from the first Moonraker [sensor] that reports an "energy" value, e.g. a smart plug over MQTT.
+    None if the printer has no such sensor (or no sensors at all).
+    """
+    try:
+        sensors = _call(printer, "GET", "/server/sensors/list").get("sensors") or {}
+    except MoonrakerError as e:
+        if e.kind == "not_found":
+            return None  # Moonraker's sensor component isn't set up
+        raise
+    for sensor_id, sensor in sensors.items():
+        value = (sensor.get("values") or {}).get("energy")
+        if isinstance(value, (int, float)):
+            return sensor_id, float(value)
+    return None

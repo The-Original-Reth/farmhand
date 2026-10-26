@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import notes as notes_helper
+from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from .. import storage
 from . import printer_service
 from ..config import settings
@@ -443,14 +444,6 @@ def set_starred_version(db: Session, bundle_id: int, version_id: int | None) -> 
 # ------------------------------------------------------------------ notes about a 3MF
 
 
-class NotesConflict(Exception):
-    """The notes were saved by someone else since the person started editing them."""
-
-    def __init__(self, bundle: Bundle):
-        super().__init__("These notes were changed by someone else while you were editing.")
-        self.bundle = bundle
-
-
 def set_notes(db: Session, bundle_id: int, notes: str, base_revision: int) -> Bundle:
     """Save the notes for a 3MF (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
     bundle = get_bundle(db, bundle_id)
@@ -458,5 +451,5 @@ def set_notes(db: Session, bundle_id: int, notes: str, base_revision: int) -> Bu
         raise ValueError(f"No bundle with id {bundle_id}")
     return notes_helper.save(
         db, owner=bundle, note_cls=BundleNote, owner_key="bundle_id", base_revision=base_revision,
-        notes=notes, conflict=NotesConflict, reload=lambda: get_bundle(db, bundle_id),
+        notes=notes, reload=lambda: get_bundle(db, bundle_id),
     )

@@ -4,14 +4,7 @@ import io
 from urllib.parse import unquote
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app import config, storage
-from app.database import Base, get_db
-from app.main import app
 from app.names import clean_file_name, download_name
 
 
@@ -42,24 +35,8 @@ def test_a_download_keeps_the_stored_files_extension():
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-    monkeypatch.setattr(config.settings, "storage_root", str(tmp_path / "storage"))
-    storage.reset()
-
-    def override():
-        db = Session()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override
-    yield TestClient(app)
-    app.dependency_overrides.clear()
-    storage.reset()
+def client(api):
+    return api
 
 
 def test_renaming_a_model_changes_its_name_and_its_download(client):

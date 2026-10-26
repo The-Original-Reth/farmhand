@@ -1,19 +1,17 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app import config, storage
-from app.database import Base, get_db
 from app.main import app
 from app.models import PrinterConnection, PrinterEnergyReading, PrinterServiceReminder, PrintJob
 from app.schemas.printer import PrinterOut
-from app.services import moonraker_service as mr
+from app.services import moonraker as mr
 from app.services import printer_service
+from app.services.moonraker import client as mr_client, history as mr_history, maintenance as mr_maintenance
 
 from .fake_moonraker import FakeMoonraker
 
@@ -21,7 +19,7 @@ from .fake_moonraker import FakeMoonraker
 @pytest.fixture()
 def fake(monkeypatch):
     f = FakeMoonraker()
-    monkeypatch.setattr(mr, "transport", httpx.MockTransport(f.handle))
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
     return f
 
 
@@ -89,7 +87,7 @@ def test_a_second_sync_only_brings_what_changed(db_session, fake):
 
 
 def test_a_long_history_is_fetched_page_by_page(db_session, fake, monkeypatch):
-    monkeypatch.setattr(mr, "PAGE", 10)
+    monkeypatch.setattr(mr_history, "PAGE", 10)
     for i in range(35):
         fake.add_job(f"{i:06d}", f"part{i}.gcode", start=1_700_000_000 + i * 10_000)
     p = _printer(db_session)
@@ -171,7 +169,7 @@ def test_jobs_synced_before_energy_was_stored_get_it_on_the_next_sync(db_session
 
 
 def test_an_energy_value_in_wh_is_converted():
-    assert mr._aux({"auxiliary_data": [{"name": "energy_consumption", "value": 1500, "units": "Wh"}]}, "energy_consumption") == 1.5
+    assert mr_history._aux({"auxiliary_data": [{"name": "energy_consumption", "value": 1500, "units": "Wh"}]}, "energy_consumption") == 1.5
 
 
 def test_each_sync_records_a_meter_reading_but_not_twice_in_a_row(db_session, fake, monkeypatch):
@@ -183,7 +181,7 @@ def test_each_sync_records_a_meter_reading_but_not_twice_in_a_row(db_session, fa
     mr.sync_history(db_session, p)  # straight after: skipped
     readings = db_session.query(PrinterEnergyReading).all()
     assert len(readings) == 1 and readings[0].energy_kwh == 2070.38 and readings[0].sensor == "powermeter"
-    monkeypatch.setattr(mr, "READING_SPACING", mr.dt.timedelta(0))
+    monkeypatch.setattr(mr_history, "READING_SPACING", dt.timedelta(0))
     fake.meter_kwh = 2071.0
     mr.sync_history(db_session, p)
     assert [r.energy_kwh for r in db_session.query(PrinterEnergyReading).order_by(PrinterEnergyReading.id)] == [2070.38, 2071.0]
@@ -192,7 +190,7 @@ def test_each_sync_records_a_meter_reading_but_not_twice_in_a_row(db_session, fa
 def test_the_energy_endpoint(client, fake, monkeypatch):
     c, pid = client
     assert c.get(f"/printers/{pid}/energy").json() == {"meter": None, "print_total_kwh": None, "jobs": [], "readings": []}
-    monkeypatch.setattr(mr, "READING_SPACING", mr.dt.timedelta(0))
+    monkeypatch.setattr(mr_history, "READING_SPACING", dt.timedelta(0))
     fake.meter_kwh = 100.0
     fake.add_job("000001", "a.gcode", start=1_700_000_000, energy_kwh=0.5)
     fake.add_job("000002", "b.gcode", start=1_702_600_000, energy_kwh=0.7)
@@ -319,9 +317,9 @@ def test_service_notes_save_with_the_usual_notes_rules(db_session):
     out = mr.set_service_notes(db_session, p, "  Belts: Gates 6mm.\r\nRails: Super Lube.\n\n", 0)
     assert out.service["notes"] == "  Belts: Gates 6mm.\nRails: Super Lube." and out.service["notes_revision"] == 1
     assert out.service["notes_updated_at"].endswith("+00:00")
-    with pytest.raises(mr.ServiceNotesConflict) as caught:
+    with pytest.raises(mr.NotesConflict) as caught:
         mr.set_service_notes(db_session, p, "mine", 0)
-    assert caught.value.printer.service["notes"].startswith("  Belts")
+    assert caught.value.current["notes"].startswith("  Belts")
     assert mr.set_service_notes(db_session, p, "", 1).service["notes_revision"] == 2  # clearing still counts
     assert p.notes == ""  # the printer's own notes are separate
 
@@ -373,7 +371,7 @@ def test_a_reminder_comes_due_by_print_time_filament_or_days(db_session, fake, m
     assert state["Nozzle"]["checks"][0] == {"kind": "printtime", "used": 3.0, "limit": 2.0, "unit": "h", "due": True}
     assert state["Belts"]["checks"][0]["used"] == 4.0 and state["Belts"]["checks"][0]["limit"] == 10.0
 
-    monkeypatch.setattr(mr, "_now", lambda: mr.dt.datetime.now(mr.dt.timezone.utc).timestamp() + 8 * 86400)
+    monkeypatch.setattr(mr_maintenance, "_now", lambda: dt.datetime.now(dt.timezone.utc).timestamp() + 8 * 86400)
     assert {e["name"]: e["state"] for e in mr.list_maintenance(p)["entries"]}["Fans"] == "due"
 
 
@@ -447,26 +445,10 @@ def test_bad_reminders_are_refused(db_session, fake, reminder, message):
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch, fake):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-    monkeypatch.setattr(config.settings, "storage_root", str(tmp_path / "storage"))
-    storage.reset()
-
-    def override():
-        db = Session()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override
-    c = TestClient(app)
+def client(api, fake):
+    c = api
     printer = c.post("/printers", json={"name": "VT 1190", "kind": "Voron", "wired_ip": "10.0.6.21"}).json()
-    yield c, printer["id"]
-    app.dependency_overrides.clear()
-    storage.reset()
+    return c, printer["id"]
 
 
 def test_status_sync_history_and_stats_over_the_api(client, fake):

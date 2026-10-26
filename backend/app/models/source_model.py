@@ -7,6 +7,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..notes import HasNotes
 
 
 class SourceFileType(str, enum.Enum):
@@ -15,7 +16,7 @@ class SourceFileType(str, enum.Enum):
     step = "STEP"
 
 
-class SourceModel(Base):
+class SourceModel(HasNotes, Base):
     """
     The branch level: a general STL/OBJ/STEP source file. General in the
     sense that it can relate to multiple 3MF bundles (different printers,
@@ -49,19 +50,6 @@ class SourceModel(Base):
     @property
     def latest_version(self) -> "SourceModelVersion | None":
         return self.versions[0] if self.versions else None
-
-    @property
-    def notes(self) -> str:
-        return self.note_row.body if self.note_row else ""
-
-    @property
-    def notes_revision(self) -> int:
-        """0 = never had notes. Counts up with every save, so it names one exact version of the text."""
-        return self.note_row.revision if self.note_row else 0
-
-    @property
-    def notes_updated_at(self) -> dt.datetime | None:
-        return self.note_row.updated_at if self.note_row else None
 
 
 class SourceModelVersion(Base):

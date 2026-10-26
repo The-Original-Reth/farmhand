@@ -4,7 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import notes as notes_helper
-from ..models import Bundle, BundleVersion, Printer, PrinterConnection, PrinterNote
+from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
+from ..models import Bundle, BundleVersion, Printer, PrinterConnection, PrinterNote, PrusaLinkConnection
 
 
 def list_printers(db: Session) -> list[Printer]:
@@ -91,20 +92,26 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
         if changes.get("moonraker_api_key") is not None:
             conn.api_key = changes["moonraker_api_key"].strip() or None
 
+    if changes.get("connection_type") == "moonraker":
+        printer.prusalink_row = None  # the login goes; the prints Farmhand recorded stay
+    elif changes.get("connection_type") == "prusalink" or (
+        printer.prusalink_row is not None and {"prusalink_url", "prusalink_username", "prusalink_password"} & changes.keys()
+    ):
+        link = printer.prusalink_row or PrusaLinkConnection(printer_id=printer.id, username="maker")
+        printer.prusalink_row = link
+        if "prusalink_url" in changes:
+            link.url = changes["prusalink_url"]  # already tidied; None = the default address
+        if changes.get("prusalink_username") is not None:
+            link.username = changes["prusalink_username"].strip()[:120] or "maker"
+        if changes.get("prusalink_password") is not None:
+            link.password = changes["prusalink_password"] or None
+
     db.commit()
     db.refresh(printer)
     return printer
 
 
 # ------------------------------------------------------------------ notes about a printer
-
-
-class NotesConflict(Exception):
-    """The notes were saved by someone else since the person started editing them."""
-
-    def __init__(self, printer: Printer):
-        super().__init__("These notes were changed by someone else while you were editing.")
-        self.printer = printer
 
 
 def set_notes(db: Session, printer_id: int, notes: str, base_revision: int) -> Printer:
@@ -114,5 +121,5 @@ def set_notes(db: Session, printer_id: int, notes: str, base_revision: int) -> P
         raise ValueError(f"No printer with id {printer_id}")
     return notes_helper.save(
         db, owner=printer, note_cls=PrinterNote, owner_key="printer_id", base_revision=base_revision,
-        notes=notes, conflict=NotesConflict, reload=lambda: get_printer(db, printer_id),
+        notes=notes, reload=lambda: get_printer(db, printer_id),
     )

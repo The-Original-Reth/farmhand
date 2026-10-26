@@ -56,6 +56,15 @@ export function buildFarm() {
       serviceHoursSince: 240, serviceHistory: [], serviceNotes: "",
     },
     {
+      id: 5, name: "Core One", kind: "Prusa Core One (PrusaLink)", wired_ip: "10.0.6.45", wireless_ip: null,
+      decommissioned: false, created_at: iso(NOW - 150 * DAY),
+      moonraker: null,
+      // reached through PrusaLink: no history of its own, so its prints are the ones Farmhand recorded
+      prusalink: { reachable: true, firmware: "6.2.0", username: "maker", hasPassword: true, url: null },
+      notes: "Enclosed. PETG and ASA live here.",
+      serviceHoursSince: 610, serviceHistory: [], serviceNotes: "",
+    },
+    {
       id: 4, name: "Ender 3 (retired)", kind: "Creality Ender 3", wired_ip: null, wireless_ip: null,
       decommissioned: true, created_at: iso(NOW - 900 * DAY),
       moonraker: null,
@@ -136,6 +145,7 @@ export function buildFarm() {
     1: ["VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.gcode", "VT_1190_-_prusa_slicer_-_MMMini_Frog_v2.gcode", "calibration_cube.gcode", "VT_1190_benchy.gcode", "spool_holder_bracket.gcode"],
     2: ["V2_BOG_-_Prusa_Slicer_-_MMMini_GreatWhiteShark_v02.gcode", "V2 BOG - Prusa Slicer - MMMini_LeoGecko v01.gcode", "V2_BOG_bed_mesh_test.gcode", "V2_BOG_voron_cube.gcode"],
     3: ["MK4_shelf_keychains_x12.gcode", "MK4_cable_clips.gcode"],
+    5: ["COREONE_MMMini_GreatWhiteShark_PETG.bgcode", "COREONE_Frog_keychain_x8.bgcode", "COREONE_spool_holder_bracket_ASA.bgcode"],
   };
   const statusOf = () => {
     const r = rand();
@@ -146,20 +156,21 @@ export function buildFarm() {
   for (const p of printers) {
     if (!fileNames[p.id]) continue;
     const list = [];
-    const count = p.id === 2 ? 240 : p.id === 1 ? 180 : 60;
-    const span = (p.id === 3 ? 200 : 420) * DAY;
+    const count = p.id === 2 ? 240 : p.id === 1 ? 180 : p.id === 5 ? 70 : 60;
+    const span = (p.id === 3 ? 200 : p.id === 5 ? 150 : 420) * DAY;
     let t = NOW - span;
     for (let i = 0; i < count; i++) {
       t += (span / count) * (0.4 + rand() * 1.2);
       if (t > NOW - 3 * HOUR) break;
-      const status = statusOf();
+      const drawn = statusOf();
+      const status = p.prusalink && drawn === "klippy_shutdown" ? "unknown" : drawn; // PrusaLink has no Klipper to shut down
       const planned = (0.6 + rand() * 9) * HOUR;
       const printS = status === "completed" ? planned : planned * (0.05 + rand() * 0.8);
       const watts = 200 + rand() * 90;
       list.push({
         job_id: (0x3000 + p.id * 0x400 + i).toString(16).toUpperCase().padStart(6, "0"),
         filename: pick(fileNames[p.id]), status, start: Math.floor(t), printS, totalS: printS + rand() * 900,
-        filamentMm: printS / HOUR * (1800 + rand() * 2600), kwh: p.moonraker?.meterSensor ? (printS / HOUR) * (watts / 1000) : null,
+        filamentMm: p.prusalink ? 0 : printS / HOUR * (1800 + rand() * 2600), kwh: p.moonraker?.meterSensor ? (printS / HOUR) * (watts / 1000) : null,
         avgW: p.moonraker?.meterSensor ? watts : null, maxW: p.moonraker?.meterSensor ? watts + 300 + rand() * 120 : null,
         estimated: planned,
       });
@@ -167,6 +178,10 @@ export function buildFarm() {
     // the newest job on the first printer is still printing
     if (p.id === 1) {
       list.push({ job_id: "0035FF", filename: "VT_1190_-_prusa_slicer_-_MMMini_Frog_v2.gcode", status: "in_progress", start: NOW - 2 * HOUR, printS: 2 * HOUR, totalS: 2 * HOUR, filamentMm: 6100, kwh: 0.47, avgW: 236, maxW: 610, estimated: 5 * HOUR });
+    }
+    // ...and on the Core One, recorded by Farmhand as it runs
+    if (p.id === 5) {
+      list.push({ job_id: "41@20261025T090000", filename: "COREONE_MMMini_GreatWhiteShark_PETG.bgcode", status: "in_progress", start: NOW - 1.5 * HOUR, printS: 1.5 * HOUR, totalS: 1.5 * HOUR, filamentMm: 0, kwh: null, avgW: null, maxW: null, estimated: 4 * HOUR });
     }
     jobs[p.id] = list;
     // Farmhand has read the meter every day for the last ~4 months (whole printer: prints plus idle)
@@ -223,6 +238,11 @@ export function buildFarm() {
       "b2e1d3c5-0003": entry(2, "Check belt tension", "", reminder("repeat", { filament: 400, printtime: 150 }), { startedDaysAgo: 25, printedHoursAgo: 90, filamentMAgo: 410 }),
       "b2e1d3c5-0004": entry(2, "Need to replace gantry", "Seeing metal flakes", reminder("one-time", { date: 14 }), { startedDaysAgo: 20 }),
     },
+    // kept in Farmhand: PrusaLink has nowhere to keep them (and no filament figures to count)
+    5: {
+      "c3f2e4d6-0001": entry(5, "Clean the nozzle wiper", "", reminder("repeat", { printtime: 100 }), { startedDaysAgo: 18, printedHoursAgo: 104 }),
+      "c3f2e4d6-0002": entry(5, "Check the enclosure filter", "Replace when it smells", reminder("repeat", { date: 60 }), { startedDaysAgo: 22 }),
+    },
   };
 
   // ------------------------------------------------------------------ settings, storage, shares
@@ -244,6 +264,7 @@ export function buildFarm() {
       1: { last_sync_at: iso(NOW - 40 * 60), last_sync_error: null },
       2: { last_sync_at: iso(NOW - 25 * 60), last_sync_error: null },
       3: { last_sync_at: iso(NOW - 3 * DAY), last_sync_error: printers[2].moonraker.error },
+      5: { last_sync_at: iso(NOW - 40), last_sync_error: null },
     },
     settingsFolder: "/data/nas/farm-nas/farmhand-settings",
     storage: { stl: "/data/nas/farm-nas/models", threemf: "/data/nas/farm-nas/3mf" },

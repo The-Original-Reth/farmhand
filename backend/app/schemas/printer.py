@@ -2,7 +2,21 @@ from __future__ import annotations
 
 import datetime as dt
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, field_validator
+
+
+def _http_url(v: str | None) -> str | None:
+    """A printer address: blank = the default one; a bare host gets http:// in front."""
+    if v is None or not v.strip():
+        return None
+    v = v.strip().rstrip("/")
+    if "://" not in v:
+        v = f"http://{v}"
+    if not v.lower().startswith(("http://", "https://")):
+        raise ValueError("The address must start with http:// or https://")
+    return v
 
 
 class PrinterCreate(BaseModel):
@@ -10,6 +24,18 @@ class PrinterCreate(BaseModel):
     kind: str | None = None
     wired_ip: str | None = None
     wireless_ip: str | None = None
+    # How Farmhand talks to it, and its login: the same fields and rules as PrinterUpdate
+    connection_type: Literal["moonraker", "prusalink"] = "moonraker"
+    moonraker_url: str | None = None
+    moonraker_api_key: str | None = None
+    prusalink_url: str | None = None
+    prusalink_username: str | None = None
+    prusalink_password: str | None = None
+
+    @field_validator("moonraker_url", "prusalink_url")
+    @classmethod
+    def _url_is_http(cls, v: str | None) -> str | None:
+        return _http_url(v)
 
 
 class PrinterOut(BaseModel):
@@ -29,6 +55,11 @@ class PrinterOut(BaseModel):
     moonraker_url_override: str | None = None  # what was set for it, if anything
     mainsail_url: str | None = None
     has_moonraker_api_key: bool = False  # the key itself is never returned
+    connection_type: str = "moonraker"  # "moonraker" | "prusalink"
+    prusalink_url: str | None = None  # where Farmhand reaches its PrusaLink (the override, else http://<IP>)
+    prusalink_url_override: str | None = None
+    prusalink_username: str | None = None
+    has_prusalink_password: bool = False  # the password itself is never returned
     # The 1500-hour service reminder Farmhand keeps: {state: waiting | off | ok | due, enabled, interval_hours,
     # hours_since, started_at, last_done: {done_at, hours, note} | null}
     service: dict | None = None
@@ -53,18 +84,18 @@ class PrinterUpdate(BaseModel):
     # a new key replaces the saved one, "" removes it, and leaving it out keeps it.
     moonraker_url: str | None = None
     moonraker_api_key: str | None = None
+    # How Farmhand talks to it. Switching to "moonraker" forgets the PrusaLink login; the prints on record stay.
+    connection_type: Literal["moonraker", "prusalink"] | None = None
+    # PrusaLink: a blank address goes back to the default (http://<IP>). The username defaults to "maker". The
+    # password works like the Moonraker API key: a new one replaces the saved one, "" removes it, leaving it out keeps it.
+    prusalink_url: str | None = None
+    prusalink_username: str | None = None
+    prusalink_password: str | None = None
 
-    @field_validator("moonraker_url")
+    @field_validator("moonraker_url", "prusalink_url")
     @classmethod
-    def _moonraker_url_is_http(cls, v: str | None) -> str | None:
-        if v is None or not v.strip():
-            return None
-        v = v.strip().rstrip("/")
-        if "://" not in v:
-            v = f"http://{v}"
-        if not v.lower().startswith(("http://", "https://")):
-            raise ValueError("The Moonraker address must start with http:// or https://")
-        return v
+    def _url_is_http(cls, v: str | None) -> str | None:
+        return _http_url(v)
 
     @field_validator("name")
     @classmethod

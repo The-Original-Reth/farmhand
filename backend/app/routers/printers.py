@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..notes import NotesConflict, conflict_response
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate
@@ -20,10 +20,16 @@ def list_printers(db: Session = Depends(get_db)):
 
 @router.post("", response_model=PrinterOut, status_code=201)
 def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
+    """A new printer. Its connection (Mainsail / Moonraker, or PrusaLink) and login can be given at once."""
+    base = payload.model_dump(include={"name", "kind", "wired_ip", "wireless_ip"})
+    link = payload.model_dump(exclude=set(base), exclude_none=True)
     try:
-        return printer_service.create_printer(db, **payload.model_dump())
+        printer = printer_service.create_printer(db, **base)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    if link.get("connection_type") == "moonraker" and len(link) == 1:
+        return printer  # the default: nothing more to set
+    return printer_service.update_printer(db, printer.id, link)
 
 
 @router.get("/{printer_id}", response_model=PrinterOut)
@@ -67,17 +73,7 @@ def save_notes(printer_id: int, payload: NotesUpdate, db: Session = Depends(get_
     """
     try:
         return printer_service.set_notes(db, printer_id, payload.notes, payload.base_revision)
-    except printer_service.NotesConflict as c:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": str(c),
-                "current": {
-                    "notes": c.printer.notes,
-                    "notes_revision": c.printer.notes_revision,
-                    "notes_updated_at": c.printer.notes_updated_at.isoformat() if c.printer.notes_updated_at else None,
-                },
-            },
-        )
+    except NotesConflict as c:
+        return conflict_response(c)
     except ValueError as e:
         raise HTTPException(status_code=404 if "No printer" in str(e) else 422, detail=str(e))

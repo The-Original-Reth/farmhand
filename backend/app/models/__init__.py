@@ -14,6 +14,7 @@ from .printer_connection import (
 )
 from .source_model import SourceFileType, SourceModel, SourceModelVersion
 from .printer_note import PrinterNote
+from .prusalink import MaintenanceEntry, PrusaLinkConnection
 from .source_model_note import SourceModelNote
 
 __all__ = [
@@ -26,6 +27,8 @@ __all__ = [
     "PrinterServiceNote",
     "PrinterEnergyReading",
     "PrintJob",
+    "PrusaLinkConnection",
+    "MaintenanceEntry",
     "SourceModel",
     "SourceModelVersion",
     "PrinterNote",

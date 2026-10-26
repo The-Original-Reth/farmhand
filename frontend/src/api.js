@@ -43,6 +43,11 @@ export const normalizePrinter = (p) => ({
   moonrakerUrlOverride: p.moonraker_url_override || null, // only what was set for it
   mainsailUrl: p.mainsail_url || null,
   hasMoonrakerApiKey: !!p.has_moonraker_api_key, // the key itself never comes back
+  connectionType: p.connection_type || "moonraker", // "moonraker" (Klipper) | "prusalink" (Prusa Core One, MK4, XL...)
+  prusalinkUrl: p.prusalink_url || null, // where Farmhand reaches its PrusaLink (set, else http://<IP>)
+  prusalinkUrlOverride: p.prusalink_url_override || null,
+  prusalinkUsername: p.prusalink_username || "maker",
+  hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself never comes back
   // The 1500-hour service reminder Farmhand keeps: { state: waiting | off | ok | due, enabled, interval_hours,
   // hours_since, started_at, last_done: { done_at, hours, note } | null }
   service: p.service || {
@@ -156,7 +161,10 @@ export const fileTypeFor = ({ name, file }) => {
   return typeFromExt(ext(name)) || "STL";
 };
 
-export const createPrinter = ({ name, kind, wiredIp, wirelessIp }) =>
+// The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter
+export const createPrinter = ({
+  name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,
+}) =>
   request("/printers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -165,6 +173,12 @@ export const createPrinter = ({ name, kind, wiredIp, wirelessIp }) =>
       kind: kind || null,
       wired_ip: wiredIp || null,
       wireless_ip: wirelessIp || null,
+      connection_type: connectionType || "moonraker",
+      ...(moonrakerUrl ? { moonraker_url: moonrakerUrl } : {}),
+      ...(moonrakerApiKey ? { moonraker_api_key: moonrakerApiKey } : {}),
+      ...(prusalinkUrl ? { prusalink_url: prusalinkUrl } : {}),
+      ...(prusalinkUsername ? { prusalink_username: prusalinkUsername } : {}),
+      ...(prusalinkPassword ? { prusalink_password: prusalinkPassword } : {}),
     }),
   });
 
@@ -207,7 +221,11 @@ export const addBundleVersion = ({ bundleId, threemf, gcode }) => {
 };
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
-export const updatePrinter = (id, { name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey }) =>
+// connectionType: "moonraker" | "prusalink". prusalinkUrl: blank = http://<IP>. prusalinkPassword works like the API key.
+export const updatePrinter = (
+  id,
+  { name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey, connectionType, prusalinkUrl, prusalinkUsername, prusalinkPassword },
+) =>
   request(`/printers/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -220,8 +238,26 @@ export const updatePrinter = (id, { name, kind, wiredIp, wirelessIp, decommissio
       decommissioned: !!decommissioned,
       ...(moonrakerUrl !== undefined ? { moonraker_url: moonrakerUrl || null } : {}),
       ...(moonrakerApiKey !== undefined ? { moonraker_api_key: moonrakerApiKey } : {}),
+      ...(connectionType !== undefined ? { connection_type: connectionType } : {}),
+      ...(prusalinkUrl !== undefined ? { prusalink_url: prusalinkUrl || null } : {}),
+      ...(prusalinkUsername !== undefined ? { prusalink_username: prusalinkUsername } : {}),
+      ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
     }),
   });
+
+// ---- a PrusaLink printer (Prusa Core One...): live status and sending it a print. Its history, statistics, service
+// and maintenance use the same calls as a Moonraker printer's (below); its maintenance is kept in Farmhand. ----
+
+// { reachable, error, error_kind, state, printer_type, firmware, temps: { temp_nozzle, target_nozzle, temp_bed,
+//   target_bed }, job: { id, state, file, progress, time_printing, time_remaining } | null, last_sync_at, totals }
+// Asking also brings Farmhand's record of its prints up to date.
+export const getPrusaLinkStatus = (printerId) => request(`/printers/${printerId}/prusalink`);
+// A sliced .bgcode / .gcode: put on the printer's USB drive and printed. 409 while the printer is busy.
+export const sendPrint = (printerId, file) => {
+  const form = new FormData();
+  form.append("file", file);
+  return request(`/printers/${printerId}/prusalink/print`, { method: "POST", body: form });
+};
 
 // ---- a printer's Moonraker: connection, print history (Farmhand's copy), statistics, maintenance ----
 // A printer that can't be reached answers 502 with { detail, kind } (no_address | unreachable | unauthorized | ...).
@@ -251,7 +287,8 @@ export const saveServiceNotes = async ({ printerId, notes, baseRevision }) => {
   return { notes: p.service.notes, notes_revision: p.service.notes_revision };
 };
 
-// Maintenance lives in the printer's Moonraker, in Mainsail's own format: Mainsail shows the same list.
+// Maintenance lives in the printer's Moonraker, in Mainsail's own format: Mainsail shows the same list. A PrusaLink
+// printer's is kept in Farmhand, in the same format (no filament reminders: it doesn't report filament use).
 // reminder: { type: null | "one-time" | "repeat", filament / printtime / date: { bool, value } } in metres / hours / days
 export const getMaintenance = (printerId) => request(`/printers/${printerId}/maintenance`);
 export const addMaintenance = (printerId, { name, note, reminder }) =>

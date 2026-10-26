@@ -13,9 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import records_store
+from ..timeutil import as_utc, utc_iso
 from ..models import (
     BundleNote,
     BundleStar,
+    MaintenanceEntry,
     Printer,
     PrinterConnection,
     PrinterEnergyReading,
@@ -23,15 +25,10 @@ from ..models import (
     PrinterServiceNote,
     PrinterServiceReminder,
     PrintJob,
+    PrusaLinkConnection,
     SourceModel,
     SourceModelNote,
 )
-
-
-def _iso(value: dt.datetime | None) -> str | None:
-    if value is None:
-        return None
-    return (value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)).isoformat()
 
 
 def _when(value) -> dt.datetime | None:
@@ -41,7 +38,7 @@ def _when(value) -> dt.datetime | None:
         parsed = dt.datetime.fromisoformat(value)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)
+    return as_utc(parsed)
 
 
 def _num(value, default=None):
@@ -58,7 +55,7 @@ def _text(value, limit=20000) -> str:
 def _job_record(j: PrintJob) -> dict:
     return {
         "job_id": j.job_id, "filename": j.filename, "status": j.status,
-        "start_time": _iso(j.start_time), "end_time": _iso(j.end_time),
+        "start_time": utc_iso(j.start_time), "end_time": utc_iso(j.end_time),
         "print_duration": j.print_duration, "total_duration": j.total_duration, "filament_used": j.filament_used,
         "energy_kwh": j.energy_kwh, "avg_power_w": j.avg_power_w, "max_power_w": j.max_power_w,
         "metadata": j.job_metadata, "auxiliary": j.auxiliary,
@@ -66,7 +63,7 @@ def _job_record(j: PrintJob) -> dict:
 
 
 def printer_documents(db: Session) -> dict[str, dict]:
-    """{file stem: document} for every printer. Never includes the Moonraker API key."""
+    """{file stem: document} for every printer. Never includes the Moonraker API key or the PrusaLink password."""
     out: dict[str, dict] = {}
     taken: set[str] = set()
     for p in db.scalars(select(Printer).order_by(Printer.id)):
@@ -77,21 +74,25 @@ def printer_documents(db: Session) -> dict[str, dict]:
         )
         out[records_store.file_stem(p.name, taken)] = {
             **records_store.header(records_store.PRINTERS_DIR, p.name),
-            "note": "Written by Farmhand whenever this printer changes. Its Moonraker API key is never stored here.",
+            "note": "Written by Farmhand whenever this printer changes. Its Moonraker API key and PrusaLink password are never stored here.",
             "printer": {
                 "kind": p.kind, "wired_ip": p.wired_ip, "wireless_ip": p.wireless_ip,
                 "decommissioned": p.decommissioned, "moonraker_url": p.moonraker_url_override,
+                "connection_type": p.connection_type,
+                "prusalink_url": p.prusalink_url_override, "prusalink_username": p.prusalink_username,
             },
+            # maintenance Farmhand keeps itself (a PrusaLink printer's); a Moonraker printer's stays in Moonraker
+            "maintenance": [{"key": r.key, "entry": r.entry} for r in sorted(p.maintenance_rows, key=lambda r: r.id)],
             "notes": p.notes,
             "service": None if svc is None else {
                 "enabled": svc.enabled, "interval_hours": svc.interval_hours, "start_printtime": svc.start_printtime,
-                "started_at": _iso(svc.started_at), "history": svc.history,
+                "started_at": utc_iso(svc.started_at), "history": svc.history,
             },
             "service_notes": p.service_note_row.body if p.service_note_row else "",
             "moonraker_totals": conn.totals if conn else None,
             "auxiliary_totals": conn.auxiliary_totals if conn else None,
             "print_jobs": [_job_record(j) for j in jobs],
-            "energy_readings": [[_iso(r.taken_at), r.sensor, r.energy_kwh] for r in readings],
+            "energy_readings": [[utc_iso(r.taken_at), r.sensor, r.energy_kwh] for r in readings],
         }
     return out
 
@@ -164,6 +165,13 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             url = _text(cfg.get("moonraker_url"), 255)
             if url.lower().startswith(("http://", "https://")):
                 printer.connection_row = PrinterConnection(printer_id=printer.id, moonraker_url=url)
+            if cfg.get("connection_type") == "prusalink":
+                # comes back without its password: it has to be typed in again on the printer's Edit page
+                pl_url = _text(cfg.get("prusalink_url"), 255)
+                printer.prusalink_row = PrusaLinkConnection(
+                    printer_id=printer.id, url=pl_url if pl_url.lower().startswith(("http://", "https://")) else None,
+                    username=_text(cfg.get("prusalink_username"), 120) or "maker",
+                )
         filled = False
 
         filled |= _fill_note(printer.note_row, lambda t: setattr(printer, "note_row", PrinterNote(printer_id=printer.id, body=t, revision=1)), rec.get("notes"))
@@ -190,6 +198,13 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             conn.auxiliary_totals = rec.get("auxiliary_totals") if isinstance(rec.get("auxiliary_totals"), list) else None
             filled = True
 
+        keys = {r.key for r in printer.maintenance_rows}
+        for m in rec.get("maintenance") or []:
+            if isinstance(m, dict) and isinstance(m.get("key"), str) and isinstance(m.get("entry"), dict) and m["key"] not in keys:
+                keys.add(m["key"])
+                printer.maintenance_rows.append(MaintenanceEntry(key=m["key"][:64], entry=m["entry"]))
+                filled = True
+
         known = set(db.scalars(select(PrintJob.job_id).where(PrintJob.printer_id == printer.id)))
         for j in rec.get("print_jobs") or []:
             if not isinstance(j, dict) or not isinstance(j.get("job_id"), str) or j["job_id"] in known:
@@ -208,7 +223,7 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             out["prints_added"] += 1
             filled = True
 
-        have = {_iso(t) for t in db.scalars(select(PrinterEnergyReading.taken_at).where(PrinterEnergyReading.printer_id == printer.id))}
+        have = {utc_iso(t) for t in db.scalars(select(PrinterEnergyReading.taken_at).where(PrinterEnergyReading.printer_id == printer.id))}
         for r in rec.get("energy_readings") or []:
             if not (isinstance(r, list) and len(r) == 3):
                 continue

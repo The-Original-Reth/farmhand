@@ -57,9 +57,10 @@ export function mockApi() {
     };
   };
   const synced = (p) => farm.connections[p.id] || {};
-  const syncedTotals = (p) => (p.moonraker && (p.moonraker.reachable || synced(p).last_sync_at || farm.jobs[p.id]) ? totalsFor(p) : null);
+  const syncedTotals = (p) => p.prusalink ? { ...totalsFor(p), total_filament_used: null } : (p.moonraker && (p.moonraker.reachable || synced(p).last_sync_at || farm.jobs[p.id]) ? totalsFor(p) : null);
   const moonrakerUrl = (p) => p.moonraker_url_override || ((p.wired_ip || p.wireless_ip) ? `http://${p.wired_ip || p.wireless_ip}:7125` : null);
   const mainsailUrl = (p) => { const u = moonrakerUrl(p); return u ? `http://${new URL(u).hostname}/` : null; };
+  const prusalinkUrl = (p) => !p.prusalink ? null : p.prusalink.url || ((p.wired_ip || p.wireless_ip) ? `http://${p.wired_ip || p.wireless_ip}` : null);
 
   const service = (p) => {
     const notes = { notes: p.serviceNotes || "", notes_revision: p.serviceNotesRevision ?? 0, notes_updated_at: p.serviceNotesUpdatedAt ?? null };
@@ -83,6 +84,9 @@ export function mockApi() {
     notes_updated_at: p.notesUpdatedAt ?? null,
     moonraker_url: moonrakerUrl(p), moonraker_url_override: p.moonraker_url_override || null, mainsail_url: mainsailUrl(p),
     has_moonraker_api_key: !!p.apiKey, service: service(p),
+    connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
+    prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
+    has_prusalink_password: !!p.prusalink?.hasPassword,
   });
   const modelOut = (m) => ({
     id: m.id, name: m.name, file_type: m.file_type, created_at: m.created_at, notes: m.notes, notes_revision: m.notes_revision,
@@ -122,6 +126,12 @@ export function mockApi() {
     if (!body.name?.trim()) throw new HttpError(422, "A printer needs a name");
     if (farm.printers.some((p) => p.name === body.name.trim())) throw new HttpError(409, `A printer named '${body.name}' already exists — name is the unique key, not IP`);
     const p = { id: farm.nextIds.printer++, name: body.name.trim(), kind: body.kind, wired_ip: body.wired_ip, wireless_ip: body.wireless_ip, decommissioned: false, created_at: iso(nowUnix()), moonraker: null, notes: "", serviceHoursSince: null, serviceHistory: [] };
+    if (body.connection_type === "prusalink") {
+      p.prusalink = { reachable: true, firmware: "6.2.0", username: body.prusalink_username || "maker", hasPassword: !!body.prusalink_password, url: body.prusalink_url || null };
+    } else {
+      p.moonraker_url_override = body.moonraker_url || null;
+      p.apiKey = body.moonraker_api_key || null;
+    }
     farm.printers.push(p);
     return [201, printerOut(p)];
   });
@@ -130,6 +140,13 @@ export function mockApi() {
     for (const k of ["name", "kind", "wired_ip", "wireless_ip", "decommissioned"]) if (k in body && body[k] !== undefined) p[k] = body[k];
     if ("moonraker_url" in body) p.moonraker_url_override = body.moonraker_url || null;
     if (body.moonraker_api_key != null) p.apiKey = body.moonraker_api_key || null;
+    if (body.connection_type === "moonraker") delete p.prusalink;
+    if (body.connection_type === "prusalink" && !p.prusalink) p.prusalink = { reachable: true, firmware: "6.2.0", username: "maker", hasPassword: false, url: null };
+    if (p.prusalink) {
+      if ("prusalink_url" in body) p.prusalink.url = body.prusalink_url || null;
+      if (body.prusalink_username != null) p.prusalink.username = body.prusalink_username.trim() || "maker";
+      if (body.prusalink_password != null) p.prusalink.hasPassword = !!body.prusalink_password;
+    }
     return printerOut(p);
   });
   on("PUT", "/printers/:id/notes", ({ id }, body) => {
@@ -252,6 +269,7 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ Moonraker: connection, history, energy, maintenance
   const reach = (p) => {
+    if (p.prusalink) return; // its maintenance is kept in Farmhand: always there
     if (!p.moonraker) throw new HttpError(502, "This printer has no IP address or Moonraker address set.", { kind: "no_address" });
     if (!p.moonraker.reachable) throw new HttpError(502, p.moonraker.error, { kind: p.moonraker.error_kind });
   };
@@ -366,6 +384,10 @@ export function mockApi() {
     const t = totalsFor(p);
     return { name, note, perform_note: null, start_time: nowUnix(), end_time: null, start_filament: t.total_filament_used, end_filament: null, start_printtime: t.total_print_time, end_printtime: null, last_entry: lastEntry, reminder };
   };
+  const noFilament = (p, r) => {
+    if (p.prusalink && r.filament.bool) throw new HttpError(422, "This printer doesn't report how much filament it uses: pick print time or days for the reminder");
+    return r;
+  };
   const entryFor = (p, key) => farm.maintenance[p.id]?.[decodeURIComponent(key)] || fail404("That maintenance entry isn't on the printer any more. It may have been deleted in Mainsail.");
   on("GET", "/printers/:id/maintenance", ({ id }) => maintenanceList(printer(id)));
   on("POST", "/printers/:id/maintenance", ({ id }, body) => {
@@ -373,7 +395,7 @@ export function mockApi() {
     reach(p);
     if (!body.name?.trim()) throw new HttpError(422, "Give the maintenance a name");
     const key = crypto.randomUUID();
-    (farm.maintenance[p.id] ??= {})[key] = freshEntry(p, body.name.trim(), (body.note || "").trim(), cleanReminder(body.reminder));
+    (farm.maintenance[p.id] ??= {})[key] = freshEntry(p, body.name.trim(), (body.note || "").trim(), noFilament(p, cleanReminder(body.reminder)));
     return [201, { id: key, ...maintenanceList(p) }];
   });
   on("PUT", "/printers/:id/maintenance/:key", ({ id, key }, body) => {
@@ -382,7 +404,7 @@ export function mockApi() {
     const e = entryFor(p, key);
     if (body.name != null) e.name = body.name.trim();
     if (body.note != null) e.note = body.note.trim();
-    if (body.reminder) e.reminder = cleanReminder(body.reminder);
+    if (body.reminder) e.reminder = noFilament(p, cleanReminder(body.reminder));
     return maintenanceList(p);
   });
   on("POST", "/printers/:id/maintenance/:key/done", ({ id, key }, body) => {
@@ -406,6 +428,56 @@ export function mockApi() {
     entryFor(p, key);
     delete farm.maintenance[p.id][decodeURIComponent(key)];
     return maintenanceList(p);
+  });
+
+  // ------------------------------------------------------------------ PrusaLink: live status and sending a print
+  // The running job moves on with the clock and finishes once its estimate is up; the printer then shows FINISHED.
+  const liveJob = (p) => {
+    const job = (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
+    if (job) {
+      job.printS = Math.min(job.estimated, nowUnix() - job.start);
+      job.totalS = job.printS;
+      if (job.printS >= job.estimated) {
+        job.status = "completed";
+        p.prusalink.finished = job;
+      }
+    }
+    return job && job.status === "in_progress" ? job : null;
+  };
+  on("GET", "/printers/:id/prusalink", ({ id }) => {
+    const p = printer(id);
+    if (!p.prusalink) throw new HttpError(409, "This printer isn't set up for PrusaLink");
+    const out = {
+      prusalink_url: prusalinkUrl(p), has_password: !!p.prusalink.hasPassword, reachable: false, error: null, error_kind: null,
+      state: null, printer_type: null, firmware: null, temps: null, job: null, ...syncState(p),
+    };
+    if (!prusalinkUrl(p)) return { ...out, error: "This printer has no IP address or PrusaLink address set.", error_kind: "no_address" };
+    if (!p.prusalink.hasPassword) return { ...out, error: "PrusaLink refused the login. Check the username (usually maker) and the password shown on the printer under Settings > Network > PrusaLink.", error_kind: "unauthorized" };
+    if (!p.prusalink.reachable) return { ...out, error: `PrusaLink at ${prusalinkUrl(p)} didn't answer in time. Is the printer on?`, error_kind: "unreachable" };
+    const job = liveJob(p);
+    farm.connections[p.id] = { last_sync_at: iso(nowUnix()), last_sync_error: null };
+    const done = !job && p.prusalink.finished;
+    return {
+      ...out, ...syncState(p), reachable: true, printer_type: "COREONE", firmware: p.prusalink.firmware,
+      state: job ? "PRINTING" : done ? "FINISHED" : "IDLE",
+      temps: job ? { temp_nozzle: 239.6, target_nozzle: 240, temp_bed: 85.2, target_bed: 85 } : { temp_nozzle: 27.4, target_nozzle: 0, temp_bed: 26.1, target_bed: 0 },
+      job: job
+        ? { id: 41, state: "PRINTING", file: job.filename, progress: Math.round((job.printS / job.estimated) * 1000) / 10, time_printing: job.printS, time_remaining: job.estimated - job.printS }
+        : done ? { id: 41, state: "FINISHED", file: done.filename, progress: 100, time_printing: done.printS, time_remaining: 0 } : null,
+    };
+  });
+  on("POST", "/printers/:id/prusalink/print", ({ id }, body) => {
+    const p = printer(id);
+    if (!p.prusalink) throw new HttpError(409, "This printer isn't set up for PrusaLink");
+    const name = body.files?.[0] || "";
+    if (!/\.(bgcode|gcode)$/i.test(name)) throw new HttpError(422, "The printer can only print a sliced .bgcode or .gcode file. Slice the 3MF first.");
+    if (liveJob(p)) throw new HttpError(409, "The printer isn't ready for a new print (it says PRINTING).");
+    p.prusalink.finished = null;
+    (farm.jobs[p.id] ??= []).push({
+      job_id: `${42 + farm.jobs[p.id].length}@mock`, filename: name, status: "in_progress", start: nowUnix(), printS: 0, totalS: 0,
+      filamentMm: 0, kwh: null, avgW: null, maxW: null, estimated: 2.5 * HOUR,
+    });
+    return { sent: `usb/${name}` };
   });
 
   // ------------------------------------------------------------------ settings, storage, shares
@@ -509,6 +581,8 @@ export function mockApi() {
           const raw = Buffer.concat(chunks).toString("utf-8");
           let body = {};
           if (raw && (req.headers["content-type"] || "").includes("application/json")) body = JSON.parse(raw);
+          // an upload: only the names of the files sent are kept (the mockup doesn't store files)
+          if ((req.headers["content-type"] || "").includes("multipart/form-data")) body = { files: [...raw.matchAll(/filename="([^"]*)"/g)].map((m) => m[1]) };
           for (const r of routes) {
             if (r.method !== req.method) continue;
             const m = url.pathname.match(r.re);

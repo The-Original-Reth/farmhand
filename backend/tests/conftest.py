@@ -5,12 +5,15 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401 registers all models on Base
+from app import config, models  # noqa: F401 registers all models on Base
 from app import storage
-from app.database import Base
+from app.database import Base, get_db
+from app.main import app
 
 
 @pytest.fixture()
@@ -32,6 +35,30 @@ def db_session(monkeypatch):
 
     session.close()
     shutil.rmtree(tmp_storage, ignore_errors=True)
+
+
+@pytest.fixture()
+def api(tmp_path, monkeypatch):
+    """A TestClient on an empty database, with file storage in tmp_path/storage."""
+    # FastAPI runs handlers on worker threads, so this needs a database that may be used from any thread
+    # (db_session's in-memory SQLite is tied to the thread that created it).
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, future=True)
+    monkeypatch.setattr(config.settings, "storage_root", str(tmp_path / "storage"))
+    storage.reset()
+
+    def override():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override
+    yield TestClient(app)  # no `with`: the app's startup (which wants Postgres) isn't run
+    app.dependency_overrides.clear()
+    storage.reset()
 
 
 @pytest.fixture()

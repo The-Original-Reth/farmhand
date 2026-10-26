@@ -84,6 +84,8 @@ import {
   saveBundleNotes,
   setStarredVersion,
   getMoonrakerStatus,
+  getPrusaLinkStatus,
+  sendPrint,
   syncPrinterHistory,
   getPrintStats,
   getEnergy,
@@ -1087,6 +1089,196 @@ function MoonrakerCard({ printer, mr }) {
   );
 }
 
+// ---- a PrusaLink printer (Prusa Core One, MK4, XL...) ----
+const PRUSALINK_LOOK_MS = 10000; // how often the open printer page looks at the printer
+const PRUSALINK_STATES = {
+  IDLE: "Idle", READY: "Ready", BUSY: "Busy", PRINTING: "Printing", PAUSED: "Paused", FINISHED: "Finished",
+  STOPPED: "Stopped", ERROR: "Error", ATTENTION: "Needs attention at the printer",
+};
+const PRUSALINK_FREE = ["IDLE", "READY", "FINISHED", "STOPPED"]; // states a new print can be sent in
+
+// The printer's PrusaLink as the printer page sees it: its live status, looked at every few seconds while the page is
+// open. Each look also brings Farmhand's record of its prints up to date (PrusaLink keeps no history of its own).
+// `key` restarts it when the printer or its login changes. onChanged: called when a print starts or ends (the page
+// reloads the printer, whose service hours have moved on); syncTick goes up whenever the record moved, so the
+// history list reloads.
+function usePrusaLink(printerId, key, onChanged) {
+  const [status, setStatus] = useState(null); // GET /printers/{id}/prusalink
+  const [stats, setStats] = useState(null); // GET /printers/{id}/print-stats
+  const [syncTick, setSyncTick] = useState(0);
+  const current = useRef(null);
+  const marks = useRef({ history: null, job: null });
+
+  const look = async (id = printerId) => {
+    let s;
+    try {
+      s = await getPrusaLinkStatus(id);
+    } catch (e) {
+      s = { reachable: false, error: e.message || String(e) };
+    }
+    if (current.current !== key) return;
+    setStatus(s);
+    const job = JSON.stringify([s.job?.id ?? null, s.job?.state ?? null]);
+    const history = JSON.stringify([job, Math.floor((s.job?.progress ?? 0) / 5), s.totals?.total_jobs ?? null]);
+    if (history !== marks.current.history) {
+      marks.current.history = history;
+      getPrintStats(id).then((st) => current.current === key && setStats(st)).catch(() => {});
+      setSyncTick((t) => t + 1);
+    }
+    if (job !== marks.current.job) {
+      const first = marks.current.job === null;
+      marks.current.job = job;
+      if (!first) await onChanged?.();
+    }
+  };
+
+  useEffect(() => {
+    if (!printerId) return undefined;
+    current.current = key;
+    marks.current = { history: null, job: null };
+    setStatus(null);
+    setStats(null);
+    look(printerId);
+    const timer = setInterval(() => {
+      if (!document.hidden) look(printerId);
+    }, PRUSALINK_LOOK_MS);
+    return () => {
+      current.current = null;
+      clearInterval(timer);
+    };
+  }, [key]);
+
+  return { status, stats, syncTick, look: () => look() };
+}
+
+const fmtTemp = (now, target) => (now == null ? "—" : `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ""}`);
+const fmtBytes = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
+// Live status (state, temperatures, the print running), Farmhand's statistics for it, "Open PrusaLink" and "Send a print"
+function PrusaLinkCard({ printer, pl }) {
+  const { status, stats } = pl;
+  const [chosen, setChosen] = useState(null); // the file picked to send, waiting for the go-ahead
+  const fileInput = useRef(null);
+  const totals = stats?.totals || status?.totals;
+  const archive = stats?.archive;
+  const job = status?.job;
+  const free = !!status?.reachable && PRUSALINK_FREE.includes(status.state);
+
+  let dot = c.textFaint;
+  let line = "Checking the printer…";
+  if (status) {
+    if (status.reachable) {
+      dot = status.state === "ERROR" || status.state === "ATTENTION" ? c.danger : status.state === "PRINTING" ? c.teal : c.green;
+      const what = [status.printer_type === "COREONE" ? "Core One" : status.printer_type, status.firmware && `firmware ${status.firmware}`].filter(Boolean).join(" · ");
+      line = `${PRUSALINK_STATES[status.state] || status.state || "Connected"}${what ? ` · ${what}` : ""}`;
+    } else {
+      dot = c.danger;
+      line = status.error || "Can't reach PrusaLink.";
+    }
+  }
+  const failed = archive ? archive.jobs - (archive.by_status.completed || 0) - (archive.by_status.in_progress || 0) - (archive.by_status.cancelled || 0) : 0;
+
+  return (
+    <div data-testid="prusalink-card">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ ...ui, fontSize: fs(13), color: c.textFaint }}>Live status and statistics</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {printer.prusalinkUrl && (
+            <a data-testid="open-prusalink" href={printer.prusalinkUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.prusalinkUrl}>
+              <ExternalLink size={12} />
+              Open PrusaLink
+            </a>
+          )}
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".bgcode,.gcode"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files?.[0]) setChosen(e.target.files[0]);
+              e.target.value = "";
+            }}
+          />
+          <button
+            data-testid="prusalink-send"
+            onClick={() => fileInput.current?.click()}
+            disabled={!free}
+            title={free ? "Send a sliced .bgcode file to the printer and start it" : status?.reachable ? "The printer is busy" : "The printer can't be reached right now"}
+            style={{ ...headerButton(), opacity: free ? 1 : 0.55, cursor: free ? "pointer" : "default" }}
+          >
+            <Upload size={12} />
+            Send a print
+          </button>
+        </div>
+      </div>
+      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+        <div data-testid="prusalink-status" style={{ display: "flex", alignItems: "flex-start", gap: 8, ...ui, fontSize: fs(13), color: status?.reachable ? c.textPrimary : c.textMuted, lineHeight: 1.5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0, marginTop: 6 }} />
+          <span>
+            {line}
+            {status?.reachable && printer.prusalinkUrl && (
+              <span style={{ ...mono, fontSize: fs(11), color: c.textFaint, marginLeft: 8 }}>{printer.prusalinkUrl}</span>
+            )}
+          </span>
+        </div>
+
+        {job && (
+          <div data-testid="prusalink-job" style={{ marginTop: 12 }}>
+            <div style={{ ...ui, fontSize: fs(13), color: c.heading, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={job.file}>
+              {job.file || "Printing"}
+            </div>
+            <div style={{ height: 6, borderRadius: 3, background: c.panelAlt, marginTop: 6, overflow: "hidden" }}>
+              <div style={{ width: `${Math.min(100, job.progress || 0)}%`, height: "100%", background: job.state === "PAUSED" ? c.amber : c.teal }} />
+            </div>
+            <div style={{ ...mono, fontSize: fs(11), color: c.textFaint, marginTop: 4 }}>
+              {Math.round(job.progress || 0)}% · {fmtDuration(job.time_printing || 0)} printed
+              {job.time_remaining != null && job.state === "PRINTING" ? ` · ${fmtDuration(job.time_remaining)} left` : ""}
+              {job.state && job.state !== "PRINTING" ? ` · ${(PRUSALINK_STATES[job.state] || job.state).toLowerCase()}` : ""}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginTop: 12 }}>
+          <StatTile label="Nozzle" value={fmtTemp(status?.temps?.temp_nozzle, status?.temps?.target_nozzle)} hint="Now / target" />
+          <StatTile label="Bed" value={fmtTemp(status?.temps?.temp_bed, status?.temps?.target_bed)} hint="Now / target" />
+          <StatTile label="Prints" value={totals ? totals.total_jobs.toLocaleString() : "—"} hint="Prints Farmhand has recorded" />
+          <StatTile label="Print time" value={totals ? fmtDuration(totals.total_print_time) : "—"} hint="Time spent printing, as Farmhand has recorded it" />
+          <StatTile label="Longest print" value={totals ? fmtDuration(totals.longest_print) : "—"} />
+        </div>
+
+        <div data-testid="prusalink-note" style={{ ...ui, fontSize: fs(12), color: c.textFaint, marginTop: 10, lineHeight: 1.6 }}>
+          Prusa printers keep no print history, so Farmhand notes each print while it runs: every minute, and every few seconds
+          while this page is open. A print that starts and ends between two looks is missed.
+          {archive && archive.jobs > 0 && (
+            <div>
+              Farmhand has {archive.jobs.toLocaleString()} print{archive.jobs === 1 ? "" : "s"} on record:{" "}
+              {(archive.by_status.completed || 0).toLocaleString()} completed, {(archive.by_status.cancelled || 0).toLocaleString()} cancelled,{" "}
+              {failed.toLocaleString()} failed or unknown{archive.by_status.in_progress ? `, ${archive.by_status.in_progress} in progress` : ""}.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {chosen && (
+        <ConfirmDialog
+          title="Send a print"
+          confirmLabel="Send and print"
+          tone="amber"
+          onClose={() => setChosen(null)}
+          onConfirm={async () => {
+            await sendPrint(printer.id, chosen);
+            await pl.look();
+          }}
+        >
+          Send <b style={{ color: c.heading }}>{chosen.name}</b> ({fmtBytes(chosen.size)}) to <b style={{ color: c.heading }}>{printer.name}</b> and
+          start printing it now? Make sure the bed is clear and the right filament is loaded. It goes on the printer's USB
+          drive, replacing a file of the same name.
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
 // ---- energy: per print (from the history) and the whole printer (from the power meter's readings) ----
 const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 2 : v < 100 ? 1 : 0 })} kWh`);
 const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
@@ -1264,7 +1456,9 @@ const emptyReminder = () => ({
   date: { bool: false, value: null },
 });
 
-function MaintenanceForm({ initial, onSubmit, onClose, actionLabel }) {
+// noFilament: the printer doesn't report filament use (PrusaLink), so a filament reminder isn't offered
+function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFilament = false }) {
+  const parts = noFilament ? REMINDER_PARTS.filter((p) => p.key !== "filament") : REMINDER_PARTS;
   const [name, setName] = useState(initial?.name || "");
   const [note, setNote] = useState(initial?.note || "");
   const [reminder, setReminder] = useState(() => {
@@ -1279,8 +1473,8 @@ function MaintenanceForm({ initial, onSubmit, onClose, actionLabel }) {
   const submit = async () => {
     setErrorMsg(null);
     if (!name.trim()) return setErrorMsg("Give the maintenance a name.");
-    if (reminder.type && !REMINDER_PARTS.some(({ key }) => reminder[key].bool)) {
-      return setErrorMsg("Pick at least one of print time, filament or days for the reminder.");
+    if (reminder.type && !parts.some(({ key }) => reminder[key].bool)) {
+      return setErrorMsg(`Pick at least one of print time${noFilament ? "" : ", filament"} or days for the reminder.`);
     }
     setSubmitting(true);
     try {
@@ -1322,7 +1516,7 @@ function MaintenanceForm({ initial, onSubmit, onClose, actionLabel }) {
           <div style={{ ...ui, fontSize: fs(12), color: c.textMuted, lineHeight: 1.5 }}>
             Due when any of these is reached, counted from now{reminder.type === "repeat" ? " and again each time it's done" : ""}:
           </div>
-          {REMINDER_PARTS.map(({ key, label, unit }) => (
+          {parts.map(({ key, label, unit }) => (
             <label key={key} style={{ display: "flex", alignItems: "center", gap: 10, ...ui, fontSize: fs(13), color: c.textMuted }}>
               <input type="checkbox" checked={reminder[key].bool} onChange={(e) => setPart(key, { bool: e.target.checked })} style={{ accentColor: c.amber }} />
               <span style={{ width: 90 }}>{label}</span>
@@ -1341,7 +1535,9 @@ function MaintenanceForm({ initial, onSubmit, onClose, actionLabel }) {
         </div>
       )}
       <div style={{ ...ui, fontSize: fs(11), color: c.textFaint, marginBottom: 14, lineHeight: 1.5 }}>
-        Saved on the printer, the same way Mainsail keeps its maintenance list, so it shows there too.
+        {noFilament
+          ? "Kept in Farmhand: this printer has nowhere to keep maintenance itself. Print time counts the prints Farmhand has recorded."
+          : "Saved on the printer, the same way Mainsail keeps its maintenance list, so it shows there too."}
       </div>
       <ModalActions onClose={onClose} onSubmit={submit} actionLabel={actionLabel} submitting={submitting} errorMsg={errorMsg} submittingLabel="Saving…" />
     </>
@@ -1540,8 +1736,10 @@ function ServiceReminder({ printer }) {
   );
 }
 
-// onDueCount(n): told how many reminders are due (the 1500-hour service included), for the folded group's heading
+// onDueCount(n): told how many reminders are due (the 1500-hour service included), for the folded group's heading.
+// A PrusaLink printer's maintenance is kept in Farmhand, so it's always there.
 function MaintenanceSection({ printer, reachable, onDueCount }) {
+  const inFarmhand = printer.connectionType === "prusalink";
   const [data, setData] = useState(null); // { entries, totals }
   const [error, setError] = useState(null);
   const [dialog, setDialog] = useState(null); // { kind: "add" | "edit" | "done" | "delete", entry }
@@ -1631,7 +1829,7 @@ function MaintenanceSection({ printer, reachable, onDueCount }) {
 
       {dialog?.kind === "add" && (
         <Modal title="Add maintenance" onClose={close} width={480}>
-          <MaintenanceForm actionLabel="Add" onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
+          <MaintenanceForm actionLabel="Add" noFilament={inFarmhand} onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
         </Modal>
       )}
       {dialog?.kind === "edit" && (
@@ -1639,6 +1837,7 @@ function MaintenanceSection({ printer, reachable, onDueCount }) {
           <MaintenanceForm
             initial={dialog.entry}
             actionLabel="Save"
+            noFilament={inFarmhand}
             onClose={close}
             onSubmit={async (v) => setData(await updateMaintenance(printer.id, dialog.entry.id, v))}
           />
@@ -1646,12 +1845,21 @@ function MaintenanceSection({ printer, reachable, onDueCount }) {
       )}
       {dialog?.kind === "done" && (
         <Modal title="Maintenance done" onClose={close} width={440}>
-          <PerformMaintenanceForm entry={dialog.entry} onClose={close} onSubmit={async (v) => setData(await performMaintenance(printer.id, dialog.entry.id, v))} />
+          <PerformMaintenanceForm
+            entry={dialog.entry}
+            message={inFarmhand ? <>Marks <b style={{ color: c.heading }}>{dialog.entry.name}</b> as done, now. It's kept in Farmhand.</> : undefined}
+            onClose={close}
+            onSubmit={async (v) => setData(await performMaintenance(printer.id, dialog.entry.id, v))}
+          />
         </Modal>
       )}
       {dialog?.kind === "delete" && (
         <ConfirmDialog title="Delete maintenance" onClose={close} onConfirm={async () => setData(await deleteMaintenance(printer.id, dialog.entry.id))}>
-          Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b> from the printer? It's removed from Mainsail too. This can't be undone.
+          {inFarmhand ? (
+            <>Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b>? This can't be undone.</>
+          ) : (
+            <>Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b> from the printer? It's removed from Mainsail too. This can't be undone.</>
+          )}
         </ConfirmDialog>
       )}
     </div>
@@ -1783,12 +1991,90 @@ function PrintHistory({ printer, syncTick, open = true, onToggle }) {
   );
 }
 
+// How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink", moonrakerUrl,
+// apiKey, removeKey, prusalinkUrl, prusalinkUsername, prusalinkPassword }. saved: the printer as it is (Edit), for
+// saying a key or password is already saved; null when adding. ip: the IP typed above, for the default addresses.
+const CONNECTIONS = [
+  { value: "moonraker", label: "Mainsail (Moonraker / Klipper: Voron...)" },
+  { value: "prusalink", label: "PrusaLink (Prusa Core One, MK4, XL...)" },
+];
+const newConnection = (printer = null) => ({
+  type: printer?.connectionType || "moonraker",
+  moonrakerUrl: printer?.moonrakerUrlOverride || "",
+  apiKey: "", // blank = keep whatever is saved
+  removeKey: false,
+  prusalinkUrl: printer?.prusalinkUrlOverride || "",
+  prusalinkUsername: printer?.prusalinkUsername || "maker",
+  prusalinkPassword: "", // blank = keep whatever is saved
+});
+// What the API is sent for it: only the chosen kind's fields
+const connectionFields = (conn) =>
+  conn.type === "prusalink"
+    ? {
+        connectionType: "prusalink",
+        prusalinkUrl: conn.prusalinkUrl.trim(),
+        prusalinkUsername: conn.prusalinkUsername.trim() || "maker",
+        prusalinkPassword: conn.prusalinkPassword || undefined,
+      }
+    : { connectionType: "moonraker", moonrakerUrl: conn.moonrakerUrl.trim(), moonrakerApiKey: conn.removeKey ? "" : conn.apiKey.trim() || undefined };
+
+function ConnectionFields({ conn, setConn, ip, saved = null }) {
+  const set = (key) => (value) => setConn((c) => ({ ...c, [key]: value }));
+  return (
+    <>
+      <FieldSelect label="Connection" value={conn.type} onChange={set("type")} options={CONNECTIONS} />
+      {conn.type === "prusalink" ? (
+        <>
+          <TextField
+            label="PrusaLink address (optional)"
+            value={conn.prusalinkUrl}
+            onChange={set("prusalinkUrl")}
+            placeholder={ip ? `Leave blank to use http://${ip}` : "Add an IP above, or give the address here"}
+          />
+          <TextField label="PrusaLink username" value={conn.prusalinkUsername} onChange={set("prusalinkUsername")} placeholder="maker" />
+          <TextField
+            label="PrusaLink password"
+            type="password"
+            value={conn.prusalinkPassword}
+            onChange={set("prusalinkPassword")}
+            placeholder={saved?.hasPrusalinkPassword ? "A password is saved. Type a new one to replace it." : "Shown on the printer: Settings > Network > PrusaLink"}
+          />
+        </>
+      ) : (
+        <>
+          <TextField
+            label="Moonraker address (optional)"
+            value={conn.moonrakerUrl}
+            onChange={set("moonrakerUrl")}
+            placeholder={ip ? `Leave blank to use http://${ip}:7125` : "Add an IP above, or give the address here"}
+          />
+          <TextField
+            label="Moonraker API key (optional)"
+            type="password"
+            value={conn.apiKey}
+            onChange={(v) => setConn((c) => ({ ...c, apiKey: v, removeKey: v ? false : c.removeKey }))}
+            disabled={conn.removeKey}
+            placeholder={saved?.hasMoonrakerApiKey ? "A key is saved. Type a new one to replace it." : "Only needed if Moonraker asks for one"}
+          />
+          {saved?.hasMoonrakerApiKey && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginTop: -6, marginBottom: 14, cursor: "pointer" }}>
+              <input type="checkbox" checked={conn.removeKey} onChange={(e) => set("removeKey")(e.target.checked)} style={{ accentColor: c.amber }} />
+              Remove the saved API key
+            </label>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 function AddPrinterForm({ onClose }) {
   const { refresh } = useData();
   const [name, setName] = useState("");
   const [kind, setKind] = useState("");
   const [wiredIp, setWiredIp] = useState("");
   const [wirelessIp, setWirelessIp] = useState("");
+  const [conn, setConn] = useState(() => newConnection());
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -1797,7 +2083,7 @@ function AddPrinterForm({ onClose }) {
     if (!name.trim()) return setErrorMsg("A printer needs a name.");
     setSubmitting(true);
     try {
-      await createPrinter({ name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim() });
+      await createPrinter({ name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim(), ...connectionFields(conn) });
       await refresh();
       onClose();
     } catch (e) {
@@ -1810,9 +2096,10 @@ function AddPrinterForm({ onClose }) {
   return (
     <>
       <TextField label="Name" value={name} onChange={setName} placeholder="Must match the printer profile name inside your 3MF files exactly" />
-      <TextField label="Type (optional)" value={kind} onChange={setKind} placeholder="e.g. Prusa MK4 (OctoPrint)" />
+      <TextField label="Type (optional)" value={kind} onChange={setKind} placeholder="e.g. Prusa Core One" />
       <TextField label="Wired IP (optional)" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP (optional)" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
+      <ConnectionFields conn={conn} setConn={setConn} ip={wiredIp.trim() || wirelessIp.trim()} />
       <div style={{ ...ui, fontSize: fs(11), color: c.textFaint, marginBottom: 14, lineHeight: 1.5 }}>
         The name is the printer's unique key, and it's what a 3MF upload is matched against — it has to be spelled exactly like the printer profile your slicer put in the file (including capitalization and spaces).
       </div>
@@ -1828,13 +2115,10 @@ function EditPrinterForm({ printer, onClose }) {
   const [wiredIp, setWiredIp] = useState(printer.wired || "");
   const [wirelessIp, setWirelessIp] = useState(printer.wireless || "");
   const [decommissioned, setDecommissioned] = useState(!!printer.decommissioned);
-  const [moonrakerUrl, setMoonrakerUrl] = useState(printer.moonrakerUrlOverride || "");
-  const [apiKey, setApiKey] = useState(""); // blank = keep whatever is saved
-  const [removeKey, setRemoveKey] = useState(false);
+  const [conn, setConn] = useState(() => newConnection(printer));
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const hasFiles = bundlesForPrinter(printer.id).length > 0;
-  const ip = wiredIp.trim() || wirelessIp.trim();
 
   const handleSubmit = async () => {
     setErrorMsg(null);
@@ -1847,8 +2131,7 @@ function EditPrinterForm({ printer, onClose }) {
         wiredIp: wiredIp.trim(),
         wirelessIp: wirelessIp.trim(),
         decommissioned,
-        moonrakerUrl: moonrakerUrl.trim(),
-        moonrakerApiKey: removeKey ? "" : apiKey.trim() || undefined,
+        ...connectionFields(conn),
       });
       await refresh();
       onClose();
@@ -1862,32 +2145,10 @@ function EditPrinterForm({ printer, onClose }) {
   return (
     <>
       <TextField label="Name" value={name} onChange={setName} placeholder="Unique printer name" />
-      <TextField label="Type" value={kind} onChange={setKind} placeholder="e.g. Prusa MK4 (OctoPrint)" />
+      <TextField label="Type" value={kind} onChange={setKind} placeholder="e.g. Prusa Core One" />
       <TextField label="Wired IP" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
-      <TextField
-        label="Moonraker address (optional)"
-        value={moonrakerUrl}
-        onChange={setMoonrakerUrl}
-        placeholder={ip ? `Leave blank to use http://${ip}:7125` : "Add an IP above, or give the address here"}
-      />
-      <TextField
-        label="Moonraker API key (optional)"
-        type="password"
-        value={apiKey}
-        onChange={(v) => {
-          setApiKey(v);
-          if (v) setRemoveKey(false);
-        }}
-        disabled={removeKey}
-        placeholder={printer.hasMoonrakerApiKey ? "A key is saved. Type a new one to replace it." : "Only needed if Moonraker asks for one"}
-      />
-      {printer.hasMoonrakerApiKey && (
-        <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginTop: -6, marginBottom: 14, cursor: "pointer" }}>
-          <input type="checkbox" checked={removeKey} onChange={(e) => setRemoveKey(e.target.checked)} style={{ accentColor: c.amber }} />
-          Remove the saved API key
-        </label>
-      )}
+      <ConnectionFields conn={conn} setConn={setConn} ip={wiredIp.trim() || wirelessIp.trim()} saved={printer} />
       <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginBottom: 14, cursor: "pointer" }}>
         <input
           type="checkbox"
@@ -1999,9 +2260,20 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
   const sections = usePrinterSections();
   const [maintenanceDue, setMaintenanceDue] = useState(0); // reported by the maintenance list, for when it's folded
 
-  // The open printer's Moonraker; starts over if its address or API key changes
+  // The open printer's Moonraker or PrusaLink (whichever it uses); starts over if its address or login changes
   const viewed = view ? printers.find((p) => p.id === view.printerId) : null;
-  const mr = useMoonraker(viewed?.id, viewed ? `${viewed.id}|${viewed.moonrakerUrl}|${viewed.hasMoonrakerApiKey}` : null, refresh);
+  const isPrusaLink = viewed?.connectionType === "prusalink";
+  const mr = useMoonraker(
+    isPrusaLink ? null : viewed?.id,
+    viewed && !isPrusaLink ? `${viewed.id}|${viewed.moonrakerUrl}|${viewed.hasMoonrakerApiKey}` : null,
+    refresh,
+  );
+  const pl = usePrusaLink(
+    isPrusaLink ? viewed.id : null,
+    isPrusaLink ? `${viewed.id}|${viewed.prusalinkUrl}|${viewed.prusalinkUsername}|${viewed.hasPrusalinkPassword}` : null,
+    refresh,
+  );
+  const link = isPrusaLink ? pl : mr; // for what both show: the connection dot, the history reloading
 
   if (!view) {
     return (
@@ -2240,22 +2512,31 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
       <div data-testid="moonraker-group">
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: sections.isOpen("moonraker") ? 14 : 0, flexWrap: "wrap" }}>
           <SectionToggle open={sections.isOpen("moonraker")} onToggle={() => sections.toggle("moonraker")} controlsId="moonraker-body" testId="toggle-moonraker">
-            Moonraker: connection, energy and maintenance
+            {isPrusaLink ? "PrusaLink: live status, printing and maintenance" : "Moonraker: connection, energy and maintenance"}
           </SectionToggle>
           {!sections.isOpen("moonraker") && (
             <>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textFaint }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: !mr.status ? c.textFaint : mr.status.reachable ? c.green : c.danger }} />
-                {!mr.status ? "checking…" : mr.status.reachable ? "connected" : "not reachable"}
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: !link.status ? c.textFaint : link.status.reachable ? c.green : c.danger }} />
+                {!link.status ? "checking…" : !link.status.reachable ? "not reachable" : isPrusaLink && link.status.job ? `printing · ${Math.round(link.status.job.progress || 0)}%` : "connected"}
               </span>
               {maintenanceDue > 0 && <Badge tone="danger">{maintenanceDue} maintenance due</Badge>}
             </>
           )}
         </div>
         <div id="moonraker-body" style={{ display: sections.isOpen("moonraker") ? "flex" : "none", flexDirection: "column", gap: 28 }}>
-          <MoonrakerCard printer={printer} mr={mr} />
-          <EnergyPanel printer={printer} syncTick={mr.syncTick} />
-          <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} />
+          {isPrusaLink ? (
+            <>
+              <PrusaLinkCard printer={printer} pl={pl} />
+              <MaintenanceSection printer={printer} reachable onDueCount={setMaintenanceDue} />
+            </>
+          ) : (
+            <>
+              <MoonrakerCard printer={printer} mr={mr} />
+              <EnergyPanel printer={printer} syncTick={mr.syncTick} />
+              <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} />
+            </>
+          )}
         </div>
       </div>
 
@@ -2353,7 +2634,7 @@ function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect 
         )}
       </div>
 
-      <PrintHistory printer={printer} syncTick={mr.syncTick} open={sections.isOpen("history")} onToggle={() => sections.toggle("history")} />
+      <PrintHistory printer={printer} syncTick={link.syncTick} open={sections.isOpen("history")} onToggle={() => sections.toggle("history")} />
     </div>
   );
 }
@@ -6174,7 +6455,7 @@ function FarmhandApp() {
         {navItem("appearance", "Appearance", Palette, "")}
         <div style={{ borderTop: `1px solid ${c.border}`, marginTop: 12, paddingTop: 12 }}>
           <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
-            Read-only archive. Nothing here re-slices or sends jobs to a printer.
+            An archive: nothing here re-slices, and a print only goes to a printer when you send it.
           </div>
         </div>
         {MOCKUP && <MockupBadge />}

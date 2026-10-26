@@ -4,12 +4,13 @@ import json
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..names import download_name
+from ..notes import NotesConflict, conflict_response
 from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service
@@ -120,18 +121,8 @@ def save_notes(bundle_id: int, payload: NotesUpdate, db: Session = Depends(get_d
     """
     try:
         return bundle_service.set_notes(db, bundle_id, payload.notes, payload.base_revision)
-    except bundle_service.NotesConflict as c:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": str(c),
-                "current": {
-                    "notes": c.bundle.notes,
-                    "notes_revision": c.bundle.notes_revision,
-                    "notes_updated_at": c.bundle.notes_updated_at.isoformat() if c.bundle.notes_updated_at else None,
-                },
-            },
-        )
+    except NotesConflict as c:
+        return conflict_response(c)
     except ValueError as e:
         raise HTTPException(status_code=404 if "No bundle" in str(e) else 422, detail=str(e))
 

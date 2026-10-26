@@ -3,25 +3,13 @@ from __future__ import annotations
 import os
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app import config, config_store as cs, storage
-from app.database import Base, get_db
-from app.main import app
 from app.services import config_service as svc
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    # FastAPI runs handlers on worker threads, so this needs a database that may be used from any thread
-    # (the shared db_session fixture's in-memory SQLite is tied to the thread that created it).
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
-
+def client(api, tmp_path, monkeypatch):
     area = tmp_path / "data"
     (area / "storage").mkdir(parents=True)
     nas = area / "nas" / "lab"
@@ -32,18 +20,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
     storage.reset()
     svc._last_mirror.update(ok=None, error=None, at=None)
-
-    def override():
-        db = Session()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override
-    yield TestClient(app), nas  # no `with`: the app's startup (which wants Postgres) isn't run
-    app.dependency_overrides.clear()
-    storage.reset()
+    return api, nas
 
 
 def test_settings_round_trip_over_the_api(client):

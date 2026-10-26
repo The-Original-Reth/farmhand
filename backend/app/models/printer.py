@@ -6,9 +6,11 @@ from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..notes import HasNotes
+from ..timeutil import utc_iso
 
 
-class Printer(Base):
+class Printer(HasNotes, Base):
     """
     The trunk of the archive's hierarchy.
 
@@ -52,6 +54,14 @@ class Printer(Base):
     energy_readings: Mapped[list["PrinterEnergyReading"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
+    # Reached through PrusaLink instead of Moonraker (see PrusaLinkConnection), and the maintenance Farmhand keeps
+    # for it (a Moonraker printer's maintenance lives in Moonraker)
+    prusalink_row: Mapped["PrusaLinkConnection | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
+    maintenance_rows: Mapped[list["MaintenanceEntry"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan"
+    )
 
     @property
     def service(self) -> dict:
@@ -66,12 +76,12 @@ class Printer(Base):
         out = {
             "state": "waiting", "enabled": row.enabled if row else True,
             "interval_hours": row.interval_hours if row else SERVICE_INTERVAL_HOURS,
-            "hours_since": None, "started_at": _utc_iso(row.started_at) if row else None,
+            "hours_since": None, "started_at": utc_iso(row.started_at) if row else None,
             "last_done": row.history[-1] if row and row.history else None,
             # notes kept with the service (PrinterServiceNote); revision 0 = never had any
             "notes": self.service_note_row.body if self.service_note_row else "",
             "notes_revision": self.service_note_row.revision if self.service_note_row else 0,
-            "notes_updated_at": _utc_iso(self.service_note_row.updated_at) if self.service_note_row else None,
+            "notes_updated_at": utc_iso(self.service_note_row.updated_at) if self.service_note_row else None,
         }
         if row is None or totals is None:
             return out
@@ -81,6 +91,30 @@ class Printer(Base):
         else:
             out["state"] = "due" if out["hours_since"] >= row.interval_hours else "ok"
         return out
+
+    @property
+    def connection_type(self) -> str:
+        """How Farmhand talks to it: "moonraker" (Klipper) or "prusalink" (a Prusa Core One, MK4, XL...)."""
+        return "prusalink" if self.prusalink_row is not None else "moonraker"
+
+    @property
+    def prusalink_url_override(self) -> str | None:
+        return self.prusalink_row.url if self.prusalink_row else None
+
+    @property
+    def prusalink_url(self) -> str | None:
+        """Where its PrusaLink is: the address set for it, else port 80 of its IP (wired preferred). None = no IP."""
+        if self.prusalink_url_override:
+            return self.prusalink_url_override.rstrip("/")
+        return f"http://{_host(self.preferred_ip)}" if self.preferred_ip else None
+
+    @property
+    def prusalink_username(self) -> str | None:
+        return self.prusalink_row.username if self.prusalink_row else None
+
+    @property
+    def has_prusalink_password(self) -> bool:
+        return bool(self.prusalink_row and self.prusalink_row.password)
 
     @property
     def moonraker_url_override(self) -> str | None:
@@ -109,27 +143,9 @@ class Printer(Base):
         return bool(self.connection_row and self.connection_row.api_key)
 
     @property
-    def notes(self) -> str:
-        return self.note_row.body if self.note_row else ""
-
-    @property
-    def notes_revision(self) -> int:
-        """0 = never had notes. Counts up with every save, so it names one exact version of the text."""
-        return self.note_row.revision if self.note_row else 0
-
-    @property
-    def notes_updated_at(self) -> dt.datetime | None:
-        return self.note_row.updated_at if self.note_row else None
-
-    @property
     def preferred_ip(self) -> str | None:
         """Wired is always preferred when both are available, per spec."""
         return self.wired_ip or self.wireless_ip
-
-
-def _utc_iso(value: dt.datetime) -> str:
-    """SQLite hands times back without a timezone (they're stored as UTC); say so, so browsers read them right."""
-    return (value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)).isoformat()
 
 
 def _host(host: str) -> str:

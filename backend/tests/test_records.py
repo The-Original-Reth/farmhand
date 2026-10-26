@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import io
 import json
 import os
@@ -12,8 +13,10 @@ from sqlalchemy.orm import sessionmaker
 from app import config, records_store as rs, storage
 from app.database import Base
 from app.models import Printer, PrinterEnergyReading, PrintJob, SourceFileType
-from app.services import bundle_service, config_service, moonraker_service as mr, printer_service, records_service
+from app.services import bundle_service, config_service, printer_service, records_service
+from app.services import moonraker as mr
 from app.services import source_model_service as models_svc
+from app.services.moonraker import client as mr_client, history as mr_history
 
 from .fake_moonraker import FakeMoonraker
 
@@ -21,8 +24,8 @@ from .fake_moonraker import FakeMoonraker
 @pytest.fixture()
 def fake(monkeypatch):
     f = FakeMoonraker()
-    monkeypatch.setattr(mr, "transport", httpx.MockTransport(f.handle))
-    monkeypatch.setattr(mr, "READING_SPACING", mr.dt.timedelta(0))
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
+    monkeypatch.setattr(mr_history, "READING_SPACING", dt.timedelta(0))
     return f
 
 
@@ -34,6 +37,9 @@ def _printer_with_everything(db, fake, name="V2 BOG"):
     fake.add_job("0003F2", "gecko.gcode", start=1_700_000_000, energy_kwh=2.9)
     fake.add_job("0003F3", "gecko.gcode", start=1_700_100_000, energy_kwh=3.7)
     mr.sync_history(db, p)
+    for r in p.energy_readings:  # a minute apart, as real readings are (two quick syncs can share one clock tick)
+        r.taken_at = r.taken_at - dt.timedelta(minutes=1)
+    db.commit()
     fake.meter_kwh = 2071.5
     mr.sync_history(db, p)
     mr.service_done(db, p, note="new belts")
@@ -57,7 +63,8 @@ def test_each_printer_gets_a_file_with_everything_but_the_api_key(db_session, fa
     doc = json.loads(text)
     assert doc[rs.RECORD_MARKER] == "printers" and doc["name"] == "V2 BOG"
     assert doc["printer"] == {"kind": "Voron 2.4", "wired_ip": "192.168.10.123", "wireless_ip": None,
-                              "decommissioned": False, "moonraker_url": "http://192.168.10.123:7125"}
+                              "decommissioned": False, "moonraker_url": "http://192.168.10.123:7125",
+                              "connection_type": "moonraker", "prusalink_url": None, "prusalink_username": None}
     assert doc["notes"] == "Bed: PEI. Lives on shelf 2." and doc["service_notes"] == "Gates 6mm belts"
     assert doc["service"]["history"][0]["note"] == "new belts" and doc["service"]["interval_hours"] == 1500
     assert [j["job_id"] for j in doc["print_jobs"]] == ["0003F2", "0003F3"] and doc["print_jobs"][1]["energy_kwh"] == 3.7

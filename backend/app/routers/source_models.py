@@ -3,12 +3,13 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..names import download_name
+from ..notes import NotesConflict, conflict_response
 from ..models import SourceFileType
 from ..schemas.bundle import BundleOut
 from ..schemas.source_model import NotesConflictOut, NotesUpdate, SourceModelOut
@@ -90,18 +91,8 @@ def save_notes(source_model_id: int, payload: NotesUpdate, db: Session = Depends
     """
     try:
         return source_model_service.set_notes(db, source_model_id, payload.notes, payload.base_revision)
-    except source_model_service.NotesConflict as c:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": str(c),
-                "current": {
-                    "notes": c.model.notes,
-                    "notes_revision": c.model.notes_revision,
-                    "notes_updated_at": c.model.notes_updated_at.isoformat() if c.model.notes_updated_at else None,
-                },
-            },
-        )
+    except NotesConflict as c:
+        return conflict_response(c)
     except ValueError as e:
         raise HTTPException(status_code=404 if "No source model" in str(e) else 422, detail=str(e))
 
