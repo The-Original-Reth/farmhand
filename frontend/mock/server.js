@@ -4,12 +4,9 @@
 // with a plain "not in the mockup" message. Only loaded by `npm run mock` (see vite.config.js).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildFarm, FIXTURES } from "./data.js";
+import { buildFarm, DAY, FIXTURES, HOUR, iso, jobTotals } from "./data.js";
 
 const PREFIX = "/mock-api";
-const HOUR = 3600;
-const DAY = 86400;
-const iso = (unix) => (unix == null ? null : new Date(unix * 1000).toISOString().replace("Z", "+00:00"));
 const nowUnix = () => Math.floor(Date.now() / 1000);
 
 class HttpError extends Error {
@@ -45,22 +42,13 @@ export function mockApi() {
     throw new HttpError(404, detail);
   }
 
-  const totalsFor = (p) => {
-    const list = farm.jobs[p.id] || [];
-    return {
-      total_jobs: list.length,
-      total_time: list.reduce((s, j) => s + j.totalS, 0),
-      total_print_time: list.reduce((s, j) => s + j.printS, 0),
-      total_filament_used: list.reduce((s, j) => s + j.filamentMm, 0),
-      longest_job: Math.max(0, ...list.map((j) => j.totalS)),
-      longest_print: Math.max(0, ...list.map((j) => j.printS)),
-    };
-  };
+  const totalsFor = (p) => jobTotals(farm.jobs[p.id] || []);
   const synced = (p) => farm.connections[p.id] || {};
   const syncedTotals = (p) => p.prusalink ? { ...totalsFor(p), total_filament_used: null } : (p.moonraker && (p.moonraker.reachable || synced(p).last_sync_at || farm.jobs[p.id]) ? totalsFor(p) : null);
-  const moonrakerUrl = (p) => p.moonraker_url_override || ((p.wired_ip || p.wireless_ip) ? `http://${p.wired_ip || p.wireless_ip}:7125` : null);
+  const ipOf = (p) => p.wired_ip || p.wireless_ip; // wired preferred
+  const moonrakerUrl = (p) => p.moonraker_url_override || (ipOf(p) ? `http://${ipOf(p)}:7125` : null);
   const mainsailUrl = (p) => { const u = moonrakerUrl(p); return u ? `http://${new URL(u).hostname}/` : null; };
-  const prusalinkUrl = (p) => !p.prusalink ? null : p.prusalink.url || ((p.wired_ip || p.wireless_ip) ? `http://${p.wired_ip || p.wireless_ip}` : null);
+  const prusalinkUrl = (p) => !p.prusalink ? null : p.prusalink.url || (ipOf(p) ? `http://${ipOf(p)}` : null);
 
   const service = (p) => {
     const notes = { notes: p.serviceNotes || "", notes_revision: p.serviceNotesRevision ?? 0, notes_updated_at: p.serviceNotesUpdatedAt ?? null };
@@ -97,6 +85,7 @@ export function mockApi() {
     const { thumb, ...rest } = v;
     return rest;
   };
+  const versionDetail = (v) => ({ ...versionOut(v), settings: farm.versionSettings[v.id] || {} });
   const bundleOut = (b) => ({
     id: b.id, printer_id: b.printer_id, created_at: b.created_at,
     source_models: b.source_model_ids.map((id) => farm.models.find((m) => m.id === id)).filter(Boolean).map(modelOut),
@@ -180,7 +169,7 @@ export function mockApi() {
   on("PATCH", "/bundles/versions/:id", ({ id }, body) => {
     const { v } = version(id);
     v.filename = cleanName(body.filename, ".3mf");
-    return { ...versionOut(v), settings: farm.versionSettings[v.id] || {} };
+    return versionDetail(v);
   });
   on("PUT", "/source-models/:id/notes", ({ id }, body) => {
     const m = model(id);
@@ -240,10 +229,7 @@ export function mockApi() {
     }
     return bundleOut(b);
   });
-  on("GET", "/bundles/versions/:id", ({ id }) => {
-    const { v } = version(id);
-    return { ...versionOut(v), settings: farm.versionSettings[v.id] || {} };
-  });
+  on("GET", "/bundles/versions/:id", ({ id }) => versionDetail(version(id).v));
   on("PATCH", "/bundles/versions/:id/monument", ({ id }, body) => {
     const { v } = version(id);
     if (body.monument) {
@@ -253,7 +239,7 @@ export function mockApi() {
       if (!body.confirm) throw new HttpError(422, "Un-monumenting re-exposes this version to pruning — pass confirm=True to proceed");
       v.monument = false;
     }
-    return { ...versionOut(v), settings: farm.versionSettings[v.id] || {} };
+    return versionDetail(v);
   });
   on("DELETE", "/bundles/versions/:id", ({ id }) => {
     const { b, v } = version(id);
@@ -311,10 +297,10 @@ export function mockApi() {
   });
   on("GET", "/printers/:id/print-stats", ({ id }) => {
     const p = printer(id);
-    const list = farm.jobs[p.id] || [];
+    const t = totalsFor(p);
     const by = {};
-    list.forEach((j) => (by[j.status] = (by[j.status] || 0) + 1));
-    return { ...syncState(p), archive: { jobs: list.length, by_status: by, print_time: list.reduce((s, j) => s + j.printS, 0), filament_used: list.reduce((s, j) => s + j.filamentMm, 0) } };
+    (farm.jobs[p.id] || []).forEach((j) => (by[j.status] = (by[j.status] || 0) + 1));
+    return { ...syncState(p), archive: { jobs: t.total_jobs, by_status: by, print_time: t.total_print_time, filament_used: t.total_filament_used } };
   });
   on("GET", "/printers/:id/energy", ({ id }) => {
     const p = printer(id);
@@ -330,16 +316,19 @@ export function mockApi() {
   });
 
   // The 1500-hour service, kept in Farmhand
-  on("POST", "/printers/:id/service/done", ({ id }, body) => {
+  const servicedPrinter = (id) => {
     const p = printer(id);
     if (p.serviceHoursSince == null) throw new HttpError(422, "The service count starts once the printer has been synced at least once");
+    return p;
+  };
+  on("POST", "/printers/:id/service/done", ({ id }, body) => {
+    const p = servicedPrinter(id);
     p.serviceHistory = [...(p.serviceHistory || []), { hoursAgoDays: 0, doneAt: nowUnix(), hours: Math.round(p.serviceHoursSince * 10) / 10, note: (body.note || "").trim() || null }];
     p.serviceHoursSince = 0;
     return printerOut(p);
   });
   on("PATCH", "/printers/:id/service", ({ id }, body) => {
-    const p = printer(id);
-    if (p.serviceHoursSince == null) throw new HttpError(422, "The service count starts once the printer has been synced at least once");
+    const p = servicedPrinter(id);
     p.serviceEnabled = !!body.enabled;
     return printerOut(p);
   });
@@ -388,19 +377,22 @@ export function mockApi() {
     if (p.prusalink && r.filament.bool) throw new HttpError(422, "This printer doesn't report how much filament it uses: pick print time or days for the reminder");
     return r;
   };
+  const reachablePrinter = (id) => {
+    const p = printer(id);
+    reach(p);
+    return p;
+  };
   const entryFor = (p, key) => farm.maintenance[p.id]?.[decodeURIComponent(key)] || fail404("That maintenance entry isn't on the printer any more. It may have been deleted in Mainsail.");
   on("GET", "/printers/:id/maintenance", ({ id }) => maintenanceList(printer(id)));
   on("POST", "/printers/:id/maintenance", ({ id }, body) => {
-    const p = printer(id);
-    reach(p);
+    const p = reachablePrinter(id);
     if (!body.name?.trim()) throw new HttpError(422, "Give the maintenance a name");
     const key = crypto.randomUUID();
     (farm.maintenance[p.id] ??= {})[key] = freshEntry(p, body.name.trim(), (body.note || "").trim(), noFilament(p, cleanReminder(body.reminder)));
     return [201, { id: key, ...maintenanceList(p) }];
   });
   on("PUT", "/printers/:id/maintenance/:key", ({ id, key }, body) => {
-    const p = printer(id);
-    reach(p);
+    const p = reachablePrinter(id);
     const e = entryFor(p, key);
     if (body.name != null) e.name = body.name.trim();
     if (body.note != null) e.note = body.note.trim();
@@ -408,8 +400,7 @@ export function mockApi() {
     return maintenanceList(p);
   });
   on("POST", "/printers/:id/maintenance/:key/done", ({ id, key }, body) => {
-    const p = printer(id);
-    reach(p);
+    const p = reachablePrinter(id);
     const e = entryFor(p, key);
     if (e.end_time != null) throw new HttpError(422, "That maintenance has already been marked done");
     const t = totalsFor(p);
@@ -444,9 +435,13 @@ export function mockApi() {
     }
     return job && job.status === "in_progress" ? job : null;
   };
-  on("GET", "/printers/:id/prusalink", ({ id }) => {
+  const prusaPrinter = (id) => {
     const p = printer(id);
     if (!p.prusalink) throw new HttpError(409, "This printer isn't set up for PrusaLink");
+    return p;
+  };
+  on("GET", "/printers/:id/prusalink", ({ id }) => {
+    const p = prusaPrinter(id);
     const out = {
       prusalink_url: prusalinkUrl(p), has_password: !!p.prusalink.hasPassword, reachable: false, error: null, error_kind: null,
       state: null, printer_type: null, firmware: null, temps: null, job: null, ...syncState(p),
@@ -467,8 +462,7 @@ export function mockApi() {
     };
   });
   on("POST", "/printers/:id/prusalink/print", ({ id }, body) => {
-    const p = printer(id);
-    if (!p.prusalink) throw new HttpError(409, "This printer isn't set up for PrusaLink");
+    const p = prusaPrinter(id);
     const name = body.files?.[0] || "";
     if (!/\.(bgcode|gcode)$/i.test(name)) throw new HttpError(422, "The printer can only print a sliced .bgcode or .gcode file. Slice the 3MF first.");
     if (liveJob(p)) throw new HttpError(409, "The printer isn't ready for a new print (it says PRINTING).");

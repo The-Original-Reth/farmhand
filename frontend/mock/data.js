@@ -21,10 +21,21 @@ function rng(seed) {
   };
 }
 
-const HOUR = 3600;
-const DAY = 86400;
-const iso = (unixSeconds) => new Date(unixSeconds * 1000).toISOString().replace("Z", "+00:00");
+export const HOUR = 3600;
+export const DAY = 86400;
+// A time as the API writes it (UTC, "+00:00"); null stays null
+export const iso = (unix) => (unix == null ? null : new Date(unix * 1000).toISOString().replace("Z", "+00:00"));
 const NOW = Math.floor(Date.now() / 1000);
+
+// A printer's lifetime figures from its jobs, the way Moonraker's /server/history/totals gives them
+export const jobTotals = (list) => ({
+  total_jobs: list.length,
+  total_time: list.reduce((s, j) => s + j.totalS, 0),
+  total_print_time: list.reduce((s, j) => s + j.printS, 0),
+  total_filament_used: list.reduce((s, j) => s + j.filamentMm, 0),
+  longest_job: Math.max(0, ...list.map((j) => j.totalS)),
+  longest_print: Math.max(0, ...list.map((j) => j.printS)),
+});
 
 export function buildFarm() {
   const rand = rng(1190);
@@ -199,17 +210,7 @@ export function buildFarm() {
   }
 
   // ------------------------------------------------------------------ maintenance kept on the printers (Mainsail's format)
-  const totalsFor = (printerId) => {
-    const list = jobs[printerId] || [];
-    return {
-      total_jobs: list.length,
-      total_time: list.reduce((s, j) => s + j.totalS, 0),
-      total_print_time: list.reduce((s, j) => s + j.printS, 0),
-      total_filament_used: list.reduce((s, j) => s + j.filamentMm, 0),
-      longest_job: Math.max(0, ...list.map((j) => j.totalS)),
-      longest_print: Math.max(0, ...list.map((j) => j.printS)),
-    };
-  };
+  const totalsFor = (printerId) => jobTotals(jobs[printerId] || []);
   const reminder = (type, parts = {}) => ({
     type,
     filament: { bool: !!parts.filament, value: parts.filament ?? null },

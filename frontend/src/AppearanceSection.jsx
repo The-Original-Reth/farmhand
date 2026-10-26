@@ -1,5 +1,6 @@
 import React from "react";
 import { c, ui, mono, fs } from "./theme.js";
+import { monoText, uiText } from "./styles.js";
 import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE, FILE_NAME_COLORS } from "./palettes.js";
 
 // The Appearance controls, as a section of the Storage page. The page re-renders in the new look as each
@@ -8,7 +9,7 @@ import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE, FILE_NAME_COLORS } from "./p
 
 function Heading({ children }) {
   return (
-    <div style={{ ...ui, fontSize: fs(11), color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 8px" }}>
+    <div style={uiText(11, c.textMuted, { textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 8px" })}>
       {children}
     </div>
   );
@@ -71,7 +72,7 @@ function ChoiceButton({ id, selected, onPick, children, style }) {
 
 function Chip({ fg, bg, border, children }) {
   return (
-    <span style={{ ...ui, fontSize: fs(12), color: fg, background: bg, border: `1px solid ${border}`, borderRadius: 3, padding: "2px 8px" }}>{children}</span>
+    <span style={uiText(12, fg, { background: bg, border: `1px solid ${border}`, borderRadius: 3, padding: "2px 8px" })}>{children}</span>
   );
 }
 
@@ -208,7 +209,7 @@ export function AppearanceSection({ appearance, saved, onChange, onSave, onDisca
         <div style={{ marginTop: 8 }}>
           <span
             data-testid="preview-3mf-name"
-            style={{ ...mono, fontSize: fs(13), color: c.fileName, border: `1px solid ${c.borderStrong}`, borderRadius: 3, background: c.panel, padding: "2px 7px" }}
+            style={monoText(13, c.fileName, { border: `1px solid ${c.borderStrong}`, borderRadius: 3, background: c.panel, padding: "2px 7px" })}
           >
             VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.3mf
           </span>
