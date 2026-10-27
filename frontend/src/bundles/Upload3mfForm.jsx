@@ -164,7 +164,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
   return (
     <>
       <Dropzone label="Drop the .3mf file here" file={threemfFile} onFile={handleThreemfFile} accept=".3mf" />
-      <Dropzone label="Drop the matching .gcode file here (optional)" file={gcodeFile} onFile={setGcodeFile} accept=".gcode,.gco" />
+      <Dropzone label="Drop the matching .gcode or .bgcode file here (optional)" file={gcodeFile} onFile={setGcodeFile} accept=".gcode,.bgcode" />
 
       {/* Printer — read from the file, with a way out when it isn't registered */}
       {inspecting && (

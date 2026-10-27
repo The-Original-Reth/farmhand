@@ -41,7 +41,7 @@ function NewBundleVersionDialog({ bundle, onClose }) {
         same printer as this entry.
       </div>
       <Dropzone label="Drop the newer .3mf file here" file={threemf} onFile={setThreemf} accept=".3mf" />
-      <Dropzone label="Drop the matching .gcode file here (optional)" file={gcode} onFile={setGcode} accept=".gcode,.gco" />
+      <Dropzone label="Drop the matching .gcode or .bgcode file here (optional)" file={gcode} onFile={setGcode} accept=".gcode,.bgcode" />
       <ModalActions onClose={onClose} onSubmit={handleSubmit} actionLabel="Add new version" submitting={submitting} errorMsg={errorMsg} />
     </>
   );

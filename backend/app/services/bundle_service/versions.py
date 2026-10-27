@@ -87,7 +87,13 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
     return version.threemf_path, version.gcode_path
 
 
-GCODE_EXTENSIONS = (".gcode", ".bgcode")
+GCODE_EXTENSIONS = (".gcode", ".bgcode")  # plain G-code, and Prusa's binary G-code
+
+
+def check_gcode_name(filename: str | None) -> None:
+    """A G-code must be a sliced .gcode or .bgcode (any case), whether it comes with a 3MF or on its own."""
+    if os.path.splitext(filename or "")[1].lower() not in GCODE_EXTENSIONS:
+        raise ValueError("Pick a sliced .gcode or .bgcode file")
 
 
 def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> BundleVersion:
@@ -97,8 +103,7 @@ def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> Bundl
     version = db.get(BundleVersion, version_id)
     if version is None:
         raise NotFound(f"No bundle version with id {version_id}")
-    if os.path.splitext(filename or "")[1].lower() not in GCODE_EXTENSIONS:
-        raise ValueError("Pick a sliced .gcode or .bgcode file")
+    check_gcode_name(filename)
     if not version.full_files_retained or not version.threemf_path:
         raise ValueError("This version's files were pruned, so it can't be given a G-code any more")
     old = version.gcode_path

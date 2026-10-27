@@ -94,6 +94,20 @@ def test_only_a_gcode_can_be_uploaded_as_one(farm):
     assert c.put("/bundles/versions/999/gcode", files={"gcode": ("a.gcode", b"G28")}).status_code == 404
 
 
+def test_a_gcode_or_bgcode_can_come_with_a_3mf_but_nothing_else_can(farm, sample_3mf_paths):
+    c, bid = farm["api"], farm["bundle"]["id"]
+    with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
+        data = f.read()
+    for name in ("Goldfish.bgcode", "Goldfish.GCODE"):
+        r = c.post(f"/bundles/{bid}/versions", files={"threemf": ("Goldfish.3mf", data), "gcode": (name, b"GCDE")})
+        assert r.status_code in (200, 201), r.text
+    v = _versions(farm)
+    assert v[3]["gcode_name"] == "Goldfish ver 3.bgcode" and v[4]["gcode_name"].lower() == "goldfish ver 4.gcode"
+    r = c.post(f"/bundles/{bid}/versions", files={"threemf": ("Goldfish.3mf", data), "gcode": ("Goldfish.txt", b"hello")})
+    assert r.status_code == 422 and ".gcode or .bgcode" in r.json()["detail"]
+    assert 5 not in _versions(farm)  # refused before anything was kept
+
+
 def test_a_pruned_version_cannot_be_given_a_gcode(farm):
     from app.database import get_db
     from app.main import app

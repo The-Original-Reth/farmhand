@@ -17,7 +17,7 @@ from ...names import with_version
 from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
 from ...parsers import parse_3mf
 from .queries import get_bundle
-from .versions import _enforce_rolling_window
+from .versions import _enforce_rolling_window, check_gcode_name
 
 
 def _parse_upload_to_tempfile(threemf_file_obj) -> tuple[str, "object"]:
@@ -93,6 +93,8 @@ def create_bundle(
     """
     if not source_model_ids:
         raise ValueError("A bundle needs at least one source model (a 3MF is sliced from something)")
+    if gcode_file_obj is not None:
+        check_gcode_name(gcode_filename)
 
     tmp_path, parsed = _parse_upload_to_tempfile(threemf_file_obj)
     try:
@@ -164,6 +166,8 @@ def add_bundle_version(
     bundle = get_bundle(db, bundle_id)
     if bundle is None:
         raise NotFound(f"No bundle with id {bundle_id}")
+    if gcode_file_obj is not None:
+        check_gcode_name(gcode_filename)
 
     tmp_path, parsed = _parse_upload_to_tempfile(threemf_file_obj)
     try:
