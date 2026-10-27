@@ -294,7 +294,14 @@ export function mockApi() {
     const out = { moonraker_url: moonrakerUrl(p), mainsail_url: mainsailUrl(p), has_api_key: !!p.apiKey, reachable: false, klippy_state: null, moonraker_version: null, error: null, error_kind: null, ...syncState(p) };
     if (!p.moonraker) return { ...out, error: "This printer has no IP address or Moonraker address set.", error_kind: "no_address" };
     if (!p.moonraker.reachable) return { ...out, error: p.moonraker.error, error_kind: p.moonraker.error_kind };
-    return { ...out, reachable: true, klippy_state: p.moonraker.klippy_state, moonraker_version: p.moonraker.version };
+    // A job still in progress is the print running now; it carries on from where the sample data left it
+    const job = (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
+    const printed = job && Math.min(job.estimated - 60, job.printS + (nowUnix() - (job.seenFrom ??= nowUnix())));
+    const print = job && {
+      state: "printing", file: job.filename, progress: Math.round((printed / job.estimated) * 1000) / 10, print_duration: printed,
+      time_remaining: job.estimated - printed, extruder: { temperature: 239.8, target: 240 }, heater_bed: { temperature: 100.2, target: 100 },
+    };
+    return { ...out, reachable: true, klippy_state: p.moonraker.klippy_state, moonraker_version: p.moonraker.version, print: print || null };
   });
   on("POST", "/printers/:id/moonraker/sync", ({ id }) => {
     const p = printer(id);

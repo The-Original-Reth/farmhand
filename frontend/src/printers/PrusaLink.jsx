@@ -7,6 +7,7 @@ import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, formatBytes } from "../lib/format.js";
+import { JobProgress } from "./JobProgress.jsx";
 
 // ---- a PrusaLink printer (Prusa Core One, MK4, XL...) ----
 const PRUSALINK_LOOK_MS = 10000; // how often the open printer page looks at the printer
@@ -141,19 +142,15 @@ export function PrusaLinkCard({ printer, pl }) {
         </div>
 
         {job && (
-          <div data-testid="prusalink-job" style={{ marginTop: 12 }}>
-            <div style={uiText(13, c.heading, { fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={job.file}>
-              {job.file || "Printing"}
-            </div>
-            <div style={{ height: 6, borderRadius: 3, background: c.panelAlt, marginTop: 6, overflow: "hidden" }}>
-              <div style={{ width: `${Math.min(100, job.progress || 0)}%`, height: "100%", background: job.state === "PAUSED" ? c.amber : c.teal }} />
-            </div>
-            <div style={monoText(11, c.textFaint, { marginTop: 4 })}>
-              {Math.round(job.progress || 0)}% · {fmtDuration(job.time_printing || 0)} printed
-              {job.time_remaining != null && job.state === "PRINTING" ? ` · ${fmtDuration(job.time_remaining)} left` : ""}
-              {job.state && job.state !== "PRINTING" ? ` · ${(PRUSALINK_STATES[job.state] || job.state).toLowerCase()}` : ""}
-            </div>
-          </div>
+          <JobProgress
+            testId="prusalink-job"
+            file={job.file}
+            progress={job.progress}
+            printed={job.time_printing}
+            left={job.state === "PRINTING" ? job.time_remaining : null}
+            paused={job.state === "PAUSED"}
+            note={job.state && job.state !== "PRINTING" ? (PRUSALINK_STATES[job.state] || job.state).toLowerCase() : null}
+          />
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginTop: 12 }}>

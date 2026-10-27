@@ -274,6 +274,8 @@ export const sendPrint = (printerId, file) => {
 // ---- a printer's Moonraker: connection, print history (Farmhand's copy), statistics, maintenance ----
 // A printer that can't be reached answers 502 with { detail, kind } (no_address | unreachable | unauthorized | ...).
 
+// { reachable, klippy_state, moonraker_version, error, error_kind, print: { state: printing | paused, file, progress
+//   (0-100), print_duration, time_remaining, extruder, heater_bed } | null, last_sync_at, totals, ... }
 export const getMoonrakerStatus = (printerId) => request(`/printers/${printerId}/moonraker`);
 export const syncPrinterHistory = (printerId) => request(`/printers/${printerId}/moonraker/sync`, { method: "POST" });
 export const getPrintStats = (printerId) => request(`/printers/${printerId}/print-stats`);

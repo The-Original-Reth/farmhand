@@ -106,3 +106,32 @@ def upload_and_print(printer: Printer, filename: str, data: bytes) -> str:
         timeout=UPLOAD_TIMEOUT, unwrapped=True,
     )
     return f"gcodes/{(answer.get('item') or {}).get('path') or filename}"
+
+
+LIVE_OBJECTS = {"print_stats": None, "virtual_sdcard": None, "extruder": "temperature,target", "heater_bed": "temperature,target"}
+
+
+def live_print(printer: Printer) -> dict | None:
+    """
+    The print Klipper is running or has paused, as Mainsail shows it: its file, progress through the file (0-100),
+    time spent printing (pauses not counted) and time left, estimated from that progress the way Mainsail's default
+    does. Plus nozzle and bed temperatures. None when nothing is printing.
+    """
+    params = {name: fields or "" for name, fields in LIVE_OBJECTS.items()}
+    status = _call(printer, "GET", "/printer/objects/query", params=params).get("status") or {}
+    stats = status.get("print_stats") or {}
+    if stats.get("state") not in ("printing", "paused"):
+        return None
+    progress = float((status.get("virtual_sdcard") or {}).get("progress") or 0)
+    printed = float(stats.get("print_duration") or 0)
+    left = printed / progress - printed if progress > 0 and printed > 0 else None
+    temps = lambda name: {k: (status.get(name) or {}).get(k) for k in ("temperature", "target")}  # noqa: E731
+    return {
+        "state": stats["state"],
+        "file": stats.get("filename") or None,
+        "progress": round(progress * 100, 1),
+        "print_duration": printed,
+        "time_remaining": round(left) if left is not None else None,
+        "extruder": temps("extruder"),
+        "heater_bed": temps("heater_bed"),
+    }

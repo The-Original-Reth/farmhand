@@ -7,8 +7,9 @@
 // ---------------------------------------------------------------------------
 export const fmtDuration = (s) => {
   if (!s) return "0m";
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
+  const minutes = Math.round(s / 60); // rounded first, so 2h 59m 50s reads 3h 00m, not 2h 60m
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   return h ? `${h.toLocaleString()}h ${String(m).padStart(2, "0")}m` : `${m}m`;
 };
 export const fmtMetres = (mm) => `${((mm || 0) / 1000).toLocaleString(undefined, { maximumFractionDigits: (mm || 0) >= 100000 ? 0 : 1 })} m`;

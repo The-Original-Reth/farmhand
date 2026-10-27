@@ -38,7 +38,7 @@ def _sync_state(printer: Printer) -> dict:
 
 @router.get("/{printer_id}/moonraker")
 def connection_status(printer_id: int, db: Session = Depends(get_db)):
-    """Can Farmhand reach this printer's Moonraker right now, and what state is Klipper in? Never fails: says why."""
+    """Can Farmhand reach this printer's Moonraker right now, what state is Klipper in, and what is it printing? Never fails: says why."""
     printer = _printer(db, printer_id)
     out = {
         "moonraker_url": printer.moonraker_url,
@@ -49,12 +49,19 @@ def connection_status(printer_id: int, db: Session = Depends(get_db)):
         "moonraker_version": None,
         "error": None,
         "error_kind": None,
+        "print": None,  # the print running or paused right now, if any (see moonraker.live_print)
         **_sync_state(printer),
     }
     try:
         out.update(mr.server_info(printer), reachable=True)
     except mr.MoonrakerError as e:
         out.update(error=str(e), error_kind=e.kind)
+        return out
+    if out["klippy_state"] == "ready":
+        try:
+            out["print"] = mr.live_print(printer)
+        except mr.MoonrakerError:
+            pass  # connected, but Klipper didn't say: shown as not printing
     return out
 
 

@@ -474,6 +474,24 @@ def test_status_sync_history_and_stats_over_the_api(client, fake):
     assert stats["totals"]["total_jobs"] == 3
 
 
+def test_the_status_shows_the_print_running_now_with_its_progress_and_time_left(client, fake):
+    c, pid = client
+    assert c.get(f"/printers/{pid}/moonraker").json()["print"] is None  # standing by
+    fake.print_state = "printing"
+    fake.live = {"filename": "VT_1190_frog.gcode", "print_duration": 3600.0, "progress": 0.25}
+    fake.temps = {"extruder": (239.6, 240.0), "heater_bed": (85.1, 85.0)}
+    now = c.get(f"/printers/{pid}/moonraker").json()["print"]
+    assert now["state"] == "printing" and now["file"] == "VT_1190_frog.gcode" and now["progress"] == 25.0
+    assert now["print_duration"] == 3600 and now["time_remaining"] == 3 * 3600  # an hour for the first quarter
+    assert now["extruder"] == {"temperature": 239.6, "target": 240.0} and now["heater_bed"]["target"] == 85.0
+    fake.print_state = "paused"
+    assert c.get(f"/printers/{pid}/moonraker").json()["print"]["state"] == "paused"
+    fake.live = {"filename": "VT_1190_frog.gcode", "print_duration": 0.0, "progress": 0.0}  # only just started
+    assert c.get(f"/printers/{pid}/moonraker").json()["print"]["time_remaining"] is None
+    fake.print_state = "complete"
+    assert c.get(f"/printers/{pid}/moonraker").json()["print"] is None
+
+
 def test_an_unreachable_printer_answers_502_with_why(client, fake):
     c, pid = client
     fake.down = True

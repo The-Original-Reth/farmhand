@@ -6,10 +6,14 @@ import { errorText, getMoonrakerStatus, getPrintStats, syncPrinterHistory } from
 
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, fmtMetres, fmtWhen } from "../lib/format.js";
+import { JobProgress } from "./JobProgress.jsx";
+
+const MOONRAKER_LOOK_MS = 10000; // how often the open printer page looks at the printer (connection and the print running)
 
 // The printer's Moonraker as the printer page sees it. On opening a printer: check the connection, show what
-// Farmhand already has, then sync the history in the background if the printer answers. `key` restarts all of it
-// when the printer or its address changes.
+// Farmhand already has, then sync the history in the background if the printer answers. While the page is open it
+// looks again every few seconds, so a running print's progress stays current; when a print starts or ends the
+// history is synced again. `key` restarts all of it when the printer or its address changes.
 // onSynced: called after each successful sync (the page reloads the printer, whose service hours have moved on)
 export function useMoonraker(printerId, key, onSynced) {
   const [status, setStatus] = useState(null); // GET /printers/{id}/moonraker
@@ -18,6 +22,7 @@ export function useMoonraker(printerId, key, onSynced) {
   const [syncError, setSyncError] = useState(null);
   const [syncTick, setSyncTick] = useState(0); // goes up after every sync, so the history list reloads
   const current = useRef(null);
+  const printing = useRef(null); // the print last seen running ("file|state"), to notice one starting or ending
 
   const sync = async (id = printerId) => {
     setSyncing(true);
@@ -54,10 +59,25 @@ export function useMoonraker(printerId, key, onSynced) {
       if (current.current !== key) return;
       setStatus(s);
       setStats(st);
+      printing.current = s.print ? `${s.print.file}|${s.print.state}` : "";
       if (s.reachable) await sync(printerId);
     })();
+    const timer = setInterval(async () => {
+      if (document.hidden || printing.current === null) return; // the first look hasn't answered yet
+      const s = await getMoonrakerStatus(printerId).catch((e) => ({ reachable: false, error: errorText(e) }));
+      if (current.current !== key) return;
+      setStatus(s);
+      if (!s.reachable) return;
+      const now = s.print ? `${s.print.file}|${s.print.state}` : "";
+      if (now !== printing.current) {
+        printing.current = now;
+        await sync(printerId); // a print started, paused or ended: bring the history and statistics up to date
+      }
+    }, MOONRAKER_LOOK_MS);
     return () => {
       current.current = null;
+      printing.current = null;
+      clearInterval(timer);
     };
   }, [key]);
 
@@ -118,6 +138,18 @@ export function MoonrakerCard({ printer, mr }) {
             )}
           </span>
         </div>
+
+        {status?.print && (
+          <JobProgress
+            testId="moonraker-job"
+            file={status.print.file}
+            progress={status.print.progress}
+            printed={status.print.print_duration}
+            left={status.print.state === "printing" ? status.print.time_remaining : null}
+            paused={status.print.state === "paused"}
+            note={status.print.state === "paused" ? "paused" : null}
+          />
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginTop: 12 }}>
           <StatTile label="Prints" value={totals ? totals.total_jobs.toLocaleString() : "—"} hint="All jobs the printer has recorded" />

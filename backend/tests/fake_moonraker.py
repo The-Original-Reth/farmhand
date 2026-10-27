@@ -25,6 +25,9 @@ class FakeMoonraker:
         # A power meter like a smart plug over MQTT: None = the printer has none (and no [sensor] at all)
         self.meter_kwh: float | None = None
         self.print_state = "standby"  # Klipper's print_stats state: standby | printing | paused | complete | ...
+        # The print running now (with print_state "printing" or "paused"): its file, seconds printed, progress 0..1
+        self.live = {"filename": "", "print_duration": 0.0, "progress": 0.0}
+        self.temps = {"extruder": (24.0, 0.0), "heater_bed": (23.0, 0.0)}  # (temperature, target)
         self.uploads: list[dict] = []  # {filename, size, root, print}
 
     def add_job(self, job_id: str, filename: str, *, status="completed", start=1_700_000_000.0, print_s=3600.0,
@@ -81,7 +84,13 @@ class FakeMoonraker:
         if path == "/server/database/item":
             return self._database(request)
         if path == "/printer/objects/query":
-            return self._ok({"eventtime": 1.0, "status": {"print_stats": {"state": self.print_state}}})
+            status = {"print_stats": {"state": self.print_state, "filename": self.live["filename"], "print_duration": self.live["print_duration"]}}
+            if "virtual_sdcard" in q:
+                status["virtual_sdcard"] = {"progress": self.live["progress"], "is_active": self.print_state == "printing"}
+            for name, (now, target) in self.temps.items():
+                if name in q:
+                    status[name] = {"temperature": now, "target": target}
+            return self._ok({"eventtime": 1.0, "status": status})
         if path == "/server/files/upload" and request.method == "POST":
             return self._upload(request)
         return self._error(404, "Not Found")

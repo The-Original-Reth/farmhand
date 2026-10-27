@@ -209,6 +209,9 @@ written to the copy on the NAS.
 - **Connection and statistics:** whether Klipper is ready, the printer's lifetime totals, and **Open
   Mainsail**. **Sync now** copies the latest print history; Farmhand also syncs every printer by itself every
   15 minutes, so nobody has to open its page.
+- **The print running now:** while the printer is printing or paused, its file, a progress bar, the time
+  printed and the time left, as Mainsail shows them (progress through the file; time left estimated from it). The
+  page looks every 10 seconds while it's open, and syncs the history when a print starts or ends.
 - **Print history:** Farmhand's own copy (kept even if the printer forgets it), searchable and filterable by
   completed / failed / cancelled, with each print's energy if the printer has a power meter.
 - **Energy:** from a Moonraker `[sensor]` with an energy value (e.g. a smart plug): the whole printer
