@@ -16,7 +16,8 @@ export const fmtMetres = (mm) => `${((mm || 0) / 1000).toLocaleString(undefined,
 export const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 export const fmtUnix = (s) => (s ? new Date(s * 1000).toLocaleString() : "—");
 // ---- energy: per print (from the history) and the whole printer (from the power meter's readings) ----
-export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 2 : v < 100 ? 1 : 0 })} kWh`);
+// always to the watt-hour (3 decimals), so the figures are exact rather than rounded
+export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kWh`);
 // ---------------------------------------------------------------------------
 // App shell
 // ---------------------------------------------------------------------------

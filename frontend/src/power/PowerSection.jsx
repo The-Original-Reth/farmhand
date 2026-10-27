@@ -126,7 +126,7 @@ export function PowerSection() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
         <StatTile
           label={`${word}, whole farm`}
-          value={thisPeriod?.whole != null ? `${thisPeriod.partial ? "≥ " : ""}${fmtKwh(thisPeriod.whole)}` : "—"}
+          value={thisPeriod?.whole != null ? fmtKwh(thisPeriod.whole) : "—"}
           hint="Every printer with a power meter, idle time included"
         />
         <StatTile label={`${word}, prints`} value={fmtKwh(thisPeriod?.prints ?? 0)} hint="Each print's own energy, from the printers' histories" />
@@ -173,7 +173,7 @@ export function PowerSection() {
               </div>
               <div style={monoText(12, c.textPrimary)}>{fmtKwh(p.prints)}</div>
               <div style={monoText(12, p.whole == null ? c.textFaint : c.heading)} title={p.partial ? "Some readings started part-way through this period" : undefined}>
-                {p.whole == null ? "—" : `${p.partial ? "≥ " : ""}${fmtKwh(p.whole)}`}
+                {p.whole == null ? "—" : fmtKwh(p.whole)}
               </div>
               <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
             </div>
@@ -237,8 +237,8 @@ export function PowerSection() {
       </div>
 
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6 })}>
-        Whole farm: what every printer's power meter rose by, idle time included, from the readings Farmhand takes (“≥”
-        where a meter's readings began part-way through). Prints: each print's own energy, from the printers' histories.
+        Whole farm: what every printer's power meter rose by, idle time included, from the readings Farmhand takes.
+        Prints: each print's own energy, from the printers' histories.
         Retired printers aren't counted.
       </div>
     </div>

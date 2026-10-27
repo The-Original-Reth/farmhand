@@ -127,8 +127,8 @@ export function EnergyPanel({ printer, syncTick }) {
                       <div style={{ position: "absolute", top: 2, bottom: 2, left: 0, width: `${(p.prints / max) * 100}%`, background: c.amber, borderRadius: 2 }} />
                     </div>
                     <div style={monoText(12, c.textPrimary)}>{fmtKwh(p.prints)}</div>
-                    <div style={monoText(12, p.whole == null ? c.textFaint : c.teal)} title={p.partial ? "Readings started part-way through this period" : undefined}>
-                      {p.whole == null ? "—" : `${p.partial ? "≥ " : ""}${fmtKwh(p.whole)}`}
+                    <div style={monoText(12, p.whole == null ? c.textFaint : c.teal)}>
+                      {p.whole == null ? "—" : fmtKwh(p.whole)}
                     </div>
                     <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
                   </div>
@@ -148,7 +148,7 @@ export function EnergyPanel({ printer, syncTick }) {
               Prints: each print's own energy, from the printer's history.{" "}
               <span style={{ display: "inline-block", width: 10, height: 6, background: c.tealDim, border: `1px solid ${c.teal}`, borderRadius: 1, margin: "0 5px 0 6px" }} />
               Whole printer, idle included: from the power meter readings Farmhand takes
-              {data.meter ? ` (since ${new Date(data.meter.first_reading_at).toLocaleDateString()}; “≥” where they began part-way through).` : ", once there are some."}
+              {data.meter ? ` (since ${new Date(data.meter.first_reading_at).toLocaleDateString()}).` : ", once there are some."}
             </div>
           </>
         )}
