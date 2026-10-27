@@ -2,25 +2,50 @@ import { useState } from "react";
 import { Upload } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { addBundleVersion, deleteBundle, errorText } from "../api.js";
+import { addBundleVersion, deleteBundle, errorText, inspectThreemf } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone } from "../components/common/fields.jsx";
 import { TrashButton } from "../components/common/ui.jsx";
 
+// The message when a 3MF or G-code was sliced for another printer than the 3MF entry's (the server says the same)
+export const wrongPrinter = (what, slicedFor, printerName) =>
+  `Wrong printer: this ${what} was sliced for "${slicedFor}", but this 3MF belongs to "${printerName}". Slice it again ` +
+  `with the "${printerName}" printer profile, or upload it as a new 3MF for "${slicedFor}".`;
+
 // Add a newer version to an existing 3MF entry. It becomes the top version; the older ones stay below it.
 function NewBundleVersionDialog({ bundle, onClose }) {
-  const { refresh } = useData();
+  const { refresh, printers } = useData();
   const [threemf, setThreemf] = useState(null);
   const [gcode, setGcode] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [wrong, setWrong] = useState(null); // the dropped 3MF was sliced for another printer: why it can't be added
   const current = bundle.versions[0]?.v || 0;
+  const printerName = printers.find((p) => p.id === bundle.printerId)?.name;
+
+  // Said as soon as the 3MF is dropped, not after it has been uploaded. The printer's name now, or any profile an
+  // earlier version was sliced under (it may have been renamed since), will do. If it can't be read here, the
+  // server still checks it.
+  const dropThreemf = async (file) => {
+    setThreemf(file);
+    setWrong(null);
+    setErrorMsg(null);
+    if (!file || !printerName) return;
+    try {
+      const { printerProfileName } = await inspectThreemf(file);
+      const known = new Set([printerName, ...bundle.versions.map((v) => v.profile).filter(Boolean)]);
+      if (printerProfileName && !known.has(printerProfileName)) setWrong(wrongPrinter("3MF", printerProfileName, printerName));
+    } catch {
+      /* not readable here: the upload answers for it */
+    }
+  };
 
   const handleSubmit = async () => {
     setErrorMsg(null);
     if (!threemf) return setErrorMsg("Drop the newer .3mf file first.");
+    if (wrong) return setErrorMsg(wrong);
     setSubmitting(true);
     try {
       await addBundleVersion({ bundleId: bundle.id, threemf, gcode });
@@ -40,9 +65,9 @@ function NewBundleVersionDialog({ bundle, onClose }) {
         <b style={{ color: c.heading }}>v{current + 1}</b> and is shown above the older versions. It has to be sliced for the
         same printer as this entry.
       </div>
-      <Dropzone label="Drop the newer .3mf file here" file={threemf} onFile={setThreemf} accept=".3mf" />
+      <Dropzone label="Drop the newer .3mf file here" file={threemf} onFile={dropThreemf} accept=".3mf" />
       <Dropzone label="Drop the matching .gcode or .bgcode file here (optional)" file={gcode} onFile={setGcode} accept=".gcode,.bgcode" />
-      <ModalActions onClose={onClose} onSubmit={handleSubmit} actionLabel="Add new version" submitting={submitting} errorMsg={errorMsg} />
+      <ModalActions onClose={onClose} onSubmit={handleSubmit} actionLabel="Add new version" submitting={submitting} errorMsg={errorMsg || wrong} />
     </>
   );
 }

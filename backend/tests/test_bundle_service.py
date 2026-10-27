@@ -143,7 +143,7 @@ def test_printer_locked_rejects_mismatched_update(db_session, sample_3mf_paths):
 
     # Try to "update" this VT-1190-locked bundle with a file sliced for V2 BOG
     with open(sample_3mf_paths["shark_v2bog"], "rb") as f:
-        with pytest.raises(ValueError, match="locked to"):
+        with pytest.raises(ValueError, match="Wrong printer: this 3MF was sliced for"):
             bundle_service.add_bundle_version(
                 db_session,
                 bundle_id=bundle.id,

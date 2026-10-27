@@ -13,6 +13,7 @@ from ...errors import NotFound
 from ... import storage
 from ...config import settings
 from ...models import Bundle, BundleVersion
+from ...parsers.gcode import printer_profile
 from .queries import get_bundle
 
 
@@ -96,6 +97,29 @@ def check_gcode_name(filename: str | None) -> None:
         raise ValueError("Pick a sliced .gcode or .bgcode file")
 
 
+def wrong_printer(what: str, sliced_for: str, printer_name: str) -> str:
+    """The message for a 3MF or G-code sliced for another printer than the one its 3MF entry belongs to."""
+    return (
+        f"Wrong printer: this {what} was sliced for \"{sliced_for}\", but this 3MF belongs to \"{printer_name}\". "
+        f"Slice it again with the \"{printer_name}\" printer profile, or upload it as a new 3MF for \"{sliced_for}\"."
+    )
+
+
+def known_profiles(bundle: Bundle) -> set[str]:
+    """
+    The printer profile names a 3MF's files may be sliced under: its printer's name now, or any profile its versions
+    were sliced under (the printer may have been renamed since).
+    """
+    return {bundle.printer.name} | {v.printer_profile_name for v in bundle.versions if v.printer_profile_name}
+
+
+def check_gcode_printer(file_obj, filename: str | None, allowed: set[str], printer_name: str) -> None:
+    """A G-code sliced for another printer is refused. One whose printer can't be read is taken as it is."""
+    sliced_for = printer_profile(file_obj, filename)
+    if sliced_for and sliced_for not in allowed:
+        raise ValueError(wrong_printer("G-code", sliced_for, printer_name))
+
+
 def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> BundleVersion:
     """
     Give a 3MF version its G-code (sliced from it), replacing one it already had. It's kept beside the version's 3MF.
@@ -106,6 +130,7 @@ def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> Bundl
     check_gcode_name(filename)
     if not version.full_files_retained or not version.threemf_path:
         raise ValueError("This version's files were pruned, so it can't be given a G-code any more")
+    check_gcode_printer(file_obj, filename, known_profiles(version.bundle), version.bundle.printer.name)
     old = version.gcode_path
     new = storage.save_upload(Path(version.threemf_path).parent, filename, file_obj)
     version.gcode_path = new

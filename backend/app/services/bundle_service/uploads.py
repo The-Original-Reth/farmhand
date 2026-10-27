@@ -18,7 +18,7 @@ from ...names import with_version
 from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
 from ...parsers import parse_3mf
 from .queries import get_bundle
-from .versions import _enforce_rolling_window, check_gcode_name
+from .versions import _enforce_rolling_window, check_gcode_name, check_gcode_printer, known_profiles, wrong_printer
 
 
 def _parse_upload_to_tempfile(threemf_file_obj) -> tuple[str, "object"]:
@@ -117,6 +117,11 @@ def create_bundle(
                     "that exact name is registered yet — add it to the printer registry first"
                 )
 
+        if gcode_file_obj is not None:
+            # the G-code goes with this 3MF: sliced for the same printer as it, or for the printer picked for it
+            allowed = {printer.name} | ({parsed.printer_profile_name} if parsed.printer_profile_name else set())
+            check_gcode_printer(gcode_file_obj, gcode_filename, allowed, printer.name)
+
         models = list(db.scalars(select(SourceModel).where(SourceModel.id.in_(source_model_ids))))
         if len(models) != len(source_model_ids):
             raise ValueError("One or more source_model_ids don't exist")
@@ -176,14 +181,11 @@ def add_bundle_version(
         # The printer may have been renamed since this bundle was created, so
         # accept its current name OR any profile name this bundle's earlier
         # versions were sliced under.
-        known_profile_names = {bundle.printer.name} | {
-            v.printer_profile_name for v in bundle.versions if v.printer_profile_name
-        }
+        known_profile_names = known_profiles(bundle)
         if parsed.printer_profile_name and parsed.printer_profile_name not in known_profile_names:
-            raise ValueError(
-                f"This 3MF was sliced for printer {parsed.printer_profile_name!r}, but this bundle is "
-                f"locked to {bundle.printer.name!r} — printer can't change after a bundle is created"
-            )
+            raise ValueError(wrong_printer("3MF", parsed.printer_profile_name, bundle.printer.name))
+        if gcode_file_obj is not None:
+            check_gcode_printer(gcode_file_obj, gcode_filename, known_profile_names, bundle.printer.name)
 
         next_version = (bundle.latest_version.version + 1) if bundle.latest_version else 1
 

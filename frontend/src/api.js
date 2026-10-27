@@ -102,6 +102,7 @@ export const normalizeBundle = (b) => {
     full: v.full_files_retained,
     filename: v.filename,
     slicer: v.slicer_display_name,
+    profile: v.printer_profile_name || null, // the slicer's printer profile it was sliced under
     uploaded: v.uploaded_at,
     thumb: v.thumbnail_path ? `${API_BASE}/bundles/versions/${v.id}/thumbnail?r=${Date.parse(v.uploaded_at) || 0}` : null,
     gcodeName: v.gcode_name || null, // its G-code ("Goldfish ver 2.gcode"), if it has one
