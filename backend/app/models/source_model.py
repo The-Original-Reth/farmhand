@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import enum
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
@@ -72,3 +73,12 @@ class SourceModelVersion(Base):
     uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
     source_model: Mapped["SourceModel"] = relationship(back_populates="versions")
+
+    @property
+    def thumbnail_rev(self) -> int:
+        """When its preview was last drawn (0 if it has none here): part of the preview's address, so a redrawn
+        preview has a new one and browsers can keep each picture for good."""
+        try:
+            return os.stat(self.thumbnail_path).st_mtime_ns if self.thumbnail_path else 0
+        except OSError:
+            return 0

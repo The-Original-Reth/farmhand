@@ -112,7 +112,7 @@ export function Thumb({ src, size = 36, plateGrid = false, background, placehold
       }}
     >
       {src ? (
-        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={src} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : placeholderIcon ? (
         <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <FileBox size={Math.round(size * 0.4)} color="#C7CACC" />

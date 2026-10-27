@@ -54,7 +54,9 @@ class BundleVersion(Base):
     gcode_path: Mapped[str | None] = mapped_column(String(500))  # null once pruned
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))  # kept even when pruned
 
-    settings: Mapped[dict] = mapped_column(JSON, nullable=False)  # kept even when pruned
+    # kept even when pruned. Deferred: often 30-60 KB, and only one version's detail or a compare needs it, so lists
+    # of versions don't load it (it's read the first time .settings is used)
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False, deferred=True)
 
     bundle: Mapped["Bundle"] = relationship(back_populates="versions")
 

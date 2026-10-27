@@ -82,26 +82,30 @@ def live_status(printer_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{printer_id}/prusalink/print")
-async def send_print(printer_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+def send_print(printer_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
     Send a sliced file (.bgcode or .gcode) to the printer and start printing it. It goes on the printer's USB drive,
     replacing a file of the same name. Refused (409) while the printer is busy.
+
+    A plain (not async) handler: it waits on the printer for a long time, so it runs in a worker thread rather than
+    holding up every other request. The upload is streamed from where it was received, never held in memory whole.
     """
     printer = _printer(db, printer_id)
     name = os.path.basename((file.filename or "").replace("\\", "/")).strip()
     if not name.lower().endswith(PRINTABLE):
         raise HTTPException(status_code=422, detail="The printer can only print a sliced .bgcode or .gcode file. Slice the 3MF first.")
-    data = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
+    size = file.file.seek(0, os.SEEK_END)
+    file.file.seek(0)
+    if size > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="That file is too large to send.")
-    if not data:
+    if not size:
         raise HTTPException(status_code=422, detail="That file is empty.")
     status, _ = pl.poll(db, printer)
     state = (status.get("printer") or {}).get("state")
     if state not in ("IDLE", "READY", "FINISHED", "STOPPED"):
         raise HTTPException(status_code=409, detail=f"The printer isn't ready for a new print (it says {state or 'nothing'}).")
     try:
-        where = pl.upload_and_print(printer, name, data)
+        where = pl.upload_and_print(printer, name, file.file, size)
     except pl.PrusaLinkError as e:
         if e.kind == "busy":
             raise HTTPException(status_code=409, detail=str(e))

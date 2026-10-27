@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { bustThumbnails, errorText, redrawPreview } from "../api.js";
+import { errorText, redrawPreview } from "../api.js";
 import { useData } from "../data.jsx";
 
 // Previews drawn by older versions of Farmhand (the first one thinned detailed models, leaving them
@@ -30,8 +30,7 @@ export function RedrawPreviewsDialog({ onClose }) {
       }
       setDone(i + 1);
     }
-    bustThumbnails(); // same URLs, new pictures: make the browser fetch them again
-    await refresh().catch(() => {});
+    await refresh().catch(() => {}); // the redrawn previews come back with new addresses (?r=), so they show
     setResult({ redrawn, skipped, failed });
     setPhase("done");
   };

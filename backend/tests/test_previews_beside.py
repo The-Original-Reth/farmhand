@@ -157,3 +157,25 @@ def test_a_3mf_preview_is_served_from_next_to_the_3mf_when_the_apps_copy_is_gone
         p.unlink()  # the app's disk was rebuilt; the NAS still has its copy
     r = api.get(url)
     assert r.status_code == 200 and r.content.startswith(PNG)
+
+
+# ------------------------------------------------------------------ browsers keeping previews
+
+
+def test_a_preview_asked_for_by_revision_is_kept_for_good_and_a_redraw_gives_a_new_one(api):
+    m = api.post("/source-models", data={"name": "Cube.stl", "file_type": "STL"}, files={"file": ("Cube.stl", _cube_stl_bytes())}).json()
+    rev = m["versions"][0]["thumbnail_rev"]
+    url = f"/source-models/{m['id']}/versions/1/thumbnail"
+    assert rev and "immutable" in api.get(f"{url}?r={rev}").headers["cache-control"]
+    assert api.get(url).headers["cache-control"] == "no-cache"  # without one: checked each time, as before
+    assert api.post(url).status_code == 200  # redraw it
+    assert api.get(f"/source-models/{m['id']}").json()["versions"][0]["thumbnail_rev"] != rev
+
+
+def test_a_3mf_preview_asked_for_by_revision_is_kept_for_good(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    mid = api.post("/source-models", data={"name": "Goldfish.stl", "file_type": "STL"}, files={"file": ("Goldfish.stl", b"x" * 64)}).json()["id"]
+    with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
+        b = api.post("/bundles", data={"source_model_ids": f"[{mid}]", "printer_id": str(pid)}, files={"threemf": ("Goldfish.3mf", f.read())}).json()
+    url = f"/bundles/versions/{b['versions'][0]['id']}/thumbnail"
+    assert "immutable" in api.get(f"{url}?r=1").headers["cache-control"]

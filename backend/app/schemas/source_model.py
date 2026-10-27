@@ -15,6 +15,7 @@ class SourceModelVersionOut(BaseModel):
     version: int
     file_path: str
     thumbnail_path: str | None
+    thumbnail_rev: int = 0  # changes when the preview is redrawn
     note: str | None
     uploaded_at: dt.datetime
 

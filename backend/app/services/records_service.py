@@ -10,12 +10,14 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import records_store
 from ..timeutil import as_utc, utc_iso
 from ..models import (
+    Bundle,
     BundleNote,
+    BundleSourceModel,
     BundleStar,
     MaintenanceEntry,
     Printer,
@@ -62,17 +64,23 @@ def _job_record(j: PrintJob) -> dict:
     }
 
 
-def printer_documents(db: Session) -> dict[str, dict]:
-    """{file stem: document} for every printer. Never includes the Moonraker API key or the PrusaLink password."""
+def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, dict]:
+    """
+    {file stem: document} for every printer (or just those in `only`: each holds the printer's whole print history,
+    so it's worth not building the rest). Never includes the Moonraker API key or the PrusaLink password.
+    """
     out: dict[str, dict] = {}
     taken: set[str] = set()
     for p in db.scalars(select(Printer).order_by(Printer.id)):
+        stem = records_store.file_stem(p.name, taken)  # from every printer, in order, so the names never shift
+        if only is not None and p.id not in only:
+            continue
         conn, svc = p.connection_row, p.service_row
         jobs = db.scalars(select(PrintJob).where(PrintJob.printer_id == p.id).order_by(PrintJob.start_time, PrintJob.job_id))
         readings = db.scalars(
             select(PrinterEnergyReading).where(PrinterEnergyReading.printer_id == p.id).order_by(PrinterEnergyReading.taken_at)
         )
-        out[records_store.file_stem(p.name, taken)] = {
+        out[stem] = {
             **records_store.header(records_store.PRINTERS_DIR, p.name),
             "note": "Written by Farmhand whenever this printer changes. Its Moonraker API key and PrusaLink password are never stored here.",
             "printer": {
@@ -101,7 +109,10 @@ def model_documents(db: Session) -> dict[str, dict]:
     """{file stem: document} for every model: its notes, and each of its 3MF files' notes and starred version."""
     out: dict[str, dict] = {}
     taken: set[str] = set()
-    for m in db.scalars(select(SourceModel).order_by(SourceModel.id)):
+    links = selectinload(SourceModel.bundle_links).selectinload(BundleSourceModel.bundle).options(
+        selectinload(Bundle.versions), selectinload(Bundle.note_row), selectinload(Bundle.star_row), selectinload(Bundle.printer),
+    )  # a batch at a time, not several queries per 3MF
+    for m in db.scalars(select(SourceModel).order_by(SourceModel.id).options(links, selectinload(SourceModel.note_row))):
         threemf = []
         for link in sorted(m.bundle_links, key=lambda link: link.bundle_id):
             b = link.bundle
@@ -122,12 +133,22 @@ def model_documents(db: Session) -> dict[str, dict]:
     return out
 
 
-def write_all(db: Session, folder) -> dict:
-    """Bring the printers/ and models/ files in the settings folder up to date."""
-    return {
-        "printers": records_store.write_records(folder, records_store.PRINTERS_DIR, printer_documents(db)),
-        "models": records_store.write_records(folder, records_store.MODELS_DIR, model_documents(db)),
-    }
+def write_all(db: Session, folder, scope: "MirrorScope | None" = None) -> dict:
+    """
+    Bring the printers/ and models/ files in the settings folder up to date: all of them, checking each file (scope
+    None), or just what a change touched (see config_service.MirrorScope), trusting what was last written.
+    """
+    out = {}
+    if scope is None or scope.printers:
+        only = None if scope is None or scope.printers is True else scope.printers
+        out["printers"] = records_store.write_records(
+            folder, records_store.PRINTERS_DIR, printer_documents(db, only), complete=only is None, check_all=scope is None,
+        )
+    if scope is None or scope.models:
+        out["models"] = records_store.write_records(
+            folder, records_store.MODELS_DIR, model_documents(db), check_all=scope is None,
+        )
+    return out
 
 
 # ------------------------------------------------------------------ putting them back (only ever adds)

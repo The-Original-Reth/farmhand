@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
@@ -7,6 +7,54 @@ import { errorText, fetchVersionSettings } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { Badge } from "../components/common/ui.jsx";
+
+const CATEGORY_ORDER = [
+  "Layers & Perimeters", "Infill", "Support Material", "Skirt & Brim", "Speed", "Kinematics",
+  "Retraction", "Temperature", "Cooling", "Filament", "Printer", "Custom G-code", "Other Settings",
+];
+
+// One setting's row. Memoized: stepping to the next difference redraws the two rows whose outline moves, not every
+// row (there can be thousands). `look` changes with the colour scheme, font and size, which are changed in place.
+const DiffRow = React.memo(function DiffRow({ settingKey: key, first, differs, isCurrent, leftSettings, rightSettings, rowRefs, look }) { // eslint-disable-line no-unused-vars
+  return (
+    <div
+      ref={(el) => {
+        rowRefs.current[key] = el;
+      }}
+      data-testid="diff-row"
+      data-setting={key}
+      data-differs={differs ? "true" : "false"}
+      data-current={isCurrent ? "true" : "false"}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(150px, 1fr) 210px 210px",
+        alignItems: "start",
+        gap: 8,
+        padding: "8px 16px 8px 13px",
+        borderTop: first ? "none" : `1px solid ${c.border}`,
+        borderLeft: `3px solid ${differs ? c.amber : "transparent"}`,
+        background: differs ? `${c.amber}14` : "transparent", // a faint wash across the whole row
+        outline: isCurrent ? `2px solid ${c.amber}` : "none",
+        outlineOffset: -2,
+      }}
+    >
+      <div
+        style={uiText(13, differs ? c.textPrimary : c.textFaint, { fontWeight: differs ? 500 : 400, paddingTop: 2, minWidth: 0, overflowWrap: "break-word" })}
+        title={key}
+      >
+        {/* the variable name exactly as the 3MF has it, underscores and all; a long one wraps after an underscore */}
+        {key.split("_").map((part, j) => (
+          <React.Fragment key={j}>
+            {j > 0 && <>_<wbr /></>}
+            {part}
+          </React.Fragment>
+        ))}
+      </div>
+      <DiffValue settings={leftSettings} other={rightSettings} k={key} side="left" differs={differs} />
+      <DiffValue settings={rightSettings} other={leftSettings} k={key} side="right" differs={differs} />
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Compare-across-printers diff view
@@ -101,6 +149,27 @@ export function DiffView({ left, right, onClose }) {
     };
   }, [left.version.id, right.version.id]);
 
+  // Every setting by category, and which differ: worked out once per pair of versions, not on every click
+  const derived = useMemo(() => {
+    if (!leftSettings || !rightSettings) return null;
+    const allKeys = Array.from(new Set([...Object.keys(leftSettings), ...Object.keys(rightSettings)]));
+    const grouped = {};
+    allKeys.forEach((key) => {
+      const cat = categorizeKey(key);
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(key);
+    });
+    CATEGORY_ORDER.forEach((cat) => grouped[cat]?.sort());
+    // A setting differs if its value differs, or if only one of the two files has it at all. This compares the
+    // EXACT text: formatVal() shortens long values for display, and comparing the shortened text would call two
+    // long values (a start G-code edited near its end, say) identical.
+    const exactText = (settings, key) => (key in settings ? String(settings[key] ?? "") : null);
+    const differing = new Set(allKeys.filter((key) => exactText(leftSettings, key) !== exactText(rightSettings, key)));
+    const diffKeys = []; // in the order they appear on screen
+    CATEGORY_ORDER.forEach((cat) => (grouped[cat] || []).forEach((key) => differing.has(key) && diffKeys.push(key)));
+    return { allKeys, grouped, differing, diffKeys };
+  }, [leftSettings, rightSettings]);
+
   if (loadError) {
     return <div style={uiText(13, c.amber, { padding: 16 })}>Couldn't load settings: {loadError}</div>;
   }
@@ -108,27 +177,10 @@ export function DiffView({ left, right, onClose }) {
     return <div style={uiText(13, c.textFaint, { padding: 16 })}>Loading settings…</div>;
   }
 
-  const allKeys = Array.from(new Set([...Object.keys(leftSettings), ...Object.keys(rightSettings)]));
-  const categoryOrder = [
-    "Layers & Perimeters", "Infill", "Support Material", "Skirt & Brim", "Speed", "Kinematics",
-    "Retraction", "Temperature", "Cooling", "Filament", "Printer", "Custom G-code", "Other Settings",
-  ];
-  const grouped = {};
-  allKeys.forEach((key) => {
-    const cat = categorizeKey(key);
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(key);
-  });
-  categoryOrder.forEach((cat) => grouped[cat]?.sort());
-
-  // A setting differs if its value differs, or if only one of the two files has it at all. This compares the
-  // EXACT text: formatVal() shortens long values for display, and comparing the shortened text would call two
-  // long values (a start G-code edited near its end, say) identical.
-  const exactText = (settings, key) => (key in settings ? String(settings[key] ?? "") : null);
-  const differsAt = (key) => exactText(leftSettings, key) !== exactText(rightSettings, key);
-
-  const diffKeys = []; // in the order they appear on screen
-  categoryOrder.forEach((cat) => (grouped[cat] || []).forEach((key) => differsAt(key) && diffKeys.push(key)));
+  const { allKeys, grouped, differing, diffKeys } = derived;
+  const categoryOrder = CATEGORY_ORDER;
+  const differsAt = (key) => differing.has(key);
+  const look = `${c.bg}|${c.textPrimary}|${c.textFaint}|${c.amber}|${c.teal}|${ui.fontFamily}|${fs(10)}`; // the look, for DiffRow
   const diffCount = diffKeys.length;
 
   const goTo = (index) => {
@@ -229,49 +281,19 @@ export function DiffView({ left, right, onClose }) {
                   <div style={{ lineHeight: 1.3, color: c.amber }}>{leftLabel}</div>
                   <div style={{ lineHeight: 1.3, color: c.teal }}>{rightLabel}</div>
                 </div>
-                {visibleKeys.map((key, i) => {
-                  const differs = differsAt(key);
-                  const isCurrent = diffKeys[cursor] === key;
-                  return (
-                    <div
-                      key={key}
-                      ref={(el) => {
-                        rowRefs.current[key] = el;
-                      }}
-                      data-testid="diff-row"
-                      data-setting={key}
-                      data-differs={differs ? "true" : "false"}
-                      data-current={isCurrent ? "true" : "false"}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "minmax(150px, 1fr) 210px 210px",
-                        alignItems: "start",
-                        gap: 8,
-                        padding: "8px 16px 8px 13px",
-                        borderTop: i === 0 ? "none" : `1px solid ${c.border}`,
-                        borderLeft: `3px solid ${differs ? c.amber : "transparent"}`,
-                        background: differs ? `${c.amber}14` : "transparent", // a faint wash across the whole row
-                        outline: isCurrent ? `2px solid ${c.amber}` : "none",
-                        outlineOffset: -2,
-                      }}
-                    >
-                      <div
-                        style={uiText(13, differs ? c.textPrimary : c.textFaint, { fontWeight: differs ? 500 : 400, paddingTop: 2, minWidth: 0, overflowWrap: "break-word" })}
-                        title={key}
-                      >
-                        {/* the variable name exactly as the 3MF has it, underscores and all; a long one wraps after an underscore */}
-                        {key.split("_").map((part, j) => (
-                          <React.Fragment key={j}>
-                            {j > 0 && <>_<wbr /></>}
-                            {part}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                      <DiffValue settings={leftSettings} other={rightSettings} k={key} side="left" differs={differs} />
-                      <DiffValue settings={rightSettings} other={leftSettings} k={key} side="right" differs={differs} />
-                    </div>
-                  );
-                })}
+                {visibleKeys.map((key, i) => (
+                  <DiffRow
+                    key={key}
+                    settingKey={key}
+                    first={i === 0}
+                    differs={differsAt(key)}
+                    isCurrent={diffKeys[cursor] === key}
+                    leftSettings={leftSettings}
+                    rightSettings={rightSettings}
+                    rowRefs={rowRefs}
+                    look={look}
+                  />
+                ))}
               </div>
             </div>
           );

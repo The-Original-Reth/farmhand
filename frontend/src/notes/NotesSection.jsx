@@ -55,7 +55,8 @@ function writeNotesCollapsed(kind, id, collapsed) {
 // or reload, the browser asks before a tab with unsaved notes is closed, and a save that would overwrite what
 // someone else saved meanwhile is stopped. One component serves every kind, so they all behave identically.
 export function NotesSection({ kind, owner }) {
-  const { refresh } = useData();
+  const data = useData();
+  const { refresh } = data;
   const k = NOTE_KINDS[kind];
   const ownerId = owner.id;
   const { saved, rev, updatedAt } = k.read(owner);
@@ -134,7 +135,7 @@ export function NotesSection({ kind, owner }) {
       setConflict(null);
       setRestored(false);
       writeDraft(kind, ownerId, null);
-      await refresh();
+      k.apply(out, data); // just this one changed
       setPhase("idle");
     } catch (e) {
       if (e.status === 409 && e.body?.current) {

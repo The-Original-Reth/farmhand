@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Lock, Printer, Search, Upload, X } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { linkButton, monoText, toolButton, uiText } from "../styles.js";
-import { renameBundleVersion, renameModel } from "../api.js";
+import { renameBundle, renameModel } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { BundleCard } from "../bundles/BundleCard.jsx";
@@ -14,7 +14,7 @@ import { newestFirst, useBundleExpansion, VersionsToggleAll } from "../bundles/v
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge, SectionLabel, Thumb } from "../components/common/ui.jsx";
 import { useMediaQuery } from "../hooks/useMediaQuery.js";
-import { matchModel, searchableExtras, searchWords } from "../lib/search.jsx";
+import { matchModel, searchWords } from "../lib/search.jsx";
 import { ModelListRow } from "./ModelListRow.jsx";
 import { RedrawPreviewsDialog } from "./RedrawPreviewsDialog.jsx";
 import { ScanStlDialog } from "./ScanStlDialog.jsx";
@@ -65,7 +65,7 @@ function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleL
 }
 
 export function ModelsSection({ path, setPath, compareSelection, toggleCompareSelect, sort, onSortChange }) {
-  const { sourceModels, printers, bundles, bundlesForModel, versionsByBundle, sourceVersionsByModel } = useData();
+  const { sourceModels, printers, bundles, bundlesForModel, versionsByBundle, sourceVersionsByModel, searchIndex, putModel, putBundle } = useData();
   const view = path[1];
   const expansion = useBundleExpansion();
   const [sourceOverride, setSourceOverride] = useState(null); // null = the default for its length
@@ -93,18 +93,28 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
     setSourceOverride(null);
   }, [view?.modelId]);
 
-  if (!view) {
-    const rows = sourceModels.map((m) => {
-      const mBundles = bundlesForModel(m.id);
-      return { m, bundleCount: mBundles.length, printerCount: new Set(mBundles.map((bundle) => bundle.printerId)).size };
-    });
-    const words = searchWords(query);
+  // The list: each model with its counts (once per load), then those matching the search, sorted (once per search,
+  // sort or load). The search follows the typing a moment behind, so typing stays quick on a big library.
+  const rows = useMemo(
+    () =>
+      sourceModels.map((m) => {
+        const mBundles = bundlesForModel(m.id);
+        return { m, bundleCount: mBundles.length, printerCount: new Set(mBundles.map((bundle) => bundle.printerId)).size };
+      }),
+    [sourceModels, bundlesForModel],
+  );
+  const searched = useDeferredValue(query);
+  const words = useMemo(() => searchWords(searched), [searched]);
+  const sorted = useMemo(() => {
     const matched = [];
     rows.forEach((row) => {
-      const hit = matchModel(row.m, words, words.length ? searchableExtras(row.m, bundlesForModel(row.m.id), printers) : []);
+      const hit = matchModel(row.m, words, words.length ? searchIndex.get(row.m.id) || [] : []);
       if (hit) matched.push({ ...row, reasons: hit.reasons });
     });
-    const sorted = sortModelRows(matched, sort);
+    return sortModelRows(matched, sort);
+  }, [rows, words, searchIndex, sort]);
+
+  if (!view) {
     const searching = words.length > 0;
     const columns = narrow ? 1 : 2;
     const lastRow = Math.floor((sorted.length - 1) / columns);
@@ -325,7 +335,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
               <Thumb src={model.thumb} size={64} background="#FFFFFF" placeholderIcon />
               <div>
                 <div style={uiText(14, c.heading)}>
-                  <EditableName value={model.name} label="this model file" extension={{ STL: ".stl", OBJ: ".obj", STEP: ".step" }[model.type] || ".stl"} testId="model-name" textStyle={{ ...ui, fontSize: fs(14) }} onSave={(name) => renameModel(model.id, name)} />
+                  <EditableName value={model.name} label="this model file" extension={{ STL: ".stl", OBJ: ".obj", STEP: ".step" }[model.type] || ".stl"} testId="model-name" textStyle={{ ...ui, fontSize: fs(14) }} onSave={async (name) => putModel(await renameModel(model.id, name))} />
                 </div>
                 <div style={{ marginTop: 5 }}>
                   <Badge>{model.type}</Badge>
@@ -413,7 +423,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
                     <Badge>{b.slicer}</Badge>
                   </div>
                   <div style={monoText(11, c.textFaint, { paddingLeft: 23 })}>
-                    <EditableName value={b.name} label="this 3MF file" extension=".3mf" boxed testId="bundle-name" textStyle={{ ...mono, fontSize: fs(12) }} onSave={(name) => renameBundleVersion(b.versions[0].id, name)} />
+                    <EditableName value={b.name} label="this 3MF file" extension=".3mf" boxed testId="bundle-name" textStyle={{ ...mono, fontSize: fs(12) }} onSave={async (name) => putBundle(await renameBundle(b, name))} />
                   </div>
                 </>
               }

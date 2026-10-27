@@ -1,6 +1,8 @@
 """The HTTP side: one request to a printer's Moonraker, and the few plain questions asked of it."""
 from __future__ import annotations
 
+from typing import BinaryIO
+
 import httpx
 
 from ...models import Printer
@@ -99,8 +101,11 @@ def print_state(printer: Printer) -> str | None:
     return (status.get("print_stats") or {}).get("state")
 
 
-def upload_and_print(printer: Printer, filename: str, data: bytes) -> str:
-    """Put a G-code in the printer's gcodes folder (replacing one of the same name) and start it. Returns where it went."""
+def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO) -> str:
+    """
+    Put a G-code in the printer's gcodes folder (replacing one of the same name) and start it. Returns where it went.
+    data: the bytes, or an open file, which is streamed from where it is rather than read into memory first.
+    """
     answer = _call(
         printer, "POST", "/server/files/upload", files={"file": (filename, data)}, data={"root": "gcodes", "print": "true"},
         timeout=UPLOAD_TIMEOUT, unwrapped=True,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -124,7 +124,7 @@ def download_source_model_version(source_model_id: int, version: int, db: Sessio
 
 
 @router.get("/{source_model_id}/versions/{version}/thumbnail")
-def get_source_model_version_thumbnail(source_model_id: int, version: int, db: Session = Depends(get_db)):
+def get_source_model_version_thumbnail(source_model_id: int, version: int, request: Request, db: Session = Depends(get_db)):
     v = source_model_service.get_source_model_version(db, source_model_id, version)
     # the app's own copy, else the one kept next to the model file (e.g. after the app's disk was rebuilt)
     path = None
@@ -132,9 +132,7 @@ def get_source_model_version_thumbnail(source_model_id: int, version: int, db: S
         path = v.thumbnail_path if v.thumbnail_path and os.path.isfile(v.thumbnail_path) else storage.preview_beside(v.file_path)
     if not path or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="No thumbnail for this version")
-    # no-cache = "check with me before reusing your copy" (cheap: unchanged files answer 304), so a
-    # redrawn preview shows up instead of the browser's stale one
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return FileResponse(path, media_type="image/png", headers=storage.preview_cache_headers(request.query_params))
 
 
 @router.post("/{source_model_id}/versions/{version}/thumbnail")

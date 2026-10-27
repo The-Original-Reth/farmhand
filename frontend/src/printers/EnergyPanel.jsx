@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, uiText } from "../styles.js";
 import { errorText, getEnergy } from "../api.js";
@@ -10,31 +10,20 @@ export const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d
 export const periodLabel = (key, by) =>
   by === "year" ? key : new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
 
-// Totals per month or year, in this browser's time zone. Prints: each print's energy, by when it started. Whole
-// printer: the meter's rise between one reading and the next, counted in the period of the later reading (a meter
-// that went backwards was reset, so its new value is what it used since). The period holding the first reading only
-// covers part of it, and is marked so.
-export function energyByPeriod({ jobs, readings }, by) {
+// Totals per month or year, newest first. The server totals each month in this browser's time zone (prints by when
+// they started; the whole printer from its meter's rise; the month of the first reading marked partial), and a year
+// is its months added up.
+export function energyByPeriod({ months }, by) {
+  if (by !== "year") return months.map((m) => ({ key: m.key, prints: m.prints, printCount: m.print_count, whole: m.whole, partial: m.partial }));
   const rows = {};
-  const row = (key) => (rows[key] ??= { key, prints: 0, printCount: 0, whole: null, partial: false });
-  jobs.forEach(([at, kwh]) => {
-    if (!at) return;
-    const r = row(periodKey(new Date(at), by));
-    r.prints += kwh;
-    r.printCount += 1;
-  });
-  for (let i = 1; i < readings.length; i++) {
-    const [, before] = readings[i - 1];
-    const [at, now] = readings[i];
-    const r = row(periodKey(new Date(at), by));
-    r.whole = (r.whole ?? 0) + (now >= before ? now - before : now);
+  for (const m of months) {
+    const r = (rows[m.key.slice(0, 4)] ??= { key: m.key.slice(0, 4), prints: 0, printCount: 0, whole: null, partial: false });
+    r.prints += m.prints;
+    r.printCount += m.print_count;
+    if (m.whole != null) r.whole = (r.whole ?? 0) + m.whole;
+    r.partial ||= m.partial;
   }
-  if (readings.length) {
-    const first = row(periodKey(new Date(readings[0][0]), by));
-    first.partial = true;
-    first.whole ??= 0;
-  }
-  return Object.values(rows).sort((a, b) => (a.key < b.key ? 1 : -1)); // newest first
+  return Object.values(rows).sort((a, b) => (a.key < b.key ? 1 : -1));
 }
 
 export function EnergyPanel({ printer, syncTick }) {
@@ -53,13 +42,13 @@ export function EnergyPanel({ printer, syncTick }) {
     };
   }, [printer.id, syncTick]);
 
-  const hasAny = data && (data.meter || data.jobs.length > 0);
-  const periods = hasAny ? energyByPeriod(data, by) : [];
+  const hasAny = data && (data.meter || data.months.length > 0);
+  const periods = useMemo(() => (hasAny ? energyByPeriod(data, by) : []), [data, by, hasAny]);
   const shown = showAll ? periods : periods.slice(0, by === "month" ? 12 : 5);
   const max = Math.max(1e-9, ...periods.map((p) => Math.max(p.prints, p.whole ?? 0)));
   const now = new Date();
   const thisPeriod = periods.find((p) => p.key === periodKey(now, by));
-  const printsKwh = data?.print_total_kwh ?? (data ? data.jobs.reduce((s, [, k]) => s + k, 0) : null);
+  const printsKwh = data?.print_total_kwh ?? data?.print_jobs_kwh ?? null;
   const cols = "90px minmax(0, 1fr) 100px 110px 60px";
 
   return (

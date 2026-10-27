@@ -10,7 +10,7 @@ import { Dropzone, FieldSelect } from "../components/common/fields.jsx";
 // Upload a G-code for a 3MF: it goes with the 3MF's newest version (replacing a G-code that version already had),
 // is shown under it, and can then be downloaded or sent to the printer. bundles: the 3MF files to choose from.
 export function UploadGcodeForm({ bundles, onClose }) {
-  const { printers, refresh } = useData();
+  const { printers, putBundle } = useData();
   const [bundleId, setBundleId] = useState(bundles.length === 1 ? String(bundles[0].id) : "");
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -25,8 +25,7 @@ export function UploadGcodeForm({ bundles, onClose }) {
     if (!file) return setErrorMsg("Drop the .gcode or .bgcode file first.");
     setSubmitting(true);
     try {
-      await uploadGcode(newest.id, file);
-      await refresh();
+      putBundle(await uploadGcode(newest.id, file)); // the 3MF as it now stands
       onClose();
     } catch (e) {
       setErrorMsg(errorText(e));

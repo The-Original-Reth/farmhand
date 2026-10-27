@@ -5,6 +5,7 @@ parser needs to seek in the zip.
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 
 from sqlalchemy import select
@@ -28,7 +29,7 @@ def _parse_upload_to_tempfile(threemf_file_obj) -> tuple[str, "object"]:
     the permanent copy without re-reading the upload stream twice.
     """
     tmp = tempfile.NamedTemporaryFile(suffix=".3mf", delete=False)
-    tmp.write(threemf_file_obj.read())
+    shutil.copyfileobj(threemf_file_obj, tmp, 1024 * 1024)  # a piece at a time: never the whole 3MF in memory
     tmp.close()
     try:
         parsed = parse_3mf(tmp.name)

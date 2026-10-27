@@ -30,7 +30,7 @@ class Bundle(HasNotes, Base):
     __tablename__ = "bundles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False)
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
     printer: Mapped["Printer"] = relationship(back_populates="bundles")
@@ -69,7 +69,7 @@ class BundleSourceModel(Base):
     __tablename__ = "bundle_source_models"
 
     bundle_id: Mapped[int] = mapped_column(ForeignKey("bundles.id"), primary_key=True)
-    source_model_id: Mapped[int] = mapped_column(ForeignKey("source_models.id"), primary_key=True)
+    source_model_id: Mapped[int] = mapped_column(ForeignKey("source_models.id"), primary_key=True, index=True)  # a model's 3MFs
 
     bundle: Mapped["Bundle"] = relationship(back_populates="source_model_links")
     source_model: Mapped["SourceModel"] = relationship(back_populates="bundle_links")

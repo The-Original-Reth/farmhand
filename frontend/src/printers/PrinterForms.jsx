@@ -85,7 +85,7 @@ function ConnectionFields({ conn, setConn, ip, saved = null }) {
 }
 
 export function AddPrinterForm({ onClose }) {
-  const { refresh } = useData();
+  const { putPrinter } = useData();
   const [name, setName] = useState("");
   const [kind, setKind] = useState("");
   const [wiredIp, setWiredIp] = useState("");
@@ -99,8 +99,7 @@ export function AddPrinterForm({ onClose }) {
     if (!name.trim()) return setErrorMsg("A printer needs a name.");
     setSubmitting(true);
     try {
-      await createPrinter({ name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim(), ...connectionFields(conn) });
-      await refresh();
+      putPrinter(await createPrinter({ name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim(), ...connectionFields(conn) }));
       onClose();
     } catch (e) {
       setErrorMsg(errorText(e));
@@ -125,7 +124,7 @@ export function AddPrinterForm({ onClose }) {
 }
 
 export function EditPrinterForm({ printer, onClose }) {
-  const { refresh, bundlesForPrinter } = useData();
+  const { putPrinter, bundlesForPrinter } = useData();
   const [name, setName] = useState(printer.name);
   const [kind, setKind] = useState(printer.kind || "");
   const [wiredIp, setWiredIp] = useState(printer.wired || "");
@@ -141,15 +140,14 @@ export function EditPrinterForm({ printer, onClose }) {
     if (!name.trim()) return setErrorMsg("A printer needs a name.");
     setSubmitting(true);
     try {
-      await updatePrinter(printer.id, {
+      putPrinter(await updatePrinter(printer.id, {
         name: name.trim(),
         kind: kind.trim(),
         wiredIp: wiredIp.trim(),
         wirelessIp: wirelessIp.trim(),
         decommissioned,
         ...connectionFields(conn),
-      });
-      await refresh();
+      }));
       onClose();
     } catch (e) {
       setErrorMsg(errorText(e));

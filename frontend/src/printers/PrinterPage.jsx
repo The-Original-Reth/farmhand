@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Cable, FileBox, Lock, Pencil, Printer, Search, Wifi, X } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { linkButton, monoText, toolButton, uiText } from "../styles.js";
-import { renameBundleVersion } from "../api.js";
+import { renameBundle } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { EditableName } from "../bundles/EditableName.jsx";
@@ -59,9 +59,71 @@ function usePrinterSections() {
   return { isOpen: (name) => !isFolded(folded, name), toggle };
 }
 
+// The printer's Moonraker or PrusaLink (whichever it uses), looked at every few seconds while the page is open, with
+// everything that follows it: its status card, energy and maintenance, and the print history. Kept apart from the rest
+// of the page so a look redraws only these: `children` (the 3MF files, which sit between them on the page) is made by
+// the page and doesn't change when a look comes in, so React leaves it alone. Starts over if the address or login
+// changes.
+function PrinterLive({ printer, sections, refreshPrinters, children }) {
+  const [maintenanceDue, setMaintenanceDue] = useState(0); // reported by the maintenance list, for when it's folded
+  const isPrusaLink = printer.connectionType === "prusalink";
+  const mr = useMoonraker(
+    isPrusaLink ? null : printer.id,
+    isPrusaLink ? null : `${printer.id}|${printer.moonrakerUrl}|${printer.hasMoonrakerApiKey}`,
+    refreshPrinters, // a sync moves the printer's print hours and service on; its models and 3MFs are unchanged
+  );
+  const pl = usePrusaLink(
+    isPrusaLink ? printer.id : null,
+    isPrusaLink ? `${printer.id}|${printer.prusalinkUrl}|${printer.prusalinkUsername}|${printer.hasPrusalinkPassword}` : null,
+    refreshPrinters,
+  );
+  const link = isPrusaLink ? pl : mr; // for what both show: the connection dot, the history reloading
+
+  return (
+    <>
+      {/* Everything from the printer's Moonraker, foldable as one. Folded, it stays mounted (just hidden), so it
+          keeps what it loaded and can still say if maintenance is due. */}
+      <div data-testid="moonraker-group">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: sections.isOpen("moonraker") ? 14 : 0, flexWrap: "wrap" }}>
+          <SectionToggle open={sections.isOpen("moonraker")} onToggle={() => sections.toggle("moonraker")} controlsId="moonraker-body" testId="toggle-moonraker">
+            {isPrusaLink ? "PrusaLink: live status, printing and maintenance" : "Moonraker: connection, energy and maintenance"}
+          </SectionToggle>
+          {!sections.isOpen("moonraker") && (
+            <>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textFaint }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: !link.status ? c.textFaint : link.status.reachable ? c.green : c.danger }} />
+                {!link.status ? "checking…" : !link.status.reachable ? "not reachable" : (link.status.job || link.status.print) ? `printing · ${Math.round((link.status.job || link.status.print).progress || 0)}%` : "connected"}
+              </span>
+              {maintenanceDue > 0 && <Badge tone="danger">{maintenanceDue} maintenance due</Badge>}
+            </>
+          )}
+        </div>
+        <div id="moonraker-body" style={{ display: sections.isOpen("moonraker") ? "flex" : "none", flexDirection: "column", gap: 28 }}>
+          {isPrusaLink ? (
+            <>
+              <PrusaLinkCard printer={printer} pl={pl} />
+              <MaintenanceSection printer={printer} reachable onDueCount={setMaintenanceDue} />
+            </>
+          ) : (
+            <>
+              <MoonrakerCard printer={printer} mr={mr} />
+              <EnergyPanel printer={printer} syncTick={mr.syncTick} />
+              <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} />
+            </>
+          )}
+        </div>
+      </div>
+
+      {children}
+
+      <PrintHistory printer={printer} syncTick={link.syncTick} open={sections.isOpen("history")} onToggle={() => sections.toggle("history")} />
+    </>
+  );
+}
+
 // One printer: its 3MF search, details and notes, Moonraker or PrusaLink with maintenance, its 3MF files and history
 export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }) {
-  const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle, refresh } = useData();
+  const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle, refreshPrinters, putBundle } = useData();
   const expansion = useBundleExpansion();
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
@@ -72,27 +134,15 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
   }, [printerId]);
 
   const sections = usePrinterSections();
-  const [maintenanceDue, setMaintenanceDue] = useState(0); // reported by the maintenance list, for when it's folded
-
-  // The printer's Moonraker or PrusaLink (whichever it uses); starts over if its address or login changes
   const printer = printers.find((p) => p.id === printerId);
-  const isPrusaLink = printer.connectionType === "prusalink";
-  const mr = useMoonraker(
-    isPrusaLink ? null : printer.id,
-    isPrusaLink ? null : `${printer.id}|${printer.moonrakerUrl}|${printer.hasMoonrakerApiKey}`,
-    refresh,
-  );
-  const pl = usePrusaLink(
-    isPrusaLink ? printer.id : null,
-    isPrusaLink ? `${printer.id}|${printer.prusalinkUrl}|${printer.prusalinkUsername}|${printer.hasPrusalinkPassword}` : null,
-    refresh,
-  );
-  const link = isPrusaLink ? pl : mr; // for what both show: the connection dot, the history reloading
 
-  const allBundles = [...bundlesForPrinter(printer.id)].sort(newestFirst);
-  const words = searchWords(query);
+  const allBundles = useMemo(() => [...bundlesForPrinter(printer.id)].sort(newestFirst), [bundlesForPrinter, printer.id]);
+  const words = useMemo(() => searchWords(query), [query]);
   const searching = words.length > 0;
-  const pBundles = allBundles.filter((b) => bundleMatches(b, modelsForBundle(b), words));
+  const pBundles = useMemo(
+    () => allBundles.filter((b) => bundleMatches(b, modelsForBundle(b), words)),
+    [allBundles, modelsForBundle, words],
+  );
   const modelCount = modelsForPrinter(printer.id).length;
   const control = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
 
@@ -213,97 +263,65 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
 
       <NotesSection key={printer.id} kind="printer" owner={printer} />
 
-      {/* Everything from the printer's Moonraker, foldable as one. Folded, it stays mounted (just hidden), so it
-          keeps what it loaded and can still say if maintenance is due. */}
-      <div data-testid="moonraker-group">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: sections.isOpen("moonraker") ? 14 : 0, flexWrap: "wrap" }}>
-          <SectionToggle open={sections.isOpen("moonraker")} onToggle={() => sections.toggle("moonraker")} controlsId="moonraker-body" testId="toggle-moonraker">
-            {isPrusaLink ? "PrusaLink: live status, printing and maintenance" : "Moonraker: connection, energy and maintenance"}
-          </SectionToggle>
-          {!sections.isOpen("moonraker") && (
-            <>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textFaint }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: !link.status ? c.textFaint : link.status.reachable ? c.green : c.danger }} />
-                {!link.status ? "checking…" : !link.status.reachable ? "not reachable" : isPrusaLink && link.status.job ? `printing · ${Math.round(link.status.job.progress || 0)}%` : "connected"}
-              </span>
-              {maintenanceDue > 0 && <Badge tone="danger">{maintenanceDue} maintenance due</Badge>}
-            </>
-          )}
-        </div>
-        <div id="moonraker-body" style={{ display: sections.isOpen("moonraker") ? "flex" : "none", flexDirection: "column", gap: 28 }}>
-          {isPrusaLink ? (
-            <>
-              <PrusaLinkCard printer={printer} pl={pl} />
-              <MaintenanceSection printer={printer} reachable onDueCount={setMaintenanceDue} />
-            </>
-          ) : (
-            <>
-              <MoonrakerCard printer={printer} mr={mr} />
-              <EnergyPanel printer={printer} syncTick={mr.syncTick} />
-              <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} />
-            </>
-          )}
-        </div>
-      </div>
-
-      <div data-testid="threemf-group">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sections.isOpen("threemf") ? 10 : 0 }}>
-          <SectionToggle open={sections.isOpen("threemf")} onToggle={() => sections.toggle("threemf")} controlsId="threemf-body" testId="toggle-threemf">
-            3MF files on {printer.name}
-            <span style={{ color: c.textFaint }}>({allBundles.length})</span>
-          </SectionToggle>
-          {sections.isOpen("threemf") && <VersionsToggleAll bundleList={pBundles} expansion={expansion} />}
-        </div>
-        {sections.isOpen("threemf") && (
-        <div id="threemf-body">
-        {searching && pBundles.length === 0 && (
-          <div data-testid="printer-3mf-search-empty" style={uiText(13, c.textMuted, { padding: "12px 4px", lineHeight: 1.7 })}>
-            No 3MF files on {printer.name} match <b style={{ color: c.heading }}>“{query.trim()}”</b>. Every word has to match a file name, a model, the slicer or the notes.{" "}
-            <button
-              onClick={() => setQuery("")}
-              style={linkButton()}
-            >
-              Clear search
-            </button>
+      <PrinterLive printer={printer} sections={sections} refreshPrinters={refreshPrinters}>
+        <div data-testid="threemf-group">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sections.isOpen("threemf") ? 10 : 0 }}>
+            <SectionToggle open={sections.isOpen("threemf")} onToggle={() => sections.toggle("threemf")} controlsId="threemf-body" testId="toggle-threemf">
+              3MF files on {printer.name}
+              <span style={{ color: c.textFaint }}>({allBundles.length})</span>
+            </SectionToggle>
+            {sections.isOpen("threemf") && <VersionsToggleAll bundleList={pBundles} expansion={expansion} />}
           </div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {pBundles.map((b) => (
-            <BundleCard
-              key={b.id}
-              bundle={b}
-              versions={versionsByBundle[b.id] || []}
-              expansion={expansion}
-              compareSelection={compareSelection}
-              onToggleCompare={toggleCompareSelect}
-              title={
-                <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <FileBox size={15} color={c.textFaint} />
-                    <EditableName
-                      value={b.name}
-                      label="this 3MF file" extension=".3mf" boxed
-                      testId="bundle-name"
-                      textStyle={{ ...mono, fontSize: fs(13) }}
-                      onSave={(name) => renameBundleVersion(b.versions[0].id, name)}
-                    >
-                      <span style={monoText(13, "inherit")}><Highlighted text={b.name} words={words} /></span>
-                    </EditableName>
-                    <Badge>{b.slicer}</Badge>
-                  </div>
-                  <div style={uiText(12, c.textFaint, { paddingLeft: 23 })}>
-                    from <Highlighted text={modelsForBundle(b).map((m) => m.name).join(" + ")} words={words} />
-                  </div>
-                </>
-              }
-            />
-          ))}
+          {sections.isOpen("threemf") && (
+          <div id="threemf-body">
+          {searching && pBundles.length === 0 && (
+            <div data-testid="printer-3mf-search-empty" style={uiText(13, c.textMuted, { padding: "12px 4px", lineHeight: 1.7 })}>
+              No 3MF files on {printer.name} match <b style={{ color: c.heading }}>“{query.trim()}”</b>. Every word has to match a file name, a model, the slicer or the notes.{" "}
+              <button
+                onClick={() => setQuery("")}
+                style={linkButton()}
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {pBundles.map((b) => (
+              <BundleCard
+                key={b.id}
+                bundle={b}
+                versions={versionsByBundle[b.id] || []}
+                expansion={expansion}
+                compareSelection={compareSelection}
+                onToggleCompare={toggleCompareSelect}
+                title={
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <FileBox size={15} color={c.textFaint} />
+                      <EditableName
+                        value={b.name}
+                        label="this 3MF file" extension=".3mf" boxed
+                        testId="bundle-name"
+                        textStyle={{ ...mono, fontSize: fs(13) }}
+                        onSave={async (name) => putBundle(await renameBundle(b, name))}
+                      >
+                        <span style={monoText(13, "inherit")}><Highlighted text={b.name} words={words} /></span>
+                      </EditableName>
+                      <Badge>{b.slicer}</Badge>
+                    </div>
+                    <div style={uiText(12, c.textFaint, { paddingLeft: 23 })}>
+                      from <Highlighted text={modelsForBundle(b).map((m) => m.name).join(" + ")} words={words} />
+                    </div>
+                  </>
+                }
+              />
+            ))}
+          </div>
+          </div>
+          )}
         </div>
-        </div>
-        )}
-      </div>
 
-      <PrintHistory printer={printer} syncTick={link.syncTick} open={sections.isOpen("history")} onToggle={() => sections.toggle("history")} />
+      </PrinterLive>
     </div>
   );
 }

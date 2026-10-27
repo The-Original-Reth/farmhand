@@ -11,6 +11,7 @@ from ..models import Printer, PrinterEnergyReading, PrintJob
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
 from ..services import moonraker as mr
+from ..services import energy as energy_service
 from ..services import printer_service
 from ..timeutil import utc_iso
 
@@ -128,38 +129,38 @@ def print_stats(printer_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{printer_id}/energy")
-def energy(printer_id: int, db: Session = Depends(get_db)):
+def energy(printer_id: int, tz: str | None = Query(None, max_length=64), db: Session = Depends(get_db)):
     """
-    Everything Farmhand knows about the printer's energy use, for the page to total up by month or year in the
-    viewer's own time zone:
+    The printer's energy use, totalled by month in the viewer's time zone (tz: its name, e.g. "Europe/London";
+    UTC if left out):
       meter: the power meter's latest reading (whole printer, idle included) | null
       print_total_kwh: the printer's own sum of energy over all prints, as of the last sync | null
-      jobs: [[start time, kWh]] for every print with an energy figure
-      readings: [[time, kWh]] every meter reading, oldest first (whole-printer use between two readings)
+      print_jobs_kwh: what the prints Farmhand has on record add up to
+      months: [{key: "2026-10", prints, print_count, whole, partial}], newest first (see services/energy.py)
     """
     printer = _printer(db, printer_id)
     conn = printer.connection_row
     aux = {(t.get("provider"), t.get("field")): t for t in (conn.auxiliary_totals or [])} if conn else {}
     print_total = next((t.get("total") for (_, field), t in aux.items() if field == "energy_consumption"), None)
-    jobs = db.execute(
-        select(PrintJob.start_time, PrintJob.energy_kwh)
-        .where(PrintJob.printer_id == printer_id, PrintJob.energy_kwh.isnot(None))
-        .order_by(PrintJob.start_time)
-    ).all()
-    readings = db.execute(
+    jobs_kwh = db.scalar(
+        select(func.sum(PrintJob.energy_kwh)).where(PrintJob.printer_id == printer_id, PrintJob.energy_kwh.isnot(None))
+    )
+    latest = db.execute(
         select(PrinterEnergyReading.taken_at, PrinterEnergyReading.energy_kwh, PrinterEnergyReading.sensor)
         .where(PrinterEnergyReading.printer_id == printer_id)
-        .order_by(PrinterEnergyReading.taken_at)
-    ).all()
+        .order_by(PrinterEnergyReading.taken_at.desc())
+        .limit(1)
+    ).first()
     meter = None
-    if readings:
-        at, kwh, sensor = readings[-1]
-        meter = {"sensor": sensor, "energy_kwh": kwh, "taken_at": utc_iso(at), "first_reading_at": utc_iso(readings[0][0])}
+    if latest:
+        first_at = db.scalar(select(func.min(PrinterEnergyReading.taken_at)).where(PrinterEnergyReading.printer_id == printer_id))
+        at, kwh, sensor = latest
+        meter = {"sensor": sensor, "energy_kwh": kwh, "taken_at": utc_iso(at), "first_reading_at": utc_iso(first_at)}
     return {
         "meter": meter,
         "print_total_kwh": print_total,
-        "jobs": [[utc_iso(at), kwh] for at, kwh in jobs],
-        "readings": [[utc_iso(at), kwh] for at, kwh, _ in readings],
+        "print_jobs_kwh": jobs_kwh or 0.0,
+        "months": energy_service.by_month(db, printer_id, tz),
     }
 
 

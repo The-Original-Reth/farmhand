@@ -14,7 +14,7 @@ export function matchModel(model, words, others) {
   const reasons = [];
   for (const word of words) {
     if (name.includes(word)) continue;
-    const hit = others.find((o) => o.text.toLowerCase().includes(word));
+    const hit = others.find((o) => (o.lower ?? o.text.toLowerCase()).includes(word));
     if (!hit) return null;
     const reason = hit.kind === "note" ? `note “${excerptAround(hit.text, word)}”` : `${hit.kind} ${hit.text}`;
     if (!reasons.includes(reason)) reasons.push(reason);
@@ -30,18 +30,19 @@ function excerptAround(text, word) {
   return (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ").trim() + (end < text.length ? "…" : "");
 }
 
-// Everything besides its own name that a model can be found by
+// Everything besides its own name that a model can be found by, each with its text lowercased for matching
 export function searchableExtras(model, bundles, printers) {
+  const printerById = new Map(printers.map((p) => [p.id, p]));
   const out = [];
   (model.versions || []).forEach((v) => v.filename && out.push({ kind: "file", text: v.filename }));
   bundles.forEach((b) => {
-    const printer = printers.find((p) => p.id === b.printerId);
+    const printer = printerById.get(b.printerId);
     if (printer) out.push({ kind: "printer", text: printer.name });
     (b.versions || []).forEach((v) => v.filename && out.push({ kind: "3MF", text: v.filename }));
     if (b.slicer) out.push({ kind: "slicer", text: b.slicer });
   });
   if (model.notes) out.push({ kind: "note", text: model.notes }); // last: a note only explains a match nothing else does
-  return out;
+  return out.map((o) => ({ ...o, lower: o.text.toLowerCase() }));
 }
 
 // The text with the searched words picked out

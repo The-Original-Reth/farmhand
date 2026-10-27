@@ -13,7 +13,7 @@ import { PerformMaintenanceForm } from "./MaintenanceForm.jsx";
 // The 1500-hour service, kept in Farmhand: due once the printer's synced print time has grown by 1500 hours since
 // the count started (its first sync, or the last time this was marked done). Shown whether or not the printer answers.
 export function ServiceReminder({ printer }) {
-  const { refresh } = useData();
+  const { putPrinter } = useData();
   const [dialog, setDialog] = useState(null); // "done" | null
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -27,8 +27,7 @@ export function ServiceReminder({ printer }) {
     setBusy(true);
     setError(null);
     try {
-      await setServiceEnabled(printer.id, !s.enabled);
-      await refresh();
+      putPrinter(await setServiceEnabled(printer.id, !s.enabled));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -93,8 +92,7 @@ export function ServiceReminder({ printer }) {
             message={`The next ${n(interval)} print hours count from the printer's print time now. This is kept in Farmhand, not on the printer.`}
             onClose={() => setDialog(null)}
             onSubmit={async ({ note }) => {
-              await serviceDone(printer.id, { note });
-              await refresh();
+              putPrinter(await serviceDone(printer.id, { note }));
             }}
           />
         </Modal>

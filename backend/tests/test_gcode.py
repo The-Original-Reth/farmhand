@@ -141,6 +141,22 @@ def test_sending_a_gcode_to_a_klipper_printer_uploads_it_and_starts_it(farm, moo
     assert moonraker.uploads == [{"filename": "Goldfish ver 2.gcode", "size": 11, "root": "gcodes", "print": "true"}]
 
 
+def test_a_big_gcode_is_streamed_to_the_printer_not_read_in_whole(farm, moonraker, monkeypatch):
+    from pathlib import Path
+
+    c = farm["api"]
+    v2 = _versions(farm)[2]["id"]
+    body = b"G1 X10 Y10 E0.5\n" * 200_000  # ~3 MB
+    c.put(f"/bundles/versions/{v2}/gcode", files={"gcode": ("a.gcode", body)})
+
+    def no_whole_reads(self):
+        raise AssertionError(f"read whole: {self}")
+
+    monkeypatch.setattr(Path, "read_bytes", no_whole_reads)
+    assert c.post(f"/bundles/versions/{v2}/print").status_code == 200
+    assert moonraker.uploads[0]["size"] == len(body)
+
+
 def test_a_busy_klipper_printer_is_not_sent_anything(farm, moonraker):
     c = farm["api"]
     v2 = _versions(farm)[2]["id"]

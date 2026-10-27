@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..errors import NotFound
 from .. import notes as notes_helper
@@ -19,7 +19,8 @@ log = logging.getLogger("farmhand.source_models")
 
 
 def list_source_models(db: Session) -> list[SourceModel]:
-    return list(db.scalars(select(SourceModel).order_by(SourceModel.name)))
+    # its versions and notes loaded a batch at a time, not two queries per model
+    return list(db.scalars(select(SourceModel).order_by(SourceModel.name).options(selectinload(SourceModel.versions), selectinload(SourceModel.note_row))))
 
 
 def get_source_model(db: Session, source_model_id: int) -> SourceModel | None:

@@ -217,6 +217,20 @@ def test_sending_a_print(client, fake):
     assert c.get(f"/printers/{pid}/print-jobs").json()["jobs"][0]["filename"] == "Frog keychain.bgcode"  # recorded at once
 
 
+def test_a_big_print_is_streamed_whole_with_its_length_up_front(client, fake):
+    import inspect
+
+    from app.routers import prusalink as router
+
+    assert not inspect.iscoroutinefunction(router.send_print)  # runs in a worker thread, not on the event loop
+    c, pid = client
+    body = bytes(range(256)) * (3 * 1024 * 16 + 7)  # ~12 MB: several pieces, and not a whole number of them
+    assert c.post(f"/printers/{pid}/prusalink/print", files={"file": ("big.bgcode", body)}).status_code == 200
+    [up] = fake.uploads
+    assert up["size"] == len(body) and up["headers"]["content-length"] == str(len(body))
+    assert "transfer-encoding" not in up["headers"]
+
+
 def test_only_a_sliced_file_can_be_sent(client, fake):
     c, pid = client
     r = c.post(f"/printers/{pid}/prusalink/print", files={"file": ("frog.3mf", b"PK..")})

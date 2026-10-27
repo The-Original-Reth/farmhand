@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { errorText, getEnergy } from "../api.js";
@@ -33,29 +33,35 @@ export function PowerSection() {
     };
   }, [ids]);
 
+  // every printer's periods, then the farm's: worked out once per answer and grouping, not on every click
+  const { perPrinter, metered, farm, periods } = useMemo(() => {
+    if (!energy) return { perPrinter: [], metered: [], farm: {}, periods: [] };
+    // a period's whole-farm figure adds up the printers that have readings in it
+    const perPrinter = active.map((p, i) => {
+      const d = energy[p.id];
+      const has = d && !d.error && (d.meter || d.months.length > 0);
+      return { printer: p, color: printerColor(i), data: d, has, periods: has ? energyByPeriod(d, by) : [] };
+    });
+    const metered = perPrinter.filter((x) => x.data?.meter);
+    const farm = {};
+    for (const x of perPrinter) {
+      for (const p of x.periods) {
+        const f = (farm[p.key] ??= { key: p.key, prints: 0, printCount: 0, whole: null, partial: false, parts: [] });
+        f.prints += p.prints;
+        f.printCount += p.printCount;
+        if (p.whole != null) {
+          f.whole = (f.whole ?? 0) + p.whole;
+          f.parts.push({ color: x.color, name: x.printer.name, kwh: p.whole });
+        }
+        f.partial ||= p.partial;
+      }
+    }
+    const periods = Object.values(farm).sort((a, b) => (a.key < b.key ? 1 : -1)); // newest first
+    return { perPrinter, metered, farm, periods };
+  }, [energy, by, printers]);
+
   if (!energy) return <div style={uiText(13, c.textFaint)}>Loading the farm's energy…</div>;
 
-  // every printer's periods, then the farm's: a period's whole-farm figure adds up the printers that have readings in it
-  const perPrinter = active.map((p, i) => {
-    const d = energy[p.id];
-    const has = d && !d.error && (d.meter || d.jobs.length > 0);
-    return { printer: p, color: printerColor(i), data: d, has, periods: has ? energyByPeriod(d, by) : [] };
-  });
-  const metered = perPrinter.filter((x) => x.data?.meter);
-  const farm = {};
-  for (const x of perPrinter) {
-    for (const p of x.periods) {
-      const f = (farm[p.key] ??= { key: p.key, prints: 0, printCount: 0, whole: null, partial: false, parts: [] });
-      f.prints += p.prints;
-      f.printCount += p.printCount;
-      if (p.whole != null) {
-        f.whole = (f.whole ?? 0) + p.whole;
-        f.parts.push({ color: x.color, name: x.printer.name, kwh: p.whole });
-      }
-      f.partial ||= p.partial;
-    }
-  }
-  const periods = Object.values(farm).sort((a, b) => (a.key < b.key ? 1 : -1)); // newest first
   const shown = showAll ? periods : periods.slice(0, by === "month" ? 12 : 5);
   const max = Math.max(1e-9, ...periods.map((p) => Math.max(p.prints, p.whole ?? 0)));
   const current = periodKey(new Date(), by);

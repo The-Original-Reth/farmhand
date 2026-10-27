@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
 from . import storage
-from .database import Base, SessionLocal, engine
+from .database import SessionLocal, create_schema, engine
 from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
@@ -51,13 +51,27 @@ async def keep_settings_copy_current(request: Request, call_next):
     # A change to a printer, a model or a 3MF file (notes, stars, settings, a sync...) is copied to the settings
     # folder's printers/ and models/ files shortly after, in the background (config_service.request_mirror)
     response = await call_next(request)
-    if (
-        request.method in ("POST", "PUT", "PATCH", "DELETE")
-        and response.status_code < 400
-        and request.url.path.startswith(("/printers", "/bundles", "/source-models"))
-    ):
-        config_service.request_mirror()
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and response.status_code < 400:
+        scope = _what_changed(request.url.path)
+        if scope is not None:
+            config_service.request_mirror(scope)
     return response
+
+
+def _what_changed(path: str) -> "config_service.MirrorScope | None":
+    """Which files of the settings copy a successful change at this path touches (None: none of them)."""
+    parts = path.strip("/").split("/")
+    if parts[0] == "printers":
+        if len(parts) > 2 and parts[1].isdigit():
+            return config_service.MirrorScope(printers={int(parts[1])})  # its notes, a sync, its service...
+        return config_service.EVERYTHING  # added, renamed, retired or deleted: file names and models' files follow
+    if parts[0] in ("bundles", "source-models"):
+        if parts[-1] == "inspect":
+            return None  # only reads the 3MF
+        if parts[-1] == "print":
+            return config_service.MirrorScope(printers=True)  # a print sent: its printer's history may have it
+        return config_service.MirrorScope(models=True)
+    return None
 
 
 app.include_router(printers.router)
@@ -125,7 +139,7 @@ def on_startup() -> None:
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:
-            Base.metadata.create_all(bind=engine)
+            create_schema(engine)
             if attempt > 1:
                 logger.info("Connected to the database on attempt %d/%d", attempt, max_attempts)
             # Pick up the storage locations chosen in the UI

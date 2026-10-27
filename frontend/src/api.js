@@ -66,13 +66,8 @@ export const normalizePrinter = (p) => ({
   },
 });
 
-// After previews are redrawn their URLs don't change, so the browser would keep showing the old image.
-// Bumping this adds a fresh ?b= to every STL preview URL the next time models are loaded.
-let thumbnailBust = 0;
-export const bustThumbnails = () => {
-  thumbnailBust = Date.now();
-};
-const withBust = (url) => (thumbnailBust ? `${url}?b=${thumbnailBust}` : url);
+// A preview's address ends in ?r=<its revision> (when it was drawn; a 3MF version's never changes), so the address
+// changes whenever the picture does and the browser can keep each one for good instead of asking again every time.
 
 export const normalizeSourceModel = (m) => {
   const versions = (m.versions || []).map((v) => ({
@@ -80,7 +75,7 @@ export const normalizeSourceModel = (m) => {
     v: v.version,
     date: fmtDate(v.uploaded_at),
     note: v.note,
-    thumb: v.thumbnail_path ? withBust(`${API_BASE}/source-models/${m.id}/versions/${v.version}/thumbnail`) : null,
+    thumb: v.thumbnail_path ? `${API_BASE}/source-models/${m.id}/versions/${v.version}/thumbnail?r=${v.thumbnail_rev ?? 0}` : null,
     sourceModelId: m.id,
   })).sort((x, y) => y.v - x.v); // newest on top
   return {
@@ -108,7 +103,7 @@ export const normalizeBundle = (b) => {
     filename: v.filename,
     slicer: v.slicer_display_name,
     uploaded: v.uploaded_at,
-    thumb: v.thumbnail_path ? `${API_BASE}/bundles/versions/${v.id}/thumbnail` : null,
+    thumb: v.thumbnail_path ? `${API_BASE}/bundles/versions/${v.id}/thumbnail?r=${Date.parse(v.uploaded_at) || 0}` : null,
     gcodeName: v.gcode_name || null, // its G-code ("Goldfish ver 2.gcode"), if it has one
   })).sort((x, y) => y.v - x.v); // newest on top, whatever order the server used
   const latest = versions[0];
@@ -129,9 +124,12 @@ export const normalizeBundle = (b) => {
 
 // ---- reads ----
 
+export const getPrinters = () => request("/printers");
+export const getBundle = (bundleId) => request(`/bundles/${bundleId}`);
+
 export const fetchAll = async () => {
   const [printers, models, bundles] = await Promise.all([
-    request("/printers"),
+    getPrinters(),
     request("/source-models"),
     request("/bundles"),
   ]);
@@ -279,9 +277,18 @@ export const sendPrint = (printerId, file) => {
 export const getMoonrakerStatus = (printerId) => request(`/printers/${printerId}/moonraker`);
 export const syncPrinterHistory = (printerId) => request(`/printers/${printerId}/moonraker/sync`, { method: "POST" });
 export const getPrintStats = (printerId) => request(`/printers/${printerId}/print-stats`);
-// { meter: { sensor, energy_kwh, taken_at, first_reading_at } | null, print_total_kwh, jobs: [[iso, kWh]],
-//   readings: [[iso, kWh]] } — raw, so the page can total by month/year in the viewer's own time zone
-export const getEnergy = (printerId) => request(`/printers/${printerId}/energy`);
+// { meter: { sensor, energy_kwh, taken_at, first_reading_at } | null, print_total_kwh, print_jobs_kwh,
+//   months: [{ key: "2026-10", prints, print_count, whole, partial }] } — totalled by the server in this browser's
+//   time zone (a year is its months added up)
+const timeZone = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+})();
+export const getEnergy = (printerId) =>
+  request(`/printers/${printerId}/energy${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
 
 // status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name
 export const getPrintJobs = (printerId, { limit = 25, offset = 0, status = "", q = "" } = {}) => {
@@ -295,10 +302,10 @@ export const getPrintJobs = (printerId, { limit = 25, offset = 0, status = "", q
 export const serviceDone = (printerId, { note }) => request(`/printers/${printerId}/service/done`, jsonBody("POST", { note }));
 export const setServiceEnabled = (printerId, enabled) => request(`/printers/${printerId}/service`, jsonBody("PATCH", { enabled }));
 // Notes kept with the service: the same rules as other notes (a save names the revision it started from; 409 if moved
-// on). Resolves to the printer; NotesSection reads `notes` / `notes_revision` from what onSave returns, hence the reshape.
+// on). Resolves to the printer (as .printer); NotesSection reads `notes` / `notes_revision` from what onSave returns, hence the reshape.
 export const saveServiceNotes = async ({ printerId, notes, baseRevision }) => {
   const p = await request(`/printers/${printerId}/service/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
-  return { notes: p.service.notes, notes_revision: p.service.notes_revision };
+  return { notes: p.service.notes, notes_revision: p.service.notes_revision, printer: p };
 };
 
 // Maintenance lives in the printer's Moonraker, in Mainsail's own format: Mainsail shows the same list. A PrusaLink
@@ -326,6 +333,11 @@ export const renameModel = (modelId, name) => request(`/source-models/${modelId}
 // ".3mf" is added if left off
 export const renameBundleVersion = (versionId, filename) =>
   request(`/bundles/versions/${versionId}`, jsonBody("PATCH", { filename }));
+// A 3MF's name is its newest version's: rename that, and resolve to the 3MF as it now stands
+export const renameBundle = async (bundle, filename) => {
+  await renameBundleVersion(bundle.versions[0].id, filename);
+  return getBundle(bundle.id);
+};
 
 // ---- notes about a model ----
 // baseRevision is the revision the text was written from (0 = there were none). If someone else has saved since, the

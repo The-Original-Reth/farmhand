@@ -4,7 +4,9 @@ MK4...) or Moonraker (Klipper). Never while the printer is busy.
 """
 from __future__ import annotations
 
-from pathlib import Path
+import contextlib
+import os
+from typing import BinaryIO, Iterator
 
 from sqlalchemy.orm import Session
 
@@ -36,7 +38,8 @@ def send_gcode(db: Session, version_id: int) -> dict:
         state = (status.get("printer") or {}).get("state")
         if state not in PRUSALINK_FREE:
             raise PrinterBusy(f"{printer.name} isn't ready for a new print (it says {state or 'nothing'}).")
-        where = pl.upload_and_print(printer, name, _read(version))
+        with _opened(version) as (gcode, size):
+            where = pl.upload_and_print(printer, name, gcode, size)
         try:
             pl.poll(db, printer)  # start recording the print straight away
         except pl.PrusaLinkError:
@@ -47,12 +50,17 @@ def send_gcode(db: Session, version_id: int) -> dict:
         state = mr.print_state(printer)
         if state in KLIPPER_BUSY:
             raise PrinterBusy(f"{printer.name} is {state}, so a new print can't be started.")
-        where = mr.upload_and_print(printer, name, _read(version))
+        with _opened(version) as (gcode, _size):
+            where = mr.upload_and_print(printer, name, gcode)
     return {"sent": where, "printer": printer.name}
 
 
-def _read(version: BundleVersion) -> bytes:
+@contextlib.contextmanager
+def _opened(version: BundleVersion) -> Iterator[tuple[BinaryIO, int]]:
+    """The G-code file, open, and its size: it's streamed to the printer from where it is, never read in whole."""
     try:
-        return Path(version.gcode_path).read_bytes()
+        f = open(version.gcode_path, "rb")
     except OSError as e:
         raise ValueError(f"The G-code file can't be read ({e.strerror}). Is its storage folder available?") from None
+    with f:
+        yield f, os.fstat(f.fileno()).st_size

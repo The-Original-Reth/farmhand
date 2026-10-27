@@ -16,7 +16,13 @@ const MOONRAKER_LOOK_MS = 10000; // how often the open printer page looks at the
 // history is synced again. `key` restarts all of it when the printer or its address changes.
 // onSynced: called after each successful sync (the page reloads the printer, whose service hours have moved on)
 export function useMoonraker(printerId, key, onSynced) {
-  const [status, setStatus] = useState(null); // GET /printers/{id}/moonraker
+  const [status, setStatusNow] = useState(null); // GET /printers/{id}/moonraker
+  const seen = useRef("");
+  const setStatus = (s) => {
+    const json = JSON.stringify(s);
+    if (json !== seen.current) setStatusNow(s); // an answer the same as the last redraws nothing
+    seen.current = json;
+  };
   const [stats, setStats] = useState(null); // GET /printers/{id}/print-stats
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);

@@ -23,7 +23,13 @@ const PRUSALINK_FREE = ["IDLE", "READY", "FINISHED", "STOPPED"]; // states a new
 // reloads the printer, whose service hours have moved on); syncTick goes up whenever the record moved, so the
 // history list reloads.
 export function usePrusaLink(printerId, key, onChanged) {
-  const [status, setStatus] = useState(null); // GET /printers/{id}/prusalink
+  const [status, setStatusNow] = useState(null); // GET /printers/{id}/prusalink
+  const seen = useRef("");
+  const setStatus = (s) => {
+    const json = JSON.stringify(s);
+    if (json !== seen.current) setStatusNow(s); // an answer the same as the last redraws nothing
+    seen.current = json;
+  };
   const [stats, setStats] = useState(null); // GET /printers/{id}/print-stats
   const [syncTick, setSyncTick] = useState(0);
   const current = useRef(null);

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -192,7 +192,7 @@ def send_to_printer(version_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/versions/{version_id}/thumbnail")
-def get_version_thumbnail(version_id: int, db: Session = Depends(get_db)):
+def get_version_thumbnail(version_id: int, request: Request, db: Session = Depends(get_db)):
     """
     The 3MF's own embedded thumbnail. Kept even after a version is pruned
     (files removed) — this is served straight from disk, not gated on
@@ -207,7 +207,7 @@ def get_version_thumbnail(version_id: int, db: Session = Depends(get_db)):
         path = version.thumbnail_path if version.thumbnail_path and os.path.isfile(version.thumbnail_path) else storage.preview_beside(version.threemf_path)
     if not path or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="No thumbnail for this version")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return FileResponse(path, media_type="image/png", headers=storage.preview_cache_headers(request.query_params))
 
 
 # ---- deletion: permanent, so each requires an explicit confirm=true ----

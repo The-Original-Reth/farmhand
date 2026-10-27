@@ -188,7 +188,7 @@ def test_each_sync_records_a_meter_reading_but_not_twice_in_a_row(db_session, fa
 
 def test_the_energy_endpoint(client, fake, monkeypatch):
     c, pid = client
-    assert c.get(f"/printers/{pid}/energy").json() == {"meter": None, "print_total_kwh": None, "jobs": [], "readings": []}
+    assert c.get(f"/printers/{pid}/energy").json() == {"meter": None, "print_total_kwh": None, "print_jobs_kwh": 0.0, "months": []}
     monkeypatch.setattr(mr_history, "READING_SPACING", dt.timedelta(0))
     fake.meter_kwh = 100.0
     fake.add_job("000001", "a.gcode", start=1_700_000_000, energy_kwh=0.5)
@@ -199,8 +199,13 @@ def test_the_energy_endpoint(client, fake, monkeypatch):
     e = c.get(f"/printers/{pid}/energy").json()
     assert e["meter"]["energy_kwh"] == 101.5 and e["meter"]["sensor"] == "powermeter"
     assert e["print_total_kwh"] == 1.2
-    assert [kwh for _, kwh in e["jobs"]] == [0.5, 0.7] and e["jobs"][0][0].startswith("2023-11-14")
-    assert [kwh for _, kwh in e["readings"]] == [100.0, 101.5]
+    assert e["print_jobs_kwh"] == 1.2
+    # by month (UTC when no time zone is given): Nov 2023 and Dec 2023 for the prints, the meter's rise this month
+    months = {m["key"]: m for m in e["months"]}
+    assert months["2023-11"]["prints"] == 0.5 and months["2023-12"]["print_count"] == 1
+    this_month = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
+    assert months[this_month]["whole"] == 1.5 and months[this_month]["partial"] is True  # the first reading's month
+    assert [m["key"] for m in e["months"]] == sorted(months, reverse=True)  # newest first
     assert c.get(f"/printers/{pid}/print-jobs").json()["jobs"][0]["energy_kwh"] == 0.7
 
 

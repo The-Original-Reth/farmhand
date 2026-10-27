@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -70,6 +70,8 @@ class PrinterEnergyReading(Base):
     """
 
     __tablename__ = "printer_energy_readings"
+    # a printer's readings in time order: its latest, its first, all of them by month
+    __table_args__ = (Index("ix_energy_readings_printer_taken", "printer_id", "taken_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)
@@ -108,7 +110,10 @@ class PrintJob(Base):
     """
 
     __tablename__ = "print_jobs"
-    __table_args__ = (UniqueConstraint("printer_id", "job_id", name="uq_print_job"),)
+    __table_args__ = (
+        UniqueConstraint("printer_id", "job_id", name="uq_print_job"),
+        Index("ix_print_jobs_printer_start", "printer_id", "start_time"),  # a printer's history, newest first
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)

@@ -67,7 +67,7 @@ class PrinterPoller:
                 except (moonraker.MoonrakerError, prusalink.PrusaLinkError) as e:
                     log.debug("Couldn't sync printer %s: %s", printer.name, e)
         if sync_moonraker:
-            config_service.request_mirror()  # each printer's file on the NAS picks up what came in
+            config_service.request_mirror(config_service.MirrorScope(printers=True))  # each printer's file picks up what came in
 
     def _run(self) -> None:
         self._stop.wait(30)  # let the API finish starting first

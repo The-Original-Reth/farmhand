@@ -30,7 +30,7 @@ def sync_history(db: Session, printer: Printer) -> dict:
     Returns {"added", "updated"}; on failure the error is recorded on the connection and raised.
     """
     conn = _connection(printer)
-    known = {j.job_id: j for j in db.scalars(select(PrintJob).where(PrintJob.printer_id == printer.id))}
+    known: dict[str, PrintJob] = {}  # the jobs on the pages fetched so far (only those are looked up, not every job)
     added = updated = 0
     try:
         totals, aux_totals = history_totals(printer)
@@ -39,6 +39,11 @@ def sync_history(db: Session, printer: Printer) -> dict:
         while True:
             page = _call(printer, "GET", "/server/history/list", params={"limit": PAGE, "start": start, "order": "desc"})
             jobs = page.get("jobs") or []
+            ids = [str(raw.get("job_id")) for raw in jobs if raw.get("job_id") is not None]
+            if ids:
+                known.update((j.job_id, j) for j in db.scalars(
+                    select(PrintJob).where(PrintJob.printer_id == printer.id, PrintJob.job_id.in_(ids))
+                ))
             changed_here = 0
             for raw in jobs:
                 fields = _job_fields(raw)

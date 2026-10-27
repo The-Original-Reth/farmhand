@@ -343,11 +343,34 @@ export function mockApi() {
     const withEnergy = (farm.jobs[p.id] || []).filter((j) => j.kwh != null);
     const readings = farm.meterReadings[p.id] || [];
     const last = readings[readings.length - 1];
+    // totalled by month as the real server does (services/energy.py), in this machine's time zone (the browser's)
+    const months = {};
+    const month = (t) => {
+      const d = new Date(t * 1000);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return (months[key] ??= { key, prints: 0, print_count: 0, whole: null, partial: false });
+    };
+    withEnergy.forEach((j) => {
+      const m = month(j.start);
+      m.prints += j.kwh;
+      m.print_count += 1;
+    });
+    readings.forEach(([t, k], i) => {
+      const m = month(t);
+      if (i === 0) {
+        m.partial = true;
+        m.whole ??= 0;
+      } else {
+        const before = readings[i - 1][1];
+        m.whole = (m.whole ?? 0) + (k >= before ? k - before : k);
+      }
+    });
+    const jobsKwh = withEnergy.reduce((s, j) => s + j.kwh, 0);
     return {
       meter: last ? { sensor: p.moonraker.meterSensor, energy_kwh: last[1], taken_at: iso(last[0]), first_reading_at: iso(readings[0][0]) } : null,
-      print_total_kwh: withEnergy.length ? withEnergy.reduce((s, j) => s + j.kwh, 0) : null,
-      jobs: withEnergy.map((j) => [iso(j.start), j.kwh]),
-      readings: readings.map(([t, k]) => [iso(t), k]),
+      print_total_kwh: withEnergy.length ? jobsKwh : null,
+      print_jobs_kwh: jobsKwh,
+      months: Object.values(months).sort((a, b) => (a.key < b.key ? 1 : -1)),
     };
   });
 

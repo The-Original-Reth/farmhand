@@ -85,6 +85,71 @@ def test_an_unchanged_file_isnt_rewritten_and_a_deleted_models_file_goes(db_sess
     assert sorted(f.name for f in (tmp_path / "models").iterdir()) == ["my own notes.json"]
 
 
+def test_a_change_rewrites_only_the_files_it_touched_without_reading_the_rest_back(db_session, fake, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    a = _printer_with_everything(db_session, fake)
+    b = printer_service.create_printer(db_session, name="Core One", kind=None, wired_ip=None, wireless_ip=None)
+    models_svc.create_source_model(db_session, name="Frog.stl", file_type=SourceFileType.stl, file_obj=io.BytesIO(b"x" * 64))
+    records_service.write_all(db_session, tmp_path)  # a full copy first
+    (tmp_path / "printers" / "my own.json").write_text('{"mine": true}')
+
+    reads = []
+    real_read = Path.read_text
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: reads.append(self.name) or real_read(self, *a, **k))
+    printer_service.set_notes(db_session, b.id, "Satin sheet", 0)
+    out = records_service.write_all(db_session, tmp_path, config_service.MirrorScope(printers={b.id}))
+    assert out == {"printers": {"written": 1, "removed": 0}}  # just that printer's file; the models' aren't touched
+    assert json.loads((tmp_path / "printers" / "Core One.json").read_text())["notes"] == "Satin sheet"
+    assert (tmp_path / "printers" / "V2 BOG.json").exists() and (tmp_path / "printers" / "my own.json").exists()
+
+    reads.clear()
+    out = records_service.write_all(db_session, tmp_path, config_service.MirrorScope(printers=True, models=True))
+    assert out["printers"]["written"] == 0 and out["models"]["written"] == 0
+    assert reads == []  # unchanged since this process wrote them: nothing read back from the share
+
+    printer_service.set_notes(db_session, a.id, "Moved to shelf 3", a.notes_revision)
+    assert records_service.write_all(db_session, tmp_path, config_service.MirrorScope(printers=True))["printers"]["written"] == 1
+
+
+def test_a_full_copy_still_checks_every_file(db_session, fake, tmp_path):
+    _printer_with_everything(db_session, fake)
+    records_service.write_all(db_session, tmp_path)
+    (tmp_path / "printers" / "V2 BOG.json").write_text("{}")  # changed by something else
+    assert records_service.write_all(db_session, tmp_path, config_service.MirrorScope(printers=True))["printers"]["written"] == 0
+    assert records_service.write_all(db_session, tmp_path)["printers"]["written"] == 1  # the full copy puts it right
+
+
+def test_which_changes_touch_which_files():
+    from app.main import _what_changed
+
+    every = config_service.EVERYTHING
+    assert _what_changed("/printers") == every and _what_changed("/printers/3") == every  # added / edited
+    assert _what_changed("/printers/3/notes") == config_service.MirrorScope(printers={3})
+    assert _what_changed("/printers/3/moonraker/sync") == config_service.MirrorScope(printers={3})
+    assert _what_changed("/source-models/4/notes") == config_service.MirrorScope(models=True)
+    assert _what_changed("/bundles/7/star") == config_service.MirrorScope(models=True)
+    assert _what_changed("/bundles/inspect") is None  # only reads the 3MF
+    assert _what_changed("/bundles/versions/9/print") == config_service.MirrorScope(printers=True)
+    assert _what_changed("/settings/config") is None  # writes its own copy straight away
+
+
+def test_changes_waiting_to_be_copied_add_up(monkeypatch):
+    monkeypatch.setattr(config_service, "_background_mirror", True)
+    monkeypatch.setattr(config_service, "_mirror_scope", None)
+    monkeypatch.setattr(config_service, "_mirror_full", False)
+    monkeypatch.setattr(config_service, "_mirror_thread", type("Alive", (), {"is_alive": lambda self: True})())
+    config_service.request_mirror(config_service.MirrorScope(printers={1}))
+    config_service.request_mirror(config_service.MirrorScope(printers={2}))
+    config_service.request_mirror(config_service.MirrorScope(models=True))
+    assert config_service._mirror_scope == config_service.MirrorScope(printers={1, 2}, models=True)
+    config_service.request_mirror(config_service.MirrorScope(printers=True))
+    assert config_service._mirror_scope.printers is True
+    config_service.request_mirror()
+    assert config_service._mirror_full is True
+    config_service._mirror_wanted.clear()
+
+
 def test_file_names_are_safe_and_never_collide():
     taken = set()
     assert rs.file_stem("V2 BOG", taken) == "V2 BOG"
@@ -219,3 +284,13 @@ def test_background_copies_are_off_until_the_app_starts(monkeypatch):
     monkeypatch.setattr(config_service, "_background_mirror", False)
     config_service.request_mirror()  # does nothing (and starts no thread) in tests
     assert not config_service._mirror_wanted.is_set()
+
+
+def test_a_deleted_printers_file_goes_even_in_a_partial_copy(db_session, fake, tmp_path):
+    p = _printer_with_everything(db_session, fake)
+    printer_service.create_printer(db_session, name="Core One", kind=None, wired_ip=None, wireless_ip=None)
+    records_service.write_all(db_session, tmp_path)
+    db_session.delete(p)
+    db_session.commit()
+    out = records_service.write_all(db_session, tmp_path, config_service.MirrorScope(printers=True))
+    assert out["printers"]["removed"] == 1 and sorted(f.name for f in (tmp_path / "printers").iterdir()) == ["Core One.json"]

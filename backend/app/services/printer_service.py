@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..errors import NotFound
 from .. import notes as notes_helper
@@ -10,7 +10,8 @@ from ..models import Bundle, BundleVersion, Printer, PrinterConnection, PrinterN
 
 
 def list_printers(db: Session) -> list[Printer]:
-    return list(db.scalars(select(Printer).order_by(Printer.name)))
+    rows = (Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row)
+    return list(db.scalars(select(Printer).order_by(Printer.name).options(*(selectinload(r) for r in rows))))  # a batch, not 5 per printer
 
 
 def get_printer(db: Session, printer_id: int) -> Printer | None:

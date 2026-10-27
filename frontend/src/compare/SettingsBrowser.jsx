@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { classifyPrusa, humanizeLabel, PRUSA_SECTIONS } from "../settingsLayout.js";
@@ -69,18 +69,20 @@ export function SettingsViewer({ bundle, ver }) {
 }
 
 function SettingsBrowser({ bundle, ver, settings }) {
-  const keys = Object.keys(settings);
-
-  const grouped = {};
-  keys.forEach((key) => {
-    const { tab, section } = classifyPrusa(key);
-    grouped[tab] = grouped[tab] || {};
-    grouped[tab][section] = grouped[tab][section] || [];
-    grouped[tab][section].push(key);
-  });
-  Object.values(grouped).forEach((sections) => {
-    Object.values(sections).forEach((list) => list.sort());
-  });
+  // every setting sorted into its tab and section: once per version, not on every tab or section click
+  const grouped = useMemo(() => {
+    const out = {};
+    Object.keys(settings).forEach((key) => {
+      const { tab, section } = classifyPrusa(key);
+      out[tab] = out[tab] || {};
+      out[tab][section] = out[tab][section] || [];
+      out[tab][section].push(key);
+    });
+    Object.values(out).forEach((sections) => {
+      Object.values(sections).forEach((list) => list.sort());
+    });
+    return out;
+  }, [settings]);
 
   const tabsWithContent = Object.keys(PRUSA_SECTIONS).filter((t) => grouped[t]);
   const [activeTab, setActiveTab] = useState(tabsWithContent[0] || "Print Settings");
@@ -92,7 +94,7 @@ function SettingsBrowser({ bundle, ver, settings }) {
   return (
     <div>
       <div style={uiText(12, c.textFaint, { marginBottom: 12 })}>
-        {bundle.name} · v{ver.v} · {keys.length} settings
+        {bundle.name} · v{ver.v} · {Object.keys(settings).length} settings
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 12, borderBottom: `1px solid ${c.border}`, paddingBottom: 12 }}>

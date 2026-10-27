@@ -160,6 +160,14 @@ def _safe_name(filename: str) -> str:
     return name
 
 
+def preview_cache_headers(request_query: dict) -> dict:
+    """
+    How long a browser may keep a preview image. Asked for with ?r=<its revision> (as the page does), the address
+    changes whenever the picture does, so it can be kept for good; otherwise check back each time (cheap: 304).
+    """
+    return {"Cache-Control": "public, max-age=31536000, immutable" if "r" in request_query else "no-cache"}
+
+
 def save_upload(dest_dir: Path, filename: str, file_obj) -> str:
     """
     Write an uploaded file (anything with .read()) into dest_dir. Written under a

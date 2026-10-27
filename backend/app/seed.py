@@ -20,7 +20,7 @@ import io
 import sys
 from pathlib import Path
 
-from .database import Base, SessionLocal, engine
+from .database import SessionLocal, create_schema, engine
 from .models import SourceFileType
 from .services import bundle_service, printer_service, source_model_service
 
@@ -34,7 +34,7 @@ def _fake_gcode() -> io.BytesIO:
 
 
 def seed() -> None:
-    Base.metadata.create_all(bind=engine)
+    create_schema(engine)
     db = SessionLocal()
     try:
         vt1190 = printer_service.find_by_name(db, "VT 1190")

@@ -1,6 +1,7 @@
 """The HTTP side: requests to a printer's PrusaLink (its local API, version 1), logged in with HTTP digest auth."""
 from __future__ import annotations
 
+from typing import BinaryIO, Iterator
 from urllib.parse import quote
 
 import httpx
@@ -22,7 +23,7 @@ class PrusaLinkError(Exception):
         self.kind = kind
 
 
-def _call(printer: Printer, method: str, path: str, *, content: bytes | None = None, headers: dict | None = None,
+def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChunks | None = None, headers: dict | None = None,
           timeout: httpx.Timeout = TIMEOUT) -> httpx.Response:
     base = printer.prusalink_url
     if not base:
@@ -92,12 +93,35 @@ def _storage(printer: Printer) -> str:
     return usable[0]["path"].strip("/")
 
 
-def upload_and_print(printer: Printer, filename: str, data: bytes) -> str:
-    """Put the file on the printer (replacing one of the same name) and start printing it. Returns where it went."""
+CHUNK = 1024 * 1024
+
+
+class FileChunks:
+    """
+    An open file sent a piece at a time. Each pass starts from the beginning, because the digest login means the
+    upload is sent twice: once to be told how to log in, then for real.
+    """
+
+    def __init__(self, fileobj: BinaryIO):
+        self.fileobj = fileobj
+
+    def __iter__(self) -> Iterator[bytes]:
+        self.fileobj.seek(0)
+        while chunk := self.fileobj.read(CHUNK):
+            yield chunk
+
+
+def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO, size: int | None = None) -> str:
+    """
+    Put the file on the printer (replacing one of the same name) and start printing it. Returns where it went.
+    data: the bytes, or an open file read from where it is now (with its size): streamed a piece at a time, so a big
+    G-code is never held in memory whole.
+    """
     storage = _storage(printer)
     path = f"/api/v1/files/{quote(storage)}/{quote(filename)}"
-    _call(
-        printer, "PUT", path, content=data, timeout=UPLOAD_TIMEOUT,
-        headers={"Content-Type": "application/octet-stream", "Print-After-Upload": "?1", "Overwrite": "?1"},
-    )
+    headers = {"Content-Type": "application/octet-stream", "Print-After-Upload": "?1", "Overwrite": "?1"}
+    if not isinstance(data, bytes):
+        headers["Content-Length"] = str(size)  # PrusaLink wants the length up front, not a chunked upload
+        data = FileChunks(data)
+    _call(printer, "PUT", path, content=data, timeout=UPLOAD_TIMEOUT, headers=headers)
     return f"{storage}/{filename}"

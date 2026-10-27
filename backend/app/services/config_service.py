@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from sqlalchemy import select
@@ -82,10 +83,30 @@ def build_document(db: Session) -> dict:
     )
 
 
-def mirror(db: Session) -> dict:
+@dataclass
+class MirrorScope:
     """
-    Write the copy now: the settings file, plus a file per printer and per model (records_service). Never raises:
-    everything is safe on the server whatever happens to the share.
+    What a change touched, so a copy rewrites only those files: printers True = all of them, else the ids of those
+    that changed; models = the models' files (they're small, so always all of them).
+    """
+
+    printers: bool | set[int] = field(default_factory=set)
+    models: bool = False
+
+    def add(self, other: "MirrorScope") -> None:
+        if self.printers is not True:
+            self.printers = True if other.printers is True else self.printers | other.printers
+        self.models = self.models or other.models
+
+
+EVERYTHING = MirrorScope(printers=True, models=True)
+
+
+def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
+    """
+    Write the copy now: the settings file, plus a file per printer and per model (records_service): every one of
+    them, each checked against what's there (scope None), or only what a change touched. Never raises: everything
+    is safe on the server whatever happens to the share.
     """
     path = location_path(db)
     if not path:
@@ -93,7 +114,7 @@ def mirror(db: Session) -> dict:
     try:
         folder = storage.ensure_ready_folder(path, "settings folder")
         config_store.write_document(folder, build_document(db))
-        records_service.write_all(db, folder)
+        records_service.write_all(db, folder, scope)
         error = None
     except storage.StorageUnavailableError as e:
         error = str(e)
@@ -118,6 +139,8 @@ MIRROR_DELAY_SECONDS = 3.0
 _mirror_wanted = threading.Event()
 _mirror_thread: threading.Thread | None = None
 _mirror_lock = threading.Lock()
+_mirror_scope: MirrorScope | None = None  # what the changes waiting to be copied touched (None: a full copy is due)
+_mirror_full = False
 
 
 _background_mirror = False  # switched on when the app starts (not in tests, which have no settings folder)
@@ -128,11 +151,21 @@ def enable_background_mirror() -> None:
     _background_mirror = True
 
 
-def request_mirror() -> None:
-    """Something changed: write the copy (settings, printers, models) in a few seconds, in the background."""
-    global _mirror_thread
+def request_mirror(scope: MirrorScope | None = None) -> None:
+    """
+    Something changed: write the copy in a few seconds, in the background. scope: what changed (only those files are
+    rewritten); None = a full copy, every file checked.
+    """
+    global _mirror_thread, _mirror_scope, _mirror_full
     if not _background_mirror:
         return
+    with _mirror_lock:
+        if scope is None:
+            _mirror_full = True
+        elif _mirror_scope is None:
+            _mirror_scope = MirrorScope(printers=set(scope.printers) if scope.printers is not True else True, models=scope.models)
+        else:
+            _mirror_scope.add(scope)
     _mirror_wanted.set()
     with _mirror_lock:
         if _mirror_thread is None or not _mirror_thread.is_alive():
@@ -145,10 +178,14 @@ def _mirror_worker() -> None:
 
     while _mirror_wanted.wait(timeout=60):
         time.sleep(MIRROR_DELAY_SECONDS)  # let a burst of changes settle into one write
-        _mirror_wanted.clear()
+        global _mirror_scope, _mirror_full
+        with _mirror_lock:
+            _mirror_wanted.clear()
+            scope = None if _mirror_full else (_mirror_scope or MirrorScope())
+            _mirror_scope, _mirror_full = None, False
         try:
             with SessionLocal() as db:
-                mirror(db)
+                mirror(db, scope)
         except Exception:  # noqa: BLE001 — a background copy must never take anything down
             log.exception("Writing the settings copy failed")
 

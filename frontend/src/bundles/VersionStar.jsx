@@ -16,7 +16,7 @@ const STAR_SILVER_EDGE = "#868B93";
 // outline star; clicking one turns it gold, and only one version of a 3MF is gold at a time, so starring another
 // moves it. Clicking the gold one clears it. The star changes at once; if the save fails it goes back and says why.
 export function VersionStar({ bundle, ver }) {
-  const { refresh } = useData();
+  const { putBundle } = useData();
   const [pending, setPending] = useState(undefined); // the starred version id being saved (null = clearing)
   const [error, setError] = useState(null);
   const [hover, setHover] = useState(false);
@@ -35,8 +35,7 @@ export function VersionStar({ bundle, ver }) {
     setError(null);
     setPending(next);
     try {
-      await setStarredVersion({ bundleId: bundle.id, versionId: next });
-      await refresh();
+      putBundle(await setStarredVersion({ bundleId: bundle.id, versionId: next })); // the 3MF as it now stands
     } catch (err) {
       setError(errorText(err));
     } finally {

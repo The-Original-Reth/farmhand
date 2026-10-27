@@ -3,11 +3,11 @@ import { Check, Pencil, X } from "lucide-react";
 import { c } from "../theme.js";
 import { errorText } from "../api.js";
 import { uiText } from "../styles.js";
-import { useData } from "../data.jsx";
 
 // A file's name with a pencil beside it: click the pencil to rename it in place (Enter saves, Escape cancels).
 // Only the part before the extension can be edited: the extension (.stl, .3mf...) is shown beside the box and always
 // kept. The name is what Farmhand shows, searches by and downloads as; the stored file keeps its own name.
+// onSave(newName) saves it and puts the result in the page's data.
 // `children` is how the name normally looks (e.g. with search words highlighted); `textStyle` styles the edit box.
 const splitExtension = (name, fallback) => {
   const m = /^(.*?)(\.[^./\\]+)$/.exec(name);
@@ -15,7 +15,6 @@ const splitExtension = (name, fallback) => {
 };
 // `boxed` draws a box around the name, in the 3MF file name colour (c.fileName, set on the Appearance page).
 export function EditableName({ value, onSave, label, textStyle, testId, extension: fallbackExtension, boxed = false, children }) {
-  const { refresh } = useData();
   const [stem, extension] = splitExtension(value, fallbackExtension);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(stem);
@@ -44,8 +43,7 @@ export function EditableName({ value, onSave, label, textStyle, testId, extensio
     setBusy(true);
     setError(null);
     try {
-      await onSave(text.trim() + extension); // the extension always stays as it was
-      await refresh();
+      await onSave(text.trim() + extension); // the extension always stays as it was; onSave updates the page's data
       setEditing(false);
     } catch (e) {
       setError(errorText(e));

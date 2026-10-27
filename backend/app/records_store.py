@@ -14,6 +14,7 @@ This module is the format and the file handling only. No database, so it's easy 
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -51,11 +52,25 @@ def _dumps(document: dict) -> str:
     return json.dumps(document, indent=2, ensure_ascii=False, sort_keys=False) + "\n"
 
 
-def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str, dict]) -> dict:
+# What this process last wrote to (or found in) each file: {path: hash of its text}. A file whose new text hashes the
+# same needn't be read back over the network to find that out. A full write (check_all) reads every file regardless,
+# in case something else changed them.
+_last_written: dict[str, str] = {}
+_last_names: dict[str, set[str]] = {}  # {folder: the file names a complete write last left there}
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str, dict], *, complete: bool = True,
+                  check_all: bool = True) -> dict:
     """
-    Make <folder>/<kind_dir> hold exactly these documents ({file stem: document}). Each file is written atomically,
-    and only when its contents changed. Files of ours that no longer belong to anything are removed; anything
-    else in the folder is left alone. Returns {"written": n, "removed": n}.
+    Make <folder>/<kind_dir> hold these documents ({file stem: document}). Each file is written atomically, and only
+    when its contents changed. complete: these are all of them, so files of ours that no longer belong to anything
+    are removed (anything else in the folder is left alone); otherwise just these files are brought up to date.
+    check_all=False trusts what this process last wrote instead of reading each file back. Returns
+    {"written": n, "removed": n}.
     """
     target_dir = Path(folder) / kind_dir
     target_dir.mkdir(exist_ok=True)
@@ -65,8 +80,12 @@ def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str,
         target = target_dir / f"{stem}.json"
         wanted.add(target.name.lower())
         text = _dumps(document)
+        digest = _digest(text)
+        if not check_all and _last_written.get(str(target)) == digest:
+            continue
         try:
             if target.read_text(encoding="utf-8") == text:
+                _last_written[str(target)] = digest
                 continue
         except (OSError, UnicodeDecodeError):
             pass
@@ -76,8 +95,15 @@ def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str,
             os.replace(part, target)
         except BaseException:
             part.unlink(missing_ok=True)
+            _last_written.pop(str(target), None)
             raise
+        _last_written[str(target)] = digest
         written += 1
+    if not complete:
+        return {"written": written, "removed": removed}
+    if not check_all and _last_names.get(str(target_dir)) == wanted:
+        return {"written": written, "removed": removed}  # the same files as last time: nothing can have been left over
+    _last_names[str(target_dir)] = wanted
     for path in target_dir.glob("*.json"):
         if path.name.lower() in wanted:
             continue
@@ -87,6 +113,7 @@ def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str,
             continue  # not ours to judge
         if isinstance(raw, dict) and raw.get(RECORD_MARKER) == kind_dir:
             path.unlink(missing_ok=True)
+            _last_written.pop(str(path), None)
             removed += 1
     return {"written": written, "removed": removed}
 
