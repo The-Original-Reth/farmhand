@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import BinaryIO
+from urllib.parse import urljoin
 
 import httpx
 
@@ -152,8 +153,6 @@ def webcams(printer: Printer) -> list[dict]:
     The cameras set up in the printer's Mainsail / Moonraker (enabled ones only), with their stream and snapshot
     addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is.
     """
-    from urllib.parse import urljoin
-
     base = printer.mainsail_url or ""
     out = []
     for cam in _call(printer, "GET", "/server/webcams/list").get("webcams") or []:

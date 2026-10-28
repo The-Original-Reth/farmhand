@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
@@ -22,6 +22,7 @@ function NewBundleVersionDialog({ bundle, onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [wrong, setWrong] = useState(null); // the dropped 3MF was sliced for another printer: why it can't be added
+  const latest = useRef(null); // the 3MF dropped last: a slower look at an earlier one mustn't speak for it
   const current = bundle.versions[0]?.v || 0;
   const printerName = printers.find((p) => p.id === bundle.printerId)?.name;
 
@@ -30,11 +31,13 @@ function NewBundleVersionDialog({ bundle, onClose }) {
   // server still checks it.
   const dropThreemf = async (file) => {
     setThreemf(file);
+    latest.current = file;
     setWrong(null);
     setErrorMsg(null);
     if (!file || !printerName) return;
     try {
       const { printerProfileName } = await inspectThreemf(file);
+      if (latest.current !== file) return;
       const known = new Set([printerName, ...bundle.versions.map((v) => v.profile).filter(Boolean)]);
       if (printerProfileName && !known.has(printerProfileName)) setWrong(wrongPrinter("3MF", printerProfileName, printerName));
     } catch {
