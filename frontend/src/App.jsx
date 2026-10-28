@@ -116,6 +116,7 @@ function FarmhandApp() {
   const [preview, setPreview] = useState(null); // a look being tried on the Appearance page, not saved yet (null = none)
   const [modelSort, setModelSort] = useState(loadModelSort);
   const [monitorOrder, setMonitorOrder] = useState([]); // the Monitor page's cameras as dragged into order (kept on the server)
+  const [monitorMaxZoom, setMonitorMaxZoom] = useState(4); // how far in a Monitor camera can be zoomed
   const [saveState, setSaveState] = useState({ phase: "idle" }); // idle | saving | saved | error
   const pendingSave = useRef({});
   const saveTimer = useRef(null);
@@ -140,6 +141,7 @@ function FarmhandApp() {
     setModelSort(sort);
     saveModelSort(sort);
     setMonitorOrder(Array.isArray(config.preferences?.monitor_order) ? config.preferences.monitor_order : []);
+    setMonitorMaxZoom(config.preferences?.monitor_max_zoom || 4);
   };
   const loadServerConfig = () =>
     getConfig()
@@ -226,6 +228,10 @@ function FarmhandApp() {
   const saveMonitorOrder = async (next) => {
     const r = await saveConfig({ preferences: { monitor_order: next } });
     setMonitorOrder(r.config.preferences.monitor_order);
+  };
+  const changeMonitorMaxZoom = (next) => {
+    setMonitorMaxZoom(next);
+    queueSave({ preferences: { monitor_max_zoom: next } });
   };
   const [compareSelection, setCompareSelection] = useState([]); // VERSION ids, in selection order
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -431,7 +437,9 @@ function FarmhandApp() {
           ) : section === "power" ? (
             <PowerSection />
           ) : section === "monitor" ? (
-            <MonitorSection order={monitorOrder} onSave={saveMonitorOrder} />
+            <MonitorSection
+              order={monitorOrder} onSave={saveMonitorOrder} maxZoom={monitorMaxZoom} onMaxZoom={changeMonitorMaxZoom}
+            />
           ) : section === "appearance" ? (
             <AppearancePage
               appearance={preview || appearance}

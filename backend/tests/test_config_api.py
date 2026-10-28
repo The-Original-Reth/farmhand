@@ -92,3 +92,13 @@ def test_the_monitor_order_is_kept_on_its_own(client):
     assert prefs["model_sort"] == {"key": "added", "dir": "desc"}  # saving one preference leaves the other alone
     c.put("/settings/config", json={"preferences": {"model_sort": {"key": "name", "dir": "asc"}}})
     assert c.get("/settings/config").json()["config"]["preferences"]["monitor_order"] == ["8:Chamber", "3:rear"]
+
+
+def test_the_monitor_max_zoom_is_one_of_the_choices(client):
+    c, _ = client
+    assert c.get("/settings/config").json()["config"]["preferences"]["monitor_max_zoom"] == 4
+    r = c.put("/settings/config", json={"preferences": {"monitor_max_zoom": 6}})
+    assert r.json()["config"]["preferences"]["monitor_max_zoom"] == 6
+    for junk in (5, 100, "8", 8.0, True, None):
+        r = c.put("/settings/config", json={"preferences": {"monitor_max_zoom": junk}})
+        assert r.json()["config"]["preferences"]["monitor_max_zoom"] == 4, junk

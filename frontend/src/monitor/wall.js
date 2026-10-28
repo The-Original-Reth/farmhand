@@ -60,3 +60,21 @@ export function moved(keys, dragged, target) {
   next.splice(keys.indexOf(target), 0, dragged);
   return next;
 }
+
+// Zoom on one camera: s is how far in, x and y how far the picture is moved, as shares of the tile (from 1 - s to 0,
+// so the picture always covers the tile)
+export const NO_ZOOM = { s: 1, x: 0, y: 0 };
+const within = (v, s) => Math.min(0, Math.max(1 - s, v));
+
+// The zoom after zooming in (by > 1) or out about the point (px, py), as shares of the tile, so that point stays put
+export function zoomed(z, by, px, py, max) {
+  const s = Math.min(max, Math.max(1, z.s * by));
+  if (s < 1.01) return NO_ZOOM;
+  const k = s / z.s;
+  return { s, x: within(px - (px - z.x) * k, s), y: within(py - (py - z.y) * k, s) };
+}
+
+// The zoom moved by (dx, dy), as shares of the tile, from where it was (`from`)
+export function panned(from, dx, dy) {
+  return { s: from.s, x: within(from.x + dx, from.s), y: within(from.y + dy, from.s) };
+}

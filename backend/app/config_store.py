@@ -27,8 +27,10 @@ MAX_FILE_BYTES = 1_000_000
 # file_name_color: the colour of 3MF file names, "auto" (the scheme's own) or a #RRGGBB chosen on the Appearance page
 DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "auto"}
 # monitor_order: the Monitor page's cameras in the order they were dragged into, as "printer id:camera name"
-DEFAULT_PREFERENCES = {"model_sort": {"key": "name", "dir": "asc"}, "monitor_order": []}
+# monitor_max_zoom: how far in a camera can be zoomed on the Monitor page, one of MONITOR_ZOOMS
+DEFAULT_PREFERENCES = {"model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4}
 MAX_MONITOR_CAMERAS = 500
+MONITOR_ZOOMS = (2, 3, 4, 6, 8)
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -70,6 +72,8 @@ def normalize_preferences(raw) -> dict:
             "dir": sort.get("dir") if sort.get("dir") in ("asc", "desc") else DEFAULT_PREFERENCES["model_sort"]["dir"],
         },
         "monitor_order": _camera_keys(p.get("monitor_order")),
+        "monitor_max_zoom": p["monitor_max_zoom"] if type(p.get("monitor_max_zoom")) is int and p["monitor_max_zoom"] in MONITOR_ZOOMS
+        else DEFAULT_PREFERENCES["monitor_max_zoom"],
     }
 
 

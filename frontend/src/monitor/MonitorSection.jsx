@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { c } from "../theme.js";
-import { cancelButton, primaryButton, uiText } from "../styles.js";
+import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js";
 import { errorText, getWebcams } from "../api.js";
 import { useData } from "../data.jsx";
 import { CameraTile } from "./CameraTile.jsx";
@@ -11,10 +12,12 @@ import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 // window, and change with it. Click one to see it on its own, filling the window; click again (or Esc) to go back.
 // Drag a camera onto another to move it there, then Save layout to keep the new order on the server (order: "printer
 // id:camera name" keys; onSave sends one and resolves once the server has it). A camera not in the order yet goes after
-// the ones that are.
+// the ones that are. Scroll over a camera to zoom into it, up to maxZoom (chosen beside Save layout; onMaxZoom keeps
+// it), and drag a zoomed one to look around. Resync asks every printer for its cameras again and connects to each anew.
 const TOOLBAR = 46; // the Save layout line above the grid, with the gap below it
+const ZOOMS = [2, 3, 4, 6, 8]; // the max zoom choices; the server takes only these
 
-export function MonitorSection({ order = [], onSave }) {
+export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const { printers } = useData();
   const [cams, setCams] = useState(null); // printer id -> { webcams, error }
   const [big, setBig] = useState(null); // the camera shown on its own: its key
@@ -22,6 +25,8 @@ export function MonitorSection({ order = [], onSave }) {
   const [over, setOver] = useState(null); // the key of the camera it would go to
   const [draft, setDraft] = useState(null); // the order as rearranged here, not saved yet (null = as saved)
   const [saving, setSaving] = useState({ phase: "idle" }); // idle | saving | saved | error
+  const [round, setRound] = useState(0); // one more for each Resync: the tiles start over, connecting again
+  const [resyncing, setResyncing] = useState(false);
   const active = printers.filter((p) => !p.decommissioned);
   const ids = active.map((p) => p.id).join(",");
   const [wall, setWall] = useState(null); // the wall itself, once it's on the page
@@ -30,11 +35,19 @@ export function MonitorSection({ order = [], onSave }) {
   useEffect(() => {
     let live = true;
     Promise.all(active.map((p) => getWebcams(p.id).then((d) => [p.id, d], (e) => [p.id, { webcams: [], error: errorText(e) }])))
-      .then((pairs) => live && setCams(Object.fromEntries(pairs)));
+      .then((pairs) => {
+        if (!live) return;
+        setCams(Object.fromEntries(pairs));
+        setResyncing(false);
+      });
     return () => {
       live = false;
     };
-  }, [ids]);
+  }, [ids, round]);
+  const resync = () => {
+    setResyncing(true);
+    setRound((r) => r + 1);
+  };
 
   useEffect(() => {
     if (!big) return;
@@ -99,7 +112,10 @@ export function MonitorSection({ order = [], onSave }) {
         </div>
       ) : (
         !big && (
-          <LayoutBar changed={!!draft} saving={saving} onSave={save} onDiscard={discard} />
+          <LayoutBar
+            changed={!!draft} saving={saving} onSave={save} onDiscard={discard} maxZoom={maxZoom} onMaxZoom={onMaxZoom}
+            resyncing={resyncing} onResync={resync}
+          />
         )
       )}
       {tiles.length > 0 && (
@@ -110,8 +126,8 @@ export function MonitorSection({ order = [], onSave }) {
           {/* all stay mounted while one is enlarged, so no camera has to connect again on the way back */}
           {tiles.map((t) => (
             <CameraTile
-              key={t.key} label={t.label} cam={t.cam} big={big === t.key} hidden={!!big && big !== t.key}
-              place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key}
+              key={`${t.key}#${round}`} label={t.label} cam={t.cam} big={big === t.key} hidden={!!big && big !== t.key}
+              place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key} maxZoom={maxZoom}
               onClick={() => setBig(big ? null : t.key)}
               drag={big ? null : {
                 start: () => setDragging(t.key),
@@ -138,17 +154,37 @@ export function MonitorSection({ order = [], onSave }) {
   );
 }
 
-// Above the grid: how to rearrange, and Save layout (with Discard) once something has been moved
-function LayoutBar({ changed, saving, onSave, onDiscard }) {
+// Above the grid: how to rearrange and zoom, the max zoom, Resync, and Save layout (with Discard) once something has been
+// moved
+function LayoutBar({ changed, saving, onSave, onDiscard, maxZoom, onMaxZoom, resyncing, onResync }) {
   const busy = saving.phase === "saving";
   const said =
     saving.phase === "error" ? { text: `Not saved: ${saving.message}`, color: c.danger }
     : saving.phase === "saved" ? { text: "Layout saved", color: c.green }
     : changed ? { text: "Layout changed, not saved yet", color: c.amber }
-    : { text: "Drag a camera onto another to move it there.", color: c.textFaint };
+    : { text: "Drag a camera onto another to move it there. Scroll over one to zoom in.", color: c.textFaint };
   return (
     <div data-testid="monitor-layout" style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 32, flexWrap: "wrap" }}>
       <div data-testid="monitor-layout-status" style={uiText(12, said.color, { flex: 1, minWidth: 180 })}>{said.text}</div>
+      <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 6 })}>
+        Max zoom
+        <select
+          data-testid="monitor-max-zoom" value={maxZoom} onChange={(e) => onMaxZoom?.(Number(e.target.value))}
+          style={{ ...headerButton(), height: 32, padding: "0 6px", color: c.textPrimary, background: c.panelAlt }}
+        >
+          {ZOOMS.map((z) => (
+            <option key={z} value={z}>{z}×</option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button" data-testid="monitor-resync" onClick={onResync} disabled={resyncing}
+        title="Ask every printer for its cameras again and reconnect to each"
+        style={{ ...cancelButton(resyncing), display: "flex", alignItems: "center", gap: 6 }}
+      >
+        <RefreshCw size={13} style={resyncing ? { animation: "fh-spin 1s linear infinite" } : undefined} />
+        {resyncing ? "Resyncing…" : "Resync"}
+      </button>
       {changed && (
         <button type="button" onClick={onDiscard} disabled={busy} style={cancelButton(busy)}>
           Discard

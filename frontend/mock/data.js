@@ -251,7 +251,7 @@ export function buildFarm() {
   // ------------------------------------------------------------------ settings, storage, shares
   const config = {
     appearance: { scheme: "farmhand", contrast: 0, font: "archivo", size: "default", file_name_color: "auto" },
-    preferences: { model_sort: { key: "name", dir: "asc" } },
+    preferences: { model_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4 },
   };
   const shares = [
     {
