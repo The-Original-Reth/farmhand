@@ -1,53 +1,178 @@
 # Farmhand
 
 Cataloging and versioning for a 3D print farm: every STL model and every 3MF sliced from it, version by
-version, per printer — plus the printers themselves (Klipper/Moonraker and Prusa/PrusaLink): their print
-history, maintenance, energy use, and sending them a G-code to print. Backend (FastAPI/SQLAlchemy/PostgreSQL)
-in `backend/`, frontend (React/Vite) in `frontend/`.
+version, per printer, plus the printers themselves (Klipper/Moonraker and Prusa/PrusaLink): their print
+history, maintenance, energy use, their cameras on one screen, and sending them a G-code to print.
 
-## Run everything
+Farmhand runs on one computer on your network (a Raspberry Pi, a mini PC, a NAS that runs Docker…) and is used
+from a web browser on any computer, tablet or phone on the same network.
 
-```bash
-docker compose up --build
-```
+## Installing
 
-- Frontend: **http://localhost:3636**
-- API: **http://localhost:4545** (docs at `/docs`)
-- Postgres: `localhost:2727` (user/pass/db all `farmhand`). Inside Docker the API reaches it at `db:5432`.
-- go2rtc: the camera relay for RTSP cameras (a Prusa's Buddy3D). It opens no ports; the browser reaches it through
-  the frontend's `/go2rtc/` address.
+### What you need
 
-The frontend starts up and immediately asks the API for printers/models/
-bundles — on a brand-new database that's an empty archive, which is a
-valid (if boring) state. Load the real farm data it was built against
-(the sample STL/3MF files aren't in the repository — copy them into
-`backend/seed_data/` first; that folder's README lists them):
+- **A Linux computer that stays on**, on the same network as your printers. A Raspberry Pi 4 or 5 (64-bit
+  Raspberry Pi OS), or any PC running Ubuntu or Debian, is plenty.
+- **Docker** with its **Compose** plugin, and **git**. Step 1 installs them if you don't have them.
+- **Free network ports** on that computer: **3636** (the web page), **4545** (the server the page talks to) and
+  **2727** (the database, only for looking at it yourself). The browser has to be able to reach the first two.
 
-```bash
-docker compose exec api python -m app.seed
-```
+Farmhand is made of four parts, each in its own Docker container, which are always started together:
 
-Then refresh the frontend — 2 printers, 3 STL source models (with real
-auto-generated thumbnails), and 3 real 3MF bundles (including the
-mixed-plate Frog case) should appear.
+| Container | What it does |
+|---|---|
+| `web` | The web page, on port 3636 |
+| `api` | The server: the archive, the printers, the files, the settings. Port 4545 |
+| `db` | The database (PostgreSQL) everything is kept in |
+| `go2rtc` | The video relay for cameras that only stream over RTSP (a Prusa's Buddy3D). Opens no ports of its own |
 
-To update a running Farmhand, run `sudo sh update.sh` in its folder: it pulls the newest code, then rebuilds and
-starts every container together (`docker compose up -d --build --remove-orphans`), so none is left on an old
-version or not started at all. Your data is kept in Docker volumes.
+### 1. Install Docker and git
 
-## Mockup mode (the real web UI on sample data)
+Skip this if `sudo docker compose version` and `git --version` already answer. Otherwise, Docker's own install
+script sets up Docker and the Compose plugin on Raspberry Pi OS, Ubuntu and Debian:
 
 ```bash
-cd frontend
-npm run mock
+curl -fsSL https://get.docker.com -o get-docker.sh
 ```
 
-Opens **http://localhost:3637**: the real web interface, running on a built-in sample farm (printers including
-a Core One, models, 3MF files with versions and G-code, print history, energy, maintenance, notes). No backend,
-database or Docker is needed, and changes to the code show up live. Changes you make in the page (notes, stars,
-maintenance…) last until the mockup restarts; **Reset sample data** (in the sidebar) starts afresh. Things that
-need real files or hardware (uploading, mounting a NAS) answer "not available in the mockup". The fake backend
-lives in `frontend/mock/` and is never part of a build or the Docker image.
+```bash
+sudo sh get-docker.sh
+```
+
+```bash
+sudo apt-get install -y git
+```
+
+### 2. Download Farmhand
+
+Pick where it should live (here, `/opt/farmhand`) and download it there:
+
+```bash
+sudo git clone https://github.com/The-Original-Reth/farmhand.git /opt/farmhand
+```
+
+```bash
+cd /opt/farmhand
+```
+
+If the repository is private, git asks for a username and password: give your GitHub username, and a
+**personal access token** (GitHub › Settings › Developer settings › Personal access tokens) as the password.
+To have it remembered for later updates (it's saved as plain text on that computer), run this once first:
+
+```bash
+sudo git config --global credential.helper store
+```
+
+### 3. Start it
+
+In the Farmhand folder:
+
+```bash
+sudo docker compose up -d --build
+```
+
+The first time takes a few minutes (longer on a Raspberry Pi) while everything is built. Then check that all
+four containers say **running**:
+
+```bash
+sudo docker compose ps
+```
+
+The containers start again by themselves after a power cut or a restart.
+
+### 4. Open it
+
+In a browser on any computer on your network, go to **http://&lt;the computer's IP&gt;:3636**, for example
+`http://192.168.10.125:3636`. (On the computer itself, `http://localhost:3636` works too.) To find its IP:
+
+```bash
+hostname -I
+```
+
+A brand-new Farmhand is empty. Go on with the setup below.
+
+## Setting it up
+
+The first things to do, in this order. Everything is done in the web page; there are no files to edit.
+
+1. **Storage** (left-hand menu). Where STL and 3MF files are kept. Out of the box they go in Farmhand's own
+   storage on the computer it runs on. To keep them on a NAS instead, **Add network share…**, then choose the
+   **STL files** and **3MF files** folders on it (see "Network storage").
+2. **Settings location**, on the same page. Choose a folder on the NAS: Farmhand keeps a copy of its settings
+   and of every printer's and model's records there, so a lost or rebuilt computer can be brought back with
+   **Restore** (see "Where settings and records are kept").
+3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
+   - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
+     key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.
+   - **PrusaLink (Prusa Core One, MK4, XL…)**: the IP, and the PrusaLink password shown on the printer
+     (Settings › Network › PrusaLink). The username is usually `maker`. A Buddy3D camera's IP goes here too
+     (see "Monitor").
+   A 3MF upload can also add the printer it was sliced for.
+4. **Models**: upload STL models and 3MF files, or copy them onto the NAS and use **Scan STL folder**.
+5. **Monitor**: every printer's camera on one screen. Klipper printers' cameras appear by themselves, as set up
+   in Mainsail.
+
+## Updating
+
+When there's a new version, run this in the Farmhand folder:
+
+```bash
+sudo sh update.sh
+```
+
+It downloads the newest version, then rebuilds and starts **all** the containers together
+(`docker compose up -d --build --remove-orphans`), so a part added in a new version is never left out, and lists
+them at the end: all four should say **running**. Your data is kept. Then reload Farmhand in the browser.
+
+(A Farmhand downloaded before `update.sh` existed needs `sudo git pull` once first.)
+
+## Backups and moving to another computer
+
+- Everything Farmhand knows is in two Docker volumes on its computer: the database (`db_data`) and its own file
+  storage (`storage_data`). Files kept on a NAS are on the NAS.
+- With a **Settings location** chosen (see "Setting it up"), the settings, the network shares (without their
+  passwords) and every printer's and model's records are also on the NAS, kept up to date after every change.
+- **To move to a new computer, or after a lost one:** install Farmhand there (steps 1–4), add the same network
+  share on the Storage page, choose the same settings folder, and pick **Use those settings**. Then type the
+  share's and PrusaLink printers' passwords in again: they are never written to the NAS.
+
+## Stopping and removing
+
+In the Farmhand folder. To stop it (the data is kept, and `sudo docker compose up -d` starts it again):
+
+```bash
+sudo docker compose down
+```
+
+To remove it **and delete everything it holds** (the database and its own file storage; files on a NAS stay):
+
+```bash
+sudo docker compose down -v
+```
+
+## When something isn't working
+
+- **See whether every part is running.** All four containers should say *running*:
+
+  ```bash
+  sudo docker compose ps
+  ```
+
+  If one is missing, `sudo sh update.sh` starts it. To see why one stopped, read its last messages (here, the
+  camera relay's; use `api`, `web` or `db` for the others):
+
+  ```bash
+  sudo docker compose logs --tail 50 go2rtc
+  ```
+
+- **The page loads but stays empty, or says it can't reach the server:** the browser has to reach port 4545 on
+  the same computer as well as 3636. Check a firewall isn't blocking it.
+- **A printer says it can't be reached:** its IP, and that the computer running Farmhand can reach it. A Klipper
+  printer that answers but refuses needs its Moonraker API key, or Farmhand added to `trusted_clients`.
+- **A camera doesn't show on Monitor:** under the cameras, *No camera* lists the printers without one; point at
+  a name to see why. Klipper cameras are played straight from the printer, so the *browser* has to be able to
+  reach the printer. After changing a camera, press **Resync**.
+- **A NAS share won't connect:** the Storage page shows the reason (see "Network storage").
 
 ## What's in it
 
@@ -82,13 +207,16 @@ lives in `frontend/mock/` and is never part of a build or the Docker image.
   - Deleting removes the stored files (and their previews) and parsed settings for good.
 
 **Printers** (see "Printers" below)
-- Sorted by name (A→Z or Z→A, remembered); add, edit and decommission
+- Sortable by name, type, wired IP or wireless IP (remembered); add, edit and decommission
+- A **Mainsail** or **PrusaLink** button on each, opening the printer's own page in a new tab
 - Each printer page: its details and notes, its 3MF files (with a search), its print history, and its
   Moonraker or PrusaLink section — each folds away, and all start folded
 - **Moonraker (Klipper)**: connection, lifetime statistics, print history, energy, maintenance shared with
   Mainsail, and the 1500-hour service
 - **PrusaLink (Prusa Core One, MK4, XL…)**: live status, sending a print, a print history Farmhand records,
   maintenance and the 1500-hour service
+
+**Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
 **Power** — the whole farm's energy use (see "Power")
 
@@ -99,42 +227,6 @@ and where a copy of Farmhand's settings and records is kept
 - Monument flagging/unflagging (`PATCH /bundles/versions/{id}/monument`) — the UI shows monuments read-only.
 - Deleting printers (retire one with "Decommissioned" instead — its history stays). Printers can be added
   from the Printers page or straight from a 3MF upload.
-
-## Project layout
-
-```
-backend/     FastAPI + SQLAlchemy + the 3MF parser — see backend/README.md
-frontend/    React + Vite, talks to the backend over HTTP
-  src/       the app: one folder per area (models, bundles, printers, power, storage, notes, compare, …)
-  mock/      the fake backend for mockup mode
-docker-compose.yml   brings up Postgres + both services together
-```
-
-## Local dev without Docker
-
-Backend: see `backend/README.md`'s non-Docker instructions (remember to
-pass `--port 4545`).
-
-Frontend:
-```bash
-cd frontend
-npm install
-VITE_API_BASE=http://localhost:4545 npm run dev
-```
-Vite's dev server also runs on 3636 (configured in `vite.config.js`). For working on the interface without a
-backend at all, use mockup mode (above).
-
-## Testing
-
-- **Backend:** `cd backend` then `python -m pytest -q`. A handful of tests check Linux-only behaviour (POSIX
-  file permissions, symlinks, real mounts); on Windows they're skipped, saying why, and they run in the API's
-  Docker image (Linux). Printers are tested against stand-ins for Moonraker and PrusaLink
-  (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`).
-- **Frontend:** `npm run build` builds it; `npm run check:themes` checks every colour scheme's contrast.
-- **Real hardware:** NAS mounting (SMB and NFS) and Moonraker history/maintenance have been used against real
-  devices. The PrusaLink connection and sending G-code to a Klipper printer follow the printers' published APIs
-  but haven't been tried against a real printer yet; if one fails, its message on the page is the printer's own
-  answer, translated.
 
 ## Versions
 
@@ -193,8 +285,10 @@ entry on the page at once, on both the model page and the printer page.
 
 ## Printers
 
-The **Printers** list is sorted by name (click *Name* to reverse it; remembered in this browser). A printer
-with notes has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
+The **Printers** list sorts by **Name**, **Type**, **Wired IP** or **Wireless IP**: click a heading's arrow, and
+again to reverse it (IPs sort as numbers; printers without that IP go last). The choice is remembered in this
+browser. Its **Mainsail** or **PrusaLink** button opens the printer's own page in a new tab. A printer with notes
+has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
 and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink**
 section, its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
 notes), and its **print history**.
@@ -204,7 +298,7 @@ notes), and its **print history**.
 - Moonraker: the address defaults to port 7125 of the printer's IP (wired preferred); an API key is only needed
   if Moonraker asks for one.
 - PrusaLink: the address defaults to the printer's IP; the username is usually `maker`, and the password is
-  shown on the printer (Settings › Network › PrusaLink).
+  shown on the printer (Settings › Network › PrusaLink). A **Buddy3D camera IP** can be given too (see "Monitor").
 API keys and passwords are stored as-is (they're needed for every call) but never sent back to the browser or
 written to the copy on the NAS.
 
@@ -243,6 +337,38 @@ written to the copy on the NAS.
 Every printer has a service reminder kept in Farmhand: due once 1500 print hours have been added since the
 count started (the first sync) or since it was last marked **Done**. It has its own notes, and can be turned off
 for a printer.
+
+## Monitor
+
+**Monitor** (in the left-hand menu) shows every printer's camera on one screen.
+
+- **Which cameras:** a Klipper printer's cameras are the ones set up in Mainsail (Settings › Webcams), played
+  the way Mainsail plays them (MJPEG, WebRTC through go2rtc or camera-streamer, snapshots at the frame rate set
+  there). A Prusa's **Buddy3D camera** is added by its IP (below). Printers without a camera are listed
+  underneath; point at a name to see why.
+- **Same-size tiles** that fill the window and resize with it. A camera of another shape sits in its tile with
+  black bars. Click a camera to see it on its own, filling the window; click again (or **Esc**) to go back.
+- **Arranging:** drag a camera onto another to move it there, then **Save layout**. The order is kept on the
+  server, so every browser shows the same. **Discard** goes back to the saved order; leaving the page with an
+  unsaved layout asks first.
+- **Zoom:** scroll over a camera to zoom in toward the pointer, drag a zoomed camera to look around, and click
+  the badge in its corner (e.g. *2.6× ✕*) to see the whole picture again. **Max zoom** (2× to 8×, beside Save
+  layout) limits how far, for everyone. Zoom only enlarges the picture the camera sends, so it gets softer the
+  further in you go.
+- **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
+  changing a camera in Mainsail.
+
+### A Prusa's Buddy3D camera
+
+The Buddy3D only streams over RTSP (`rtsp://<camera IP>/live`), which browsers can't play, so Farmhand passes it
+through **go2rtc** (its fourth container), and the page reaches that through the web page's own address.
+1. In the **Prusa app**, turn on local streaming for the camera (camera firmware 3.1.0 or newer).
+2. In Farmhand, open the printer's **Edit** (its connection set to **PrusaLink**) and put the camera's IP in
+   **Buddy3D camera IP**, e.g. `192.168.10.131`. A whole `rtsp://…` address works too, for another RTSP camera.
+3. Open **Monitor** (or press **Resync**).
+
+Anyone on your network can watch a Buddy3D's stream: the camera itself has no password on it. Farmhand's web
+page only passes through its own camera streams, never the rest of go2rtc.
 
 ## Power
 
@@ -538,3 +664,83 @@ they come back by themselves after `docker compose restart`. Not exercised on re
 a share dropping and coming back while Farmhand keeps running, and **Move them now** over a slow
 network. Both are covered against a stand-in `mount` and NAS. If a connection fails, the message
 on the Storage page is the real output of `mount`, translated.
+
+## For developers
+
+Backend (FastAPI/SQLAlchemy/PostgreSQL) in `backend/`, frontend (React/Vite) in `frontend/`.
+
+### Running it on your own computer
+
+```bash
+docker compose up --build
+```
+
+- Frontend: **http://localhost:3636**
+- API: **http://localhost:4545** (docs at `/docs`)
+- Postgres: `localhost:2727` (user/pass/db all `farmhand`). Inside Docker the API reaches it at `db:5432`.
+- go2rtc: no ports of its own; the browser reaches it through the frontend's `/go2rtc/` address.
+
+### Sample data
+
+A brand-new database is an empty archive. To try Farmhand on the farm data it was built against
+(the sample STL/3MF files aren't in the repository — copy them into
+`backend/seed_data/` first; that folder's README lists them):
+
+```bash
+docker compose exec api python -m app.seed
+```
+
+Then refresh the frontend — 2 printers, 3 STL source models (with real
+auto-generated thumbnails), and 3 real 3MF bundles (including the
+mixed-plate Frog case) should appear.
+
+### Mockup mode (the real web UI on sample data)
+
+```bash
+cd frontend
+npm run mock
+```
+
+Opens **http://localhost:3637**: the real web interface, running on a built-in sample farm (printers including
+a Core One, models, 3MF files with versions and G-code, print history, energy, maintenance, notes). No backend,
+database or Docker is needed, and changes to the code show up live. Changes you make in the page (notes, stars,
+maintenance…) last until the mockup restarts; **Reset sample data** (in the sidebar) starts afresh. Things that
+need real files or hardware (uploading, mounting a NAS) answer "not available in the mockup". The fake backend
+lives in `frontend/mock/` and is never part of a build or the Docker image.
+
+### Project layout
+
+```
+backend/     FastAPI + SQLAlchemy + the 3MF parser — see backend/README.md
+frontend/    React + Vite, talks to the backend over HTTP
+  src/       the app: one folder per area (models, bundles, printers, power, storage, notes, compare, …)
+  mock/      the fake backend for mockup mode
+docker-compose.yml   brings up all four containers together
+update.sh            pulls the newest version and restarts every container
+```
+
+### Local dev without Docker
+
+Backend: see `backend/README.md`'s non-Docker instructions (remember to
+pass `--port 4545`).
+
+Frontend:
+```bash
+cd frontend
+npm install
+VITE_API_BASE=http://localhost:4545 npm run dev
+```
+Vite's dev server also runs on 3636 (configured in `vite.config.js`). For working on the interface without a
+backend at all, use mockup mode (above).
+
+### Testing
+
+- **Backend:** `cd backend` then `python -m pytest -q`. A handful of tests check Linux-only behaviour (POSIX
+  file permissions, symlinks, real mounts); on Windows they're skipped, saying why, and they run in the API's
+  Docker image (Linux). Printers are tested against stand-ins for Moonraker and PrusaLink
+  (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`).
+- **Frontend:** `npm run build` builds it; `npm run check:themes` checks every colour scheme's contrast.
+- **Real hardware:** NAS mounting (SMB and NFS), Moonraker history/maintenance, Mainsail cameras (MJPEG and
+  WebRTC through go2rtc) and a Buddy3D camera through Farmhand's go2rtc have been used against real devices. The PrusaLink connection and sending G-code to a Klipper printer follow the printers' published APIs
+  but haven't been tried against a real printer yet; if one fails, its message on the page is the printer's own
+  answer, translated.
