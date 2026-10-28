@@ -66,6 +66,18 @@ def connection_status(printer_id: int, db: Session = Depends(get_db)):
     return out
 
 
+@router.get("/{printer_id}/webcams")
+def webcams(printer_id: int, db: Session = Depends(get_db)):
+    """The printer's cameras, as set up in Mainsail, for the Monitor page. Never fails: says why there are none."""
+    printer = _printer(db, printer_id)
+    if printer.connection_type == "prusalink":
+        return {"webcams": [], "error": "PrusaLink doesn't share a camera feed"}
+    try:
+        return {"webcams": mr.webcams(printer), "error": None}
+    except mr.MoonrakerError as e:
+        return {"webcams": [], "error": str(e)}
+
+
 @router.post("/{printer_id}/moonraker/sync")
 def sync(printer_id: int, db: Session = Depends(get_db)):
     """Copy the printer's latest job history and totals into Farmhand."""

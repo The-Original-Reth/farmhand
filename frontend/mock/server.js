@@ -303,6 +303,19 @@ export function mockApi() {
     };
     return { ...out, reachable: true, klippy_state: p.moonraker.klippy_state, moonraker_version: p.moonraker.version, print: print || null };
   });
+  // A sample camera for each Klipper printer that's on: a drawn picture standing in for its snapshot
+  const cameraPicture = () => {
+    const t = new Date().toLocaleTimeString();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b3036"/><stop offset="1" stop-color="#111418"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><rect x="170" y="250" width="300" height="20" fill="#3a3f45"/><rect x="290" y="70" width="60" height="40" fill="#555b62"/><rect x="312" y="110" width="16" height="22" fill="#e0a43c"/><rect x="240" y="200" width="160" height="50" rx="4" fill="#2f8f83"/><text x="624" y="342" text-anchor="end" font-family="monospace" font-size="16" fill="#9aa3ab">${t}</text></svg>`;
+    return "data:image/svg+xml," + encodeURIComponent(svg);
+  };
+  on("GET", "/printers/:id/webcams", ({ id }) => {
+    const p = printer(id);
+    if (p.prusalink) return { webcams: [], error: "PrusaLink doesn't share a camera feed" };
+    if (!p.moonraker) return { webcams: [], error: "This printer has no IP address or Moonraker address set." };
+    if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error };
+    return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9" }], error: null };
+  });
   on("POST", "/printers/:id/moonraker/sync", ({ id }) => {
     const p = printer(id);
     try {

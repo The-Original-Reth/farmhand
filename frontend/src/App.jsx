@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Archive, HardDrive, Layers, Palette, Printer, Zap } from "lucide-react";
+import { Archive, Cctv, HardDrive, Layers, Palette, Printer, Zap } from "lucide-react";
 import { c, fs, ui } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance.js";
@@ -14,6 +14,7 @@ import { ModelsSection } from "./models/ModelsSection.jsx";
 import { loadModelSort, normalizeModelSort, saveModelSort } from "./models/modelSort.js";
 import { PrintersSection } from "./printers/PrintersSection.jsx";
 import { PowerSection } from "./power/PowerSection.jsx";
+import { MonitorSection } from "./monitor/MonitorSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
 
 function Crumb({ items, onJump }) {
@@ -290,7 +291,7 @@ function FarmhandApp() {
   };
 
   const path =
-    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: { appearance: "Appearance", power: "Power" }[section] || "Storage" }];
+    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: { appearance: "Appearance", power: "Power", monitor: "Monitor" }[section] || "Storage" }];
   const setPath = section === "printers" ? setPrinterPath : section === "models" ? setModelPath : () => {};
   const diffLeft = versionIndex[compareSelection[0]];
   const diffRight = versionIndex[compareSelection[1]];
@@ -374,6 +375,7 @@ function FarmhandApp() {
         {navItem("printers", "Printers", Printer, printers.length)}
         {navItem("storage", "Storage", HardDrive, "")}
         {navItem("power", "Power", Zap, "")}
+        {navItem("monitor", "Monitor", Cctv, "")}
         {navItem("appearance", "Appearance", Palette, "")}
         <div style={{ borderTop: `1px solid ${c.border}`, marginTop: 12, paddingTop: 12 }}>
           <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
@@ -415,6 +417,8 @@ function FarmhandApp() {
             />
           ) : section === "power" ? (
             <PowerSection />
+          ) : section === "monitor" ? (
+            <MonitorSection />
           ) : section === "appearance" ? (
             <AppearancePage
               appearance={preview || appearance}

@@ -288,6 +288,10 @@ const timeZone = (() => {
     return "";
   }
 })();
+// A printer's cameras as set up in Mainsail, for the Monitor page: { webcams: [{ name, service, mjpeg, stream_url,
+// snapshot_url, flip_horizontal, flip_vertical, rotation, aspect_ratio }], error }. Never fails: error says why there are none.
+export const getWebcams = (printerId) => request(`/printers/${printerId}/webcams`);
+
 export const getEnergy = (printerId) =>
   request(`/printers/${printerId}/energy${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
 

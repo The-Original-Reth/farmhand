@@ -29,6 +29,7 @@ class FakeMoonraker:
         self.live = {"filename": "", "print_duration": 0.0, "progress": 0.0}
         self.temps = {"extruder": (24.0, 0.0), "heater_bed": (23.0, 0.0)}  # (temperature, target)
         self.uploads: list[dict] = []  # {filename, size, root, print}
+        self.webcams: list[dict] = []  # as Mainsail's camera settings save them
 
     def add_job(self, job_id: str, filename: str, *, status="completed", start=1_700_000_000.0, print_s=3600.0,
                 filament_mm=5000.0, energy_kwh: float | None = None):
@@ -91,6 +92,8 @@ class FakeMoonraker:
                 if name in q:
                     status[name] = {"temperature": now, "target": target}
             return self._ok({"eventtime": 1.0, "status": status})
+        if path == "/server/webcams/list":
+            return self._ok({"webcams": self.webcams})
         if path == "/server/files/upload" and request.method == "POST":
             return self._upload(request)
         return self._error(404, "Not Found")

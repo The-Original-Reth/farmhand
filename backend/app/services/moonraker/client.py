@@ -140,3 +140,39 @@ def live_print(printer: Printer) -> dict | None:
         "extruder": temps("extruder"),
         "heater_bed": temps("heater_bed"),
     }
+
+
+# Camera services whose stream is a plain MJPEG feed a browser shows in an <img>. The others (WebRTC, HLS, the
+# adaptive MJPEG one) are shown from their snapshots, refreshed every few seconds.
+MJPEG_SERVICES = {"mjpegstreamer", "uv4l-mjpeg", "ipstream"}
+
+
+def webcams(printer: Printer) -> list[dict]:
+    """
+    The cameras set up in the printer's Mainsail / Moonraker (enabled ones only), with their stream and snapshot
+    addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is.
+    """
+    from urllib.parse import urljoin
+
+    base = printer.mainsail_url or ""
+    out = []
+    for cam in _call(printer, "GET", "/server/webcams/list").get("webcams") or []:
+        if cam.get("enabled") is False:
+            continue
+        stream = urljoin(base, cam["stream_url"]) if cam.get("stream_url") else None
+        snapshot = urljoin(base, cam["snapshot_url"]) if cam.get("snapshot_url") else None
+        if not stream and not snapshot:
+            continue
+        service = cam.get("service") or "mjpegstreamer"
+        out.append({
+            "name": cam.get("name") or "Camera",
+            "service": service,
+            "mjpeg": service in MJPEG_SERVICES and bool(stream),
+            "stream_url": stream,
+            "snapshot_url": snapshot,
+            "flip_horizontal": bool(cam.get("flip_horizontal")),
+            "flip_vertical": bool(cam.get("flip_vertical")),
+            "rotation": int(cam.get("rotation") or 0),
+            "aspect_ratio": cam.get("aspect_ratio") or "16:9",
+        })
+    return out
