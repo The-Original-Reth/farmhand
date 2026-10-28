@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { c } from "../theme.js";
-import { uiText } from "../styles.js";
+import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { errorText, getWebcams } from "../api.js";
 import { useData } from "../data.jsx";
 import { CameraTile } from "./CameraTile.jsx";
@@ -9,14 +9,19 @@ import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 // Every printer's cameras, as set up in Mainsail and played the way Mainsail plays them, in one grid: the pictures
 // only, all the same size, each named in its corner. The tiles are as large as they can be while all of them fit in the
 // window, and change with it. Click one to see it on its own, filling the window; click again (or Esc) to go back.
-// Drag a camera onto another to move it there; the order is kept on the server (order: "printer id:camera name" keys),
-// and a camera not in it yet goes after the ones that are.
-export function MonitorSection({ order = [], onReorder }) {
+// Drag a camera onto another to move it there, then Save layout to keep the new order on the server (order: "printer
+// id:camera name" keys; onSave sends one and resolves once the server has it). A camera not in the order yet goes after
+// the ones that are.
+const TOOLBAR = 46; // the Save layout line above the grid, with the gap below it
+
+export function MonitorSection({ order = [], onSave }) {
   const { printers } = useData();
   const [cams, setCams] = useState(null); // printer id -> { webcams, error }
   const [big, setBig] = useState(null); // the camera shown on its own: its key
   const [dragging, setDragging] = useState(null); // the key of the camera being dragged
   const [over, setOver] = useState(null); // the key of the camera it would go to
+  const [draft, setDraft] = useState(null); // the order as rearranged here, not saved yet (null = as saved)
+  const [saving, setSaving] = useState({ phase: "idle" }); // idle | saving | saved | error
   const active = printers.filter((p) => !p.decommissioned);
   const ids = active.map((p) => p.id).join(",");
   const [wall, setWall] = useState(null); // the wall itself, once it's on the page
@@ -38,6 +43,14 @@ export function MonitorSection({ order = [], onReorder }) {
     return () => window.removeEventListener("keydown", close);
   }, [big]);
 
+  // leaving the page with a rearranged layout not saved yet asks first
+  useEffect(() => {
+    if (!draft) return;
+    const ask = (e) => e.preventDefault();
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [draft]);
+
   if (!cams) return <div style={uiText(13, c.textFaint)}>Finding the printers' cameras…</div>;
 
   // one tile per camera; a printer with two cameras gets two, named "VT 1190 · Nozzle"
@@ -47,18 +60,36 @@ export function MonitorSection({ order = [], onReorder }) {
   });
   // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each
   // one shows is set with CSS order instead
-  const keys = arranged(tiles.map((t) => t.key), order);
+  const keys = arranged(tiles.map((t) => t.key), draft || order);
   const place = new Map(keys.map((k, i) => [k, i]));
   const endDrag = () => {
     setDragging(null);
     setOver(null);
   };
   const drop = (target) => {
-    if (dragging && target !== dragging) onReorder?.(moved(keys, dragging, target));
+    if (dragging && target !== dragging) {
+      setDraft(moved(keys, dragging, target));
+      setSaving({ phase: "idle" });
+    }
     endDrag();
   };
   const without = active.filter((p) => !(cams[p.id]?.webcams || []).length);
-  const { cols, width } = fit(big ? 1 : tiles.length, room.width, room.height - (without.length && !big ? 34 : 0));
+  const below = (without.length && !big ? 34 : 0) + (tiles.length && !big ? TOOLBAR : 0); // the lines around the grid
+  const { cols, width } = fit(big ? 1 : tiles.length, room.width, room.height - below);
+  const save = async () => {
+    setSaving({ phase: "saving" });
+    try {
+      await onSave(keys);
+      setDraft(null);
+      setSaving({ phase: "saved" });
+    } catch (e) {
+      setSaving({ phase: "error", message: errorText(e) });
+    }
+  };
+  const discard = () => {
+    setDraft(null);
+    setSaving({ phase: "idle" });
+  };
 
   return (
     <div ref={setWall} data-testid="monitor-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -67,6 +98,11 @@ export function MonitorSection({ order = [], onReorder }) {
           No cameras yet. A printer's camera shows here once it's set up in Mainsail (Settings → Webcams).
         </div>
       ) : (
+        !big && (
+          <LayoutBar changed={!!draft} saving={saving} onSave={save} onDiscard={discard} />
+        )
+      )}
+      {tiles.length > 0 && (
         <div
           data-testid="monitor-grid"
           style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, ${width}px)`, justifyContent: "center", gap: GAP }}
@@ -98,6 +134,32 @@ export function MonitorSection({ order = [], onReorder }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Above the grid: how to rearrange, and Save layout (with Discard) once something has been moved
+function LayoutBar({ changed, saving, onSave, onDiscard }) {
+  const busy = saving.phase === "saving";
+  const said =
+    saving.phase === "error" ? { text: `Not saved: ${saving.message}`, color: c.danger }
+    : saving.phase === "saved" ? { text: "Layout saved", color: c.green }
+    : changed ? { text: "Layout changed, not saved yet", color: c.amber }
+    : { text: "Drag a camera onto another to move it there.", color: c.textFaint };
+  return (
+    <div data-testid="monitor-layout" style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 32, flexWrap: "wrap" }}>
+      <div data-testid="monitor-layout-status" style={uiText(12, said.color, { flex: 1, minWidth: 180 })}>{said.text}</div>
+      {changed && (
+        <button type="button" onClick={onDiscard} disabled={busy} style={cancelButton(busy)}>
+          Discard
+        </button>
+      )}
+      <button
+        type="button" data-testid="monitor-save" onClick={onSave} disabled={!changed || busy}
+        style={{ ...primaryButton(!changed || busy), opacity: changed ? (busy ? 0.7 : 1) : 0.45 }}
+      >
+        {busy ? "Saving…" : "Save layout"}
+      </button>
     </div>
   );
 }

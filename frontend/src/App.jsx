@@ -221,9 +221,11 @@ function FarmhandApp() {
     saveModelSort(next);
     queueSave({ preferences: { model_sort: next } });
   };
-  const changeMonitorOrder = (next) => {
-    setMonitorOrder(next);
-    queueSave({ preferences: { monitor_order: next } }, { immediate: true });
+  // The Monitor page's Save layout: sent at once, and only taken as saved once the server says so (an error is shown
+  // there, by the button)
+  const saveMonitorOrder = async (next) => {
+    const r = await saveConfig({ preferences: { monitor_order: next } });
+    setMonitorOrder(r.config.preferences.monitor_order);
   };
   const [compareSelection, setCompareSelection] = useState([]); // VERSION ids, in selection order
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -429,7 +431,7 @@ function FarmhandApp() {
           ) : section === "power" ? (
             <PowerSection />
           ) : section === "monitor" ? (
-            <MonitorSection order={monitorOrder} onReorder={changeMonitorOrder} />
+            <MonitorSection order={monitorOrder} onSave={saveMonitorOrder} />
           ) : section === "appearance" ? (
             <AppearancePage
               appearance={preview || appearance}
