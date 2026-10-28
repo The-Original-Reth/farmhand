@@ -14,6 +14,8 @@ docker compose up --build
 - Frontend: **http://localhost:3636**
 - API: **http://localhost:4545** (docs at `/docs`)
 - Postgres: `localhost:2727` (user/pass/db all `farmhand`). Inside Docker the API reaches it at `db:5432`.
+- go2rtc: the camera relay for RTSP cameras (a Prusa's Buddy3D). It opens no ports; the browser reaches it through
+  the frontend's `/go2rtc/` address.
 
 The frontend starts up and immediately asks the API for printers/models/
 bundles — on a brand-new database that's an empty archive, which is a
@@ -29,7 +31,9 @@ Then refresh the frontend — 2 printers, 3 STL source models (with real
 auto-generated thumbnails), and 3 real 3MF bundles (including the
 mixed-plate Frog case) should appear.
 
-To pick up code changes, rebuild: `docker compose up -d --build`. Your data is kept in Docker volumes.
+To update a running Farmhand, run `sudo sh update.sh` in its folder: it pulls the newest code, then rebuilds and
+starts every container together (`docker compose up -d --build --remove-orphans`), so none is left on an old
+version or not started at all. Your data is kept in Docker volumes.
 
 ## Mockup mode (the real web UI on sample data)
 
