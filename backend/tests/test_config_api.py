@@ -81,3 +81,14 @@ def test_the_3mf_file_name_colour_is_saved_and_returned(client):
     r = c.put("/settings/config", json={"appearance": {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "#9B7BE0"}})
     assert r.status_code == 200 and r.json()["config"]["appearance"]["file_name_color"] == "#9B7BE0"
     assert c.get("/settings/config").json()["config"]["appearance"]["file_name_color"] == "#9B7BE0"
+
+
+def test_the_monitor_order_is_kept_on_its_own(client):
+    c, _ = client
+    c.put("/settings/config", json={"preferences": {"model_sort": {"key": "added", "dir": "desc"}}})
+    r = c.put("/settings/config", json={"preferences": {"monitor_order": ["8:Chamber", "3:rear", "8:Chamber", 5, "", "x" * 201]}})
+    prefs = r.json()["config"]["preferences"]
+    assert prefs["monitor_order"] == ["8:Chamber", "3:rear"]  # each once; junk dropped
+    assert prefs["model_sort"] == {"key": "added", "dir": "desc"}  # saving one preference leaves the other alone
+    c.put("/settings/config", json={"preferences": {"model_sort": {"key": "name", "dir": "asc"}}})
+    assert c.get("/settings/config").json()["config"]["preferences"]["monitor_order"] == ["8:Chamber", "3:rear"]

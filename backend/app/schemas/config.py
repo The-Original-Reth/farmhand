@@ -20,6 +20,7 @@ class SortData(BaseModel):
 
 class PreferencesData(BaseModel):
     model_sort: SortData
+    monitor_order: list[str] = []
 
 
 class ConfigData(BaseModel):

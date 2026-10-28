@@ -115,6 +115,7 @@ function FarmhandApp() {
   const [appearance, setAppearance] = useState(loadAppearance); // the SAVED look
   const [preview, setPreview] = useState(null); // a look being tried on the Appearance page, not saved yet (null = none)
   const [modelSort, setModelSort] = useState(loadModelSort);
+  const [monitorOrder, setMonitorOrder] = useState([]); // the Monitor page's cameras as dragged into order (kept on the server)
   const [saveState, setSaveState] = useState({ phase: "idle" }); // idle | saving | saved | error
   const pendingSave = useRef({});
   const saveTimer = useRef(null);
@@ -138,6 +139,7 @@ function FarmhandApp() {
     saveAppearance(a);
     setModelSort(sort);
     saveModelSort(sort);
+    setMonitorOrder(Array.isArray(config.preferences?.monitor_order) ? config.preferences.monitor_order : []);
   };
   const loadServerConfig = () =>
     getConfig()
@@ -181,14 +183,19 @@ function FarmhandApp() {
       rememberPending(pendingSave.current); // anything changed while that was in flight is still waiting
       setSaveState({ phase: "saved", mirror: result.mirror });
     } catch (e) {
-      pendingSave.current = { ...patch, ...pendingSave.current }; // not delivered: keep it, newer values winning
+      const newer = pendingSave.current;
+      pendingSave.current = { ...patch, ...newer }; // not delivered: keep it, newer values winning
+      if (patch.preferences && newer.preferences) pendingSave.current.preferences = { ...patch.preferences, ...newer.preferences };
       rememberPending(pendingSave.current);
       setSaveState({ phase: "error", message: errorText(e) });
     }
   };
   // A slider drags through many values: wait for it to settle rather than rewriting the network file for each
   const queueSave = (patch, { immediate = false } = {}) => {
-    pendingSave.current = { ...pendingSave.current, ...patch };
+    const before = pendingSave.current;
+    pendingSave.current = { ...before, ...patch };
+    // each preference is saved on its own on the server: two changed close together are both sent
+    if (before.preferences && patch.preferences) pendingSave.current.preferences = { ...before.preferences, ...patch.preferences };
     rememberPending(pendingSave.current);
     setSaveState({ phase: "saving" });
     clearTimeout(saveTimer.current);
@@ -213,6 +220,10 @@ function FarmhandApp() {
     setModelSort(next);
     saveModelSort(next);
     queueSave({ preferences: { model_sort: next } });
+  };
+  const changeMonitorOrder = (next) => {
+    setMonitorOrder(next);
+    queueSave({ preferences: { monitor_order: next } }, { immediate: true });
   };
   const [compareSelection, setCompareSelection] = useState([]); // VERSION ids, in selection order
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -418,7 +429,7 @@ function FarmhandApp() {
           ) : section === "power" ? (
             <PowerSection />
           ) : section === "monitor" ? (
-            <MonitorSection />
+            <MonitorSection order={monitorOrder} onReorder={changeMonitorOrder} />
           ) : section === "appearance" ? (
             <AppearancePage
               appearance={preview || appearance}

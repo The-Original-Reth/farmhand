@@ -4,14 +4,25 @@ import { uiText } from "../styles.js";
 import { errorText, getWebcams } from "../api.js";
 import { useData } from "../data.jsx";
 
+const TILE = 16 / 9; // every tile is this shape; a camera of another shape sits in it with black bars
+const GAP = 8;
+const SMALLEST = 260; // narrower than this, the tiles stop shrinking to fit and the page scrolls instead
+
 // Every printer's cameras, as set up in Mainsail and played the way Mainsail plays them, in one grid: the pictures
-// only, each named in its corner. Click one to see it on its own, large; click again (or Esc) to go back to the grid.
-export function MonitorSection() {
+// only, all the same size, each named in its corner. The tiles are as large as they can be while all of them fit in the
+// window, and change with it. Click one to see it on its own, filling the window; click again (or Esc) to go back.
+// Drag a camera onto another to move it there; the order is kept on the server (order: "printer id:camera name" keys),
+// and a camera not in it yet goes after the ones that are.
+export function MonitorSection({ order = [], onReorder }) {
   const { printers } = useData();
   const [cams, setCams] = useState(null); // printer id -> { webcams, error }
   const [big, setBig] = useState(null); // the camera shown on its own: its key
+  const [dragging, setDragging] = useState(null); // the key of the camera being dragged
+  const [over, setOver] = useState(null); // the key of the camera it would go to
   const active = printers.filter((p) => !p.decommissioned);
   const ids = active.map((p) => p.id).join(",");
+  const [wall, setWall] = useState(null); // the wall itself, once it's on the page
+  const room = useRoom(wall);
 
   useEffect(() => {
     let live = true;
@@ -34,12 +45,25 @@ export function MonitorSection() {
   // one tile per camera; a printer with two cameras gets two, named "VT 1190 · Nozzle"
   const tiles = active.flatMap((p) => {
     const list = cams[p.id]?.webcams || [];
-    return list.map((cam, i) => ({ key: `${p.id}-${i}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam }));
+    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam }));
   });
+  // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each
+  // one shows is set with CSS order instead
+  const place = new Map(arranged(tiles.map((t) => t.key), order).map((k, i) => [k, i]));
+  const drop = (target) => {
+    if (dragging && target !== dragging) {
+      const keys = arranged(tiles.map((t) => t.key), order).filter((k) => k !== dragging);
+      keys.splice(place.get(target) > place.get(dragging) ? keys.indexOf(target) + 1 : keys.indexOf(target), 0, dragging);
+      onReorder?.(keys);
+    }
+    setDragging(null);
+    setOver(null);
+  };
   const without = active.filter((p) => !(cams[p.id]?.webcams || []).length);
+  const { cols, width } = fit(big ? 1 : tiles.length, room.width, room.height - (without.length && !big ? 34 : 0));
 
   return (
-    <div data-testid="monitor-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div ref={setWall} data-testid="monitor-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {tiles.length === 0 ? (
         <div style={uiText(13, c.textMuted, { lineHeight: 1.6 })}>
           No cameras yet. A printer's camera shows here once it's set up in Mainsail (Settings → Webcams).
@@ -47,13 +71,20 @@ export function MonitorSection() {
       ) : (
         <div
           data-testid="monitor-grid"
-          style={{ display: "grid", gridTemplateColumns: big ? "1fr" : "repeat(auto-fill, minmax(min(340px, 100%), 1fr))", gap: 8 }}
+          style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, ${width}px)`, justifyContent: "center", gap: GAP }}
         >
           {/* all stay mounted while one is enlarged, so no camera has to connect again on the way back */}
           {tiles.map((t) => (
             <CameraTile
               key={t.key} label={t.label} cam={t.cam} big={big === t.key} hidden={!!big && big !== t.key}
+              place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key}
               onClick={() => setBig(big ? null : t.key)}
+              drag={big ? null : {
+                start: () => setDragging(t.key),
+                enter: () => dragging && setOver(t.key),
+                drop: () => drop(t.key),
+                end: () => (setDragging(null), setOver(null)),
+              }}
             />
           ))}
         </div>
@@ -73,9 +104,55 @@ export function MonitorSection() {
   );
 }
 
+// The keys in the order kept, then any not in it yet in the order they come (a new camera, a new printer)
+function arranged(keys, order) {
+  const here = new Set(keys);
+  const kept = order.filter((k) => here.has(k));
+  return [...kept, ...keys.filter((k) => !kept.includes(k))];
+}
+
+// The space the wall has: the page's width, and the window's height below where the wall starts. Kept up to date as
+// the window changes size.
+function useRoom(el) {
+  const [room, setRoom] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setRoom({ width: Math.floor(r.width), height: Math.floor(window.innerHeight - r.top - 24) });
+    };
+    measure();
+    const seen = new ResizeObserver(measure);
+    seen.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      seen.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [el]);
+  return room;
+}
+
+// How many columns, and how wide each tile: the largest tiles with which all n fit in the room. Tiles never go below
+// SMALLEST (or the room's width, if that's less); past that they keep that size and the page scrolls.
+function fit(n, width, height) {
+  if (!n || !width) return { cols: 1, width: Math.max(width, 0) };
+  let best = { cols: 1, width: 0 };
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const w = Math.min((width - GAP * (cols - 1)) / cols, ((height - GAP * (rows - 1)) / rows) * TILE);
+    if (w > best.width) best = { cols, width: w };
+  }
+  const floor = Math.min(SMALLEST, width);
+  if (best.width < floor) {
+    const cols = Math.max(1, Math.floor((width + GAP) / (floor + GAP)));
+    return { cols, width: Math.floor((width - GAP * (cols - 1)) / cols) };
+  }
+  return { cols: best.cols, width: Math.floor(best.width) };
+}
+
 // A camera's own picture, turned and flipped as Mainsail is set to show it
-function CameraTile({ label, cam, big, hidden, onClick }) {
-  const [w, h] = String(cam.aspect_ratio || "16:9").split(":").map(Number);
+function CameraTile({ label, cam, big, hidden, place, moving, target, drag, onClick }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const turn = [
     cam.rotation ? `rotate(${cam.rotation}deg)` : "",
@@ -91,10 +168,24 @@ function CameraTile({ label, cam, big, hidden, onClick }) {
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
-      title={big ? "Back to all cameras" : `See ${label} on its own`}
+      title={big ? "Back to all cameras" : `See ${label} on its own, or drag it to move it`}
+      draggable={!!drag}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", label);
+        drag?.start();
+      }}
+      onDragEnter={() => drag?.enter()}
+      onDragOver={(e) => drag && e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        drag?.drop();
+      }}
+      onDragEnd={() => drag?.end()}
       style={{
-        position: "relative", aspectRatio: w && h ? `${w} / ${h}` : "16 / 9", maxHeight: big ? "calc(100vh - 170px)" : undefined,
-        display: hidden ? "none" : undefined,
+        position: "relative", aspectRatio: `${TILE}`,
+        display: hidden ? "none" : undefined, order: place, opacity: moving ? 0.4 : 1,
+        outline: target ? `2px solid ${c.amber}` : "none", outlineOffset: 2,
         background: "#000", border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden", cursor: big ? "zoom-out" : "zoom-in",
       }}
     >
@@ -127,7 +218,7 @@ function CameraPicture({ cam, label, style, onState }) {
   if (s === "webrtc-go2rtc" && cam.stream_url) return <WebrtcVideo cam={cam} connect={go2rtc} style={style} onState={onState} />;
   if (s === "webrtc-camerastreamer" && cam.stream_url) return <WebrtcVideo cam={cam} connect={cameraStreamer} style={style} onState={onState} />;
   if (s === "iframe" && cam.stream_url) return <iframe src={cam.stream_url} title={label} style={{ ...style, pointerEvents: "none" }} onLoad={() => onState("showing")} />;
-  if (cam.mjpeg) return <img src={cam.stream_url} alt={label} style={style} onLoad={() => onState("showing")} onError={() => onState("failed")} />;
+  if (cam.mjpeg) return <img src={cam.stream_url} alt={label} draggable={false} style={style} onLoad={() => onState("showing")} onError={() => onState("failed")} />;
   return <Snapshots cam={cam} label={label} style={style} onState={onState} />;
 }
 
@@ -169,7 +260,7 @@ function Snapshots({ cam, label, style, onState }) {
     };
   }, [url, cam.target_fps]);
 
-  return src ? <img src={src} alt={label} style={style} /> : null;
+  return src ? <img src={src} alt={label} draggable={false} style={style} /> : null;
 }
 
 // A WebRTC camera: `connect` sets up the peer connection its own way; the picture plays muted, as a camera has no sound

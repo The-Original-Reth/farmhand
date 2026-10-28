@@ -26,7 +26,9 @@ MAX_FILE_BYTES = 1_000_000
 
 # file_name_color: the colour of 3MF file names, "auto" (the scheme's own) or a #RRGGBB chosen on the Appearance page
 DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "auto"}
-DEFAULT_PREFERENCES = {"model_sort": {"key": "name", "dir": "asc"}}
+# monitor_order: the Monitor page's cameras in the order they were dragged into, as "printer id:camera name"
+DEFAULT_PREFERENCES = {"model_sort": {"key": "name", "dir": "asc"}, "monitor_order": []}
+MAX_MONITOR_CAMERAS = 500
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -66,8 +68,21 @@ def normalize_preferences(raw) -> dict:
         "model_sort": {
             "key": _id(sort.get("key"), DEFAULT_PREFERENCES["model_sort"]["key"]),
             "dir": sort.get("dir") if sort.get("dir") in ("asc", "desc") else DEFAULT_PREFERENCES["model_sort"]["dir"],
-        }
+        },
+        "monitor_order": _camera_keys(p.get("monitor_order")),
     }
+
+
+def _camera_keys(raw) -> list[str]:
+    """The Monitor order: short strings only, each once, in the order given."""
+    keys = raw if isinstance(raw, list) else []
+    out: list[str] = []
+    for k in keys:
+        if isinstance(k, str) and 0 < len(k) <= 200 and k not in out:
+            out.append(k)
+        if len(out) >= MAX_MONITOR_CAMERAS:
+            break
+    return out
 
 
 def normalize_config(raw) -> dict:

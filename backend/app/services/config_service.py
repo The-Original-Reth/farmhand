@@ -51,11 +51,14 @@ def get_config(db: Session) -> dict:
 
 
 def save_config(db: Session, patch: dict) -> dict:
-    """Replace the parts given (appearance and/or preferences); everything else is left alone."""
+    """
+    Replace the parts given: the appearance as a whole, and each preference given (the Models sort, the Monitor order)
+    on its own. Everything else is left alone.
+    """
     current = get_config(db)
     merged = {
         "appearance": patch["appearance"] if patch.get("appearance") is not None else current["appearance"],
-        "preferences": patch["preferences"] if patch.get("preferences") is not None else current["preferences"],
+        "preferences": {**current["preferences"], **(patch.get("preferences") or {})},
     }
     config = config_store.normalize_config(merged)
     _set(db, KEY_CONFIG, json.dumps(config))
