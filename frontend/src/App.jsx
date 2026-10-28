@@ -46,6 +46,13 @@ function Crumb({ items, onJump }) {
 }
 
 const PENDING_CONFIG_KEY = "farmhand.configPending"; // changes not yet confirmed by the server
+
+// The menu's sections, each at its own address (/models, /printers…); the bare address is Models
+const SECTIONS = ["models", "printers", "storage", "power", "monitor", "appearance"];
+const sectionInAddress = () => {
+  const key = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  return SECTIONS.includes(key) ? key : "models";
+};
 // Appearance has its own page (a menu item below Storage). It only needs to know whether a settings folder is
 // chosen, to say where a change was kept.
 function AppearancePage({ appearance, saved, onChange, onSave, onDiscard, saveState }) {
@@ -104,9 +111,23 @@ function MockupBadge() {
 
 function FarmhandApp() {
   const { printers, sourceModels, bundles, bundleTitle, versionIndex, loading, error, refresh } = useData();
-  const [section, setSection] = useState("models"); // 'printers' | 'models'
+  const [section, setSection] = useState(sectionInAddress); // one of SECTIONS, as the address says (/printers…)
   const [printerPath, setPrinterPath] = useState([{ label: "Printers" }]);
   const [modelPath, setModelPath] = useState([{ label: "Models" }]);
+  // a section opened from the menu (or by Back / Forward) starts at its top: the list, not a model or printer
+  const openSection = (key) => {
+    setSection(key);
+    if (key === "printers") setPrinterPath([{ label: "Printers" }]);
+    else if (key === "models") setModelPath([{ label: "Models" }]);
+  };
+  useEffect(() => {
+    const back = () => {
+      setPreview(null);
+      openSection(sectionInAddress());
+    };
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, []);
   // Appearance: colour scheme, text brightness, font and size. Held HERE (not in a provider above) so that a
   // change re-renders everything below: components read the live theme (theme.js) as they render.
   // The server keeps these (so every browser and device shows the same look), and copies them to the network
@@ -330,15 +351,21 @@ function FarmhandApp() {
     }
   });
 
+  // Each section has an address of its own (/printers, /monitor…), so a menu item is a link: Ctrl-click, middle-click
+  // or "Open in new tab" opens that section in another tab, and a plain click changes section here.
   const navItem = (key, label, Icon, count) => (
-    <button
-      onClick={() => {
+    <a
+      href={`/${key}`}
+      onClick={(e) => {
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // the browser opens a new tab
+        e.preventDefault();
         if (key !== "appearance") setPreview(null); // an unsaved preview is undone when you leave the page
-        setSection(key);
-        if (key === "printers") setPrinterPath([{ label: "Printers" }]);
-        else if (key === "models") setModelPath([{ label: "Models" }]);
+        openSection(key);
+        if (window.location.pathname !== `/${key}`) window.history.pushState(null, "", `/${key}`);
       }}
       style={{
+        boxSizing: "border-box",
+        textDecoration: "none",
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -358,7 +385,7 @@ function FarmhandApp() {
       <Icon size={16} color={section === key ? c.amber : c.textFaint} />
       <span style={{ flex: 1 }}>{label}</span>
       <span style={monoText(11, c.textFaint)}>{count}</span>
-    </button>
+    </a>
   );
 
   return (
