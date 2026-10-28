@@ -40,6 +40,8 @@ reason.
 
 **Layering**: routers are thin; rules live in `app/services/`. Services raise `NotFound` or `ValueError`, and
 routers wrap calls in `errors.answer_errors()` to turn them into 404/422 (or a route-specific code like 409).
+Checks several routers share live in `routers/common.py`: `require_printer` ("Printer not found" 404),
+`require_confirm` (409 when a delete lacks `confirm=true`), `require_readable`, `preview_response` and `sync_state`.
 Printer integrations are packages: `services/moonraker/` and `services/prusalink/`, with errors mapped to HTTP
 in `main.py`. `printer_poller.py` and `mount_supervisor.py` are background threads started from `main.py`.
 
