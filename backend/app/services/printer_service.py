@@ -6,11 +6,14 @@ from sqlalchemy.orm import Session, selectinload
 from ..errors import NotFound
 from .. import notes as notes_helper
 from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
-from ..models import Bundle, BundleVersion, Printer, PrinterConnection, PrinterNote, PrusaLinkConnection
+from ..models import Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrusaLinkConnection
 
 
 def list_printers(db: Session) -> list[Printer]:
-    rows = (Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row)
+    rows = (
+        Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row,
+        Printer.camera_row,
+    )
     return list(db.scalars(select(Printer).order_by(Printer.name).options(*(selectinload(r) for r in rows))))  # a batch, not 5 per printer
 
 
@@ -107,6 +110,15 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
             link.username = changes["prusalink_username"].strip()[:120] or "maker"
         if changes.get("prusalink_password") is not None:
             link.password = changes["prusalink_password"] or None
+
+    if "camera_address" in changes:
+        address = changes["camera_address"]  # already checked; None = no camera
+        if address is None:
+            printer.camera_row = None
+        elif printer.camera_row is None:
+            printer.camera_row = PrinterCamera(printer_id=printer.id, address=address)
+        else:
+            printer.camera_row.address = address
 
     db.commit()
     db.refresh(printer)

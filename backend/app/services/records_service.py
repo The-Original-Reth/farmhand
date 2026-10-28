@@ -21,6 +21,7 @@ from ..models import (
     BundleStar,
     MaintenanceEntry,
     Printer,
+    PrinterCamera,
     PrinterConnection,
     PrinterEnergyReading,
     PrinterNote,
@@ -88,6 +89,7 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
                 "decommissioned": p.decommissioned, "moonraker_url": p.moonraker_url_override,
                 "connection_type": p.connection_type,
                 "prusalink_url": p.prusalink_url_override, "prusalink_username": p.prusalink_username,
+                "camera_address": p.camera_address,
             },
             # maintenance Farmhand keeps itself (a PrusaLink printer's); a Moonraker printer's stays in Moonraker
             "maintenance": [{"key": r.key, "entry": r.entry} for r in sorted(p.maintenance_rows, key=lambda r: r.id)],
@@ -193,6 +195,9 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
                     printer_id=printer.id, url=pl_url if pl_url.lower().startswith(("http://", "https://")) else None,
                     username=_text(cfg.get("prusalink_username"), 120) or "maker",
                 )
+            camera = _text(cfg.get("camera_address"), 255)
+            if camera:
+                printer.camera_row = PrinterCamera(printer_id=printer.id, address=camera)
         filled = False
 
         filled |= _fill_note(printer.note_row, lambda t: setattr(printer, "note_row", PrinterNote(printer_id=printer.id, body=t, revision=1)), rec.get("notes"))

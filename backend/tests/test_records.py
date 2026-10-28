@@ -64,7 +64,8 @@ def test_each_printer_gets_a_file_with_everything_but_the_api_key(db_session, fa
     assert doc[rs.RECORD_MARKER] == "printers" and doc["name"] == "V2 BOG"
     assert doc["printer"] == {"kind": "Voron 2.4", "wired_ip": "192.168.10.123", "wireless_ip": None,
                               "decommissioned": False, "moonraker_url": "http://192.168.10.123:7125",
-                              "connection_type": "moonraker", "prusalink_url": None, "prusalink_username": None}
+                              "connection_type": "moonraker", "prusalink_url": None, "prusalink_username": None,
+                              "camera_address": None}
     assert doc["notes"] == "Bed: PEI. Lives on shelf 2." and doc["service_notes"] == "Gates 6mm belts"
     assert doc["service"]["history"][0]["note"] == "new belts" and doc["service"]["interval_hours"] == 1500
     assert [j["job_id"] for j in doc["print_jobs"]] == ["0003F2", "0003F3"] and doc["print_jobs"][1]["energy_kwh"] == 3.7

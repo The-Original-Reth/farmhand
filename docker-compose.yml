@@ -68,6 +68,15 @@ services:
     ports:
       - "3636:3636"
 
+  # The video relay for cameras that only stream over RTSP (a Prusa's Buddy3D): Farmhand tells it which streams there
+  # are, and the browser watches them through the web server's /go2rtc/ address. No ports of its own are opened, so
+  # nothing else on the network can reach it.
+  go2rtc:
+    image: alexxit/go2rtc:1.9.9
+    restart: unless-stopped
+    networks:
+      - farmhand
+
 networks:
   farmhand:
     driver: bridge

@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 4545
 
+    # go2rtc, the video relay that plays RTSP cameras (a Buddy3D's) to the browser: the container beside this one
+    go2rtc_url: str = "http://go2rtc:1984"
+
     # Rolling-window versioning, per spec
     full_file_version_window: int = 5
 

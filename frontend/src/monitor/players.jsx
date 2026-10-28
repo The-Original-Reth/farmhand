@@ -6,8 +6,10 @@ import { useEffect, useRef, useState } from "react";
 //   webrtc-camerastreamer                 WebRTC, set up with camera-streamer's POSTs
 //   iframe                                the stream address in a frame
 //   anything else (the adaptive MJPEG one, HLS, ...)  its snapshots, at the frame rate set in Mainsail
+// and a camera Farmhand plays itself (a Buddy3D's, "farmhand-go2rtc"): video sent over go2rtc's websocket
 export function CameraPicture({ cam, label, style, onState }) {
   const s = cam.service;
+  if (s === "farmhand-go2rtc" && cam.stream_url) return <StreamedVideo cam={cam} style={style} onState={onState} />;
   if (s === "webrtc-go2rtc" && cam.stream_url) return <WebrtcVideo cam={cam} connect={go2rtc} style={style} onState={onState} />;
   if (s === "webrtc-camerastreamer" && cam.stream_url) return <WebrtcVideo cam={cam} connect={cameraStreamer} style={style} onState={onState} />;
   if (s === "iframe" && cam.stream_url) return <iframe src={cam.stream_url} title={label} style={{ ...style, pointerEvents: "none" }} onLoad={() => onState("showing")} />;
@@ -146,4 +148,106 @@ function cameraStreamer(pc, streamUrl, fail) {
     await pc.setLocalDescription(answer);
     await post({ type: "answer", id: offer.id, sdp: answer.sdp });
   })().catch(fail);
+}
+
+// The video go2rtc can send over the websocket itself (MSE): fragments of MP4 the browser adds to a <video> as they come.
+// Unlike WebRTC it needs no ports beyond the web page's own, so it passes through Farmhand's web server
+// ("/go2rtc/api/ws?src=farmhand_5" on the address the page came from). It stays near the newest picture, keeps only
+// the last few seconds, and connects again a few seconds after a drop.
+const CODECS = ["avc1.640029", "avc1.64002A", "avc1.640033", "hvc1.1.6.L153.B0", "mp4a.40.2", "mp4a.40.5", "opus"];
+const KEEP = 10; // seconds of video kept behind the newest
+
+function StreamedVideo({ cam, style, onState }) {
+  const video = useRef(null);
+
+  useEffect(() => {
+    let live = true;
+    let retry;
+    let stop = () => {};
+    const start = () => {
+      const page = new URL(cam.stream_url, window.location.href);
+      page.protocol = page.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(page);
+      ws.binaryType = "arraybuffer";
+      const ms = new MediaSource();
+      let buffer = null;
+      const waiting = []; // pieces that came while the buffer was busy (or not made yet)
+      let over = false;
+      const fail = () => {
+        if (!live || over) return;
+        over = true;
+        onState("failed");
+        stop();
+        retry = setTimeout(start, 5000);
+      };
+      const feed = () => {
+        if (!buffer || buffer.updating || !waiting.length) return;
+        const r = buffer.buffered;
+        if (r.length && r.end(r.length - 1) - r.start(0) > KEEP * 2) return buffer.remove(0, r.end(r.length - 1) - KEEP);
+        const piece = waiting.length === 1 ? waiting.shift() : join(waiting.splice(0));
+        try {
+          buffer.appendBuffer(piece);
+        } catch {
+          fail();
+        }
+      };
+      ws.onopen = () => {
+        const ok = CODECS.filter((c) => MediaSource.isTypeSupported(`video/mp4; codecs="${c}"`));
+        ws.send(JSON.stringify({ type: "mse", value: ok.join(",") }));
+      };
+      ws.onmessage = (e) => {
+        if (typeof e.data !== "string") {
+          waiting.push(e.data);
+          return feed();
+        }
+        const msg = JSON.parse(e.data);
+        if (msg.type === "error") return fail();
+        if (msg.type !== "mse") return;
+        const v = video.current;
+        if (!v) return;
+        ms.addEventListener("sourceopen", () => {
+          try {
+            buffer = ms.addSourceBuffer(msg.value);
+          } catch {
+            return fail();
+          }
+          buffer.mode = "segments";
+          buffer.addEventListener("updateend", () => {
+            // fallen behind (a tab in the background, a slow moment): jump to the newest picture
+            const r = buffer.buffered;
+            if (r.length && v.currentTime < r.end(r.length - 1) - 3) v.currentTime = r.end(r.length - 1) - 0.5;
+            feed();
+          });
+          feed();
+        }, { once: true });
+        v.src = URL.createObjectURL(ms);
+        v.play().catch(() => {});
+      };
+      ws.onerror = fail;
+      ws.onclose = fail;
+      stop = () => {
+        ws.onclose = null;
+        ws.close();
+        if (video.current) video.current.removeAttribute("src");
+      };
+    };
+    start();
+    return () => {
+      live = false;
+      clearTimeout(retry);
+      stop();
+    };
+  }, [cam.stream_url]);
+
+  return <video ref={video} autoPlay muted playsInline style={style} onPlaying={() => onState("showing")} />;
+}
+
+function join(pieces) {
+  const out = new Uint8Array(pieces.reduce((n, p) => n + p.byteLength, 0));
+  let at = 0;
+  for (const p of pieces) {
+    out.set(new Uint8Array(p), at);
+    at += p.byteLength;
+  }
+  return out;
 }

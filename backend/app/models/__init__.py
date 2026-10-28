@@ -13,6 +13,7 @@ from .printer_connection import (
     PrintJob,
 )
 from .source_model import SourceFileType, SourceModel, SourceModelVersion
+from .printer_camera import PrinterCamera
 from .printer_note import PrinterNote
 from .prusalink import MaintenanceEntry, PrusaLinkConnection
 from .source_model_note import SourceModelNote
@@ -31,6 +32,7 @@ __all__ = [
     "MaintenanceEntry",
     "SourceModel",
     "SourceModelVersion",
+    "PrinterCamera",
     "PrinterNote",
     "SourceModelNote",
     "SourceFileType",

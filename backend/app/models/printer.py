@@ -62,6 +62,14 @@ class Printer(HasNotes, Base):
     maintenance_rows: Mapped[list["MaintenanceEntry"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
+    # A camera Farmhand plays itself (a Buddy3D's RTSP stream, see PrinterCamera)
+    camera_row: Mapped["PrinterCamera | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def camera_address(self) -> str | None:
+        return self.camera_row.address if self.camera_row else None
 
     @property
     def service(self) -> dict:

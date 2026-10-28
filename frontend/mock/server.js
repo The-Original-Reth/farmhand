@@ -74,7 +74,7 @@ export function mockApi() {
     has_moonraker_api_key: !!p.apiKey, service: service(p),
     connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
-    has_prusalink_password: !!p.prusalink?.hasPassword,
+    has_prusalink_password: !!p.prusalink?.hasPassword, camera_address: p.cameraAddress || null,
   });
   const modelOut = (m) => ({
     id: m.id, name: m.name, file_type: m.file_type, created_at: m.created_at, notes: m.notes, notes_revision: m.notes_revision,
@@ -121,6 +121,7 @@ export function mockApi() {
       p.moonraker_url_override = body.moonraker_url || null;
       p.apiKey = body.moonraker_api_key || null;
     }
+    p.cameraAddress = body.camera_address || null;
     farm.printers.push(p);
     return [201, printerOut(p)];
   });
@@ -128,6 +129,7 @@ export function mockApi() {
     const p = printer(id);
     for (const k of ["name", "kind", "wired_ip", "wireless_ip", "decommissioned"]) if (k in body && body[k] !== undefined) p[k] = body[k];
     if ("moonraker_url" in body) p.moonraker_url_override = body.moonraker_url || null;
+    if ("camera_address" in body) p.cameraAddress = body.camera_address || null;
     if (body.moonraker_api_key != null) p.apiKey = body.moonraker_api_key || null;
     if (body.connection_type === "moonraker") delete p.prusalink;
     if (body.connection_type === "prusalink" && !p.prusalink) p.prusalink = { reachable: true, firmware: "6.2.0", username: "maker", hasPassword: false, url: null };
@@ -311,7 +313,9 @@ export function mockApi() {
   };
   on("GET", "/printers/:id/webcams", ({ id }) => {
     const p = printer(id);
-    if (p.prusalink) return { webcams: [], error: "PrusaLink doesn't share a camera feed" };
+    // a Buddy3D's camera plays through go2rtc on the real server; the mockup has none, so it shows the sample picture
+    if (p.prusalink && p.cameraAddress) return { webcams: [{ name: "Camera", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null };
+    if (p.prusalink) return { webcams: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page" };
     if (!p.moonraker) return { webcams: [], error: "This printer has no IP address or Moonraker address set." };
     if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error };
     return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null };

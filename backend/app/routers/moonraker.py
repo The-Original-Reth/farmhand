@@ -12,7 +12,7 @@ from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
 from ..services import moonraker as mr
 from ..services import energy as energy_service
-from ..services import printer_service
+from ..services import go2rtc, printer_service
 from ..timeutil import utc_iso
 
 # Everything a printer's Moonraker gives Farmhand: its connection, its print history (as copied into Farmhand),
@@ -68,14 +68,37 @@ def connection_status(printer_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{printer_id}/webcams")
 def webcams(printer_id: int, db: Session = Depends(get_db)):
-    """The printer's cameras, as set up in Mainsail, for the Monitor page. Never fails: says why there are none."""
+    """
+    The printer's cameras for the Monitor page: as set up in Mainsail, plus one Farmhand plays itself through go2rtc
+    (a Buddy3D's). Never fails: says why there are none.
+    """
     printer = _printer(db, printer_id)
-    if printer.connection_type == "prusalink":
-        return {"webcams": [], "error": "PrusaLink doesn't share a camera feed"}
-    try:
-        return {"webcams": mr.webcams(printer), "error": None}
-    except mr.MoonrakerError as e:
-        return {"webcams": [], "error": str(e)}
+    cams, errors = [], []
+    if printer.connection_type == "moonraker":
+        try:
+            cams += mr.webcams(printer)
+        except mr.MoonrakerError as e:
+            errors.append(str(e))
+    if printer.camera_address:
+        try:
+            cams.append(_relayed_camera(printer))
+        except go2rtc.Go2rtcError as e:
+            errors.append(str(e))
+    elif printer.connection_type == "prusalink":
+        errors.append("No camera address set. Add the Buddy3D camera's IP on the printer's Edit page")
+    return {"webcams": cams, "error": "; ".join(errors) or None}
+
+
+def _relayed_camera(printer: Printer) -> dict:
+    """The printer's own camera (a Buddy3D's RTSP stream), handed to go2rtc, in the shape mr.webcams gives."""
+    name = go2rtc.stream_name(printer.id)
+    go2rtc.register(name, go2rtc.rtsp_url(printer.camera_address))
+    return {
+        "name": "Camera", "service": "farmhand-go2rtc", "mjpeg": False,
+        "stream_url": f"/go2rtc/api/ws?src={name}",  # on the web server the page came from
+        "snapshot_url": None, "flip_horizontal": False, "flip_vertical": False, "rotation": 0,
+        "aspect_ratio": "16:9", "target_fps": 15,
+    }
 
 
 @router.post("/{printer_id}/moonraker/sync")

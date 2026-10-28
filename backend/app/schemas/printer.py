@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from typing import Literal
 
@@ -19,6 +20,21 @@ def _http_url(v: str | None) -> str | None:
     return v
 
 
+def _camera_address(v: str | None) -> str | None:
+    """A camera's IP or host name, or a whole rtsp:// URL; blank = no camera."""
+    if v is None or not v.strip():
+        return None
+    v = v.strip()
+    if len(v) > 255:
+        raise ValueError("That camera address is too long")
+    if "://" in v:
+        if not v.lower().startswith(("rtsp://", "rtsps://")):
+            raise ValueError("A camera address is an IP address, or a whole address starting with rtsp://")
+    elif not re.fullmatch(r"[A-Za-z0-9.\-]+(:\d{1,5})?", v):
+        raise ValueError("A camera address is an IP address (e.g. 192.168.10.131), or a whole rtsp:// address")
+    return v
+
+
 class PrinterCreate(BaseModel):
     name: str
     kind: str | None = None
@@ -31,11 +47,17 @@ class PrinterCreate(BaseModel):
     prusalink_url: str | None = None
     prusalink_username: str | None = None
     prusalink_password: str | None = None
+    camera_address: str | None = None
 
     @field_validator("moonraker_url", "prusalink_url")
     @classmethod
     def _url_is_http(cls, v: str | None) -> str | None:
         return _http_url(v)
+
+    @field_validator("camera_address")
+    @classmethod
+    def _camera(cls, v: str | None) -> str | None:
+        return _camera_address(v)
 
 
 class PrinterOut(BaseModel):
@@ -60,6 +82,7 @@ class PrinterOut(BaseModel):
     prusalink_url_override: str | None = None
     prusalink_username: str | None = None
     has_prusalink_password: bool = False  # the password itself is never returned
+    camera_address: str | None = None  # a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
     # The 1500-hour service reminder Farmhand keeps: {state: waiting | off | ok | due, enabled, interval_hours,
     # hours_since, started_at, last_done: {done_at, hours, note} | null}
     service: dict | None = None
@@ -91,11 +114,18 @@ class PrinterUpdate(BaseModel):
     prusalink_url: str | None = None
     prusalink_username: str | None = None
     prusalink_password: str | None = None
+    # A camera Farmhand plays itself (a Buddy3D's): its IP or an rtsp:// URL. Blank (or null) removes it.
+    camera_address: str | None = None
 
     @field_validator("moonraker_url", "prusalink_url")
     @classmethod
     def _url_is_http(cls, v: str | None) -> str | None:
         return _http_url(v)
+
+    @field_validator("camera_address")
+    @classmethod
+    def _camera(cls, v: str | None) -> str | None:
+        return _camera_address(v)
 
     @field_validator("name")
     @classmethod

@@ -8,7 +8,7 @@ import { ModalActions } from "../components/common/dialogs.jsx";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
 
 // How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink", moonrakerUrl,
-// apiKey, removeKey, prusalinkUrl, prusalinkUsername, prusalinkPassword }. saved: the printer as it is (Edit), for
+// apiKey, removeKey, prusalinkUrl, prusalinkUsername, prusalinkPassword, cameraAddress }. saved: the printer as it is (Edit), for
 // saying a key or password is already saved; null when adding. ip: the IP typed above, for the default addresses.
 const CONNECTIONS = [
   { value: "moonraker", label: "Mainsail (Moonraker / Klipper: Voron...)" },
@@ -22,6 +22,7 @@ const newConnection = (printer = null) => ({
   prusalinkUrl: printer?.prusalinkUrlOverride || "",
   prusalinkUsername: printer?.prusalinkUsername || "maker",
   prusalinkPassword: "", // blank = keep whatever is saved
+  cameraAddress: printer?.cameraAddress || "", // the Buddy3D camera's IP: a Prusa's camera has its own
 });
 // What the API is sent for it: only the chosen kind's fields
 const connectionFields = (conn) =>
@@ -31,6 +32,7 @@ const connectionFields = (conn) =>
         prusalinkUrl: conn.prusalinkUrl.trim(),
         prusalinkUsername: conn.prusalinkUsername.trim() || "maker",
         prusalinkPassword: conn.prusalinkPassword || undefined,
+        cameraAddress: conn.cameraAddress.trim(),
       }
     : { connectionType: "moonraker", moonrakerUrl: conn.moonrakerUrl.trim(), moonrakerApiKey: conn.removeKey ? "" : conn.apiKey.trim() || undefined };
 
@@ -54,6 +56,12 @@ function ConnectionFields({ conn, setConn, ip, saved = null }) {
             value={conn.prusalinkPassword}
             onChange={set("prusalinkPassword")}
             placeholder={saved?.hasPrusalinkPassword ? "A password is saved. Type a new one to replace it." : "Shown on the printer: Settings > Network > PrusaLink"}
+          />
+          <TextField
+            label="Buddy3D camera IP (optional)"
+            value={conn.cameraAddress}
+            onChange={set("cameraAddress")}
+            placeholder="e.g. 192.168.10.131. Turn on local streaming for it in the Prusa app"
           />
         </>
       ) : (

@@ -52,5 +52,61 @@ def test_no_cameras_says_why(api, moonraker):
     nowhere = api.post("/printers", json={"name": "Shelf"}).json()["id"]
     assert "no IP address" in api.get(f"/printers/{nowhere}/webcams").json()["error"]
     core = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "wired_ip": "10.0.6.30"}).json()["id"]
-    assert api.get(f"/printers/{core}/webcams").json() == {"webcams": [], "error": "PrusaLink doesn't share a camera feed"}
+    r = api.get(f"/printers/{core}/webcams").json()
+    assert r["webcams"] == [] and "camera address" in r["error"]
     assert api.get("/printers/999/webcams").status_code == 404
+
+
+class FakeGo2rtc:
+    """go2rtc's stream API, as far as Farmhand uses it: PUT /api/streams?name=&src="""
+
+    def __init__(self):
+        self.streams: dict[str, str] = {}
+        self.down = False
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        if self.down:
+            raise httpx.ConnectError("refused")
+        assert request.method == "PUT" and request.url.path == "/api/streams"
+        self.streams[request.url.params["name"]] = request.url.params["src"]
+        return httpx.Response(200)
+
+
+@pytest.fixture()
+def relay(monkeypatch):
+    from app.services import go2rtc
+
+    f = FakeGo2rtc()
+    monkeypatch.setattr(go2rtc, "transport", httpx.MockTransport(f.handle))
+    return f
+
+
+def test_a_buddy3d_camera_is_played_through_go2rtc(api, relay):
+    core = api.post("/printers", json={
+        "name": "Core One", "connection_type": "prusalink", "wired_ip": "10.0.6.30", "camera_address": " 192.168.10.131 ",
+    }).json()
+    assert core["camera_address"] == "192.168.10.131"
+    r = api.get(f"/printers/{core['id']}/webcams").json()
+    assert r["error"] is None
+    assert [(c["service"], c["stream_url"]) for c in r["webcams"]] == [("farmhand-go2rtc", f"/go2rtc/api/ws?src=farmhand_{core['id']}")]
+    assert relay.streams == {f"farmhand_{core['id']}": "rtsp://192.168.10.131/live"}  # where a Buddy3D streams
+
+    # a whole rtsp:// address is used as it is; a blank one takes the camera away
+    api.patch(f"/printers/{core['id']}", json={"camera_address": "rtsp://cam.local:8554/front"})
+    api.get(f"/printers/{core['id']}/webcams")
+    assert relay.streams[f"farmhand_{core['id']}"] == "rtsp://cam.local:8554/front"
+    assert api.patch(f"/printers/{core['id']}", json={"camera_address": ""}).json()["camera_address"] is None
+    assert api.get(f"/printers/{core['id']}/webcams").json()["webcams"] == []
+
+
+def test_a_camera_address_is_checked(api):
+    pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink"}).json()["id"]
+    for bad in ("http://192.168.10.131", "192.168.10.131/live; rm", "x" * 300, "exec:ffmpeg -i x"):
+        assert api.patch(f"/printers/{pid}", json={"camera_address": bad}).status_code == 422, bad
+
+
+def test_go2rtc_not_answering_says_so(api, relay):
+    relay.down = True
+    pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "camera_address": "192.168.10.131"}).json()["id"]
+    r = api.get(f"/printers/{pid}/webcams").json()
+    assert r["webcams"] == [] and "go2rtc" in r["error"]

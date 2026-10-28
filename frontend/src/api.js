@@ -58,6 +58,7 @@ export const normalizePrinter = (p) => ({
   prusalinkUrlOverride: p.prusalink_url_override || null,
   prusalinkUsername: p.prusalink_username || "maker",
   hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself never comes back
+  cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
   // The 1500-hour service reminder Farmhand keeps: { state: waiting | off | ok | due, enabled, interval_hours,
   // hours_since, started_at, last_done: { done_at, hours, note } | null }
   service: p.service || {
@@ -174,6 +175,7 @@ export const fileTypeFor = ({ name, file }) => {
 // The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter
 export const createPrinter = ({
   name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,
+  cameraAddress,
 }) =>
   request("/printers", jsonBody("POST", {
     name,
@@ -186,6 +188,7 @@ export const createPrinter = ({
     ...(prusalinkUrl ? { prusalink_url: prusalinkUrl } : {}),
     ...(prusalinkUsername ? { prusalink_username: prusalinkUsername } : {}),
     ...(prusalinkPassword ? { prusalink_password: prusalinkPassword } : {}),
+    ...(cameraAddress ? { camera_address: cameraAddress } : {}),
   }));
 
 export const createSourceModel = ({ name, file }) => {
@@ -237,9 +240,13 @@ export const addBundleVersion = ({ bundleId, threemf, gcode }) => {
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
 // connectionType: "moonraker" | "prusalink". prusalinkUrl: blank = http://<IP>. prusalinkPassword works like the API key.
+// cameraAddress: blank removes the camera.
 export const updatePrinter = (
   id,
-  { name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey, connectionType, prusalinkUrl, prusalinkUsername, prusalinkPassword },
+  {
+    name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey, connectionType, prusalinkUrl, prusalinkUsername,
+    prusalinkPassword, cameraAddress,
+  },
 ) =>
   // Blank optional fields are sent as null so they actually clear
   request(`/printers/${id}`, jsonBody("PATCH", {
@@ -254,6 +261,7 @@ export const updatePrinter = (
     ...(prusalinkUrl !== undefined ? { prusalink_url: prusalinkUrl || null } : {}),
     ...(prusalinkUsername !== undefined ? { prusalink_username: prusalinkUsername } : {}),
     ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
+    ...(cameraAddress !== undefined ? { camera_address: cameraAddress || null } : {}),
   }));
 
 // ---- a PrusaLink printer (Prusa Core One...): live status and sending it a print. Its history, statistics, service
