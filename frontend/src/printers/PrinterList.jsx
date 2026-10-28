@@ -157,26 +157,17 @@ export function PrinterList({ setPath }) {
   );
 }
 
-// Opens the printer's own web page in a window of its own (one per printer: clicking again brings that one back):
-// PrusaLink for a Prusa reached that way, Mainsail for a Klipper one
+// Opens the printer's own web page in a new tab: PrusaLink for a Prusa reached that way, Mainsail for a Klipper one
 function WebUiButton({ printer }) {
   const prusa = printer.connectionType === "prusalink";
   const url = prusa ? printer.prusalinkUrl : printer.mainsailUrl;
   const name = prusa ? "PrusaLink" : "Mainsail";
   if (!url) return <span style={monoText(12, c.textFaint)}>—</span>;
-  const open = (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // not also opening the printer's page here
-    const w = window.open(url, `webui-${printer.id}`, "width=1400,height=900");
-    if (w) {
-      w.opener = null;
-      w.focus();
-    }
-  };
   return (
     <a
-      data-testid={prusa ? "printer-open-prusalink" : "printer-open-mainsail"} href={url} target="_blank" rel="noreferrer" onClick={open}
-      title={`Open ${printer.name}'s ${name} in a new window (${url})`} style={{ ...headerButton(), display: "inline-flex" }}
+      data-testid={prusa ? "printer-open-prusalink" : "printer-open-mainsail"} href={url} target="_blank" rel="noreferrer"
+      onClick={(e) => e.stopPropagation()} // not also opening the printer's page here
+      title={`Open ${printer.name}'s ${name} in a new tab (${url})`} style={{ ...headerButton(), display: "inline-flex" }}
     >
       <ExternalLink size={12} />
       {name}
