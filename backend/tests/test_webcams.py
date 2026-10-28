@@ -27,7 +27,7 @@ def test_a_printers_cameras_with_whole_addresses(api, moonraker):
     pid = api.post("/printers", json={"name": "VT 1190", "wired_ip": "10.0.6.21"}).json()["id"]
     moonraker.webcams = [
         _cam(),
-        _cam(name="Nozzle", service="webrtc-camerastreamer", stream_url="http://10.0.6.99/webrtc", snapshot_url="/webcam2/snapshot", rotation=180, flip_horizontal=True),
+        _cam(name="Nozzle", service="webrtc-camerastreamer", stream_url="http://10.0.6.99/webrtc", snapshot_url="/webcam2/snapshot", rotation=180, flip_horizontal=True, target_fps=10),
         _cam(name="Old", enabled=False),  # turned off in Mainsail: not shown
         _cam(name="Empty", stream_url="", snapshot_url=""),  # nothing to show
     ]
@@ -36,10 +36,10 @@ def test_a_printers_cameras_with_whole_addresses(api, moonraker):
     assert r["webcams"] == [
         {"name": "Bed", "service": "mjpegstreamer", "mjpeg": True, "stream_url": "http://10.0.6.21/webcam/?action=stream",
          "snapshot_url": "http://10.0.6.21/webcam/?action=snapshot", "flip_horizontal": False, "flip_vertical": False,
-         "rotation": 0, "aspect_ratio": "4:3"},
+         "rotation": 0, "aspect_ratio": "4:3", "target_fps": 15},
         {"name": "Nozzle", "service": "webrtc-camerastreamer", "mjpeg": False, "stream_url": "http://10.0.6.99/webrtc",
          "snapshot_url": "http://10.0.6.21/webcam2/snapshot", "flip_horizontal": True, "flip_vertical": False,
-         "rotation": 180, "aspect_ratio": "4:3"},
+         "rotation": 180, "aspect_ratio": "4:3", "target_fps": 10},
     ]
 
 

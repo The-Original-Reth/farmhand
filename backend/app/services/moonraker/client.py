@@ -142,8 +142,8 @@ def live_print(printer: Printer) -> dict | None:
     }
 
 
-# Camera services whose stream is a plain MJPEG feed a browser shows in an <img>. The others (WebRTC, HLS, the
-# adaptive MJPEG one) are shown from their snapshots, refreshed every few seconds.
+# Camera services whose stream is a plain MJPEG feed a browser shows in an <img>. The page plays the others as Mainsail
+# does (WebRTC through go2rtc or camera-streamer, the adaptive MJPEG one as snapshots at its frame rate).
 MJPEG_SERVICES = {"mjpegstreamer", "uv4l-mjpeg", "ipstream"}
 
 
@@ -174,5 +174,6 @@ def webcams(printer: Printer) -> list[dict]:
             "flip_vertical": bool(cam.get("flip_vertical")),
             "rotation": int(cam.get("rotation") or 0),
             "aspect_ratio": cam.get("aspect_ratio") or "16:9",
+            "target_fps": int(cam.get("target_fps") or 15),
         })
     return out

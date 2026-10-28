@@ -314,7 +314,7 @@ export function mockApi() {
     if (p.prusalink) return { webcams: [], error: "PrusaLink doesn't share a camera feed" };
     if (!p.moonraker) return { webcams: [], error: "This printer has no IP address or Moonraker address set." };
     if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error };
-    return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9" }], error: null };
+    return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null };
   });
   on("POST", "/printers/:id/moonraker/sync", ({ id }) => {
     const p = printer(id);
