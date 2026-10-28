@@ -26,6 +26,40 @@ export function energyByPeriod({ months }, by) {
   return Object.values(rows).sort((a, b) => (a.key < b.key ? 1 : -1));
 }
 
+// "By month" / "By year", over an energy table (here and on the Power page)
+const PERIODS = [{ value: "month", label: "By month" }, { value: "year", label: "By year" }];
+export function PeriodButtons({ testId, by, onChange }) {
+  return (
+    <div data-testid={testId} style={{ display: "flex", gap: 6 }}>
+      {PERIODS.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          aria-pressed={by === o.value}
+          style={{
+            ...headerButton(), border: `1px solid ${by === o.value ? c.amber : c.border}`,
+            background: by === o.value ? c.amberDim : "none", color: by === o.value ? c.amber : c.textMuted,
+          }}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// The last row of an energy table that shows only the recent months or years
+export function ShowAllPeriods({ count, by, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ display: "block", width: "100%", padding: "7px 12px", border: "none", borderTop: `1px solid ${c.border}`, background: "none", color: c.textMuted, ...ui, fontSize: fs(12), cursor: "pointer" }}
+    >
+      Show all {count} {by === "month" ? "months" : "years"}
+    </button>
+  );
+}
+
 export function EnergyPanel({ printer, syncTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -56,24 +90,14 @@ export function EnergyPanel({ printer, syncTick }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <div style={uiText(13, c.textFaint)}>Energy</div>
         {hasAny && (
-          <div data-testid="energy-by" style={{ display: "flex", gap: 6 }}>
-            {[{ value: "month", label: "By month" }, { value: "year", label: "By year" }].map((o) => (
-              <button
-                key={o.value}
-                onClick={() => {
-                  setBy(o.value);
-                  setShowAll(false);
-                }}
-                aria-pressed={by === o.value}
-                style={{
-                  ...headerButton(), border: `1px solid ${by === o.value ? c.amber : c.border}`,
-                  background: by === o.value ? c.amberDim : "none", color: by === o.value ? c.amber : c.textMuted,
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <PeriodButtons
+            testId="energy-by"
+            by={by}
+            onChange={(next) => {
+              setBy(next);
+              setShowAll(false);
+            }}
+          />
         )}
       </div>
       <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
@@ -133,14 +157,7 @@ export function EnergyPanel({ printer, syncTick }) {
                     <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
                   </div>
                 ))}
-                {periods.length > shown.length && (
-                  <button
-                    onClick={() => setShowAll(true)}
-                    style={{ display: "block", width: "100%", padding: "7px 12px", border: "none", borderTop: `1px solid ${c.border}`, background: "none", color: c.textMuted, ...ui, fontSize: fs(12), cursor: "pointer" }}
-                  >
-                    Show all {periods.length} {by === "month" ? "months" : "years"}
-                  </button>
-                )}
+                {periods.length > shown.length && <ShowAllPeriods count={periods.length} by={by} onClick={() => setShowAll(true)} />}
               </div>
             </div>
             <div style={uiText(12, c.textFaint, { marginTop: 8, lineHeight: 1.6 })}>

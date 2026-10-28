@@ -12,8 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import config_store, storage
-from ..models import AppSetting, NetworkShare
-from . import network_shares_service, records_service, storage_settings_service
+from ..models import NetworkShare
+from . import app_settings, network_shares_service, records_service, storage_settings_service
 
 log = logging.getLogger("farmhand.settings")
 
@@ -24,27 +24,11 @@ KEY_LOCATION = "config_storage_dir"  # the network folder a copy is written to
 _last_mirror: dict = {"ok": None, "error": None, "at": None}
 
 
-def _get(db: Session, key: str) -> str | None:
-    row = db.get(AppSetting, key)
-    return row.value if row else None
-
-
-def _set(db: Session, key: str, value: str | None) -> None:
-    row = db.get(AppSetting, key)
-    if value is None:
-        if row is not None:
-            db.delete(row)
-    elif row is not None:
-        row.value = value
-    else:
-        db.add(AppSetting(key=key, value=value))
-
-
 # ------------------------------------------------------------------ the settings
 
 def get_config(db: Session) -> dict:
     try:
-        raw = json.loads(_get(db, KEY_CONFIG) or "{}")
+        raw = json.loads(app_settings.get(db, KEY_CONFIG) or "{}")
     except ValueError:
         raw = {}
     return config_store.normalize_config(raw)
@@ -61,7 +45,7 @@ def save_config(db: Session, patch: dict) -> dict:
         "preferences": {**current["preferences"], **(patch.get("preferences") or {})},
     }
     config = config_store.normalize_config(merged)
-    _set(db, KEY_CONFIG, json.dumps(config))
+    app_settings.put(db, KEY_CONFIG, json.dumps(config))
     db.commit()
     return config
 
@@ -69,7 +53,7 @@ def save_config(db: Session, patch: dict) -> dict:
 # ------------------------------------------------------------------ the copy on the network folder
 
 def location_path(db: Session) -> str | None:
-    return _get(db, KEY_LOCATION)
+    return app_settings.get(db, KEY_LOCATION)
 
 
 def _share_entries(db: Session) -> list[dict]:
@@ -236,7 +220,7 @@ def set_location(db: Session, raw: str | None, if_exists: str = "ask") -> dict:
     "restore" loads that file into Farmhand; "overwrite" replaces it with the current settings.
     """
     if not raw:
-        _set(db, KEY_LOCATION, None)
+        app_settings.put(db, KEY_LOCATION, None)
         db.commit()
         return {"saved": True, "needs_choice": False, "found": None, "restored": None, "location": describe(db)}
 
@@ -247,7 +231,7 @@ def set_location(db: Session, raw: str | None, if_exists: str = "ask") -> dict:
         raise ValueError(found["error"])
 
     storage.mark_location(Path(found["path"]))
-    _set(db, KEY_LOCATION, found["path"])
+    app_settings.put(db, KEY_LOCATION, found["path"])
     db.commit()
     restored = restore(db) if (found["file_exists"] and if_exists == "restore") else None
     mirror(db)  # after a restore too: the file then reflects everything now in force

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Upload } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
-import { headerButton, monoText, uiText } from "../styles.js";
+import { c } from "../theme.js";
+import { headerButton, uiText } from "../styles.js";
 import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, formatBytes } from "../lib/format.js";
+import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
 
 // ---- a PrusaLink printer (Prusa Core One, MK4, XL...) ----
@@ -23,13 +24,7 @@ const PRUSALINK_FREE = ["IDLE", "READY", "FINISHED", "STOPPED"]; // states a new
 // reloads the printer, whose service hours have moved on); syncTick goes up whenever the record moved, so the
 // history list reloads.
 export function usePrusaLink(printerId, key, onChanged) {
-  const [status, setStatusNow] = useState(null); // GET /printers/{id}/prusalink
-  const seen = useRef("");
-  const setStatus = (s) => {
-    const json = JSON.stringify(s);
-    if (json !== seen.current) setStatusNow(s); // an answer the same as the last redraws nothing
-    seen.current = json;
-  };
+  const [status, setStatus] = useLiveStatus(); // GET /printers/{id}/prusalink
   const [stats, setStats] = useState(null); // GET /printers/{id}/print-stats
   const [syncTick, setSyncTick] = useState(0);
   const current = useRef(null);
@@ -101,7 +96,6 @@ export function PrusaLinkCard({ printer, pl }) {
       line = status.error || "Can't reach PrusaLink.";
     }
   }
-  const failed = archive ? archive.jobs - (archive.by_status.completed || 0) - (archive.by_status.in_progress || 0) - (archive.by_status.cancelled || 0) : 0;
 
   return (
     <div data-testid="prusalink-card">
@@ -137,15 +131,7 @@ export function PrusaLinkCard({ printer, pl }) {
         </div>
       </div>
       <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
-        <div data-testid="prusalink-status" style={{ display: "flex", alignItems: "flex-start", gap: 8, ...ui, fontSize: fs(13), color: status?.reachable ? c.textPrimary : c.textMuted, lineHeight: 1.5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0, marginTop: 6 }} />
-          <span>
-            {line}
-            {status?.reachable && printer.prusalinkUrl && (
-              <span style={monoText(11, c.textFaint, { marginLeft: 8 })}>{printer.prusalinkUrl}</span>
-            )}
-          </span>
-        </div>
+        <ConnectionLine testId="prusalink-status" dot={dot} line={line} reachable={status?.reachable} url={printer.prusalinkUrl} />
 
         {job && (
           <JobProgress
@@ -170,13 +156,7 @@ export function PrusaLinkCard({ printer, pl }) {
         <div data-testid="prusalink-note" style={uiText(12, c.textFaint, { marginTop: 10, lineHeight: 1.6 })}>
           Prusa printers keep no print history, so Farmhand notes each print while it runs: every minute, and every few seconds
           while this page is open. A print that starts and ends between two looks is missed.
-          {archive && archive.jobs > 0 && (
-            <div>
-              Farmhand has {archive.jobs.toLocaleString()} print{archive.jobs === 1 ? "" : "s"} on record:{" "}
-              {(archive.by_status.completed || 0).toLocaleString()} completed, {(archive.by_status.cancelled || 0).toLocaleString()} cancelled,{" "}
-              {failed.toLocaleString()} failed or unknown{archive.by_status.in_progress ? `, ${archive.by_status.in_progress} in progress` : ""}.
-            </div>
-          )}
+          <ArchiveSummary archive={archive} failedLabel="failed or unknown" />
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -9,6 +9,7 @@ from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate
 from ..services import bundle_service, printer_service
+from .common import require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
 
@@ -32,16 +33,12 @@ def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
 
 @router.get("/{printer_id}", response_model=PrinterOut)
 def get_printer(printer_id: int, db: Session = Depends(get_db)):
-    printer = printer_service.get_printer(db, printer_id)
-    if printer is None:
-        raise HTTPException(status_code=404, detail="Printer not found")
-    return printer
+    return require_printer(db, printer_id)
 
 
 @router.patch("/{printer_id}", response_model=PrinterOut)
 def update_printer(printer_id: int, payload: PrinterUpdate, db: Session = Depends(get_db)):
-    if printer_service.get_printer(db, printer_id) is None:
-        raise HTTPException(status_code=404, detail="Printer not found")
+    require_printer(db, printer_id)
     with answer_errors(409):
         return printer_service.update_printer(db, printer_id, payload.model_dump(exclude_unset=True))
 
@@ -54,8 +51,7 @@ def set_decommissioned(printer_id: int, payload: PrinterDecommission, db: Sessio
 
 @router.get("/{printer_id}/bundles", response_model=list[BundleOut])
 def list_printer_bundles(printer_id: int, db: Session = Depends(get_db)):
-    if printer_service.get_printer(db, printer_id) is None:
-        raise HTTPException(status_code=404, detail="Printer not found")
+    require_printer(db, printer_id)
     return bundle_service.list_bundles_for_printer(db, printer_id)
 
 

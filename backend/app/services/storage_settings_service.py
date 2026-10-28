@@ -7,30 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import storage
-from ..models import AppSetting, BundleVersion, SourceModelVersion
+from ..models import BundleVersion, SourceModelVersion
+from . import app_settings
 
 KEYS = {"stl": "stl_storage_dir", "threemf": "threemf_storage_dir"}
 
 
-def _get(db: Session, key: str) -> str | None:
-    row = db.get(AppSetting, key)
-    return row.value if row else None
-
-
-def _set(db: Session, key: str, value: str | None) -> None:
-    row = db.get(AppSetting, key)
-    if value is None:
-        if row is not None:
-            db.delete(row)
-    elif row is not None:
-        row.value = value
-    else:
-        db.add(AppSetting(key=key, value=value))
-
-
 def apply_saved_locations(db: Session) -> None:
     """Load the chosen locations into the storage module (called at startup)."""
-    storage.configure(stl_path=_get(db, KEYS["stl"]), threemf_path=_get(db, KEYS["threemf"]))
+    storage.configure(stl_path=app_settings.get(db, KEYS["stl"]), threemf_path=app_settings.get(db, KEYS["threemf"]))
 
 
 def _count_outside(db: Session) -> dict:
@@ -94,7 +79,7 @@ def save(db: Session, changes: dict) -> dict:
     for kind, path in chosen.items():
         if path is not None:
             storage.mark_location(path)
-        _set(db, KEYS[kind], str(path) if path else None)
+        app_settings.put(db, KEYS[kind], str(path) if path else None)
     db.commit()
     storage.configure(stl_path=resulting_custom("stl"), threemf_path=resulting_custom("threemf"))
     return describe(db)
@@ -125,7 +110,7 @@ def restore_locations(db: Session, stl_path: str | None, threemf_path: str | Non
         return [], ["The STL and 3MF folders in the settings file overlap, so neither was restored."]
 
     for kind, path in chosen.items():
-        _set(db, KEYS[kind], path)
+        app_settings.put(db, KEYS[kind], path)
         applied.append("STL folder" if kind == "stl" else "3MF folder")
     db.commit()
     storage.configure(stl_path=resulting("stl"), threemf_path=resulting("threemf"))

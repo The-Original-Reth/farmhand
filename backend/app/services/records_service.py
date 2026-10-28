@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import records_store
 from ..timeutil import as_utc, utc_iso
+from .printer_service import ensure_connection
 from ..models import (
     Bundle,
     BundleNote,
@@ -218,8 +219,7 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             filled = True
 
         if isinstance(rec.get("moonraker_totals"), dict) and (printer.connection_row is None or printer.connection_row.totals is None):
-            conn = printer.connection_row or PrinterConnection(printer_id=printer.id)
-            printer.connection_row = conn
+            conn = ensure_connection(printer)
             conn.totals = rec["moonraker_totals"]
             conn.auxiliary_totals = rec.get("auxiliary_totals") if isinstance(rec.get("auxiliary_totals"), list) else None
             filled = True

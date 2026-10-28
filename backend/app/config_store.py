@@ -19,6 +19,8 @@ import os
 import re
 from pathlib import Path
 
+from .storage import write_text_atomically
+
 CONFIG_FILENAME = "farmhand-config.json"
 FORMAT_MARKER = "farmhand_config"  # the key that says "this is one of ours"
 FORMAT_VERSION = 1
@@ -114,13 +116,7 @@ def build_document(config: dict, stl_path: str | None, threemf_path: str | None,
 def write_document(folder: str | os.PathLike, document: dict) -> Path:
     """Write atomically: a share dropping mid-write must never leave a half-written settings file."""
     target = Path(folder) / CONFIG_FILENAME
-    part = target.with_name(target.name + ".part")
-    try:
-        part.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        os.replace(part, target)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
+    write_text_atomically(target, json.dumps(document, indent=2, ensure_ascii=False) + "\n")
     return target
 
 

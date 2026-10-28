@@ -1,10 +1,6 @@
+// Numbers and times as the pages show them. A missing value reads "—".
 
-// ---------------------------------------------------------------------------
-// Printers section
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// A printer's Moonraker: connection, statistics, maintenance, print history
-// ---------------------------------------------------------------------------
+// print time: "3h 05m", or "42m" under an hour
 export const fmtDuration = (s) => {
   if (!s) return "0m";
   const minutes = Math.round(s / 60); // rounded first, so 2h 59m 50s reads 3h 00m, not 2h 60m
@@ -18,12 +14,7 @@ export const fmtUnix = (s) => (s ? new Date(s * 1000).toLocaleString() : "—");
 // ---- energy: per print (from the history) and the whole printer (from the power meter's readings) ----
 // always to the watt-hour (3 decimals), so the figures are exact rather than rounded
 export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kWh`);
-// ---------------------------------------------------------------------------
-// App shell
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Storage: where the STL files and the 3MF files are kept
-// ---------------------------------------------------------------------------
+// a file or a disk's size: "512 B", "3.4 MB", "120 GB"
 export function formatBytes(n) {
   if (n == null) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];

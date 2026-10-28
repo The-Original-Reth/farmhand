@@ -270,7 +270,4 @@ def _store_version(
         storage.delete_files(written)
         raise
     finally:
-        try:
-            os.remove(tmp_threemf_path)  # the parsed upload's scratch copy
-        except FileNotFoundError:
-            pass
+        _remove_quietly(tmp_threemf_path)  # the parsed upload's scratch copy

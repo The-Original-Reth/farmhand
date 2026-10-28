@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import storage
 from ..database import get_db
 from ..errors import answer_errors
 from ..names import download_name
 from ..models import SourceFileType
 from ..schemas.bundle import BundleOut
-from ..schemas.source_model import NotesConflictOut, NotesUpdate, SourceModelOut
+from ..schemas.notes import NotesConflictOut, NotesUpdate
+from ..schemas.source_model import SourceModelOut
 from ..schemas.scan import ScanImportOut, ScanImportRequest, ScanOut
 from ..services import bundle_service, source_model_service
+from .common import preview_response, require_confirm, require_readable
 
 router = APIRouter(prefix="/source-models", tags=["source-models"])
 
@@ -114,25 +113,15 @@ def download_source_model_version(source_model_id: int, version: int, db: Sessio
     v = source_model_service.get_source_model_version(db, source_model_id, version)
     if v is None:
         raise HTTPException(status_code=404, detail="Source model version not found")
-    if not os.path.exists(v.file_path):
-        raise HTTPException(
-            status_code=404,
-            detail="That file isn't available right now. If it's stored on a network share, check that "
-            "the share is mounted and reachable.",
-        )
+    require_readable(v.file_path)
     return FileResponse(v.file_path, filename=download_name(v.source_model.name, v.file_path))  # under its current name
 
 
 @router.get("/{source_model_id}/versions/{version}/thumbnail")
 def get_source_model_version_thumbnail(source_model_id: int, version: int, request: Request, db: Session = Depends(get_db)):
     v = source_model_service.get_source_model_version(db, source_model_id, version)
-    # the app's own copy, else the one kept next to the model file (e.g. after the app's disk was rebuilt)
-    path = None
-    if v is not None:
-        path = v.thumbnail_path if v.thumbnail_path and os.path.isfile(v.thumbnail_path) else storage.preview_beside(v.file_path)
-    if not path or not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="No thumbnail for this version")
-    return FileResponse(path, media_type="image/png", headers=storage.preview_cache_headers(request.query_params))
+    paths = (v.thumbnail_path, v.file_path) if v else (None, None)
+    return preview_response(*paths, request)
 
 
 @router.post("/{source_model_id}/versions/{version}/thumbnail")
@@ -146,17 +135,13 @@ def redraw_source_model_version_thumbnail(source_model_id: int, version: int, db
 
 # ---- deletion: permanent, so each requires an explicit confirm=true ----
 
-def _require_confirm(confirm: bool) -> None:
-    if not confirm:
-        raise HTTPException(status_code=409, detail="Deleting is permanent — pass confirm=true to proceed")
-
 
 @router.delete("/{source_model_id}/versions/{version}", status_code=204)
 def delete_source_model_version(
     source_model_id: int, version: int, confirm: bool = Query(False), db: Session = Depends(get_db)
 ):
     """Delete one version's file. The folder itself stays, even if that was its only version."""
-    _require_confirm(confirm)
+    require_confirm(confirm)
     if source_model_service.get_source_model_version(db, source_model_id, version) is None:
         raise HTTPException(status_code=404, detail="Source model version not found")
     source_model_service.delete_source_model_version(db, source_model_id, version)
@@ -175,7 +160,7 @@ def delete_source_model(
     other models just lose their link to this one; bundles sliced ONLY from
     this model are refused (409) unless cascade=true.
     """
-    _require_confirm(confirm)
+    require_confirm(confirm)
     if source_model_service.get_source_model(db, source_model_id) is None:
         raise HTTPException(status_code=404, detail="Source model not found")
     with answer_errors(409):

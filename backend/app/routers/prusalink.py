@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Printer
-from ..services import printer_service
 from ..services import prusalink as pl
-from ..timeutil import utc_iso
+from ..services.send_print import PRUSALINK_FREE
+from .common import require_printer, sync_state
 
 # A PrusaLink printer (Prusa Core One, MK4, XL...): its live status and sending it a print. Its print history,
 # statistics, 1500-hour service and maintenance use the same routes as a Moonraker printer's (routers/moonraker.py).
@@ -21,9 +21,7 @@ MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 
 def _printer(db: Session, printer_id: int) -> Printer:
-    printer = printer_service.get_printer(db, printer_id)
-    if printer is None:
-        raise HTTPException(status_code=404, detail="Printer not found")
+    printer = require_printer(db, printer_id)
     if printer.connection_type != "prusalink":
         raise HTTPException(status_code=409, detail="This printer isn't set up for PrusaLink")
     return printer
@@ -72,12 +70,7 @@ def live_status(printer_id: int, db: Session = Depends(get_db)):
             pass  # only for show
     except pl.PrusaLinkError as e:
         out.update(error=str(e), error_kind=e.kind)
-    conn = printer.connection_row
-    out.update(
-        last_sync_at=utc_iso(conn.last_sync_at) if conn else None,
-        last_sync_error=conn.last_sync_error if conn else None,
-        totals=conn.totals if conn else None,
-    )
+    out.update(sync_state(printer))
     return out
 
 
@@ -102,7 +95,7 @@ def send_print(printer_id: int, file: UploadFile = File(...), db: Session = Depe
         raise HTTPException(status_code=422, detail="That file is empty.")
     status, _ = pl.poll(db, printer)
     state = (status.get("printer") or {}).get("state")
-    if state not in ("IDLE", "READY", "FINISHED", "STOPPED"):
+    if state not in PRUSALINK_FREE:
         raise HTTPException(status_code=409, detail=f"The printer isn't ready for a new print (it says {state or 'nothing'}).")
     try:
         where = pl.upload_and_print(printer, name, file.file, size)

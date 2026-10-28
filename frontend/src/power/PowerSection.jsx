@@ -7,7 +7,7 @@ import { useData } from "../data.jsx";
 
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
 import { fmtKwh } from "../lib/format.js";
-import { energyByPeriod, periodKey, periodLabel } from "../printers/EnergyPanel.jsx";
+import { energyByPeriod, PeriodButtons, periodKey, periodLabel, ShowAllPeriods } from "../printers/EnergyPanel.jsx";
 
 // Each printer's colour in the bars: the scheme's own colours, in turn
 const printerColor = (i) => [c.teal, c.amber, c.green, c.fileName, c.danger, c.textMuted][i % 6];
@@ -101,25 +101,15 @@ export function PowerSection() {
             <ChevronRight size={14} />
           </button>
         </div>
-        <div data-testid="power-by" style={{ display: "flex", gap: 6 }}>
-          {[{ value: "month", label: "By month" }, { value: "year", label: "By year" }].map((o) => (
-            <button
-              key={o.value}
-              onClick={() => {
-                setBy(o.value);
-                setShowAll(false);
-                setPicked(null);
-              }}
-              aria-pressed={by === o.value}
-              style={{
-                ...headerButton(), border: `1px solid ${by === o.value ? c.amber : c.border}`,
-                background: by === o.value ? c.amberDim : "none", color: by === o.value ? c.amber : c.textMuted,
-              }}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+        <PeriodButtons
+          testId="power-by"
+          by={by}
+          onChange={(next) => {
+            setBy(next);
+            setShowAll(false);
+            setPicked(null);
+          }}
+        />
         </div>
       </div>
 
@@ -178,14 +168,7 @@ export function PowerSection() {
               <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
             </div>
           ))}
-          {periods.length > shown.length && (
-            <button
-              onClick={() => setShowAll(true)}
-              style={{ display: "block", width: "100%", padding: "7px 12px", border: "none", borderTop: `1px solid ${c.border}`, background: "none", color: c.textMuted, ...ui, fontSize: fs(12), cursor: "pointer" }}
-            >
-              Show all {periods.length} {by === "month" ? "months" : "years"}
-            </button>
-          )}
+          {periods.length > shown.length && <ShowAllPeriods count={periods.length} by={by} onClick={() => setShowAll(true)} />}
         </div>
       </div>
 

@@ -13,8 +13,16 @@ from ...errors import NotFound
 from ... import storage
 from ...config import settings
 from ...models import Bundle, BundleVersion
+from ...names import clean_file_name
 from ...parsers.gcode import printer_profile
 from .queries import get_bundle
+
+
+def _version(db: Session, version_id: int) -> BundleVersion:
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+    return version
 
 
 def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
@@ -49,9 +57,7 @@ def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
 def set_monument(
     db: Session, *, version_id: int, monument: bool, note: str | None = None, confirm: bool = False
 ) -> BundleVersion:
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
+    version = _version(db, version_id)
 
     if monument:
         if not note:
@@ -76,9 +82,7 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
     was never uploaded for this version (it's optional). Raises if this
     version has been pruned (no files left for either).
     """
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
+    version = _version(db, version_id)
     if not version.full_files_retained:
         raise ValueError(
             "This version's original files were pruned (parsed parameters are still available, "
@@ -124,9 +128,7 @@ def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> Bundl
     """
     Give a 3MF version its G-code (sliced from it), replacing one it already had. It's kept beside the version's 3MF.
     """
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
+    version = _version(db, version_id)
     check_gcode_name(filename)
     if not version.full_files_retained or not version.threemf_path:
         raise ValueError("This version's files were pruned, so it can't be given a G-code any more")
@@ -162,9 +164,7 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
     with it — a bundle with no versions has nothing left to show.
     Returns True if the whole bundle was deleted.
     """
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
+    version = _version(db, version_id)
     bundle = version.bundle
     if len(bundle.versions) <= 1:
         delete_bundle(db, bundle.id)
@@ -183,11 +183,7 @@ def rename_version(db: Session, version_id: int, filename: str) -> BundleVersion
     Change the file name a 3MF version is shown and downloaded as; it always stays a .3mf. The stored file keeps
     the name it was saved under, so nothing on disk moves.
     """
-    from ...names import clean_file_name
-
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
+    version = _version(db, version_id)
     version.filename = clean_file_name(filename, extension=".3mf")
     db.commit()
     db.refresh(version)

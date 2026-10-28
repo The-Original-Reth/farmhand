@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from ... import notes as notes_helper
 from ...models import Printer, PrinterServiceNote
 from ...notes import HasNotes, NotesConflict  # noqa: F401  (NotesConflict is raised by set_service_notes)
+from ..printer_service import ensure_connection
 from .client import MoonrakerError, job_totals
-from .history import _connection
 
 
 def service_done(db: Session, printer: Printer, *, note: str | None) -> None:
@@ -20,7 +20,7 @@ def service_done(db: Session, printer: Printer, *, note: str | None) -> None:
     row = printer.service_row
     if row is None:
         raise ValueError("The service count starts once the printer has been synced at least once")
-    conn = _connection(printer)
+    conn = ensure_connection(printer)
     if printer.connection_type == "moonraker":
         try:
             conn.totals = job_totals(printer)

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ...models import Printer, PrinterServiceReminder, PrintJob
 from ...timeutil import as_utc
-from ..moonraker.history import _connection
+from ..printer_service import ensure_connection, record_sync_error
 from . import client
 from .client import PrusaLinkError
 
@@ -33,14 +33,11 @@ def poll(db: Session, printer: Printer) -> tuple[dict, dict | None]:
         status = client.status(printer)
         current = client.job(printer) if (status.get("job") or {}).get("id") is not None else None
     except PrusaLinkError as e:
-        db.rollback()
-        conn = _connection(printer)
-        conn.last_sync_error = str(e)
-        db.commit()
+        record_sync_error(db, printer, e)
         raise
     now = dt.datetime.now(dt.timezone.utc)
     _record(db, printer, current, now)
-    conn = _connection(printer)
+    conn = ensure_connection(printer)
     conn.totals = totals(db, printer.id)
     conn.last_sync_at = now
     conn.last_sync_error = None

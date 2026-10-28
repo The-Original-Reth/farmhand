@@ -34,6 +34,17 @@ const jsonBody = (method, data) => ({
   body: JSON.stringify(data),
 });
 
+// A request whose body is a form (files and text fields). Fields left undefined aren't sent.
+const formBody = (method, fields) => {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) if (value !== undefined) form.append(name, value);
+  return { method, body: form };
+};
+
+// A delete. The API refuses deletes without confirm=true; the UI's own confirmation
+// dialog is the real guard, so every delete is made after the user said yes.
+const del = (path) => request(`${path}${path.includes("?") ? "&" : "?"}confirm=true`, { method: "DELETE" });
+
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
 
@@ -127,7 +138,7 @@ export const normalizeBundle = (b) => {
 // ---- reads ----
 
 export const getPrinters = () => request("/printers");
-export const getBundle = (bundleId) => request(`/bundles/${bundleId}`);
+const getBundle = (bundleId) => request(`/bundles/${bundleId}`);
 
 export const fetchAll = async () => {
   const [printers, models, bundles] = await Promise.all([
@@ -163,7 +174,7 @@ const typeFromExt = (e) => {
 // guessing from the label when no file was attached yet (creating an
 // empty folder to fill in later), and default to STL rather than
 // blocking folder creation over a field that's provisional anyway.
-export const fileTypeFor = ({ name, file }) => {
+const fileTypeFor = ({ name, file }) => {
   if (file) {
     const t = typeFromExt(ext(file.name));
     if (t) return t;
@@ -191,30 +202,22 @@ export const createPrinter = ({
     ...(cameraAddress ? { camera_address: cameraAddress } : {}),
   }));
 
-export const createSourceModel = ({ name, file }) => {
-  const form = new FormData();
-  form.append("name", name);
-  form.append("file_type", fileTypeFor({ name, file }));
-  if (file) form.append("file", file);
-  return request("/source-models", { method: "POST", body: form });
-};
+export const createSourceModel = ({ name, file }) =>
+  request("/source-models", formBody("POST", { name, file_type: fileTypeFor({ name, file }), file: file || undefined }));
 
-export const createBundle = ({ sourceModelIds, threemf, gcode, printerId }) => {
-  const form = new FormData();
-  form.append("source_model_ids", JSON.stringify(sourceModelIds));
-  form.append("threemf", threemf);
-  if (gcode) form.append("gcode", gcode); // optional
-  // When omitted, the backend reads the printer from the 3MF's own profile.
-  if (printerId != null) form.append("printer_id", String(printerId));
-  return request("/bundles", { method: "POST", body: form });
-};
+export const createBundle = ({ sourceModelIds, threemf, gcode, printerId }) =>
+  request("/bundles", formBody("POST", {
+    source_model_ids: JSON.stringify(sourceModelIds),
+    threemf,
+    gcode: gcode || undefined, // optional
+    // When omitted, the backend reads the printer from the 3MF's own profile.
+    printer_id: printerId != null ? String(printerId) : undefined,
+  }));
 
 // Ask the backend what a 3MF says about itself (which printer it was sliced
 // for, and whether that printer is registered) without storing anything.
 export const inspectThreemf = async (threemf) => {
-  const form = new FormData();
-  form.append("threemf", threemf);
-  const r = await request("/bundles/inspect", { method: "POST", body: form });
+  const r = await request("/bundles/inspect", formBody("POST", { threemf }));
   return {
     printerProfileName: r.printer_profile_name,
     slicer: r.slicer_display_name,
@@ -223,20 +226,12 @@ export const inspectThreemf = async (threemf) => {
 };
 
 // A 3MF version's G-code (.gcode / .bgcode sliced from it), replacing one it had. Resolves to the whole 3MF.
-export const uploadGcode = (versionId, gcode) => {
-  const form = new FormData();
-  form.append("gcode", gcode);
-  return request(`/bundles/versions/${versionId}/gcode`, { method: "PUT", body: form });
-};
+export const uploadGcode = (versionId, gcode) => request(`/bundles/versions/${versionId}/gcode`, formBody("PUT", { gcode }));
 // Sends a version's G-code to its 3MF's printer and starts it: { sent, printer }. 409 while the printer is busy.
 export const sendGcode = (versionId) => request(`/bundles/versions/${versionId}/print`, { method: "POST" });
 
-export const addBundleVersion = ({ bundleId, threemf, gcode }) => {
-  const form = new FormData();
-  form.append("threemf", threemf);
-  if (gcode) form.append("gcode", gcode); // optional
-  return request(`/bundles/${bundleId}/versions`, { method: "POST", body: form });
-};
+export const addBundleVersion = ({ bundleId, threemf, gcode }) =>
+  request(`/bundles/${bundleId}/versions`, formBody("POST", { threemf, gcode: gcode || undefined })); // the G-code is optional
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
 // connectionType: "moonraker" | "prusalink". prusalinkUrl: blank = http://<IP>. prusalinkPassword works like the API key.
@@ -272,11 +267,7 @@ export const updatePrinter = (
 // Asking also brings Farmhand's record of its prints up to date.
 export const getPrusaLinkStatus = (printerId) => request(`/printers/${printerId}/prusalink`);
 // A sliced .bgcode / .gcode: put on the printer's USB drive and printed. 409 while the printer is busy.
-export const sendPrint = (printerId, file) => {
-  const form = new FormData();
-  form.append("file", file);
-  return request(`/printers/${printerId}/prusalink/print`, { method: "POST", body: form });
-};
+export const sendPrint = (printerId, file) => request(`/printers/${printerId}/prusalink/print`, formBody("POST", { file }));
 
 // ---- a printer's Moonraker: connection, print history (Farmhand's copy), statistics, maintenance ----
 // A printer that can't be reached answers 502 with { detail, kind } (no_address | unreachable | unauthorized | ...).
@@ -286,9 +277,11 @@ export const sendPrint = (printerId, file) => {
 export const getMoonrakerStatus = (printerId) => request(`/printers/${printerId}/moonraker`);
 export const syncPrinterHistory = (printerId) => request(`/printers/${printerId}/moonraker/sync`, { method: "POST" });
 export const getPrintStats = (printerId) => request(`/printers/${printerId}/print-stats`);
-// { meter: { sensor, energy_kwh, taken_at, first_reading_at } | null, print_total_kwh, print_jobs_kwh,
-//   months: [{ key: "2026-10", prints, print_count, whole, partial }] } — totalled by the server in this browser's
-//   time zone (a year is its months added up)
+// A printer's cameras as set up in Mainsail, for the Monitor page: { webcams: [{ name, service, mjpeg, stream_url,
+// snapshot_url, flip_horizontal, flip_vertical, rotation, aspect_ratio }], error }. Never fails: error says why there are none.
+export const getWebcams = (printerId) => request(`/printers/${printerId}/webcams`);
+
+// this browser's time zone ("Europe/Amsterdam"), or "" if it can't say
 const timeZone = (() => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
@@ -296,10 +289,9 @@ const timeZone = (() => {
     return "";
   }
 })();
-// A printer's cameras as set up in Mainsail, for the Monitor page: { webcams: [{ name, service, mjpeg, stream_url,
-// snapshot_url, flip_horizontal, flip_vertical, rotation, aspect_ratio }], error }. Never fails: error says why there are none.
-export const getWebcams = (printerId) => request(`/printers/${printerId}/webcams`);
-
+// { meter: { sensor, energy_kwh, taken_at, first_reading_at } | null, print_total_kwh, print_jobs_kwh,
+//   months: [{ key: "2026-10", prints, print_count, whole, partial }] } — totalled by the server in this browser's
+//   time zone (a year is its months added up)
 export const getEnergy = (printerId) =>
   request(`/printers/${printerId}/energy${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
 
@@ -331,20 +323,15 @@ export const updateMaintenance = (printerId, entryId, { name, note, reminder }) 
   request(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}`, jsonBody("PUT", { name, note, reminder }));
 export const performMaintenance = (printerId, entryId, { note }) =>
   request(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}/done`, jsonBody("POST", { note }));
-export const deleteMaintenance = (printerId, entryId) =>
-  request(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}?confirm=true`, { method: "DELETE" });
+export const deleteMaintenance = (printerId, entryId) => del(`/printers/${printerId}/maintenance/${encodeURIComponent(entryId)}`);
 
-export const addSourceModelVersion = ({ modelId, file, note }) => {
-  const form = new FormData();
-  form.append("file", file);
-  if (note) form.append("note", note);
-  return request(`/source-models/${modelId}/versions`, { method: "POST", body: form });
-};
+export const addSourceModelVersion = ({ modelId, file, note }) =>
+  request(`/source-models/${modelId}/versions`, formBody("POST", { file, note: note || undefined }));
 
 // ---- renaming: what a file is shown, searched and downloaded as (the stored file keeps its own name) ----
 export const renameModel = (modelId, name) => request(`/source-models/${modelId}`, jsonBody("PATCH", { name }));
 // ".3mf" is added if left off
-export const renameBundleVersion = (versionId, filename) =>
+const renameBundleVersion = (versionId, filename) =>
   request(`/bundles/versions/${versionId}`, jsonBody("PATCH", { filename }));
 // A 3MF's name is its newest version's: rename that, and resolve to the 3MF as it now stands
 export const renameBundle = async (bundle, filename) => {
@@ -371,9 +358,6 @@ export const setStarredVersion = ({ bundleId, versionId }) =>
   request(`/bundles/${bundleId}/star`, jsonBody("PUT", { version_id: versionId }));
 
 // ---- deletes ----
-// The API refuses deletes without confirm=true; the UI's own confirmation
-// dialog is the real guard, so every call here is made after the user said yes.
-const del = (path) => request(`${path}${path.includes("?") ? "&" : "?"}confirm=true`, { method: "DELETE" });
 
 export const deleteBundleVersion = (versionId) => del(`/bundles/versions/${versionId}`);
 export const deleteBundle = (bundleId) => del(`/bundles/${bundleId}`);

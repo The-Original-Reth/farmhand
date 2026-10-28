@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { c, fs, ui } from "../theme.js";
-import { monoText, uiText } from "../styles.js";
+import { fieldBox, monoText, uiText } from "../styles.js";
 import { errorText, getPrintJobs } from "../api.js";
 
 import { Badge, SectionToggle } from "../components/common/ui.jsx";
@@ -46,7 +46,7 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
     return () => clearTimeout(t);
   }, [printer.id, status, q, syncTick]);
 
-  const control = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
+  const control = fieldBox();
   const cols = "minmax(140px, 170px) minmax(200px, 1fr) 100px 90px 80px 80px"; // below ~730px wide the table scrolls sideways
   return (
     <div data-testid="print-history">

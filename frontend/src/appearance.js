@@ -1,6 +1,7 @@
 // Choosing and applying a look: colour scheme, text brightness, font, text size, 3MF file name colour. Saved per browser.
 import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE } from "./palettes.js";
 import { c, ui, setFontScale } from "./theme.js";
+import { readStored, writeStored } from "./lib/storage.js";
 
 const STORAGE_KEY = "farmhand.appearance";
 
@@ -23,23 +24,15 @@ export function normalizeAppearance(raw) {
 }
 
 export function loadAppearance() {
-  try {
-    return normalizeAppearance(JSON.parse(localStorage.getItem(STORAGE_KEY)));
-  } catch {
-    return { ...DEFAULT_APPEARANCE }; // nothing saved, or storage unavailable
-  }
+  return normalizeAppearance(readStored(STORAGE_KEY)); // nothing saved (or storage unavailable) is the default look
 }
 
 export function saveAppearance(appearance) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appearance));
-  } catch {
-    /* storage unavailable: the choice just won't be remembered */
-  }
+  writeStored(STORAGE_KEY, appearance);
 }
 
 // Blend two #RRGGBB colours: t = 0 is `a`, t = 1 is `b`.
-export function mixHex(a, b, t) {
+function mixHex(a, b, t) {
   const channel = (hex, i) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
   const out = [0, 1, 2].map((i) => Math.round(channel(a, i) + (channel(b, i) - channel(a, i)) * t));
   return "#" + out.map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase();
@@ -47,7 +40,7 @@ export function mixHex(a, b, t) {
 
 // The scheme's colours, with the three text colours pulled toward the heading colour by the brightness
 // setting (toward white on a dark scheme, toward black on the light one).
-export function paletteFor(scheme, contrast) {
+function paletteFor(scheme, contrast) {
   const preset = PRESETS.find((p) => p.id === scheme) || PRESETS[0];
   const t = clamp(contrast, 0, 100) / 100;
   const colors = { ...preset.colors };

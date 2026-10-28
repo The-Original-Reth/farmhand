@@ -5,49 +5,27 @@ import { errorText } from "../api.js";
 import { toolButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
+import { readStored, readStoredObject, writeStored } from "../lib/storage.js";
 import { NOTE_KINDS } from "./noteKinds.js";
 
 const NOTES_MAX = 20000;
 const draftKey = (kind, id) => `${NOTE_KINDS[kind].storage.draft}.${id}`;
 function readDraft(kind, id) {
-  try {
-    const d = JSON.parse(localStorage.getItem(draftKey(kind, id)));
-    if (d && typeof d.text === "string" && Number.isInteger(d.base)) return d;
-  } catch {
-    /* no draft, or storage unavailable */
-  }
-  return null;
+  const d = readStored(draftKey(kind, id));
+  return d && typeof d.text === "string" && Number.isInteger(d.base) ? d : null;
 }
-function writeDraft(kind, id, draft) {
-  try {
-    if (draft) localStorage.setItem(draftKey(kind, id), JSON.stringify(draft));
-    else localStorage.removeItem(draftKey(kind, id));
-  } catch {
-    /* storage unavailable: the draft just isn't kept */
-  }
-}
+const writeDraft = (kind, id, draft) => writeStored(draftKey(kind, id), draft); // null forgets it
 
 // Whether a model's, printer's or 3MF's notes are folded down to their first line. Every one STARTS folded; opening
 // or closing one is remembered for that model/printer/3MF, in this browser. Anything unreadable means folded.
 // (The keys changed when folding went from two lines to one, so notes left open before that start folded again.)
 const notesCollapsedKey = (kind) => NOTE_KINDS[kind].storage.collapsed;
 function readNotesCollapsed(kind, id) {
-  try {
-    const choice = JSON.parse(localStorage.getItem(notesCollapsedKey(kind)))?.[id];
-    return typeof choice === "boolean" ? choice : true;
-  } catch {
-    return true;
-  }
+  const choice = readStoredObject(notesCollapsedKey(kind))[id];
+  return typeof choice === "boolean" ? choice : true;
 }
 function writeNotesCollapsed(kind, id, collapsed) {
-  try {
-    let all = JSON.parse(localStorage.getItem(notesCollapsedKey(kind)));
-    if (!all || typeof all !== "object" || Array.isArray(all)) all = {};
-    all[id] = collapsed;
-    localStorage.setItem(notesCollapsedKey(kind), JSON.stringify(all));
-  } catch {
-    /* storage unavailable: it just isn't remembered */
-  }
+  writeStored(notesCollapsedKey(kind), { ...readStoredObject(notesCollapsedKey(kind)), [id]: collapsed });
 }
 
 // Free-text notes about a model, a printer, a 3MF or a printer's 1500-hour service (`kind`, see NOTE_KINDS) — `owner`

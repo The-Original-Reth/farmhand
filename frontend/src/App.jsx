@@ -6,6 +6,7 @@ import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } 
 import { AppearanceSection } from "./AppearanceSection.jsx";
 import { API_BASE, errorText, getConfig, saveConfig, saveConfigOnExit } from "./api.js";
 import { DataProvider, useData } from "./data.jsx";
+import { readStored, writeStored } from "./lib/storage.js";
 
 import { CompareTray } from "./compare/CompareTray.jsx";
 import { DiffView } from "./compare/DiffView.jsx";
@@ -47,13 +48,44 @@ function Crumb({ items, onJump }) {
 
 const PENDING_CONFIG_KEY = "farmhand.configPending"; // changes not yet confirmed by the server
 
-// The menu's sections, each at its own address (/models, /printers…); the bare address is Models
-const SECTIONS = ["models", "printers", "storage", "power", "monitor", "appearance"];
+// The menu's sections, in menu order, each at its own address (/models, /printers…); the bare address is Models
+const SECTIONS = [
+  { key: "models", label: "Models", Icon: Layers },
+  { key: "printers", label: "Printers", Icon: Printer },
+  { key: "storage", label: "Storage", Icon: HardDrive },
+  { key: "power", label: "Power", Icon: Zap },
+  { key: "monitor", label: "Monitor", Icon: Cctv },
+  { key: "appearance", label: "Appearance", Icon: Palette },
+];
 const sectionInAddress = () => {
   const key = window.location.pathname.replace(/^\/+|\/+$/g, "");
-  return SECTIONS.includes(key) ? key : "models";
+  return SECTIONS.some((s) => s.key === key) ? key : "models";
 };
-// Appearance has its own page (a menu item below Storage). It only needs to know whether a settings folder is
+
+// A whole page saying something went wrong (the API can't be reached, or drawing a page failed), with one button
+function FullPageMessage({ children, action, onAction }) {
+  return (
+    <div style={{ ...ui, display: "flex", flexDirection: "column", gap: 12, alignItems: "center", justifyContent: "center", height: "100vh", background: c.bg, color: c.amber, padding: 24, textAlign: "center" }}>
+      {children}
+      <button
+        onClick={onAction}
+        style={{ ...ui, fontSize: fs(13), background: c.amberDim, color: c.amber, border: `1px solid ${c.amber}`, borderRadius: 4, padding: "7px 14px", cursor: "pointer" }}
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
+// Two config patches as one, the later winning. Each preference is saved on its own on the server, so two changed
+// close together are both kept.
+const mergePatches = (a, b) => {
+  const merged = { ...a, ...b };
+  if (a.preferences && b.preferences) merged.preferences = { ...a.preferences, ...b.preferences };
+  return merged;
+};
+
+// Appearance has its own page (the last menu item). It only needs to know whether a settings folder is
 // chosen, to say where a change was kept.
 function AppearancePage({ appearance, saved, onChange, onSave, onDiscard, saveState }) {
   const [locationPath, setLocationPath] = useState(null);
@@ -145,14 +177,7 @@ function FarmhandApp() {
 
   // Changes the server hasn't confirmed yet are also written down in this browser. If the page is closed, or the
   // server is unreachable, they're sent on the next visit instead of being overwritten by the server's older copy.
-  const rememberPending = (patch) => {
-    try {
-      if (patch && Object.keys(patch).length) localStorage.setItem(PENDING_CONFIG_KEY, JSON.stringify(patch));
-      else localStorage.removeItem(PENDING_CONFIG_KEY);
-    } catch {
-      /* storage unavailable */
-    }
-  };
+  const rememberPending = (patch) => writeStored(PENDING_CONFIG_KEY, patch && Object.keys(patch).length ? patch : null);
 
   const adoptServerConfig = (config) => {
     const a = normalizeAppearance(config.appearance);
@@ -171,12 +196,7 @@ function FarmhandApp() {
         /* the server isn't answering: carry on with what this browser remembers */
       });
   useEffect(() => {
-    let pending = null;
-    try {
-      pending = JSON.parse(localStorage.getItem(PENDING_CONFIG_KEY));
-    } catch {
-      /* nothing waiting */
-    }
+    const pending = readStored(PENDING_CONFIG_KEY);
     if (pending && Object.keys(pending).length) {
       // changes made here that never reached the server: send them first, then show what the server now holds
       saveConfig(pending)
@@ -206,19 +226,14 @@ function FarmhandApp() {
       rememberPending(pendingSave.current); // anything changed while that was in flight is still waiting
       setSaveState({ phase: "saved", mirror: result.mirror });
     } catch (e) {
-      const newer = pendingSave.current;
-      pendingSave.current = { ...patch, ...newer }; // not delivered: keep it, newer values winning
-      if (patch.preferences && newer.preferences) pendingSave.current.preferences = { ...patch.preferences, ...newer.preferences };
+      pendingSave.current = mergePatches(patch, pendingSave.current); // not delivered: keep it, newer values winning
       rememberPending(pendingSave.current);
       setSaveState({ phase: "error", message: errorText(e) });
     }
   };
   // A slider drags through many values: wait for it to settle rather than rewriting the network file for each
   const queueSave = (patch, { immediate = false } = {}) => {
-    const before = pendingSave.current;
-    pendingSave.current = { ...before, ...patch };
-    // each preference is saved on its own on the server: two changed close together are both sent
-    if (before.preferences && patch.preferences) pendingSave.current.preferences = { ...before.preferences, ...patch.preferences };
+    pendingSave.current = mergePatches(pendingSave.current, patch);
     rememberPending(pendingSave.current);
     setSaveState({ phase: "saving" });
     clearTimeout(saveTimer.current);
@@ -297,16 +312,10 @@ function FarmhandApp() {
   }
   if (error) {
     return (
-      <div style={{ ...ui, display: "flex", flexDirection: "column", gap: 12, alignItems: "center", justifyContent: "center", height: "100vh", background: c.bg, color: c.amber, padding: 24, textAlign: "center" }}>
+      <FullPageMessage action="Retry" onAction={refresh}>
         <div>Couldn't reach the API: {error}</div>
         <div style={{ color: c.textFaint, fontSize: fs(13) }}>Checked {API_BASE} — is the backend running?</div>
-        <button
-          onClick={refresh}
-          style={{ ...ui, fontSize: fs(13), background: c.amberDim, color: c.amber, border: `1px solid ${c.amber}`, borderRadius: 4, padding: "7px 14px", cursor: "pointer" }}
-        >
-          Retry
-        </button>
-      </div>
+      </FullPageMessage>
     );
   }
 
@@ -331,7 +340,7 @@ function FarmhandApp() {
   };
 
   const path =
-    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: { appearance: "Appearance", power: "Power", monitor: "Monitor" }[section] || "Storage" }];
+    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: SECTIONS.find((s) => s.key === section).label }];
   const setPath = section === "printers" ? setPrinterPath : section === "models" ? setModelPath : () => {};
   const diffLeft = versionIndex[compareSelection[0]];
   const diffRight = versionIndex[compareSelection[1]];
@@ -353,8 +362,10 @@ function FarmhandApp() {
 
   // Each section has an address of its own (/printers, /monitor…), so a menu item is a link: Ctrl-click, middle-click
   // or "Open in new tab" opens that section in another tab, and a plain click changes section here.
-  const navItem = (key, label, Icon, count) => (
+  const counts = { models: sourceModels.length, printers: printers.length };
+  const navItem = ({ key, label, Icon }) => (
     <a
+      key={key}
       href={`/${key}`}
       onClick={(e) => {
         if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // the browser opens a new tab
@@ -384,7 +395,7 @@ function FarmhandApp() {
     >
       <Icon size={16} color={section === key ? c.amber : c.textFaint} />
       <span style={{ flex: 1 }}>{label}</span>
-      <span style={monoText(11, c.textFaint)}>{count}</span>
+      <span style={monoText(11, c.textFaint)}>{counts[key] ?? ""}</span>
     </a>
   );
 
@@ -417,12 +428,7 @@ function FarmhandApp() {
           <Archive size={18} color={c.amber} />
           <span style={{ fontSize: fs(15), fontWeight: 600, letterSpacing: 0.2, color: c.heading }}>Farmhand</span>
         </div>
-        {navItem("models", "Models", Layers, sourceModels.length)}
-        {navItem("printers", "Printers", Printer, printers.length)}
-        {navItem("storage", "Storage", HardDrive, "")}
-        {navItem("power", "Power", Zap, "")}
-        {navItem("monitor", "Monitor", Cctv, "")}
-        {navItem("appearance", "Appearance", Palette, "")}
+        {SECTIONS.map(navItem)}
         <div style={{ borderTop: `1px solid ${c.border}`, marginTop: 12, paddingTop: 12 }}>
           <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
             An archive: nothing here re-slices, and a print only goes to a printer when you send it.
@@ -515,18 +521,12 @@ class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div style={{ ...ui, display: "flex", flexDirection: "column", gap: 12, alignItems: "center", justifyContent: "center", height: "100vh", background: c.bg, color: c.amber, padding: 24, textAlign: "center" }}>
+      <FullPageMessage action="Reload" onAction={() => window.location.reload()}>
         <div>Something went wrong displaying this page.</div>
         <div style={monoText(12, c.textFaint, { maxWidth: 640, wordBreak: "break-word" })}>
           {String(this.state.error?.message || this.state.error)}
         </div>
-        <button
-          onClick={() => window.location.reload()}
-          style={{ ...ui, fontSize: fs(13), background: c.amberDim, color: c.amber, border: `1px solid ${c.amber}`, borderRadius: 4, padding: "7px 14px", cursor: "pointer" }}
-        >
-          Reload
-        </button>
-      </div>
+      </FullPageMessage>
     );
   }
 }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 
-// ---------------------------------------------------------------------------
-// Models list: sorting, layout, and redrawing previews
-// ---------------------------------------------------------------------------
+// Whether a CSS media query matches (useMediaQuery("(max-width: 900px)")), kept current as the window changes
 export function useMediaQuery(query) {
   const read = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(query).matches : false);
   const [matches, setMatches] = useState(read);

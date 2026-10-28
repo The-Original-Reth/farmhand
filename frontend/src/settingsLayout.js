@@ -1,6 +1,6 @@
 // Settings grouping/formatting helpers, extracted unchanged from the mockup.
 
-export const CATEGORY_RULES = [
+const CATEGORY_RULES = [
   { test: (k) => k.includes("gcode"), category: "Custom G-code" },
   { test: (k) => k.includes("speed"), category: "Speed" },
   { test: (k) => k.includes("acceleration") || k.includes("jerk") || k.includes("cruise_ratio"), category: "Kinematics" },
@@ -42,7 +42,7 @@ export const PRUSA_SECTIONS = {
   "Printer Settings": ["General", "Extruder 1", "Custom G-code", "Notes", "Firmware"],
 };
 
-export const PRUSA_RULES = [
+const PRUSA_RULES = [
   // Custom G-code — split by which profile owns it
   { test: (k) => k === "start_filament_gcode" || k === "end_filament_gcode", tab: "Filament Settings", section: "Custom G-code" },
   { test: (k) => ["start_gcode", "end_gcode", "before_layer_gcode", "layer_gcode", "toolchange_gcode", "between_objects_gcode", "pause_print_gcode", "template_custom_gcode", "color_change_gcode"].includes(k), tab: "Printer Settings", section: "Custom G-code" },

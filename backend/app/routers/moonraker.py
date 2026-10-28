@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from ..services import moonraker as mr
 from ..services import energy as energy_service
 from ..services import go2rtc, printer_service
 from ..timeutil import utc_iso
+from .common import require_confirm, require_printer, sync_state
 
 # Everything a printer's Moonraker gives Farmhand: its connection, its print history (as copied into Farmhand),
 # its statistics, and its maintenance reminders (kept in Moonraker, shared with Mainsail).
@@ -21,26 +22,10 @@ from ..timeutil import utc_iso
 router = APIRouter(prefix="/printers", tags=["moonraker"])
 
 
-def _printer(db: Session, printer_id: int) -> Printer:
-    printer = printer_service.get_printer(db, printer_id)
-    if printer is None:
-        raise HTTPException(status_code=404, detail="Printer not found")
-    return printer
-
-
-def _sync_state(printer: Printer) -> dict:
-    conn = printer.connection_row
-    return {
-        "last_sync_at": utc_iso(conn.last_sync_at) if conn else None,
-        "last_sync_error": conn.last_sync_error if conn else None,
-        "totals": conn.totals if conn else None,
-    }
-
-
 @router.get("/{printer_id}/moonraker")
 def connection_status(printer_id: int, db: Session = Depends(get_db)):
     """Can Farmhand reach this printer's Moonraker right now, what state is Klipper in, and what is it printing? Never fails: says why."""
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     out = {
         "moonraker_url": printer.moonraker_url,
         "mainsail_url": printer.mainsail_url,
@@ -51,7 +36,7 @@ def connection_status(printer_id: int, db: Session = Depends(get_db)):
         "error": None,
         "error_kind": None,
         "print": None,  # the print running or paused right now, if any (see moonraker.live_print)
-        **_sync_state(printer),
+        **sync_state(printer),
     }
     try:
         out.update(mr.server_info(printer), reachable=True)
@@ -72,7 +57,7 @@ def webcams(printer_id: int, db: Session = Depends(get_db)):
     The printer's cameras for the Monitor page: as set up in Mainsail, plus one Farmhand plays itself through go2rtc
     (a Buddy3D's). Never fails: says why there are none.
     """
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     cams, errors = [], []
     if printer.connection_type == "moonraker":
         try:
@@ -104,9 +89,9 @@ def _relayed_camera(printer: Printer) -> dict:
 @router.post("/{printer_id}/moonraker/sync")
 def sync(printer_id: int, db: Session = Depends(get_db)):
     """Copy the printer's latest job history and totals into Farmhand."""
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     counts = mr.sync_history(db, printer)
-    return {**counts, **_sync_state(printer)}
+    return {**counts, **sync_state(printer)}
 
 
 def _job_out(j: PrintJob) -> dict:
@@ -141,7 +126,7 @@ def print_jobs(
     db: Session = Depends(get_db),
 ):
     """This printer's print history as Farmhand has it (newest first), with how many match in all."""
-    _printer(db, printer_id)
+    require_printer(db, printer_id)
     where = [PrintJob.printer_id == printer_id]
     if status == "failed":
         where.append(PrintJob.status.notin_(["completed", "in_progress"]))
@@ -159,8 +144,8 @@ def print_jobs(
 @router.get("/{printer_id}/print-stats")
 def print_stats(printer_id: int, db: Session = Depends(get_db)):
     """The printer's own lifetime totals (as of the last sync), and what Farmhand's copy of its history adds up to."""
-    printer = _printer(db, printer_id)
-    return {**_sync_state(printer), "archive": mr.archive_stats(db, printer_id)}
+    printer = require_printer(db, printer_id)
+    return {**sync_state(printer), "archive": mr.archive_stats(db, printer_id)}
 
 
 @router.get("/{printer_id}/energy")
@@ -173,7 +158,7 @@ def energy(printer_id: int, tz: str | None = Query(None, max_length=64), db: Ses
       print_jobs_kwh: what the prints Farmhand has on record add up to
       months: [{key: "2026-10", prints, print_count, whole, partial}], newest first (see services/energy.py)
     """
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     conn = printer.connection_row
     aux = {(t.get("provider"), t.get("field")): t for t in (conn.auxiliary_totals or [])} if conn else {}
     print_total = next((t.get("total") for (_, field), t in aux.items() if field == "energy_consumption"), None)
@@ -213,7 +198,7 @@ class ServiceUpdate(BaseModel):
 @router.post("/{printer_id}/service/done")
 def service_done(printer_id: int, payload: ServiceDone, db: Session = Depends(get_db)):
     """The 1500-hour service was done: the next 1500 print hours count from now. Returns the printer."""
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     with answer_errors():
         mr.service_done(db, printer, note=payload.note)
     return PrinterOut.model_validate(printer_service.get_printer(db, printer_id))
@@ -225,7 +210,7 @@ def service_notes(printer_id: int, payload: NotesUpdate, db: Session = Depends(g
     Save the notes kept with the 1500-hour service. Send the revision the text was based on: if someone else has
     saved since, this answers 409 with their current notes (nothing is overwritten). Returns the printer.
     """
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     with answer_errors():
         saved = mr.set_service_notes(db, printer, payload.notes, payload.base_revision)
     return PrinterOut.model_validate(saved)
@@ -233,7 +218,7 @@ def service_notes(printer_id: int, payload: NotesUpdate, db: Session = Depends(g
 
 @router.patch("/{printer_id}/service")
 def service_update(printer_id: int, payload: ServiceUpdate, db: Session = Depends(get_db)):
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     with answer_errors():
         mr.set_service_enabled(db, printer, payload.enabled)
     return PrinterOut.model_validate(printer_service.get_printer(db, printer_id))
@@ -268,12 +253,12 @@ class PerformIn(BaseModel):
 
 @router.get("/{printer_id}/maintenance")
 def list_maintenance(printer_id: int, db: Session = Depends(get_db)):
-    return mr.list_maintenance(_printer(db, printer_id))
+    return mr.list_maintenance(require_printer(db, printer_id))
 
 
 @router.post("/{printer_id}/maintenance", status_code=201)
 def add_maintenance(printer_id: int, payload: MaintenanceIn, db: Session = Depends(get_db)):
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     reminder = payload.reminder.model_dump() if payload.reminder else None
     with answer_errors():
         key = mr.add_maintenance(printer, name=payload.name, note=payload.note, reminder=reminder)
@@ -282,7 +267,7 @@ def add_maintenance(printer_id: int, payload: MaintenanceIn, db: Session = Depen
 
 @router.put("/{printer_id}/maintenance/{entry_id}")
 def update_maintenance(printer_id: int, entry_id: str, payload: MaintenanceUpdate, db: Session = Depends(get_db)):
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     reminder = payload.reminder.model_dump() if payload.reminder else None
     with answer_errors():
         mr.update_maintenance(printer, entry_id, name=payload.name, note=payload.note, reminder=reminder)
@@ -292,7 +277,7 @@ def update_maintenance(printer_id: int, entry_id: str, payload: MaintenanceUpdat
 @router.post("/{printer_id}/maintenance/{entry_id}/done")
 def perform_maintenance(printer_id: int, entry_id: str, payload: PerformIn, db: Session = Depends(get_db)):
     """Mark it done on the printer (Mainsail sees it too). A repeating reminder starts its next round."""
-    printer = _printer(db, printer_id)
+    printer = require_printer(db, printer_id)
     with answer_errors():
         next_id = mr.perform_maintenance(printer, entry_id, note=payload.note)
     return {"next_id": next_id, **mr.list_maintenance(printer)}
@@ -300,9 +285,8 @@ def perform_maintenance(printer_id: int, entry_id: str, payload: PerformIn, db: 
 
 @router.delete("/{printer_id}/maintenance/{entry_id}")
 def delete_maintenance(printer_id: int, entry_id: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
-    if not confirm:
-        raise HTTPException(status_code=409, detail="Deleting is permanent (in Mainsail too) — pass confirm=true to proceed")
-    printer = _printer(db, printer_id)
+    require_confirm(confirm, "Deleting is permanent (in Mainsail too) — pass confirm=true to proceed")
+    printer = require_printer(db, printer_id)
     with answer_errors():
         mr.delete_maintenance(printer, entry_id)
     return mr.list_maintenance(printer)

@@ -88,8 +88,11 @@ def thumbnails_root() -> Path:
     return local_root() / "thumbnails"
 
 
-def _writable_root(kind: str) -> Path:
-    """The folder to write into for this kind — refusing a chosen folder that looks unmounted."""
+def ready_root(kind: str) -> Path:
+    """
+    The folder to write into for this kind, if it's usable right now: a chosen folder that looks unmounted is refused
+    (StorageUnavailableError).
+    """
     custom = _custom[kind]
     if not custom:
         root = default_root(kind)
@@ -120,19 +123,14 @@ def ensure_ready_folder(path: str, noun: str) -> Path:
     return root
 
 
-def ready_root(kind: str) -> Path:
-    """The folder for this kind, if it's usable right now (raises StorageUnavailableError if not)."""
-    return _writable_root(kind)
-
-
 def source_model_version_dir(source_model_id: int, version: int) -> Path:
-    d = _writable_root("stl") / str(source_model_id) / f"v{version}"
+    d = ready_root("stl") / str(source_model_id) / f"v{version}"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def bundle_version_dir(bundle_id: int, version: int) -> Path:
-    d = _writable_root("threemf") / str(bundle_id) / f"v{version}"
+    d = ready_root("threemf") / str(bundle_id) / f"v{version}"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -184,6 +182,21 @@ def save_upload(dest_dir: Path, filename: str, file_obj) -> str:
         part.unlink(missing_ok=True)
         raise
     return str(dest)
+
+
+def write_text_atomically(target: str | os.PathLike, text: str) -> None:
+    """
+    Write a UTF-8 text file whole or not at all: under a temporary name, then renamed over the old one, so a share
+    dropping mid-write never leaves a half-written file behind (the settings file, the printer and model files).
+    """
+    target = Path(target)
+    part = target.with_name(target.name + ".part")
+    try:
+        part.write_text(text, encoding="utf-8")
+        os.replace(part, target)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
 
 
 def preview_beside(model_file: str | None) -> str | None:

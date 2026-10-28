@@ -6,6 +6,11 @@ import { c, fs, mono, ui } from "./theme.js";
 export const uiText = (size, color, extra) => ({ ...ui, fontSize: fs(size), color, ...extra });
 export const monoText = (size, color, extra) => ({ ...mono, fontSize: fs(size), color, ...extra });
 
+// A page's own text boxes and drop-downs (searches, "Sort by"), filled in like the dialog fields: add padding and size
+export const fieldBox = () => ({
+  background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui,
+});
+
 // The small outlined buttons in a section's heading row ("Sync now", "Add maintenance"...)
 export const headerButton = () => ({
   display: "flex", alignItems: "center", gap: 5, ...ui, fontSize: fs(12), background: "none", color: c.textMuted,

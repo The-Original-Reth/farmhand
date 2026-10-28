@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-import { c, fs, ui } from "../../theme.js";
+import { c } from "../../theme.js";
 import { errorText } from "../../api.js";
 import { cancelButton, primaryButton, uiText } from "../../styles.js";
 
@@ -39,7 +39,7 @@ export function ConfirmDialog({ title, confirmLabel = "Delete", tone = "danger",
         <button
           onClick={run}
           disabled={submitting}
-          style={{ ...ui, fontSize: fs(13), background: tone === "danger" ? c.danger : c.amber, color: tone === "danger" ? c.onDanger : c.onAccent, border: "none", borderRadius: 3, padding: "7px 14px", fontWeight: 600, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1 }}
+          style={{ ...primaryButton(submitting), ...(tone === "danger" && { background: c.danger, color: c.onDanger }) }}
         >
           {submitting ? (tone === "danger" ? "Deleting…" : "Working…") : confirmLabel}
         </button>
@@ -52,14 +52,7 @@ export function DeleteWarning({ children }) {
   return <div style={{ color: c.amber, marginTop: 8 }}>{children}</div>;
 }
 
-// ---------------------------------------------------------------------------
-// Models section
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Upload — real, wired to the API. STL/OBJ/STEP go to the library; a 3MF
-// needs a source model + a printer (auto-detected from the file). gcode
-// is optional — it doesn't have to be on hand at upload time.
-// ---------------------------------------------------------------------------
+// A dialog over the page: a title bar with a close button, and its content. Clicking outside it closes it.
 export function Modal({ title, onClose, children, width = 420 }) {
   return (
     <div

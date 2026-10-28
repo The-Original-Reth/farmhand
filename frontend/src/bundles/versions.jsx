@@ -4,22 +4,16 @@ import { c, fs, ui } from "../theme.js";
 import { toolButton } from "../styles.js";
 import { useData } from "../data.jsx";
 
+import { readStoredObject, writeStored } from "../lib/storage.js";
+
 // Which 3MF entries show all their versions. By default an entry shows just its newest version, with a toggle for
 // the older ones. Only entries someone has explicitly opened or closed are remembered (in this browser). Shared by
 // the model page and the printer page, so opening an entry on one opens it on the other too.
 // (The key changed when "hidden" became the default for every entry, so choices made under the old default reset.)
 const EXPANSION_KEY = "farmhand.bundleExpanded.v2";
-function readExpansion() {
-  try {
-    const v = JSON.parse(localStorage.getItem(EXPANSION_KEY));
-    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
-  } catch {
-    return {};
-  }
-}
 export function useBundleExpansion() {
   const { bundles } = useData();
-  const [explicit, setExplicit] = useState(readExpansion);
+  const [explicit, setExplicit] = useState(() => readStoredObject(EXPANSION_KEY));
   const isExpanded = (id) => explicit[id] === true; // older versions start hidden
   const apply = (changes) =>
     setExplicit((prev) => {
@@ -28,11 +22,7 @@ export function useBundleExpansion() {
       Object.entries({ ...prev, ...changes }).forEach(([id, open]) => {
         if (live.has(String(id)) && typeof open === "boolean") next[id] = open; // forget entries that no longer exist
       });
-      try {
-        localStorage.setItem(EXPANSION_KEY, JSON.stringify(next));
-      } catch {
-        /* storage unavailable: it just isn't remembered */
-      }
+      writeStored(EXPANSION_KEY, next);
       return next;
     });
   return {

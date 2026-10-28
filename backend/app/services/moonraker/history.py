@@ -6,8 +6,9 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Printer, PrinterConnection, PrinterEnergyReading, PrinterServiceReminder, PrintJob
+from ...models import Printer, PrinterEnergyReading, PrinterServiceReminder, PrintJob
 from ...timeutil import as_utc
+from ..printer_service import ensure_connection, record_sync_error
 from .client import MoonrakerError, _call, history_totals, meter_reading
 
 PAGE = 100  # history entries asked for per request
@@ -17,19 +18,13 @@ def _ts(value) -> dt.datetime | None:
     return dt.datetime.fromtimestamp(value, dt.timezone.utc) if value else None
 
 
-def _connection(printer: Printer) -> PrinterConnection:
-    if printer.connection_row is None:
-        printer.connection_row = PrinterConnection(printer_id=printer.id)
-    return printer.connection_row
-
-
 def sync_history(db: Session, printer: Printer) -> dict:
     """
     Copy the printer's job history and totals into Farmhand. Newest first, page by page, stopping at the first
     page with nothing new or still changing (older jobs are settled). Jobs the printer has since forgotten are kept.
     Returns {"added", "updated"}; on failure the error is recorded on the connection and raised.
     """
-    conn = _connection(printer)
+    conn = ensure_connection(printer)
     known: dict[str, PrintJob] = {}  # the jobs on the pages fetched so far (only those are looked up, not every job)
     added = updated = 0
     try:
@@ -64,10 +59,7 @@ def sync_history(db: Session, printer: Printer) -> dict:
                 break
             start += PAGE
     except MoonrakerError as e:
-        db.rollback()
-        conn = _connection(printer)
-        conn.last_sync_error = str(e)
-        db.commit()
+        record_sync_error(db, printer, e)
         raise
     conn.totals = totals
     conn.auxiliary_totals = aux_totals

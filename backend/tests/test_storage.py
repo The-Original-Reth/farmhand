@@ -223,6 +223,24 @@ def test_a_failed_upload_leaves_nothing_behind(isolated_storage, tmp_path):
     assert list(dest.iterdir()) == []  # no truncated file, no .part file
 
 
+def test_write_text_atomically_replaces_the_file_whole_or_not_at_all(tmp_path, monkeypatch):
+    folder = tmp_path / "settings"
+    folder.mkdir()
+    target = folder / "notes.json"
+    storage.write_text_atomically(target, "first ✓\n")
+    storage.write_text_atomically(target, "second\n")
+    assert target.read_text(encoding="utf-8") == "second\n" and list(folder.iterdir()) == [target]
+
+    def boom(src, dst):
+        raise OSError("share dropped mid-write")
+
+    monkeypatch.setattr(storage.os, "replace", boom)
+    with pytest.raises(OSError):
+        storage.write_text_atomically(target, "third\n")
+    assert target.read_text(encoding="utf-8") == "second\n"  # the previous file is untouched
+    assert list(folder.iterdir()) == [target]  # and no .part file is left
+
+
 def test_copy_verified(isolated_storage, tmp_path):
     src = tmp_path / "src.3mf"
     src.write_bytes(b"x" * 1000)

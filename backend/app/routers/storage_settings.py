@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,7 @@ from ..mounts import MountError
 from ..schemas.network_share import FolderCreate, NetworkShareCreate, NetworkShareOut, NetworkShareUpdate, SharesOut
 from ..schemas.storage import BrowseOut, MigrationResult, StorageSettingsOut, StorageSettingsUpdate
 from ..services import config_service, network_shares_service, storage_settings_service
+from .common import require_confirm
 
 router = APIRouter(prefix="/settings/storage", tags=["storage"])
 
@@ -51,12 +54,19 @@ def create_folder(payload: FolderCreate):
 
 # ---- network shares: connect a NAS from the web interface ----
 
-def _share_error(e: Exception) -> HTTPException:
-    if isinstance(e, network_shares_service.ShareNotFound):
-        return HTTPException(status_code=404, detail=str(e))
-    if isinstance(e, network_shares_service.ShareInUse) or (isinstance(e, MountError) and e.kind == "busy"):
-        return HTTPException(status_code=409, detail=str(e))
-    return HTTPException(status_code=422, detail=str(e))
+@contextmanager
+def _share_errors():
+    """What the share services raise, as answers: no such share 404; still in use, or busy, 409; anything else 422."""
+    try:
+        yield
+    except ValueError as e:
+        if isinstance(e, network_shares_service.ShareNotFound):
+            status = 404
+        elif isinstance(e, network_shares_service.ShareInUse) or (isinstance(e, MountError) and e.kind == "busy"):
+            status = 409
+        else:
+            status = 422
+        raise HTTPException(status_code=status, detail=str(e)) from None
 
 
 @router.get("/shares", response_model=SharesOut)
@@ -67,40 +77,31 @@ def list_shares(db: Session = Depends(get_db)):
 @router.post("/shares", response_model=NetworkShareOut, status_code=201)
 def add_share(payload: NetworkShareCreate, db: Session = Depends(get_db)):
     """Connect a NAS share. It is mounted before it is saved, so only a working connection is kept."""
-    try:
+    with _share_errors():
         out = network_shares_service.create_share(db, payload.model_dump())
-    except ValueError as e:
-        raise _share_error(e)
     config_service.mirror_quietly(db)
     return out
 
 
 @router.patch("/shares/{share_id}", response_model=NetworkShareOut)
 def edit_share(share_id: int, payload: NetworkShareUpdate, db: Session = Depends(get_db)):
-    try:
+    with _share_errors():
         out = network_shares_service.update_share(db, share_id, payload.model_dump(exclude_unset=True))
-    except ValueError as e:
-        raise _share_error(e)
     config_service.mirror_quietly(db)
     return out
 
 
 @router.post("/shares/{share_id}/connect", response_model=NetworkShareOut)
 def reconnect_share(share_id: int, db: Session = Depends(get_db)):
-    try:
+    with _share_errors():
         return network_shares_service.reconnect_share(db, share_id)
-    except ValueError as e:
-        raise _share_error(e)
 
 
 @router.delete("/shares/{share_id}", status_code=204)
 def remove_share(share_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
     """Disconnect and forget a share (files on the NAS are untouched). Refused while it's a chosen storage location."""
-    if not confirm:
-        raise HTTPException(status_code=409, detail="Pass confirm=true to proceed")
-    try:
+    require_confirm(confirm, "Pass confirm=true to proceed")
+    with _share_errors():
         network_shares_service.delete_share(db, share_id)
-    except ValueError as e:
-        raise _share_error(e)
     config_service.mirror_quietly(db)
     return Response(status_code=204)

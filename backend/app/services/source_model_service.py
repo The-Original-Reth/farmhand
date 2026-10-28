@@ -13,6 +13,7 @@ from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from .. import scanner, storage
 from . import bundle_service
 from ..models import SourceFileType, SourceModel, SourceModelNote, SourceModelVersion
+from ..names import TYPE_EXTENSIONS, clean_file_name, extension_of
 from ..thumbnails.stl_render import render_stl_thumbnail
 
 log = logging.getLogger("farmhand.source_models")
@@ -187,7 +188,6 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
 # ------------------------------------------------------------------ scanning the STL folder
 
 SCAN_NOTE = "Found by scanning the STL folder"
-_FILE_TYPES = {"STL": SourceFileType.stl, "OBJ": SourceFileType.obj, "STEP": SourceFileType.step}
 MAX_PATH_LENGTH = 500  # source_model_versions.file_path is a String(500)
 
 
@@ -255,7 +255,7 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
         raise ValueError("That file is already in the library.")
 
     where = _folder_label(full, root)
-    model = SourceModel(name=name, file_type=_FILE_TYPES[file_type])
+    model = SourceModel(name=name, file_type=SourceFileType(file_type))
     db.add(model)
     db.flush()  # the id names the folder it will be filed in
 
@@ -323,9 +323,7 @@ def import_scanned_files(db: Session, paths: list[str]) -> list[dict]:
     return results
 
 
-# ------------------------------------------------------------------ notes about a model
-
-MAX_NOTES_LENGTH = notes_helper.MAX_NOTES_LENGTH
+# ------------------------------------------------------------------ renaming, and notes about a model
 
 
 def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
@@ -333,8 +331,6 @@ def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
     Change the name a model is shown, searched and downloaded by; its extension (.stl, .obj, .step) always stays.
     Its stored file keeps its own name.
     """
-    from ..names import TYPE_EXTENSIONS, clean_file_name, extension_of
-
     model = get_source_model(db, source_model_id)
     if model is None:
         raise NotFound(f"No source model with id {source_model_id}")

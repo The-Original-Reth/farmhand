@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Cable, FileBox, Lock, Pencil, Printer, Search, Wifi, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Cable, FileBox, Lock, Pencil, Printer, Wifi } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { linkButton, monoText, toolButton, uiText } from "../styles.js";
 import { renameBundle } from "../api.js";
@@ -9,8 +9,10 @@ import { EditableName } from "../bundles/EditableName.jsx";
 import { BundleCard } from "../bundles/BundleCard.jsx";
 import { newestFirst, useBundleExpansion, VersionsToggleAll } from "../bundles/versions.jsx";
 import { Modal } from "../components/common/dialogs.jsx";
+import { SearchBox } from "../components/common/fields.jsx";
 import { Badge, SectionLabel, SectionToggle } from "../components/common/ui.jsx";
 import { Highlighted, searchWords } from "../lib/search.jsx";
+import { readStoredObject, writeStored } from "../lib/storage.js";
 import { NotesSection } from "../notes/NotesSection.jsx";
 import { EnergyPanel } from "./EnergyPanel.jsx";
 import { MaintenanceSection } from "./Maintenance.jsx";
@@ -37,23 +39,12 @@ function bundleMatches(bundle, models, words) {
 // (The key changed when "folded" became the start, so sections left open under the old default start folded again.)
 const PRINTER_SECTIONS_KEY = "farmhand.printerSections.v2";
 function usePrinterSections() {
-  const [folded, setFolded] = useState(() => {
-    try {
-      const v = JSON.parse(localStorage.getItem(PRINTER_SECTIONS_KEY));
-      return v && typeof v === "object" && !Array.isArray(v) ? v : {};
-    } catch {
-      return {};
-    }
-  });
+  const [folded, setFolded] = useState(() => readStoredObject(PRINTER_SECTIONS_KEY));
   const isFolded = (state, name) => state[name] !== false; // folded unless opened
   const toggle = (name) =>
     setFolded((prev) => {
       const next = { ...prev, [name]: !isFolded(prev, name) };
-      try {
-        localStorage.setItem(PRINTER_SECTIONS_KEY, JSON.stringify(next));
-      } catch {
-        /* storage unavailable: it just isn't remembered */
-      }
+      writeStored(PRINTER_SECTIONS_KEY, next);
       return next;
     });
   return { isOpen: (name) => !isFolded(folded, name), toggle };
@@ -127,7 +118,6 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
   const expansion = useBundleExpansion();
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
-  const searchRef = useRef(null);
 
   useEffect(() => {
     setQuery(""); // a fresh search for each printer
@@ -144,7 +134,6 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
     [allBundles, modelsForBundle, words],
   );
   const modelCount = modelsForPrinter(printer.id).length;
-  const control = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
@@ -156,41 +145,15 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
       {/* searches this printer's 3MF files (listed further down); at the top so it's the first thing to hand */}
       {allBundles.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 460 }}>
-            <Search size={15} color={c.textFaint} style={{ position: "absolute", left: 11, top: 10, pointerEvents: "none" }} />
-            <input
-              ref={searchRef}
-              data-testid="printer-3mf-search"
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  if (query) setQuery("");
-                  else e.currentTarget.blur();
-                }
-              }}
-              placeholder={`Search 3MF files on ${printer.name}…`}
-              aria-label={`Search 3MF files on ${printer.name}`}
-              autoComplete="off"
-              spellCheck={false}
-              style={{ ...control, width: "100%", boxSizing: "border-box", padding: "8px 34px 8px 34px" }}
-            />
-            {query && (
-              <button
-                data-testid="printer-3mf-search-clear"
-                onClick={() => {
-                  setQuery("");
-                  searchRef.current?.focus();
-                }}
-                aria-label="Clear search"
-                title="Clear search (Esc)"
-                style={{ position: "absolute", right: 6, top: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: c.textMuted, cursor: "pointer", padding: 0 }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            testId="printer-3mf-search"
+            clearTestId="printer-3mf-search-clear"
+            placeholder={`Search 3MF files on ${printer.name}…`}
+            label={`Search 3MF files on ${printer.name}`}
+            style={{ flex: "1 1 320px", maxWidth: 460 }}
+          />
           {searching && (
             <span data-testid="printer-3mf-count" style={uiText(12, c.textFaint)}>
               {pBundles.length} of {allBundles.length} 3MF files

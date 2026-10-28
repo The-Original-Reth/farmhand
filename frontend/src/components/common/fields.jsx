@@ -1,7 +1,51 @@
 import { useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { Search, Upload, X } from "lucide-react";
 import { c, fs, ui } from "../../theme.js";
-import { uiText } from "../../styles.js";
+import { fieldBox, uiText } from "../../styles.js";
+
+// A search box with a magnifier and a clear button. Esc clears it, or leaves it when it's already empty.
+// inputRef: for focusing it from outside (optional). style: the box's place on the page (width, margins).
+export function SearchBox({ value, onChange, placeholder, label, testId, clearTestId, inputRef, style }) {
+  const ownRef = useRef(null);
+  const ref = inputRef || ownRef;
+  return (
+    <div style={{ position: "relative", ...style }}>
+      <Search size={15} color={c.textFaint} style={{ position: "absolute", left: 11, top: 10, pointerEvents: "none" }} />
+      <input
+        ref={ref}
+        data-testid={testId}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            if (value) onChange("");
+            else e.currentTarget.blur();
+          }
+        }}
+        placeholder={placeholder}
+        aria-label={label}
+        autoComplete="off"
+        spellCheck={false}
+        style={{ ...fieldBox(), width: "100%", boxSizing: "border-box", padding: "8px 34px 8px 34px" }}
+      />
+      {value && (
+        <button
+          data-testid={clearTestId}
+          onClick={() => {
+            onChange("");
+            ref.current?.focus();
+          }}
+          aria-label="Clear search"
+          title="Clear search (Esc)"
+          style={{ position: "absolute", right: 6, top: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: c.textMuted, cursor: "pointer", padding: 0 }}
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function Dropzone({ label, compact = false, onFile, file, accept }) {
   const inputRef = useRef(null);

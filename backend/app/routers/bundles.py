@@ -8,24 +8,16 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import storage
 from ..database import get_db
 from ..errors import answer_errors
+from ..models import BundleVersion
 from ..names import download_name
 from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service, send_print
+from .common import preview_response, require_confirm, require_readable
 
 router = APIRouter(prefix="/bundles", tags=["bundles"])
-
-
-def _require_readable(path: str) -> None:
-    if not os.path.exists(path):
-        raise HTTPException(
-            status_code=404,
-            detail="That file isn't available right now. If it's stored on a network share, check that "
-            "the share is mounted and reachable.",
-        )
 
 
 def _parse_source_model_ids(raw: str) -> list[int]:
@@ -117,8 +109,6 @@ def save_notes(bundle_id: int, payload: NotesUpdate, db: Session = Depends(get_d
 @router.get("/versions/{version_id}", response_model=BundleVersionDetailOut)
 def get_bundle_version(version_id: int, db: Session = Depends(get_db)):
     """Full detail including parsed settings — this is what the compare/diff view fetches for each side."""
-    from ..models import BundleVersion
-
     version = db.get(BundleVersion, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Bundle version not found")
@@ -145,8 +135,6 @@ def rename_version(version_id: int, payload: Rename, db: Session = Depends(get_d
 
 
 def _version_filename(db: Session, version_id: int) -> str:
-    from ..models import BundleVersion
-
     return db.get(BundleVersion, version_id).filename
 
 
@@ -154,7 +142,7 @@ def _version_filename(db: Session, version_id: int) -> str:
 def download_3mf(version_id: int, db: Session = Depends(get_db)):
     with answer_errors(409):
         threemf_path, _ = bundle_service.download_bundle_version(db, version_id)
-    _require_readable(threemf_path)
+    require_readable(threemf_path)
     # downloaded under its current name (it may have been renamed since it was stored)
     return FileResponse(threemf_path, filename=download_name(_version_filename(db, version_id), threemf_path))
 
@@ -165,7 +153,7 @@ def download_gcode(version_id: int, db: Session = Depends(get_db)):
         _, gcode_path = bundle_service.download_bundle_version(db, version_id)
     if gcode_path is None:
         raise HTTPException(status_code=404, detail="No gcode file was uploaded for this version")
-    _require_readable(gcode_path)
+    require_readable(gcode_path)
     stem = os.path.splitext(_version_filename(db, version_id))[0]  # the gcode follows its 3MF's name
     return FileResponse(gcode_path, filename=download_name(stem, gcode_path))
 
@@ -198,23 +186,12 @@ def get_version_thumbnail(version_id: int, request: Request, db: Session = Depen
     (files removed) — this is served straight from disk, not gated on
     full_files_retained, since the thumbnail specifically survives pruning.
     """
-    from ..models import BundleVersion
-
     version = db.get(BundleVersion, version_id)
-    # the app's own copy, else the one kept next to the 3MF (e.g. after the app's disk was rebuilt)
-    path = None
-    if version is not None:
-        path = version.thumbnail_path if version.thumbnail_path and os.path.isfile(version.thumbnail_path) else storage.preview_beside(version.threemf_path)
-    if not path or not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="No thumbnail for this version")
-    return FileResponse(path, media_type="image/png", headers=storage.preview_cache_headers(request.query_params))
+    paths = (version.thumbnail_path, version.threemf_path) if version else (None, None)
+    return preview_response(*paths, request)
 
 
 # ---- deletion: permanent, so each requires an explicit confirm=true ----
-
-def _require_confirm(confirm: bool) -> None:
-    if not confirm:
-        raise HTTPException(status_code=409, detail="Deleting is permanent — pass confirm=true to proceed")
 
 
 @router.delete("/versions/{version_id}", status_code=204)
@@ -223,9 +200,7 @@ def delete_bundle_version(version_id: int, confirm: bool = Query(False), db: Ses
     Delete one version's files and parsed settings. Deleting a bundle's last
     remaining version deletes the whole bundle.
     """
-    _require_confirm(confirm)
-    from ..models import BundleVersion
-
+    require_confirm(confirm)
     if db.get(BundleVersion, version_id) is None:
         raise HTTPException(status_code=404, detail="Bundle version not found")
     bundle_service.delete_bundle_version(db, version_id)
@@ -235,7 +210,7 @@ def delete_bundle_version(version_id: int, confirm: bool = Query(False), db: Ses
 @router.delete("/{bundle_id}", status_code=204)
 def delete_bundle(bundle_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
     """Delete a bundle and every one of its versions."""
-    _require_confirm(confirm)
+    require_confirm(confirm)
     if bundle_service.get_bundle(db, bundle_id) is None:
         raise HTTPException(status_code=404, detail="Bundle not found")
     bundle_service.delete_bundle(db, bundle_id)

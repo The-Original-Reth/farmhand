@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from ..models import SourceFileType
-from .notes import NotesConflictOut, NotesUpdate  # noqa: F401  (also importable from here, as before)
 
 
 class SourceModelVersionOut(BaseModel):

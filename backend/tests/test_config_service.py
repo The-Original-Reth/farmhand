@@ -7,6 +7,7 @@ import pytest
 
 from app import config, config_store as cs, storage
 from app.models import NetworkShare
+from app.services import app_settings
 from app.services import config_service as svc
 from app.services import network_shares_service as shares
 
@@ -151,7 +152,7 @@ def test_restore_brings_back_everything_but_never_a_password(db_session, share):
         [{"name": "Lab NAS", "protocol": "smb", "server": "10.0.0.5", "share": "farmhand", "username": "alice"},
          {"name": "Backup", "protocol": "nfs", "server": "10.0.0.6", "share": "/vol1"},
          {"name": "../bad", "protocol": "smb", "server": "x", "share": "y"}]))
-    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
     db_session.commit()
 
     out = svc.restore(db_session)
@@ -173,7 +174,7 @@ def test_restore_keeps_a_share_that_is_already_there(db_session, share):
     folder = _folder(share)
     cs.write_document(folder, cs.build_document(cs.normalize_config({}), None, None,
                                                  [{"name": "Backup", "protocol": "nfs", "server": "10.0.0.6", "share": "/vol1"}]))
-    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
     db_session.commit()
     first = svc.restore(db_session)
     second = svc.restore(db_session)  # running it again is harmless
@@ -185,7 +186,7 @@ def test_restore_puts_folders_back_even_when_their_share_is_not_connected_yet(db
     folder = _folder(share)
     gone = share / "stl-not-here-yet"  # does not exist right now
     cs.write_document(folder, cs.build_document(cs.normalize_config({}), str(gone), None, []))
-    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
     db_session.commit()
     out = svc.restore(db_session)
     assert "STL folder" in out["restored"] and storage.custom_path("stl") == str(gone.resolve())
@@ -197,7 +198,7 @@ def test_restore_refuses_overlapping_folders_in_the_file(db_session, share):
     folder = _folder(share)
     same = _folder(share, "same")
     cs.write_document(folder, cs.build_document(cs.normalize_config({}), str(same), str(same), []))
-    svc._set(db_session, svc.KEY_LOCATION, str(folder))
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
     db_session.commit()
     out = svc.restore(db_session)
     assert "STL folder" not in out["restored"] and any("overlap" in w for w in out["warnings"])

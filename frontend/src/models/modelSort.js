@@ -1,3 +1,4 @@
+import { readStored, writeStored } from "../lib/storage.js";
 
 // Each option's `dir` is the natural direction when it's first picked (newest first, most first, A→Z)
 export const MODEL_SORTS = [
@@ -20,19 +21,11 @@ export function normalizeModelSort(saved) {
 
 // What this browser remembers: shown straight away, then replaced by the server's copy when that arrives
 export function loadModelSort() {
-  try {
-    return normalizeModelSort(JSON.parse(localStorage.getItem(SORT_STORAGE_KEY)));
-  } catch {
-    return normalizeModelSort(null);
-  }
+  return normalizeModelSort(readStored(SORT_STORAGE_KEY));
 }
 
 export function saveModelSort(sort) {
-  try {
-    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort));
-  } catch {
-    /* storage unavailable: the choice just won't be remembered */
-  }
+  writeStored(SORT_STORAGE_KEY, sort);
 }
 
 // rows: [{ m, bundleCount, printerCount }]. Ties always fall back to name A→Z, so the order is stable.

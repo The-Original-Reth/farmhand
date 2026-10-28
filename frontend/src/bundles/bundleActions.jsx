@@ -10,7 +10,7 @@ import { Dropzone } from "../components/common/fields.jsx";
 import { TrashButton } from "../components/common/ui.jsx";
 
 // The message when a 3MF or G-code was sliced for another printer than the 3MF entry's (the server says the same)
-export const wrongPrinter = (what, slicedFor, printerName) =>
+const wrongPrinter = (what, slicedFor, printerName) =>
   `Wrong printer: this ${what} was sliced for "${slicedFor}", but this 3MF belongs to "${printerName}". Slice it again ` +
   `with the "${printerName}" printer profile, or upload it as a new 3MF for "${slicedFor}".`;
 

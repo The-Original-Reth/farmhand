@@ -68,14 +68,15 @@ def server_info(printer: Printer) -> dict:
     return {"klippy_state": info.get("klippy_state"), "moonraker_version": info.get("moonraker_version")}
 
 
-def job_totals(printer: Printer) -> dict:
-    return _call(printer, "GET", "/server/history/totals").get("job_totals") or {}
-
-
 def history_totals(printer: Printer) -> tuple[dict, list]:
     """(job_totals, auxiliary_totals): the second holds e.g. a power meter's energy summed over all prints."""
     result = _call(printer, "GET", "/server/history/totals")
     return result.get("job_totals") or {}, result.get("auxiliary_totals") or []
+
+
+def job_totals(printer: Printer) -> dict:
+    """The printer's lifetime totals: total_print_time, total_filament_used, total_jobs..."""
+    return history_totals(printer)[0]
 
 
 def meter_reading(printer: Printer) -> tuple[str, float] | None:

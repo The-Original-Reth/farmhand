@@ -6,6 +6,7 @@ import { useData } from "../data.jsx";
 
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge, Row } from "../components/common/ui.jsx";
+import { writeStored } from "../lib/storage.js";
 import { nameCollator } from "../models/modelSort.js";
 import { AddPrinterForm } from "./PrinterForms.jsx";
 
@@ -26,7 +27,7 @@ function loadSort() {
 
 // IP addresses in number order (10.0.6.9 before 10.0.6.21); anything else after them, by its text
 const ipKey = (ip) => {
-  const parts = /^d{1,3}(.d{1,3}){3}$/.test(ip) ? ip.split(".").map(Number) : null;
+  const parts = /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) ? ip.split(".").map(Number) : null;
   return parts ? parts.reduce((n, x) => n * 256 + x, 0) : null;
 };
 function compareIp(a, b) {
@@ -61,11 +62,7 @@ export function PrinterList({ setPath }) {
   const sortBy = (key) => {
     const next = { key, dir: printerSort.key === key && printerSort.dir === "asc" ? "desc" : "asc" };
     setPrinterSortState(next);
-    try {
-      localStorage.setItem(PRINTER_SORT_KEY, JSON.stringify(next));
-    } catch {
-      /* storage unavailable: it just isn't remembered */
-    }
+    writeStored(PRINTER_SORT_KEY, next);
   };
 
   return (

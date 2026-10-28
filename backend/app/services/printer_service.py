@@ -68,6 +68,20 @@ def find_by_profile_name(db: Session, profile_name: str) -> Printer | None:
     )
 
 
+def ensure_connection(printer: Printer) -> PrinterConnection:
+    """The printer's connection row (how it's reached, and how its last sync went), made if it hasn't one yet."""
+    if printer.connection_row is None:
+        printer.connection_row = PrinterConnection(printer_id=printer.id)
+    return printer.connection_row
+
+
+def record_sync_error(db: Session, printer: Printer, error: Exception) -> None:
+    """Syncing the printer (or looking at it) failed: drop what that had changed, and note why on its connection."""
+    db.rollback()
+    ensure_connection(printer).last_sync_error = str(error)
+    db.commit()
+
+
 def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
     printer = get_printer(db, printer_id)
     if printer is None:
@@ -90,8 +104,7 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
         printer.decommissioned = changes["decommissioned"]
 
     if "moonraker_url" in changes or "moonraker_api_key" in changes:
-        conn = printer.connection_row or PrinterConnection(printer_id=printer.id)
-        printer.connection_row = conn
+        conn = ensure_connection(printer)
         if "moonraker_url" in changes:
             conn.moonraker_url = changes["moonraker_url"]  # already tidied; None = the default address
         if changes.get("moonraker_api_key") is not None:

@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Lock, Printer, Search, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Lock, Printer, Search, Upload } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { linkButton, monoText, toolButton, uiText } from "../styles.js";
+import { fieldBox, linkButton, monoText, toolButton, uiText } from "../styles.js";
 import { renameBundle, renameModel } from "../api.js";
 import { useData } from "../data.jsx";
 
@@ -12,6 +12,7 @@ import { UploadGcodeForm } from "../bundles/UploadGcodeForm.jsx";
 import { VersionRow } from "../bundles/VersionRow.jsx";
 import { newestFirst, useBundleExpansion, VersionsToggleAll } from "../bundles/versions.jsx";
 import { Modal } from "../components/common/dialogs.jsx";
+import { SearchBox } from "../components/common/fields.jsx";
 import { Badge, SectionLabel, Thumb } from "../components/common/ui.jsx";
 import { useMediaQuery } from "../hooks/useMediaQuery.js";
 import { matchModel, searchWords } from "../lib/search.jsx";
@@ -119,45 +120,20 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
     const columns = narrow ? 1 : 2;
     const lastRow = Math.floor((sorted.length - 1) / columns);
     const chooseSort = onSortChange; // kept with the other settings, so every browser shows the same order
-    const control = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
+    const control = fieldBox();
 
     return (
       <div>
-        <div style={{ position: "relative", maxWidth: 460, marginBottom: 12 }}>
-          <Search size={15} color={c.textFaint} style={{ position: "absolute", left: 11, top: 10, pointerEvents: "none" }} />
-          <input
-            ref={searchRef}
-            data-testid="model-search"
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                if (query) setQuery("");
-                else e.currentTarget.blur();
-              }
-            }}
-            placeholder="Search models, 3MF files, printers or notes…   ( / )"
-            aria-label="Search models"
-            autoComplete="off"
-            spellCheck={false}
-            style={{ ...control, width: "100%", boxSizing: "border-box", padding: "8px 34px 8px 34px" }}
-          />
-          {query && (
-            <button
-              data-testid="model-search-clear"
-              onClick={() => {
-                setQuery("");
-                searchRef.current?.focus();
-              }}
-              aria-label="Clear search"
-              title="Clear search (Esc)"
-              style={{ position: "absolute", right: 6, top: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: c.textMuted, cursor: "pointer", padding: 0 }}
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          inputRef={searchRef}
+          testId="model-search"
+          clearTestId="model-search-clear"
+          placeholder="Search models, 3MF files, printers or notes…   ( / )"
+          label="Search models"
+          style={{ maxWidth: 460, marginBottom: 12 }}
+        />
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

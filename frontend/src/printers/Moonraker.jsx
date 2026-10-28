@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
-import { headerButton, monoText, uiText } from "../styles.js";
+import { c } from "../theme.js";
+import { headerButton, uiText } from "../styles.js";
 import { errorText, getMoonrakerStatus, getPrintStats, syncPrinterHistory } from "../api.js";
 
 import { StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, fmtMetres, fmtWhen } from "../lib/format.js";
+import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
 
 const MOONRAKER_LOOK_MS = 10000; // how often the open printer page looks at the printer (connection and the print running)
@@ -16,13 +17,7 @@ const MOONRAKER_LOOK_MS = 10000; // how often the open printer page looks at the
 // history is synced again. `key` restarts all of it when the printer or its address changes.
 // onSynced: called after each successful sync (the page reloads the printer, whose service hours have moved on)
 export function useMoonraker(printerId, key, onSynced) {
-  const [status, setStatusNow] = useState(null); // GET /printers/{id}/moonraker
-  const seen = useRef("");
-  const setStatus = (s) => {
-    const json = JSON.stringify(s);
-    if (json !== seen.current) setStatusNow(s); // an answer the same as the last redraws nothing
-    seen.current = json;
-  };
+  const [status, setStatus] = useLiveStatus(); // GET /printers/{id}/moonraker
   const [stats, setStats] = useState(null); // GET /printers/{id}/print-stats
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
@@ -107,7 +102,6 @@ export function MoonrakerCard({ printer, mr }) {
       line = status.error || "Can't reach Moonraker.";
     }
   }
-  const failed = archive ? archive.jobs - (archive.by_status.completed || 0) - (archive.by_status.in_progress || 0) - (archive.by_status.cancelled || 0) : 0;
   const lastSync = stats?.last_sync_at || status?.last_sync_at;
   const lastSyncError = syncError || stats?.last_sync_error;
 
@@ -135,15 +129,7 @@ export function MoonrakerCard({ printer, mr }) {
         </div>
       </div>
       <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
-        <div data-testid="moonraker-status" style={{ display: "flex", alignItems: "flex-start", gap: 8, ...ui, fontSize: fs(13), color: status?.reachable ? c.textPrimary : c.textMuted, lineHeight: 1.5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0, marginTop: 6 }} />
-          <span>
-            {line}
-            {status?.reachable && printer.moonrakerUrl && (
-              <span style={monoText(11, c.textFaint, { marginLeft: 8 })}>{printer.moonrakerUrl}</span>
-            )}
-          </span>
-        </div>
+        <ConnectionLine testId="moonraker-status" dot={dot} line={line} reachable={status?.reachable} url={printer.moonrakerUrl} />
 
         {status?.print && (
           <JobProgress
@@ -170,13 +156,7 @@ export function MoonrakerCard({ printer, mr }) {
             : lastSync
               ? `Statistics from the printer, as of ${fmtWhen(lastSync)}.`
               : "Not synced yet."}
-          {archive && archive.jobs > 0 && (
-            <div>
-              Farmhand has {archive.jobs.toLocaleString()} print{archive.jobs === 1 ? "" : "s"} on record:{" "}
-              {(archive.by_status.completed || 0).toLocaleString()} completed, {(archive.by_status.cancelled || 0).toLocaleString()} cancelled,{" "}
-              {failed.toLocaleString()} failed{archive.by_status.in_progress ? `, ${archive.by_status.in_progress} in progress` : ""}.
-            </div>
-          )}
+          <ArchiveSummary archive={archive} failedLabel="failed" />
         </div>
       </div>
     </div>

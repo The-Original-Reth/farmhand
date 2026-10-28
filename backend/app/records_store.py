@@ -20,6 +20,8 @@ import os
 import re
 from pathlib import Path
 
+from .storage import write_text_atomically
+
 RECORD_MARKER = "farmhand_record"  # the key that says "this is one of ours", and what kind
 RECORD_VERSION = 1
 PRINTERS_DIR = "printers"
@@ -89,12 +91,9 @@ def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str,
                 continue
         except (OSError, UnicodeDecodeError):
             pass
-        part = target.with_name(target.name + ".part")
         try:
-            part.write_text(text, encoding="utf-8")
-            os.replace(part, target)
+            write_text_atomically(target, text)
         except BaseException:
-            part.unlink(missing_ok=True)
             _last_written.pop(str(target), None)
             raise
         _last_written[str(target)] = digest
