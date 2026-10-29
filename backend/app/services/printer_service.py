@@ -19,6 +19,7 @@ def list_printers(db: Session) -> list[Printer]:
     return list(db.scalars(
         select(Printer).order_by(Printer.name).options(
             *(selectinload(r) for r in rows), selectinload(Printer.sub_printers).selectinload(SubPrinter.alias_rows),
+            selectinload(Printer.default_sub_printer_row),
         )
     ))  # a batch, not 5 per printer
 

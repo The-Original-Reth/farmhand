@@ -8,7 +8,7 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut,
+    DefaultSubPrinterIn, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut,
 )
 from ..services import bundle_service, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
@@ -77,6 +77,16 @@ def remove_sub_printer(printer_id: int, sub_printer_id: int, confirm: bool = Que
     require_confirm(confirm)
     with answer_errors():
         return sub_printer_service.remove(db, printer_id, sub_printer_id)
+
+
+@router.put("/{printer_id}/default-sub-printer", response_model=PrinterOut)
+def set_default_sub_printer(printer_id: int, payload: DefaultSubPrinterIn, db: Session = Depends(get_db)):
+    """
+    The sub printer its uploads start on: picked for every 3MF uploaded to it, whatever preset it was sliced with
+    (it can still be changed on the upload). null: no default, Farmhand guesses from the preset.
+    """
+    with answer_errors():
+        return sub_printer_service.set_default(db, printer_id, payload.sub_printer_id)
 
 
 @router.get("/{printer_id}/sub-printers/{sub_printer_id}/parts", response_model=list[SubPrinterPartOut])

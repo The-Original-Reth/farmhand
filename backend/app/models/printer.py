@@ -71,6 +71,14 @@ class Printer(HasNotes, Base):
     sub_printers: Mapped[list["SubPrinter"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan", order_by="SubPrinter.name"
     )
+    # The one its uploads start on (see DefaultSubPrinter)
+    default_sub_printer_row: Mapped["DefaultSubPrinter | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def default_sub_printer_id(self) -> int | None:
+        return self.default_sub_printer_row.sub_printer_id if self.default_sub_printer_row else None
 
     @property
     def camera_address(self) -> str | None:

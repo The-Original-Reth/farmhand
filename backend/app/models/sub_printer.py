@@ -59,6 +59,21 @@ class SubPrinterAlias(Base):
     sub_printer: Mapped[SubPrinter] = relationship(back_populates="alias_rows")
 
 
+class DefaultSubPrinter(Base):
+    """
+    The sub printer a printer's uploads start on: a 3MF uploaded to it has this one picked, whatever preset it was
+    sliced with (it can still be changed on the upload). At most one per printer; none means Farmhand guesses.
+    """
+
+    __tablename__ = "default_sub_printer"
+
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), primary_key=True)
+    sub_printer_id: Mapped[int] = mapped_column(ForeignKey("sub_printer.id"), nullable=False, index=True)
+
+    printer: Mapped["Printer"] = relationship(back_populates="default_sub_printer_row")  # noqa: F821
+    sub_printer: Mapped[SubPrinter] = relationship()
+
+
 class SubPrinterPart(Base):
     """
     A part fitted to a sub printer, written down by hand on its Printer parts page: "Hotend", made by "Phaetus",

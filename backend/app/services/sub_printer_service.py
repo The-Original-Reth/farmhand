@@ -12,7 +12,9 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..errors import NotFound
-from ..models import Bundle, BundleVersion, BundleVersionSubPrinter, Printer, SubPrinter, SubPrinterAlias, SubPrinterPart
+from ..models import (
+    Bundle, BundleVersion, BundleVersionSubPrinter, DefaultSubPrinter, Printer, SubPrinter, SubPrinterAlias, SubPrinterPart,
+)
 from . import printer_service
 
 logger = logging.getLogger("farmhand.sub_printers")
@@ -143,10 +145,31 @@ def remove(db: Session, printer_id: int, sub_printer_id: int) -> Printer:
         .where(BundleVersionSubPrinter.sub_printer_id == sub.id)
         .values(sub_printer_id=None)
     )
+    if printer.default_sub_printer_id == sub.id:
+        printer.default_sub_printer_row = None  # no default any more
     printer.sub_printers.remove(sub)
     db.commit()
     db.expire_all()  # the versions' links changed underneath the session
     return _printer(db, printer_id)
+
+
+def set_default(db: Session, printer_id: int, sub_printer_id: int | None) -> Printer:
+    """
+    The sub printer the printer's uploads start on (None: no default, Farmhand guesses from the preset). NotFound for
+    a sub printer that isn't the printer's.
+    """
+    printer = _printer(db, printer_id)
+    if sub_printer_id is None:
+        printer.default_sub_printer_row = None
+    else:
+        sub = _sub_printer(db, printer_id, sub_printer_id)
+        if printer.default_sub_printer_row is None:
+            printer.default_sub_printer_row = DefaultSubPrinter(printer_id=printer.id, sub_printer_id=sub.id)
+        else:
+            printer.default_sub_printer_row.sub_printer_id = sub.id
+    db.commit()
+    db.refresh(printer)
+    return printer
 
 
 def parts(db: Session, printer_id: int, sub_printer_id: int) -> list[SubPrinterPart]:
@@ -250,6 +273,7 @@ def record(printer: Printer) -> list[dict]:
     return [
         {
             "name": s.name,
+            "default": s.id == printer.default_sub_printer_id,  # the one its uploads start on
             "aliases": s.aliases,  # preset names that also mean it
             "parts": [
                 {
@@ -280,13 +304,14 @@ def _restored_part(rec) -> SubPrinterPart | None:
 
 def restore(db: Session, printer: Printer, saved) -> bool:
     """
-    Sub printers from a saved printer record that this printer doesn't have yet, and the parts of any that have nothing
+    Sub printers from a saved printer record that this printer doesn't have yet, its default if it has none, and the parts of any that have nothing
     written down (no parts, or only the untouched defaults; never mixed into a list someone filled in). Each is a
     name, or {name, parts} (records from before parts were names, and come back with the default parts). True if
     anything was added.
     """
     by_name = {s.name: s for s in printer.sub_printers}
     added = False
+    default = None
     for rec in saved if isinstance(saved, list) else []:
         name = rec if isinstance(rec, str) else rec.get("name") if isinstance(rec, dict) else None
         if not isinstance(name, str) or not name.strip():
@@ -297,6 +322,8 @@ def restore(db: Session, printer: Printer, saved) -> bool:
         if sub is None:
             sub = by_name[name] = _new(printer, name, default_parts=saved_parts is None)
             added = True
+        if isinstance(rec, dict) and rec.get("default") is True:
+            default = sub
         if isinstance(rec, dict) and isinstance(rec.get("aliases"), list):
             for alias in rec["aliases"][:200]:
                 if isinstance(alias, str) and alias.strip():
@@ -309,6 +336,10 @@ def restore(db: Session, printer: Printer, saved) -> bool:
             if fields(restored) != fields(sub.parts):
                 sub.parts = restored
                 added = True
+    if default is not None and printer.default_sub_printer_row is None:  # never replaces one picked here
+        db.flush()  # a sub printer just added needs its id
+        printer.default_sub_printer_row = DefaultSubPrinter(printer_id=printer.id, sub_printer_id=default.id)
+        added = True
     return added
 
 

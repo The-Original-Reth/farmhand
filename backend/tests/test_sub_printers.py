@@ -246,3 +246,40 @@ def test_a_settings_copy_from_before_parts_still_restores_its_sub_printers(db_se
     db_session.commit()
     assert [s.name for s in printer.sub_printers] == ["V2_BOG_Rapido_Ace_0.5_WC"]
     assert [p.part for p in printer.sub_printers[0].parts] == DEFAULTS  # nothing saved for it: the defaults
+
+
+def test_a_printer_can_have_one_default_sub_printer(api):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    api.post(f"/printers/{pid}/sub-printers", json={"name": "Trident 0.4 brass"})
+    subs = api.post(f"/printers/{pid}/sub-printers", json={"name": "Trident 0.5 Rapido"}).json()["sub_printers"]
+    brass, rapido = (s["id"] for s in subs)
+    assert api.get(f"/printers/{pid}").json()["default_sub_printer_id"] is None
+
+    r = api.put(f"/printers/{pid}/default-sub-printer", json={"sub_printer_id": brass})
+    assert r.status_code == 200 and r.json()["default_sub_printer_id"] == brass
+    r = api.put(f"/printers/{pid}/default-sub-printer", json={"sub_printer_id": rapido})  # only one: it moves
+    assert r.json()["default_sub_printer_id"] == rapido
+    assert [p["default_sub_printer_id"] for p in api.get("/printers").json()] == [rapido]
+
+    other = api.post("/printers", json={"name": "V2 BOG"}).json()["id"]
+    assert api.put(f"/printers/{other}/default-sub-printer", json={"sub_printer_id": rapido}).status_code == 404
+    assert api.put(f"/printers/{pid}/default-sub-printer", json={"sub_printer_id": None}).json()["default_sub_printer_id"] is None
+
+    api.put(f"/printers/{pid}/default-sub-printer", json={"sub_printer_id": brass})
+    r = api.delete(f"/printers/{pid}/sub-printers/{brass}?confirm=true")  # removing it leaves no default
+    assert r.status_code == 200 and r.json()["default_sub_printer_id"] is None
+
+
+def test_the_default_sub_printer_is_kept_in_the_settings_copy(db_session, tmp_path):
+    printer = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    sub_printer_service.add(db_session, printer.id, "V2_BOG_0.4_brass")
+    rapido = sub_printer_service.add(db_session, printer.id, "V2_BOG_Rapido").sub_printers[1]
+    sub_printer_service.set_default(db_session, printer.id, rapido.id)
+    records_service.write_all(db_session, tmp_path)
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine, future=True)()
+    records_service.restore_all(db, tmp_path)
+    restored = db.query(Printer).one()
+    assert next(s.name for s in restored.sub_printers if s.id == restored.default_sub_printer_id) == "V2_BOG_Rapido"

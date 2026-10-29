@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Check, Layers3, Pencil, Plus, Wrench, X } from "lucide-react";
+import { Check, Layers3, Pencil, Plus, Star, Wrench, X } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
-import { addSubPrinter, deleteSubPrinter, errorText, renameSubPrinter } from "../api.js";
+import { addSubPrinter, deleteSubPrinter, errorText, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
 import { useData } from "../data.jsx";
 import { fieldBox, headerButton, linkButton, monoText, uiText } from "../styles.js";
 
@@ -126,7 +126,8 @@ function SubPrinterSettings({ printer, sub, bundles, onClose }) {
   );
 }
 
-// One sub printer: its name (click for its printer settings; renamed in place), how many 3MFs were sliced with it (click to show only those), Remove
+// One sub printer: its name (click for its printer settings; renamed in place), how many 3MFs were sliced with it (click
+// to show only those), a star to make it the default (the one the printer's uploads start on), Remove
 function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   const { putPrinter } = useData();
   const [editing, setEditing] = useState(false);
@@ -135,6 +136,19 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   const [error, setError] = useState(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const isDefault = printer.defaultSubPrinterId === sub.id;
+
+  const toggleDefault = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      putPrinter(await setDefaultSubPrinter(printer.id, isDefault ? null : sub.id));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async () => {
     if (text.trim() === sub.name) return setEditing(false);
@@ -163,17 +177,22 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
           </>
         ) : (
           <>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              data-testid="sub-printer-name"
-              title="Show its printer settings"
-              style={{
-                ...monoText(12, c.heading, { flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }),
-                background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", textDecoration: "underline dotted",
-              }}
-            >
-              {sub.name}
-            </button>
+            <span style={{ flex: "1 1 220px", minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setSettingsOpen(true)}
+                data-testid="sub-printer-name"
+                title="Show its printer settings"
+                style={{
+                  ...monoText(12, c.heading, { minWidth: 0, overflowWrap: "anywhere" }),
+                  background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", textDecoration: "underline dotted",
+                }}
+              >
+                {sub.name}
+              </button>
+              {isDefault && (
+                <span data-testid="sub-printer-default" style={uiText(11, c.amber, { fontWeight: 600 })}>default</span>
+              )}
+            </span>
             <button
               onClick={() => onFilter(active ? null : sub.id)}
               disabled={count === 0}
@@ -186,6 +205,16 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
               }}
             >
               {count} x .3MF
+            </button>
+            <button
+              onClick={toggleDefault}
+              disabled={busy}
+              aria-pressed={isDefault}
+              data-testid="sub-printer-star"
+              title={isDefault ? `The default: ${printer.name}’s uploads start on it. Click to have no default` : `Make it the default: ${printer.name}’s uploads start on it`}
+              style={{ ...iconButton, ...(isDefault && { color: c.amber, border: `1px solid ${c.amber}` }) }}
+            >
+              <Star size={12} fill={isDefault ? c.amber : "none"} />
             </button>
             <button onClick={() => { setText(sub.name); setEditing(true); }} title="Rename" style={iconButton}><Pencil size={12} /></button>
             <TrashButton title="Remove this sub printer" onClick={() => setRemoveOpen(true)} />
@@ -208,7 +237,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
           {count > 0
             ? `Its ${count} 3MF file${count === 1 ? " stays" : "s stay"}, with no sub printer.`
             : "No 3MF files were sliced with it."}{" "}
-          The parts written down for it on its Printer parts page are removed too. A 3MF uploaded later that was sliced
+          The parts written down for it on its Printer parts page are removed too.{isDefault && " It’s the default, so there will be no default."} A 3MF uploaded later that was sliced
           with it adds it again.
         </ConfirmDialog>
       )}

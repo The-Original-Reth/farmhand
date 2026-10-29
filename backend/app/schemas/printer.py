@@ -84,6 +84,10 @@ class SubPrinterIn(BaseModel):
         return v
 
 
+class DefaultSubPrinterIn(BaseModel):
+    sub_printer_id: int | None = None  # one of the printer's sub printers; null: no default
+
+
 class SubPrinterPartOut(BaseModel):
     """A part fitted to a sub printer, written down on its Printer parts page."""
 
@@ -168,6 +172,7 @@ class PrinterOut(BaseModel):
     # hours_since, started_at, last_done: {done_at, hours, note} | null}
     service: dict | None = None
     sub_printers: list[SubPrinterOut] = []  # its printer presets in the slicer, A to Z
+    default_sub_printer_id: int | None = None  # the one its uploads start on (none: Farmhand guesses from the preset)
 
 
 class PrinterDecommission(BaseModel):

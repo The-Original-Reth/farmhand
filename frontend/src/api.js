@@ -71,6 +71,7 @@ export const normalizePrinter = (p) => ({
   hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself never comes back
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
   subPrinters: p.sub_printers || [], // its printer presets in the slicer: [{ id, name }], A to Z
+  defaultSubPrinterId: p.default_sub_printer_id ?? null, // the one its uploads start on (null: Farmhand guesses)
   // The 1500-hour service reminder Farmhand keeps: { state: waiting | off | ok | due, enabled, interval_hours,
   // hours_since, started_at, last_done: { done_at, hours, note } | null }
   service: p.service || {
@@ -276,6 +277,9 @@ export const updatePrinter = (
 export const addSubPrinter = (printerId, name) => request(`/printers/${printerId}/sub-printers`, jsonBody("POST", { name }));
 export const renameSubPrinter = (printerId, subPrinterId, name) =>
   request(`/printers/${printerId}/sub-printers/${subPrinterId}`, jsonBody("PATCH", { name }));
+// the one its uploads start on, whatever preset a 3MF was sliced with; null: none (Farmhand guesses from the preset)
+export const setDefaultSubPrinter = (printerId, subPrinterId) =>
+  request(`/printers/${printerId}/default-sub-printer`, jsonBody("PUT", { sub_printer_id: subPrinterId }));
 // its 3MFs stay, with no sub printer; its parts go
 export const deleteSubPrinter = (printerId, subPrinterId) => del(`/printers/${printerId}/sub-printers/${subPrinterId}`);
 

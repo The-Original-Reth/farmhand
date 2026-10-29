@@ -76,6 +76,7 @@ export function mockApi() {
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
     has_prusalink_password: !!p.prusalink?.hasPassword, camera_address: p.cameraAddress || null,
     sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, aliases }) => ({ id, name, aliases: aliases || [] })),
+    default_sub_printer_id: p.defaultSubPrinterId ?? null,
   });
   const modelOut = (m) => ({
     id: m.id, name: m.name, file_type: m.file_type, created_at: m.created_at, notes: m.notes, notes_revision: m.notes_revision,
@@ -218,6 +219,12 @@ export function mockApi() {
     const s = subPrinterOf(p, subId);
     for (const b of farm.bundles) for (const v of b.versions) if (v.sub_printer_id === s.id) v.sub_printer_id = null;
     farm.subPrinters = farm.subPrinters.filter((x) => x !== s);
+    if (p.defaultSubPrinterId === s.id) p.defaultSubPrinterId = null; // no default any more
+    return printerOut(p);
+  });
+  on("PUT", "/printers/:id/default-sub-printer", ({ id }, body) => {
+    const p = printer(id);
+    p.defaultSubPrinterId = body.sub_printer_id == null ? null : subPrinterOf(p, body.sub_printer_id).id;
     return printerOut(p);
   });
   // A sub printer's parts (its Printer parts page), with the real API's checks; each change answers the whole list
