@@ -60,6 +60,7 @@ def inspect_3mf(db: Session, threemf_file_obj) -> dict:
             matched = printer_service.find_by_profile_name(db, parsed.printer_profile_name)
         return {
             "printer_profile_name": parsed.printer_profile_name,
+            "printer_preset_name": parsed.printer_preset_name,
             "slicer_display_name": parsed.slicer_display_name,
             "matched_printer": matched,
         }
@@ -76,6 +77,8 @@ def create_bundle(
     gcode_file_obj=None,
     gcode_filename: str | None = None,
     printer_id: int | None = None,
+    sub_printer_id: int | None = None,
+    new_sub_printer_name: str | None = None,
 ) -> Bundle:
     """
     Create a brand-new bundle (a new 3MF+printer version tree) and its
@@ -144,6 +147,8 @@ def create_bundle(
             gcode_filename=gcode_filename,
             monument=True,  # first upload is a monument by default, per spec
             monument_note="Initial upload",
+            sub_printer_id=sub_printer_id,
+            new_sub_printer_name=new_sub_printer_name,
         )
 
         db.commit()
@@ -162,6 +167,8 @@ def add_bundle_version(
     threemf_filename: str,
     gcode_file_obj=None,
     gcode_filename: str | None = None,
+    sub_printer_id: int | None = None,
+    new_sub_printer_name: str | None = None,
 ) -> BundleVersion:
     """
     The 'Update' button: create a new version within an existing bundle.
@@ -200,6 +207,8 @@ def add_bundle_version(
             gcode_filename=gcode_filename,
             monument=False,
             monument_note=None,
+            sub_printer_id=sub_printer_id,
+            new_sub_printer_name=new_sub_printer_name,
         )
 
         _enforce_rolling_window(db, bundle)
@@ -224,6 +233,8 @@ def _store_version(
     gcode_filename: str | None,
     monument: bool,
     monument_note: str | None,
+    sub_printer_id: int | None = None,
+    new_sub_printer_name: str | None = None,
 ) -> BundleVersion:
     threemf_filename = with_version(threemf_filename, version_number)  # "Goldfish ver 2.3mf"
     written: list[str] = []  # everything put on disk so far, to undo if a later step fails
@@ -265,8 +276,11 @@ def _store_version(
         )
         db.add(version)
         db.flush()
-        # the printer preset it was sliced with: a sub printer of the 3MF's printer, added if it's new
-        sub_printer_service.link(db, version, bundle.printer, parsed.printer_preset_name)
+        # its sub printer: the one picked on upload (or a new one), else the one its printer preset goes to
+        sub_printer_service.link(
+            db, version, bundle.printer, parsed.printer_preset_name,
+            sub_printer_id=sub_printer_id, new_name=new_sub_printer_name,
+        )
         return version
     except BaseException:
         storage.delete_files(written)

@@ -12,6 +12,7 @@ import {
 import { linkButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
+import { SubPrinterChoice, subPrinterFields, useSubPrinterPick } from "./SubPrinterChoice.jsx";
 import { newestFirst } from "./versions.jsx";
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, FieldSelect, SegmentedToggle, TextField } from "../components/common/fields.jsx";
@@ -62,6 +63,18 @@ export function Upload3mfForm({ presetModel, onClose }) {
   // Decommissioned printers shouldn't be offered as a home for new files
   const selectablePrinters = printers.filter((p) => !p.decommissioned);
 
+  // The printer the file goes to, as far as it's known yet (one about to be created has no sub printers), and which
+  // of its sub printers: Farmhand's guess from the file's preset, until it's changed
+  const targetPrinter = !inspection
+    ? null
+    : inspection.matchedPrinter
+      ? printers.find((p) => p.id === inspection.matchedPrinter.id) || inspection.matchedPrinter
+      : printerChoice === "create" && inspection.printerProfileName
+        ? { name: inspection.printerProfileName, subPrinters: [] }
+        : printers.find((p) => String(p.id) === existingPrinterId) || null;
+  const presetName = inspection?.printerPresetName || null;
+  const sub = useSubPrinterPick(targetPrinter, presetName, `${threemfFile?.name}|${targetPrinter?.id ?? targetPrinter?.name ?? ""}|${presetName}`);
+
   const handleThreemfFile = async (file) => {
     setThreemfFile(file);
     setInspection(null);
@@ -93,11 +106,12 @@ export function Upload3mfForm({ presetModel, onClose }) {
     if (!threemfFile) return setErrorMsg("Drop a .3mf file first.");
     if (inspecting) return setErrorMsg("Still reading the 3MF — one moment.");
     if (inspectError) return setErrorMsg("This 3MF couldn't be read, so it can't be uploaded.");
+    if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new sub printer a name.");
     if (versionTarget) {
       // A newer version of an existing entry: nothing new to create, the printer is already matched
       setSubmitting(true);
       try {
-        await addBundleVersion({ bundleId: versionTarget.id, threemf: threemfFile, gcode: gcodeFile });
+        await addBundleVersion({ bundleId: versionTarget.id, threemf: threemfFile, gcode: gcodeFile, subPrinter: subPrinterFields(sub.pick) });
         await refresh();
         onClose();
       } catch (e) {
@@ -151,7 +165,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
         printerId = Number(existingPrinterId);
       }
 
-      await createBundle({ sourceModelIds, threemf: threemfFile, gcode: gcodeFile, printerId });
+      await createBundle({ sourceModelIds, threemf: threemfFile, gcode: gcodeFile, printerId, subPrinter: subPrinterFields(sub.pick) });
       await refresh();
       onClose();
     } catch (e) {
@@ -226,6 +240,10 @@ export function Upload3mfForm({ presetModel, onClose }) {
               </div>
             ))}
         </div>
+      )}
+
+      {targetPrinter && (
+        <SubPrinterChoice printer={targetPrinter} presetName={presetName} pick={sub.pick} guess={sub.guess} onChange={sub.setPick} />
       )}
 
       {presetModel ? (

@@ -28,6 +28,11 @@ def _parse_source_model_ids(raw: str) -> list[int]:
         raise HTTPException(status_code=422, detail="source_model_ids must be a JSON array of ints")
 
 
+# Which sub printer (printer preset) the new 3MF version goes to. Omit both for the one its preset goes to
+SUB_PRINTER_ID = "One of the printer's sub printers to put it with"
+NEW_SUB_PRINTER = "Put it with a new sub printer by this name (or the printer's one by that name)"
+
+
 @router.get("", response_model=list[BundleOut])
 def list_bundles(db: Session = Depends(get_db)):
     """Every bundle in the archive, regardless of printer or source model — powers cross-file compare."""
@@ -45,6 +50,8 @@ def inspect_threemf(threemf: UploadFile = File(...), db: Session = Depends(get_d
 def create_bundle(
     source_model_ids: str = Form(..., description='JSON array, e.g. "[1,2]"'),
     printer_id: int | None = Form(None, description="Omit to auto-detect from the 3MF's own profile"),
+    sub_printer_id: int | None = Form(None, description=SUB_PRINTER_ID),
+    new_sub_printer_name: str | None = Form(None, description=NEW_SUB_PRINTER),
     threemf: UploadFile = File(...),
     gcode: UploadFile | None = File(None, description="Optional — can be added later"),
     db: Session = Depends(get_db),
@@ -58,6 +65,8 @@ def create_bundle(
             gcode_file_obj=gcode.file if gcode else None,
             gcode_filename=gcode.filename if gcode else None,
             printer_id=printer_id,
+            sub_printer_id=sub_printer_id,
+            new_sub_printer_name=new_sub_printer_name,
         )
 
 
@@ -74,6 +83,8 @@ def add_bundle_version(
     bundle_id: int,
     threemf: UploadFile = File(...),
     gcode: UploadFile | None = File(None, description="Optional — can be added later"),
+    sub_printer_id: int | None = Form(None, description=SUB_PRINTER_ID),
+    new_sub_printer_name: str | None = Form(None, description=NEW_SUB_PRINTER),
     db: Session = Depends(get_db),
 ):
     """The 'Update' button — printer is already locked, no printer_id here."""
@@ -85,6 +96,8 @@ def add_bundle_version(
             threemf_filename=threemf.filename,
             gcode_file_obj=gcode.file if gcode else None,
             gcode_filename=gcode.filename if gcode else None,
+            sub_printer_id=sub_printer_id,
+            new_sub_printer_name=new_sub_printer_name,
         )
     return bundle_service.get_bundle(db, bundle_id)
 

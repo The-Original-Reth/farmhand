@@ -6,15 +6,21 @@ from sqlalchemy.orm import Session, selectinload
 from ..errors import NotFound
 from .. import notes as notes_helper
 from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
-from ..models import Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrusaLinkConnection
+from ..models import (
+    Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrusaLinkConnection, SubPrinter,
+)
 
 
 def list_printers(db: Session) -> list[Printer]:
     rows = (
         Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row,
-        Printer.camera_row, Printer.sub_printers,
+        Printer.camera_row,
     )
-    return list(db.scalars(select(Printer).order_by(Printer.name).options(*(selectinload(r) for r in rows))))  # a batch, not 5 per printer
+    return list(db.scalars(
+        select(Printer).order_by(Printer.name).options(
+            *(selectinload(r) for r in rows), selectinload(Printer.sub_printers).selectinload(SubPrinter.alias_rows),
+        )
+    ))  # a batch, not 5 per printer
 
 
 def get_printer(db: Session, printer_id: int) -> Printer | None:

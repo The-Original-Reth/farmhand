@@ -18,13 +18,70 @@ from . import factories as make
 FROG_PRESET = "Trident_Allyson_DragonBurner_Rapido_0.5_WC"
 
 
-def _upload(api, path, printer_id):
+def _upload(api, path, printer_id, status=201, **choice):
+    """A new 3MF from that file; choice: sub_printer_id or new_sub_printer_name, picked on upload."""
     with open(path, "rb") as f:
         data = f.read()
     mid = api.post("/source-models", data={"name": "Frog.stl", "file_type": "STL"}, files={"file": ("Frog.stl", b"x" * 64)}).json()["id"]
-    r = api.post("/bundles", data={"source_model_ids": f"[{mid}]", "printer_id": str(printer_id)}, files={"threemf": ("Frog.3mf", data)})
-    assert r.status_code == 201, r.text
+    form = {"source_model_ids": f"[{mid}]", "printer_id": str(printer_id), **{k: str(v) for k, v in choice.items()}}
+    r = api.post("/bundles", data=form, files={"threemf": ("Frog.3mf", data)})
+    assert r.status_code == status, r.text
     return r.json()
+
+
+def _subs(api, pid):
+    return {s["name"]: s for s in api.get(f"/printers/{pid}").json()["sub_printers"]}
+
+
+def test_inspecting_a_3mf_says_which_preset_it_was_sliced_with(api, sample_3mf_paths):
+    with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
+        r = api.post("/bundles/inspect", files={"threemf": ("Frog.3mf", f.read())})
+    assert r.status_code == 200 and r.json()["printer_preset_name"] == FROG_PRESET
+
+
+def test_a_3mf_can_be_put_with_another_sub_printer_and_the_next_one_goes_there_too(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    brass = api.post(f"/printers/{pid}/sub-printers", json={"name": "Trident 0.4 brass"}).json()["sub_printers"][0]["id"]
+    b = _upload(api, sample_3mf_paths["frog_vt1190"], pid, sub_printer_id=brass)
+    assert b["versions"][0]["sub_printer_name"] == "Trident 0.4 brass"
+    subs = _subs(api, pid)
+    assert list(subs) == ["Trident 0.4 brass"]  # the file's preset wasn't added as a sub printer of its own
+    assert subs["Trident 0.4 brass"]["aliases"] == [FROG_PRESET]  # remembered for next time
+
+    b = _upload(api, sample_3mf_paths["shark_vt1190"], pid)  # same preset, nothing picked: goes where the last went
+    assert b["versions"][0]["sub_printer_name"] == "Trident 0.4 brass"
+
+
+def test_a_3mf_can_go_to_a_new_sub_printer_named_on_upload(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    b = _upload(api, sample_3mf_paths["frog_vt1190"], pid, new_sub_printer_name=" Trident Rapido 0.5 ")
+    assert b["versions"][0]["sub_printer_name"] == "Trident Rapido 0.5"
+    assert _subs(api, pid)["Trident Rapido 0.5"]["aliases"] == [FROG_PRESET]
+    # a name the printer already has is that sub printer, not a second one
+    b = _upload(api, sample_3mf_paths["shark_vt1190"], pid, new_sub_printer_name="Trident Rapido 0.5")
+    assert b["versions"][0]["sub_printer_name"] == "Trident Rapido 0.5" and len(_subs(api, pid)) == 1
+
+
+def test_another_printers_sub_printer_cant_be_picked(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    other = api.post("/printers", json={"name": "V2 BOG"}).json()["id"]
+    theirs = api.post(f"/printers/{other}/sub-printers", json={"name": "V2 brass"}).json()["sub_printers"][0]["id"]
+    r = _upload(api, sample_3mf_paths["frog_vt1190"], pid, status=422, sub_printer_id=theirs)
+    assert "isn't one of VT 1190's" in r["detail"]
+    assert api.get(f"/printers/{pid}/bundles").json() == []  # nothing was stored
+
+
+def test_a_renamed_sub_printer_keeps_getting_its_old_presets_3mfs(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    _upload(api, sample_3mf_paths["frog_vt1190"], pid)
+    sid = _subs(api, pid)[FROG_PRESET]["id"]
+    r = api.patch(f"/printers/{pid}/sub-printers/{sid}", json={"name": "VT1190_Stealthburner_Rapido_UHF"})
+    assert r.json()["sub_printers"][0]["aliases"] == [FROG_PRESET]
+    b = _upload(api, sample_3mf_paths["shark_vt1190"], pid)  # still sliced with the old preset name
+    assert b["versions"][0]["sub_printer_name"] == "VT1190_Stealthburner_Rapido_UHF" and len(_subs(api, pid)) == 1
+    # renamed back: that's its name again, not a name it was known by
+    r = api.patch(f"/printers/{pid}/sub-printers/{sid}", json={"name": FROG_PRESET})
+    assert r.json()["sub_printers"][0]["aliases"] == ["VT1190_Stealthburner_Rapido_UHF"]
 
 
 def test_an_uploaded_3mf_adds_its_preset_as_a_sub_printer_and_is_linked_to_it(api, sample_3mf_paths):
@@ -155,6 +212,7 @@ def test_sub_printers_and_their_parts_are_kept_in_the_settings_copy_and_restored
     sub_printer_service.update_part(db_session, printer.id, sub.id, hotend.id, {"part": "Hotend", "make": "Phaetus", "model": "Rapido", "installed_on": dt.date(2026, 8, 14), "note": None, "in_name": False})
     gantry = next(p for p in sub.parts if p.part == "Gantry")
     sub_printer_service.delete_part(db_session, printer.id, sub.id, gantry.id)  # one removed: it stays removed
+    sub_printer_service.rename(db_session, printer.id, sub.id, "V2BOG_Rapido")  # its old name is remembered
     records_service.write_all(db_session, tmp_path)
 
     engine = create_engine("sqlite:///:memory:", future=True)
@@ -162,7 +220,8 @@ def test_sub_printers_and_their_parts_are_kept_in_the_settings_copy_and_restored
     db = sessionmaker(bind=engine, future=True)()
     records_service.restore_all(db, tmp_path)
     restored = db.query(Printer).one().sub_printers
-    assert [s.name for s in restored] == ["V2_BOG_Rapido_Ace_0.5_WC"]
+    assert [s.name for s in restored] == ["V2BOG_Rapido"]
+    assert restored[0].aliases == ["V2_BOG_Rapido_Ace_0.5_WC"]
     assert [p.part for p in restored[0].parts] == ["Toolhead", "Hotend", "Nozzle", "Extruder", "XY motor"]
     assert [(p.make, p.model, p.installed_on, p.in_name) for p in restored[0].parts if p.part == "Hotend"] == [("Phaetus", "Rapido", dt.date(2026, 8, 14), False)]
     assert [p.in_name for p in restored[0].parts if p.part == "Toolhead"] == [True]  # the ticks come back too

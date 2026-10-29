@@ -67,6 +67,7 @@ class SubPrinterOut(BaseModel):
 
     id: int
     name: str
+    aliases: list[str] = []  # other preset names that mean it (its old names, presets given to it by hand)
 
 
 class SubPrinterIn(BaseModel):

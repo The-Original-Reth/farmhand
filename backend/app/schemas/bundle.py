@@ -62,5 +62,6 @@ class ThreeMFInspection(BaseModel):
     """What a 3MF says about itself, before anything is stored."""
 
     printer_profile_name: str | None
+    printer_preset_name: str | None = None  # the printer preset (sub printer) it was sliced with
     slicer_display_name: str
     matched_printer: PrinterOut | None  # the registered printer with that exact name, if any

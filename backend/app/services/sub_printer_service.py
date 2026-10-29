@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..errors import NotFound
-from ..models import Bundle, BundleVersion, BundleVersionSubPrinter, Printer, SubPrinter, SubPrinterPart
+from ..models import Bundle, BundleVersion, BundleVersionSubPrinter, Printer, SubPrinter, SubPrinterAlias, SubPrinterPart
 from . import printer_service
 
 logger = logging.getLogger("farmhand.sub_printers")
@@ -70,6 +70,31 @@ def _named(db: Session, printer_id: int, name: str) -> SubPrinter | None:
     return db.scalar(select(SubPrinter).where(SubPrinter.printer_id == printer_id, SubPrinter.name == name))
 
 
+def known_as(db: Session, printer_id: int, preset_name: str) -> SubPrinter | None:
+    """
+    The printer's sub printer a 3MF with this preset goes to: one that has been known by that name (renamed from it,
+    or given 3MFs with that preset by hand on upload: the last choice wins), else the one called that.
+    """
+    return db.scalar(
+        select(SubPrinter)
+        .join(SubPrinterAlias, SubPrinterAlias.sub_printer_id == SubPrinter.id)
+        .where(SubPrinter.printer_id == printer_id, SubPrinterAlias.name == preset_name)
+    ) or _named(db, printer_id, preset_name)
+
+
+def _remember(db: Session, sub: SubPrinter, preset_name: str) -> None:
+    """From now on a 3MF with this preset goes to `sub` (and no longer to another of the printer's that had it)."""
+    if not preset_name or preset_name == sub.name or preset_name in sub.aliases:
+        return
+    for other in db.scalars(
+        select(SubPrinterAlias)
+        .join(SubPrinter, SubPrinter.id == SubPrinterAlias.sub_printer_id)
+        .where(SubPrinter.printer_id == sub.printer_id, SubPrinterAlias.name == preset_name)
+    ):
+        other.sub_printer.alias_rows.remove(other)
+    sub.alias_rows.append(SubPrinterAlias(name=preset_name[:MAX_NAME]))
+
+
 def _taken(printer: Printer, name: str) -> ValueError:
     return ValueError(f"{printer.name} already has a sub printer named {name!r}")
 
@@ -87,14 +112,20 @@ def add(db: Session, printer_id: int, name: str) -> Printer:
 
 
 def rename(db: Session, printer_id: int, sub_printer_id: int, name: str) -> Printer:
-    """Rename one: its 3MFs stay linked to it, and 3MFs sliced with the new name are linked to it from now on."""
+    """
+    Rename one: its 3MFs stay linked to it, and 3MFs sliced with either name go to it from now on (the old one is
+    remembered as a name it was known by).
+    """
     printer = _printer(db, printer_id)
     sub = _sub_printer(db, printer_id, sub_printer_id)
     name = _clean(name)
     other = _named(db, printer_id, name)
     if other is not None and other.id != sub.id:
         raise _taken(printer, name)
+    old = sub.name
     sub.name = name
+    sub.alias_rows = [a for a in sub.alias_rows if a.name != name]  # its name now, not a name it was known by
+    _remember(db, sub, old)
     db.commit()
     db.refresh(printer)
     return printer
@@ -166,17 +197,29 @@ def delete_part(db: Session, printer_id: int, sub_printer_id: int, part_id: int)
     return list(sub.parts)
 
 
-def link(db: Session, version: BundleVersion, printer: Printer, preset_name: str | None) -> None:
+def link(
+    db: Session, version: BundleVersion, printer: Printer, preset_name: str | None,
+    *, sub_printer_id: int | None = None, new_name: str | None = None,
+) -> None:
     """
-    Note which sub printer `version` was sliced with, adding it to `printer` if it isn't known yet. Doesn't commit:
-    the caller does, with the version.
+    Note which sub printer `version` goes to. Picked on upload: `sub_printer_id` (one of the printer's), or
+    `new_name` (a new one, or the printer's one by that name). Else the one its preset goes to (known_as), added to
+    `printer` if it isn't known yet. A preset put with a sub printer by another name is remembered for next time.
+    ValueError for a sub printer that isn't the printer's. Doesn't commit: the caller does, with the version.
     """
     sub = None
-    name = (preset_name or "").strip()[:MAX_NAME]
-    if name:
-        sub = _named(db, printer.id, name)
-        if sub is None:
-            sub = _new(printer, name)
+    preset = (preset_name or "").strip()[:MAX_NAME]
+    if sub_printer_id is not None:
+        sub = db.get(SubPrinter, sub_printer_id)
+        if sub is None or sub.printer_id != printer.id:
+            raise ValueError(f"That sub printer isn't one of {printer.name}'s")
+    elif new_name and new_name.strip():
+        name = _clean(new_name)
+        sub = _named(db, printer.id, name) or _new(printer, name)
+    elif preset:
+        sub = known_as(db, printer.id, preset) or _new(printer, preset)
+    if sub is not None and preset:
+        _remember(db, sub, preset)
     version.sub_printer_link = BundleVersionSubPrinter(bundle_version_id=version.id, sub_printer=sub)
 
 
@@ -207,6 +250,7 @@ def record(printer: Printer) -> list[dict]:
     return [
         {
             "name": s.name,
+            "aliases": s.aliases,  # preset names that also mean it
             "parts": [
                 {
                     "part": p.part, "make": p.make, "model": p.model,
@@ -253,6 +297,12 @@ def restore(db: Session, printer: Printer, saved) -> bool:
         if sub is None:
             sub = by_name[name] = _new(printer, name, default_parts=saved_parts is None)
             added = True
+        if isinstance(rec, dict) and isinstance(rec.get("aliases"), list):
+            for alias in rec["aliases"][:200]:
+                if isinstance(alias, str) and alias.strip():
+                    before = len(sub.alias_rows)
+                    _remember(db, sub, alias.strip()[:MAX_NAME])
+                    added |= len(sub.alias_rows) != before
         if saved_parts is not None and (not sub.parts or _only_defaults(sub)):
             restored = list(filter(None, map(_restored_part, saved_parts[:500])))
             fields = lambda ps: [(p.part, p.make, p.model, p.installed_on, p.note, p.in_name) for p in ps]  # noqa: E731

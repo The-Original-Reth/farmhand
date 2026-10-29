@@ -8,6 +8,7 @@ import { useData } from "../data.jsx";
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone } from "../components/common/fields.jsx";
 import { TrashButton } from "../components/common/ui.jsx";
+import { SubPrinterChoice, subPrinterFields, useSubPrinterPick } from "./SubPrinterChoice.jsx";
 
 // The message when a 3MF or G-code was sliced for another printer than the 3MF entry's (the server says the same)
 const wrongPrinter = (what, slicedFor, printerName) =>
@@ -24,7 +25,11 @@ function NewBundleVersionDialog({ bundle, onClose }) {
   const [wrong, setWrong] = useState(null); // the dropped 3MF was sliced for another printer: why it can't be added
   const latest = useRef(null); // the 3MF dropped last: a slower look at an earlier one mustn't speak for it
   const current = bundle.versions[0]?.v || 0;
-  const printerName = printers.find((p) => p.id === bundle.printerId)?.name;
+  const printer = printers.find((p) => p.id === bundle.printerId);
+  const printerName = printer?.name;
+  // which of the printer's sub printers it goes to: guessed from the file's preset once it has been read
+  const [preset, setPreset] = useState({ file: null, name: null, read: false });
+  const sub = useSubPrinterPick(printer, preset.name, `${threemf?.name}|${preset.name}`);
 
   // Said as soon as the 3MF is dropped, not after it has been uploaded. The printer's name now, or any profile an
   // earlier version was sliced under (it may have been renamed since), will do. If it can't be read here, the
@@ -34,10 +39,12 @@ function NewBundleVersionDialog({ bundle, onClose }) {
     latest.current = file;
     setWrong(null);
     setErrorMsg(null);
+    setPreset({ file, name: null, read: false });
     if (!file || !printerName) return;
     try {
-      const { printerProfileName } = await inspectThreemf(file);
+      const { printerProfileName, printerPresetName } = await inspectThreemf(file);
       if (latest.current !== file) return;
+      setPreset({ file, name: printerPresetName, read: true });
       const known = new Set([printerName, ...bundle.versions.map((v) => v.profile).filter(Boolean)]);
       if (printerProfileName && !known.has(printerProfileName)) setWrong(wrongPrinter("3MF", printerProfileName, printerName));
     } catch {
@@ -49,9 +56,11 @@ function NewBundleVersionDialog({ bundle, onClose }) {
     setErrorMsg(null);
     if (!threemf) return setErrorMsg("Drop the newer .3mf file first.");
     if (wrong) return setErrorMsg(wrong);
+    if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new sub printer a name.");
     setSubmitting(true);
     try {
-      await addBundleVersion({ bundleId: bundle.id, threemf, gcode });
+      // until the file has been read, Farmhand's own guess on the server (nothing sent)
+      await addBundleVersion({ bundleId: bundle.id, threemf, gcode, subPrinter: preset.read ? subPrinterFields(sub.pick) : {} });
       await refresh();
       onClose();
     } catch (e) {
@@ -70,6 +79,9 @@ function NewBundleVersionDialog({ bundle, onClose }) {
       </div>
       <Dropzone label="Drop the newer .3mf file here" file={threemf} onFile={dropThreemf} accept=".3mf" />
       <Dropzone label="Drop the matching .gcode or .bgcode file here (optional)" file={gcode} onFile={setGcode} accept=".gcode,.bgcode" />
+      {preset.read && !wrong && (
+        <SubPrinterChoice printer={printer} presetName={preset.name} pick={sub.pick} guess={sub.guess} onChange={sub.setPick} />
+      )}
       <ModalActions onClose={onClose} onSubmit={handleSubmit} actionLabel="Add new version" submitting={submitting} errorMsg={errorMsg || wrong} />
     </>
   );

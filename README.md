@@ -296,8 +296,11 @@ notes, or a sub printer), and its **print history**.
 
 **Sub printers.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its
 printer presets under it, for example a 0.4 and a 0.6 nozzle. Farmhand calls those presets the printer's **sub
-printers**. Each 3MF says which one it was sliced with, so uploading it adds that sub printer if it's new, and each
-3MF version shows its sub printer under its note. 3MFs uploaded before this are linked once when Farmhand starts.
+printers**. Each 3MF says which one it was sliced with. When you upload one (a new 3MF or a new version), the
+**Sub printer** box shows Farmhand's guess: the sub printer that preset's 3MFs went to before, else the one called
+that, else a new one named after it. Change it to another of the printer's sub printers, or **Create a new sub
+printer…** with any name; Farmhand remembers the choice, so the next 3MF with that preset is guessed to go there
+too (renaming a sub printer does the same for its old name). Each 3MF version shows its sub printer under its note. 3MFs uploaded before this are linked once when Farmhand starts.
 On the printer page, **Sub printers** lists them with how many 3MF files use each: click that count to show only
 those 3MF files. **Add sub printer** adds one by hand, the pencil renames one (its 3MF files stay linked), and the bin
 removes one (its 3MF files stay, with no sub printer). They're kept in the settings copy on the NAS too.

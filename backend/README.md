@@ -135,7 +135,7 @@ Postgres instance running.
 | PUT | `/printers/{id}/notes` | Save the printer's notes. Send the `base_revision` the text was based on; if someone saved since, answers **409** with their current notes and changes nothing (same rules as a model's notes, shared code in `app/notes.py`) |
 | GET | `/printers/{id}/bundles` | 3MF bundles locked to a printer |
 | POST | `/printers/{id}/sub-printers` | Add a sub printer (one of the printer's presets in PrusaSlicer) by hand: `{name}`. **409** if it already has one by that name. Sub printers are also added on their own when a 3MF sliced with a new preset (`printer_settings_id`) is uploaded, and each 3MF version says which one it was sliced with (`sub_printer_id`, `sub_printer_name`). Answers the printer, whose `sub_printers` lists them |
-| PATCH | `/printers/{id}/sub-printers/{sub_id}` | Rename a sub printer: `{name}`. Its 3MFs stay linked. **409** if another of the printer's has that name |
+| PATCH | `/printers/{id}/sub-printers/{sub_id}` | Rename a sub printer: `{name}`. Its 3MFs stay linked, and its old name is kept in its `aliases` (3MFs sliced with that preset still go to it). **409** if another of the printer's has that name |
 | DELETE | `/printers/{id}/sub-printers/{sub_id}?confirm=true` | Remove a sub printer and the parts written down for it. Its 3MFs stay, with no sub printer |
 | GET | `/printers/{id}/sub-printers/{sub_id}/parts` | The parts fitted to a sub printer (its Printer parts page), in the order added: `[{id, part, make, model, installed_on, note}]` |
 | POST | `/printers/{id}/sub-printers/{sub_id}/parts` | Write down a part: `{part, make?, model?, installed_on? (YYYY-MM-DD), note?}`. Answers the list as it now stands |
@@ -158,9 +158,9 @@ Postgres instance running.
 | GET | `/settings/storage/browse?path=` | Sub-folders for the folder picker, confined to the browse root |
 | POST | `/settings/storage/migrate` | Move files from previous locations into the chosen ones (verified copy, then delete the original) |
 | GET | `/bundles` | Every bundle (powers cross-file compare) |
-| POST | `/bundles/inspect` | Read a 3MF without storing it: which printer it was sliced for, and whether that printer is registered |
-| POST | `/bundles` | Upload a new 3MF bundle; gcode is optional, printer_id optional (auto-detected from the file if omitted) |
-| POST | `/bundles/{id}/versions` | "Update" — new version within an existing bundle |
+| POST | `/bundles/inspect` | Read a 3MF without storing it: which printer it was sliced for, whether that printer is registered, and its printer preset (`printer_preset_name`) |
+| POST | `/bundles` | Upload a new 3MF bundle; gcode is optional, printer_id optional (auto-detected from the file if omitted). Which sub printer it goes to: `sub_printer_id` (one of the printer's) or `new_sub_printer_name` (a new one, or the printer's one by that name); neither = the one its preset goes to (a sub printer with that preset in its `aliases`, else the one called that, else a new one). A preset put with a sub printer by another name is added to its `aliases`. **422** for another printer's sub printer |
+| POST | `/bundles/{id}/versions` | "Update" — new version within an existing bundle; takes the same `sub_printer_id` / `new_sub_printer_name` |
 | GET | `/bundles/versions/{id}` | Full detail for one version, including parsed settings (what the compare view fetches) |
 | GET | `/bundles/versions/{id}/thumbnail` | The 3MF's own embedded thumbnail (survives pruning) |
 | DELETE | `/bundles/versions/{id}?confirm=true` | Permanently delete one 3MF version (files + settings). Deleting a bundle's last version deletes the bundle |

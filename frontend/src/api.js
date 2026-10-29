@@ -208,13 +208,21 @@ export const createPrinter = ({
 export const createSourceModel = ({ name, file }) =>
   request("/source-models", formBody("POST", { name, file_type: fileTypeFor({ name, file }), file: file || undefined }));
 
-export const createBundle = ({ sourceModelIds, threemf, gcode, printerId }) =>
+// Which sub printer a new 3MF version goes to: { subPrinterId } (one of the printer's) or { newSubPrinterName } (a new
+// one); neither = the one its printer preset goes to.
+const subPrinterFields = ({ subPrinterId, newSubPrinterName }) => ({
+  sub_printer_id: subPrinterId != null ? String(subPrinterId) : undefined,
+  new_sub_printer_name: newSubPrinterName || undefined,
+});
+
+export const createBundle = ({ sourceModelIds, threemf, gcode, printerId, subPrinter = {} }) =>
   request("/bundles", formBody("POST", {
     source_model_ids: JSON.stringify(sourceModelIds),
     threemf,
     gcode: gcode || undefined, // optional
     // When omitted, the backend reads the printer from the 3MF's own profile.
     printer_id: printerId != null ? String(printerId) : undefined,
+    ...subPrinterFields(subPrinter),
   }));
 
 // Ask the backend what a 3MF says about itself (which printer it was sliced
@@ -223,6 +231,7 @@ export const inspectThreemf = async (threemf) => {
   const r = await request("/bundles/inspect", formBody("POST", { threemf }));
   return {
     printerProfileName: r.printer_profile_name,
+    printerPresetName: r.printer_preset_name || null, // the printer preset (sub printer) it was sliced with
     slicer: r.slicer_display_name,
     matchedPrinter: r.matched_printer ? normalizePrinter(r.matched_printer) : null,
   };
@@ -233,8 +242,8 @@ export const uploadGcode = (versionId, gcode) => request(`/bundles/versions/${ve
 // Sends a version's G-code to its 3MF's printer and starts it: { sent, printer }. 409 while the printer is busy.
 export const sendGcode = (versionId) => request(`/bundles/versions/${versionId}/print`, { method: "POST" });
 
-export const addBundleVersion = ({ bundleId, threemf, gcode }) =>
-  request(`/bundles/${bundleId}/versions`, formBody("POST", { threemf, gcode: gcode || undefined })); // the G-code is optional
+export const addBundleVersion = ({ bundleId, threemf, gcode, subPrinter = {} }) =>
+  request(`/bundles/${bundleId}/versions`, formBody("POST", { threemf, gcode: gcode || undefined, ...subPrinterFields(subPrinter) })); // the G-code is optional
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
 // connectionType: "moonraker" | "prusalink". prusalinkUrl: blank = http://<IP>. prusalinkPassword works like the API key.

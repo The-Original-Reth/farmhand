@@ -32,6 +32,31 @@ class SubPrinter(Base):
     parts: Mapped[list["SubPrinterPart"]] = relationship(
         back_populates="sub_printer", cascade="all, delete-orphan", order_by="SubPrinterPart.id"
     )
+    # Other preset names that mean this sub printer (see SubPrinterAlias). They go with it.
+    alias_rows: Mapped[list["SubPrinterAlias"]] = relationship(
+        back_populates="sub_printer", cascade="all, delete-orphan", order_by="SubPrinterAlias.name"
+    )
+
+    @property
+    def aliases(self) -> list[str]:
+        return [a.name for a in self.alias_rows]
+
+
+class SubPrinterAlias(Base):
+    """
+    A preset name a 3MF can carry that means this sub printer, though it isn't called that: its name before it was
+    renamed, or a preset whose 3MFs were assigned to it by hand on upload. Farmhand's guess for the next 3MF with that
+    preset is this sub printer.
+    """
+
+    __tablename__ = "sub_printer_alias"
+    __table_args__ = (UniqueConstraint("sub_printer_id", "name", name="uq_sub_printer_alias"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sub_printer_id: Mapped[int] = mapped_column(ForeignKey("sub_printer.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    sub_printer: Mapped[SubPrinter] = relationship(back_populates="alias_rows")
 
 
 class SubPrinterPart(Base):

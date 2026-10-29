@@ -1,7 +1,7 @@
 // The mockup's backend: a Vite plugin that answers the web UI's API calls under /mock-api from the sample farm in
 // data.js, in exactly the shapes the real FastAPI backend uses. Changes (notes, stars, maintenance...) are kept in
-// memory until the mockup restarts. Things that need real files or hardware (uploads, scanning, NAS mounting) answer
-// with a plain "not in the mockup" message. Only loaded by `npm run mock` (see vite.config.js).
+// memory until the mockup restarts. Things that need real files or hardware (STL uploads, scanning, NAS mounting)
+// answer with a plain "not in the mockup" message; a 3MF upload is read from its file name (see readThreemf). Only loaded by `npm run mock` (see vite.config.js).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildFarm, DAY, DEFAULT_PARTS, defaultParts, FIXTURES, HOUR, iso, jobTotals } from "./data.js";
@@ -75,7 +75,7 @@ export function mockApi() {
     connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
     has_prusalink_password: !!p.prusalink?.hasPassword, camera_address: p.cameraAddress || null,
-    sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name }) => ({ id, name })),
+    sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, aliases }) => ({ id, name, aliases: aliases || [] })),
   });
   const modelOut = (m) => ({
     id: m.id, name: m.name, file_type: m.file_type, created_at: m.created_at, notes: m.notes, notes_revision: m.notes_revision,
@@ -159,6 +159,36 @@ export function mockApi() {
     if (!s) throw new HttpError(404, `No sub printer with id ${subId} on this printer`);
     return s;
   };
+  const newSubPrinter = (p, name) => {
+    const s = { id: farm.nextIds.subPrinter++, printer_id: p.id, name, aliases: [], parts: defaultParts(() => farm.nextIds.part++) };
+    farm.subPrinters.push(s);
+    return s;
+  };
+  // from now on a 3MF with this preset goes to s (and no longer to another of the printer's that had it)
+  const remember = (s, preset) => {
+    if (!preset || preset === s.name || (s.aliases || []).includes(preset)) return;
+    for (const o of farm.subPrinters) if (o.printer_id === s.printer_id) o.aliases = (o.aliases || []).filter((a) => a !== preset);
+    s.aliases = [...(s.aliases || []), preset];
+  };
+  // the sub printer a preset goes to: one known by that name, else the one called that
+  const knownAs = (p, preset) =>
+    farm.subPrinters.find((s) => s.printer_id === p.id && (s.aliases || []).includes(preset)) ||
+    farm.subPrinters.find((s) => s.printer_id === p.id && s.name === preset);
+  // which sub printer a new 3MF version goes to: picked on upload, else the one its preset goes to (as the real API)
+  const subPrinterFor = (p, preset, fields = {}) => {
+    let s = null;
+    if (fields.sub_printer_id) {
+      s = farm.subPrinters.find((x) => x.id === Number(fields.sub_printer_id) && x.printer_id === p.id);
+      if (!s) throw new HttpError(422, `That sub printer isn't one of ${p.name}'s`);
+    } else if (fields.new_sub_printer_name?.trim()) {
+      const name = fields.new_sub_printer_name.trim().slice(0, 120);
+      s = farm.subPrinters.find((x) => x.printer_id === p.id && x.name === name) || newSubPrinter(p, name);
+    } else if (preset) {
+      s = knownAs(p, preset) || newSubPrinter(p, preset);
+    }
+    if (s && preset) remember(s, preset);
+    return s;
+  };
   const nameTaken = (p, name, except) => {
     if (farm.subPrinters.some((s) => s.printer_id === p.id && s.name === name && s !== except)) {
       throw new HttpError(409, `${p.name} already has a sub printer named '${name}'`);
@@ -168,7 +198,7 @@ export function mockApi() {
     const p = printer(id);
     const name = subPrinterName(body);
     nameTaken(p, name);
-    farm.subPrinters.push({ id: farm.nextIds.subPrinter++, printer_id: p.id, name, parts: defaultParts(() => farm.nextIds.part++) });
+    newSubPrinter(p, name);
     return [201, printerOut(p)];
   });
   on("PATCH", "/printers/:id/sub-printers/:subId", ({ id, subId }, body) => {
@@ -176,7 +206,10 @@ export function mockApi() {
     const s = subPrinterOf(p, subId);
     const name = subPrinterName(body);
     nameTaken(p, name, s);
+    const old = s.name;
     s.name = name;
+    s.aliases = (s.aliases || []).filter((a) => a !== name); // its name now, not a name it was known by
+    remember(s, old);
     return printerOut(p);
   });
   on("DELETE", "/printers/:id/sub-printers/:subId", ({ id, subId }, _b, q) => {
@@ -290,9 +323,62 @@ export function mockApi() {
 
   on("GET", "/bundles", () => farm.bundles.map(bundleOut));
   on("GET", "/bundles/:id", ({ id }) => bundleOut(bundle(id)));
-  on("POST", "/bundles", () => { throw notInMockup("Uploading 3MF files"); });
-  on("POST", "/bundles/inspect", () => { throw notInMockup("Reading an uploaded 3MF"); });
-  on("POST", "/bundles/:id/versions", () => { throw notInMockup("Uploading 3MF files"); });
+  // The mockup can't open a 3MF: it reads the printer from the file's name ("VT_1190_-_…" is the VT 1190) and takes
+  // the preset and settings that printer's 3MFs mostly use. Uploads are kept as versions with those settings.
+  const squash = (t) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const readThreemf = (body) => {
+    const file = (body.files || []).find((f) => /\.3mf$/i.test(f));
+    if (!file) throw new HttpError(422, "Drop a .3mf file");
+    const p = [...farm.printers].sort((a, b) => b.name.length - a.name.length).find((x) => squash(file).startsWith(squash(x.name)));
+    const versions = p ? farm.bundles.filter((b) => b.printer_id === p.id).flatMap((b) => b.versions) : [];
+    const count = {};
+    for (const v of versions) {
+      const preset = farm.versionSettings[v.id]?.printer_settings_id;
+      if (preset) count[preset] = (count[preset] || 0) + 1;
+    }
+    const preset = Object.keys(count).sort((a, b) => count[b] - count[a])[0] || null;
+    const like = [...versions].reverse().find((v) => farm.versionSettings[v.id]?.printer_settings_id === preset) || versions[0];
+    return { file, printer: p, preset, like };
+  };
+  const addVersion = (b, read, body, number) => {
+    const p = printer(b.printer_id);
+    const sub = subPrinterFor(p, read.preset, body.fields);
+    const gcode = (body.files || []).find((f) => /\.(b?gcode)$/i.test(f));
+    const id = farm.nextIds.bundleVersion++;
+    farm.versionSettings[id] = { ...(read.like ? farm.versionSettings[read.like.id] : {}), ...(read.preset ? { printer_settings_id: read.preset } : {}) };
+    b.versions.unshift({
+      id, version: number, filename: number > 1 ? read.file.replace(/\.3mf$/i, ` ver ${number}.3mf`) : read.file, slicer_family: "prusaslicer",
+      slicer_display_name: read.like?.slicer_display_name || "PrusaSlicer 2.9.6", printer_profile_name: p.name, uploaded_at: iso(nowUnix()),
+      monument: number === 1, monument_note: number === 1 ? "Initial upload" : null, full_files_retained: true,
+      thumbnail_path: read.like?.thumbnail_path || null, thumb: read.like?.thumb || null,
+      gcode_name: gcode ? read.file.replace(/\.3mf$/i, gcode.slice(gcode.lastIndexOf(".")).toLowerCase()) : null, sub_printer_id: sub ? sub.id : null,
+    });
+  };
+  on("POST", "/bundles/inspect", (_, body) => {
+    const read = readThreemf(body);
+    return {
+      printer_profile_name: read.printer ? read.printer.name : null, printer_preset_name: read.preset,
+      slicer_display_name: read.like?.slicer_display_name || "PrusaSlicer 2.9.6", matched_printer: read.printer ? printerOut(read.printer) : null,
+    };
+  });
+  on("POST", "/bundles", (_, body) => {
+    const read = readThreemf(body);
+    const f = body.fields || {};
+    const p = f.printer_id ? printer(f.printer_id) : read.printer;
+    if (!p) throw new HttpError(422, "Pick which printer this file belongs to");
+    const b = {
+      id: Math.max(0, ...farm.bundles.map((x) => x.id)) + 1, printer_id: p.id, created_at: iso(nowUnix()),
+      source_model_ids: JSON.parse(f.source_model_ids || "[]"), versions: [], starred_version_id: null, notes: "", notes_revision: 0, notes_updated_at: null,
+    };
+    addVersion(b, { ...read, printer: p }, body, 1);
+    farm.bundles.push(b);
+    return [201, bundleOut(b)];
+  });
+  on("POST", "/bundles/:id/versions", ({ id }, body) => {
+    const b = bundle(id);
+    addVersion(b, readThreemf(body), body, (b.versions[0]?.version || 0) + 1);
+    return [201, bundleOut(b)];
+  });
   on("PUT", "/bundles/:id/notes", ({ id }, body) => {
     const b = bundle(id);
     saveNotes(b, body);
@@ -729,8 +815,13 @@ export function mockApi() {
           const raw = Buffer.concat(chunks).toString("utf-8");
           let body = {};
           if (raw && (req.headers["content-type"] || "").includes("application/json")) body = JSON.parse(raw);
-          // an upload: only the names of the files sent are kept (the mockup doesn't store files)
-          if ((req.headers["content-type"] || "").includes("multipart/form-data")) body = { files: [...raw.matchAll(/filename="([^"]*)"/g)].map((m) => m[1]) };
+          // an upload: only the names of the files sent, and its text fields, are kept (the mockup doesn't store files)
+          if ((req.headers["content-type"] || "").includes("multipart/form-data")) {
+            body = {
+              files: [...raw.matchAll(/filename="([^"]*)"/g)].map((m) => m[1]),
+              fields: Object.fromEntries([...raw.matchAll(/name="([^"]+)"\r\n\r\n([^\r]*)\r\n/g)].map((m) => [m[1], m[2]])),
+            };
+          }
           for (const r of routes) {
             if (r.method !== req.method) continue;
             const m = url.pathname.match(r.re);
