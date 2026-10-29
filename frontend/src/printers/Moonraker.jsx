@@ -4,7 +4,7 @@ import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { errorText, getMoonrakerStatus, getPrintStats, syncPrinterHistory } from "../api.js";
 
-import { StatTile } from "../components/common/ui.jsx";
+import { SectionToggle, StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, fmtMetres, fmtWhen } from "../lib/format.js";
 import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
@@ -85,8 +85,8 @@ export function useMoonraker(printerId, key, onSynced) {
   return { status, stats, syncing, syncError, syncTick, sync: () => sync() };
 }
 
-// Connection + the printer's own lifetime statistics, with "Open Mainsail" and "Sync now"
-export function MoonrakerCard({ printer, mr }) {
+// Connection + the printer's own lifetime statistics, with "Open Mainsail" and "Sync now". Folds away (open/onToggle).
+export function MoonrakerCard({ printer, mr, open = true, onToggle }) {
   const { status, stats, syncing, syncError } = mr;
   const totals = stats?.totals;
   const archive = stats?.archive;
@@ -107,8 +107,11 @@ export function MoonrakerCard({ printer, mr }) {
 
   return (
     <div data-testid="moonraker-card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div style={uiText(13, c.textFaint)}>Connection and statistics</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+        <SectionToggle open={open} onToggle={onToggle} controlsId="moonraker-card-body" testId="toggle-connection" indent={20}>
+          Connection and statistics
+        </SectionToggle>
+        {open && (
         <div style={{ display: "flex", gap: 8 }}>
           {printer.mainsailUrl && (
             <a data-testid="open-mainsail" href={printer.mainsailUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.mainsailUrl}>
@@ -127,8 +130,10 @@ export function MoonrakerCard({ printer, mr }) {
             {syncing ? "Syncing…" : "Sync now"}
           </button>
         </div>
+        )}
       </div>
-      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+      {open && (
+      <div id="moonraker-card-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
         <ConnectionLine testId="moonraker-status" dot={dot} line={line} reachable={status?.reachable} url={printer.moonrakerUrl} />
 
         {status?.print && (
@@ -159,6 +164,7 @@ export function MoonrakerCard({ printer, mr }) {
           <ArchiveSummary archive={archive} failedLabel="failed" />
         </div>
       </div>
+      )}
     </div>
   );
 }

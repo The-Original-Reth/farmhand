@@ -181,7 +181,8 @@ export function StatTile({ label, value, hint }) {
 }
 
 // A section heading that folds the section away or opens it again
-export function SectionToggle({ open, onToggle, controlsId, testId, children }) {
+// indent: moves it right (px), for a section inside another
+export function SectionToggle({ open, onToggle, controlsId, testId, indent = 0, children }) {
   return (
     <button
       data-testid={testId}
@@ -189,7 +190,7 @@ export function SectionToggle({ open, onToggle, controlsId, testId, children }) 
       aria-controls={controlsId}
       onClick={onToggle}
       title={open ? "Fold away" : "Show"}
-      style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", ...ui, fontSize: fs(13), color: open ? c.textFaint : c.textMuted, textAlign: "left" }}
+      style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, marginLeft: indent, cursor: "pointer", ...ui, fontSize: fs(13), color: open ? c.textFaint : c.textMuted, textAlign: "left" }}
     >
       <ChevronRight size={14} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s ease", flexShrink: 0 }} />
       {children}

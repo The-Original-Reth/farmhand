@@ -5,7 +5,7 @@ import { headerButton, uiText } from "../styles.js";
 import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
-import { StatTile } from "../components/common/ui.jsx";
+import { SectionToggle, StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, formatBytes } from "../lib/format.js";
 import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
@@ -75,7 +75,7 @@ export function usePrusaLink(printerId, key, onChanged) {
 const fmtTemp = (now, target) => (now == null ? "—" : `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ""}`);
 
 // Live status (state, temperatures, the print running), Farmhand's statistics for it, "Open PrusaLink" and "Send a print"
-export function PrusaLinkCard({ printer, pl }) {
+export function PrusaLinkCard({ printer, pl, open = true, onToggle }) {
   const { status, stats } = pl;
   const [chosen, setChosen] = useState(null); // the file picked to send, waiting for the go-ahead
   const fileInput = useRef(null);
@@ -99,8 +99,11 @@ export function PrusaLinkCard({ printer, pl }) {
 
   return (
     <div data-testid="prusalink-card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div style={uiText(13, c.textFaint)}>Live status and statistics</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+        <SectionToggle open={open} onToggle={onToggle} controlsId="prusalink-card-body" testId="toggle-connection" indent={20}>
+          Live status and statistics
+        </SectionToggle>
+        {open && (
         <div style={{ display: "flex", gap: 8 }}>
           {printer.prusalinkUrl && (
             <a data-testid="open-prusalink" href={printer.prusalinkUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.prusalinkUrl}>
@@ -129,8 +132,10 @@ export function PrusaLinkCard({ printer, pl }) {
             Send a print
           </button>
         </div>
+        )}
       </div>
-      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+      {open && (
+      <div id="prusalink-card-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
         <ConnectionLine testId="prusalink-status" dot={dot} line={line} reachable={status?.reachable} url={printer.prusalinkUrl} />
 
         {job && (
@@ -159,6 +164,7 @@ export function PrusaLinkCard({ printer, pl }) {
           <ArchiveSummary archive={archive} failedLabel="failed or unknown" />
         </div>
       </div>
+      )}
 
       {chosen && (
         <ConfirmDialog

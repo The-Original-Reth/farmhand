@@ -289,8 +289,9 @@ The **Printers** list sorts by **Name**, **Type**, **Wired IP** or **Wireless IP
 again to reverse it (IPs sort as numbers; printers without that IP go last). The choice is remembered in this
 browser. Its **Mainsail** or **PrusaLink** button opens the printer's own page in a new tab. A printer with notes
 has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
-and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink**
-section, its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
+and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink** section
+(whose own parts, **Connection and statistics**, **Energy** and **Maintenance**, fold away too: they start open, and a
+folded Maintenance still shows how many are due), its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
 notes, or a sub printer), and its **print history**.
 
 **Sub printers.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its

@@ -3,7 +3,7 @@ import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, uiText } from "../styles.js";
 import { errorText, getEnergy } from "../api.js";
 
-import { StatTile } from "../components/common/ui.jsx";
+import { SectionToggle, StatTile } from "../components/common/ui.jsx";
 import { fmtKwh, fmtWhen } from "../lib/format.js";
 
 export const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
@@ -60,7 +60,8 @@ export function ShowAllPeriods({ count, by, onClick }) {
   );
 }
 
-export function EnergyPanel({ printer, syncTick }) {
+// Folds away (open/onToggle)
+export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [by, setBy] = useState("month");
@@ -87,9 +88,11 @@ export function EnergyPanel({ printer, syncTick }) {
 
   return (
     <div data-testid="energy-panel">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div style={uiText(13, c.textFaint)}>Energy</div>
-        {hasAny && (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+        <SectionToggle open={open} onToggle={onToggle} controlsId="energy-body" testId="toggle-energy" indent={20}>
+          Energy
+        </SectionToggle>
+        {open && hasAny && (
           <PeriodButtons
             testId="energy-by"
             by={by}
@@ -100,7 +103,8 @@ export function EnergyPanel({ printer, syncTick }) {
           />
         )}
       </div>
-      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+      {open && (
+      <div id="energy-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
         {error ? (
           <div style={uiText(13, c.amber)}>Couldn't load energy: {error}</div>
         ) : !data ? (
@@ -170,6 +174,7 @@ export function EnergyPanel({ printer, syncTick }) {
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

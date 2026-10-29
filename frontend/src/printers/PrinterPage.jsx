@@ -36,13 +36,15 @@ function bundleMatches(bundle, models, words, subPrinters) {
   return words.every((w) => haystack.includes(w));
 }
 
-// Which parts of a printer page are folded away: { moonraker, threemf, history } (true = folded). The same on every
-// printer, remembered in this browser; all start folded until opened.
+// Which parts of a printer page are folded away: { moonraker, threemf, history, and inside Moonraker/PrusaLink:
+// connection, energy, maintenance } (true = folded). The same on every printer, remembered in this browser. The page's
+// own sections start folded until opened; the ones inside Moonraker start open.
 // (The key changed when "folded" became the start, so sections left open under the old default start folded again.)
 const PRINTER_SECTIONS_KEY = "farmhand.printerSections.v2";
+const OPEN_AT_START = new Set(["connection", "energy", "maintenance"]);
 function usePrinterSections() {
   const [folded, setFolded] = useState(() => readStoredObject(PRINTER_SECTIONS_KEY));
-  const isFolded = (state, name) => state[name] !== false; // folded unless opened
+  const isFolded = (state, name) => state[name] ?? !OPEN_AT_START.has(name);
   const toggle = (name) =>
     setFolded((prev) => {
       const next = { ...prev, [name]: !isFolded(prev, name) };
@@ -71,6 +73,7 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
     refreshPrinters,
   );
   const link = isPrusaLink ? pl : mr; // for what both show: the connection dot, the history reloading
+  const fold = (name) => ({ open: sections.isOpen(name), onToggle: () => sections.toggle(name) }); // a section inside it
 
   return (
     <>
@@ -94,14 +97,14 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
         <div id="moonraker-body" style={{ display: sections.isOpen("moonraker") ? "flex" : "none", flexDirection: "column", gap: 28 }}>
           {isPrusaLink ? (
             <>
-              <PrusaLinkCard printer={printer} pl={pl} />
-              <MaintenanceSection printer={printer} reachable onDueCount={setMaintenanceDue} />
+              <PrusaLinkCard printer={printer} pl={pl} {...fold("connection")} />
+              <MaintenanceSection printer={printer} reachable onDueCount={setMaintenanceDue} {...fold("maintenance")} />
             </>
           ) : (
             <>
-              <MoonrakerCard printer={printer} mr={mr} />
-              <EnergyPanel printer={printer} syncTick={mr.syncTick} />
-              <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} />
+              <MoonrakerCard printer={printer} mr={mr} {...fold("connection")} />
+              <EnergyPanel printer={printer} syncTick={mr.syncTick} {...fold("energy")} />
+              <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} {...fold("maintenance")} />
             </>
           )}
         </div>

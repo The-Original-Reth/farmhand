@@ -11,7 +11,7 @@ import {
 } from "../api.js";
 import { headerButton, monoText, uiText } from "../styles.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
-import { Badge, TrashButton } from "../components/common/ui.jsx";
+import { Badge, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { fmtUnix } from "../lib/format.js";
 
 import { MaintenanceForm, PerformMaintenanceForm } from "./MaintenanceForm.jsx";
@@ -68,7 +68,8 @@ function MaintenanceRow({ entry, onDone, onEdit, onDelete }) {
 
 // onDueCount(n): told how many reminders are due (the 1500-hour service included), for the folded group's heading.
 // A PrusaLink printer's maintenance is kept in Farmhand, so it's always there.
-export function MaintenanceSection({ printer, reachable, onDueCount }) {
+// Folds away (open/onToggle); folded, it still says how many are due.
+export function MaintenanceSection({ printer, reachable, onDueCount, open: unfolded = true, onToggle }) {
   const inFarmhand = printer.connectionType === "prusalink";
   const [data, setData] = useState(null); // { entries, totals }
   const [error, setError] = useState(null);
@@ -102,11 +103,14 @@ export function MaintenanceSection({ printer, reachable, onDueCount }) {
 
   return (
     <div data-testid="maintenance-section">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textFaint }}>
-          Maintenance
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: unfolded ? 10 : 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <SectionToggle open={unfolded} onToggle={onToggle} controlsId="maintenance-body" testId="toggle-maintenance" indent={20}>
+            Maintenance
+          </SectionToggle>
           {dueCount > 0 && <Badge tone="danger">{dueCount} due</Badge>}
         </div>
+        {unfolded && (
         <button
           data-testid="maintenance-add"
           onClick={() => setDialog({ kind: "add" })}
@@ -116,8 +120,10 @@ export function MaintenanceSection({ printer, reachable, onDueCount }) {
           <Wrench size={12} />
           Add maintenance
         </button>
+        )}
       </div>
-      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel }}>
+      {unfolded && (
+      <div id="maintenance-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel }}>
         <ServiceReminder printer={printer} />
         <div style={{ borderTop: `1px solid ${c.border}` }}>
         {!reachable ? (
@@ -156,6 +162,7 @@ export function MaintenanceSection({ printer, reachable, onDueCount }) {
         )}
         </div>
       </div>
+      )}
 
       {dialog?.kind === "add" && (
         <Modal title="Add maintenance" onClose={close} width={480}>
