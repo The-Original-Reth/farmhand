@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import records_store
 from ..timeutil import as_utc, utc_iso
+from . import sub_printer_service
 from .printer_service import ensure_connection
 from ..models import (
     Bundle,
@@ -94,6 +95,7 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
             },
             # maintenance Farmhand keeps itself (a PrusaLink printer's); a Moonraker printer's stays in Moonraker
             "maintenance": [{"key": r.key, "entry": r.entry} for r in sorted(p.maintenance_rows, key=lambda r: r.id)],
+            "sub_printers": sub_printer_service.record(p),  # its printer presets in the slicer, and their parts
             "notes": p.notes,
             "service": None if svc is None else {
                 "enabled": svc.enabled, "interval_hours": svc.interval_hours, "start_printtime": svc.start_printtime,
@@ -223,6 +225,8 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             conn.totals = rec["moonraker_totals"]
             conn.auxiliary_totals = rec.get("auxiliary_totals") if isinstance(rec.get("auxiliary_totals"), list) else None
             filled = True
+
+        filled |= sub_printer_service.restore(db, printer, rec.get("sub_printers"))
 
         keys = {r.key for r in printer.maintenance_rows}
         for m in rec.get("maintenance") or []:

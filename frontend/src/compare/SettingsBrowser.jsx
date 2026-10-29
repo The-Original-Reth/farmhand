@@ -94,7 +94,7 @@ function SettingsBrowser({ bundle, ver, settings }) {
   return (
     <div>
       <div style={uiText(12, c.textFaint, { marginBottom: 12 })}>
-        {bundle.name} · v{ver.v} · {Object.keys(settings).length} settings
+        {ver.filename || bundle.name} · v{ver.v} · {Object.keys(settings).length} settings
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 12, borderBottom: `1px solid ${c.border}`, paddingBottom: 12 }}>

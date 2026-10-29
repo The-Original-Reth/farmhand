@@ -23,6 +23,9 @@ class BundleVersionOut(BaseModel):
     full_files_retained: bool
     thumbnail_path: str | None
     gcode_name: str | None = None  # its G-code ("Goldfish ver 2.gcode"); null when it has none
+    # the sub printer (the printer's preset in the slicer) it was sliced with; null when it names none
+    sub_printer_id: int | None = None
+    sub_printer_name: str | None = None
     # settings intentionally omitted from the list view (can be large) —
     # fetch BundleVersionDetailOut for a single version to get it.
 

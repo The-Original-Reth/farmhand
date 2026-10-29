@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ...errors import NotFound
 from ... import storage
-from .. import printer_service
+from .. import printer_service, sub_printer_service
 from ...names import with_version
 from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
 from ...parsers import parse_3mf
@@ -265,6 +265,8 @@ def _store_version(
         )
         db.add(version)
         db.flush()
+        # the printer preset it was sliced with: a sub printer of the 3MF's printer, added if it's new
+        sub_printer_service.link(db, version, bundle.printer, parsed.printer_preset_name)
         return version
     except BaseException:
         storage.delete_files(written)

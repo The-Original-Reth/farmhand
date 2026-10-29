@@ -70,6 +70,7 @@ export const normalizePrinter = (p) => ({
   prusalinkUsername: p.prusalink_username || "maker",
   hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself never comes back
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
+  subPrinters: p.sub_printers || [], // its printer presets in the slicer: [{ id, name }], A to Z
   // The 1500-hour service reminder Farmhand keeps: { state: waiting | off | ok | due, enabled, interval_hours,
   // hours_since, started_at, last_done: { done_at, hours, note } | null }
   service: p.service || {
@@ -118,6 +119,8 @@ export const normalizeBundle = (b) => {
     uploaded: v.uploaded_at,
     thumb: v.thumbnail_path ? `${API_BASE}/bundles/versions/${v.id}/thumbnail?r=${Date.parse(v.uploaded_at) || 0}` : null,
     gcodeName: v.gcode_name || null, // its G-code ("Goldfish ver 2.gcode"), if it has one
+    subPrinterId: v.sub_printer_id ?? null, // the sub printer (printer preset) it was sliced with, if it names one
+    subPrinter: v.sub_printer_name || null,
   })).sort((x, y) => y.v - x.v); // newest on top, whatever order the server used
   const latest = versions[0];
   return {
@@ -258,6 +261,32 @@ export const updatePrinter = (
     ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
     ...(cameraAddress !== undefined ? { camera_address: cameraAddress || null } : {}),
   }));
+
+// ---- a printer's sub printers: its printer presets in the slicer (found from its 3MFs, or added here). Each
+// resolves to the whole printer as it now stands. 409 when the printer already has one by that name. ----
+export const addSubPrinter = (printerId, name) => request(`/printers/${printerId}/sub-printers`, jsonBody("POST", { name }));
+export const renameSubPrinter = (printerId, subPrinterId, name) =>
+  request(`/printers/${printerId}/sub-printers/${subPrinterId}`, jsonBody("PATCH", { name }));
+// its 3MFs stay, with no sub printer; its parts go
+export const deleteSubPrinter = (printerId, subPrinterId) => del(`/printers/${printerId}/sub-printers/${subPrinterId}`);
+
+// A sub printer's parts (its Printer parts page): [{ id, part, make, model, installedOn: "2026-08-14" | null, note }].
+// Each change resolves to the whole list as it now stands.
+const normalizePart = (p) => ({
+  id: p.id, part: p.part, make: p.make || "", model: p.model || "", installedOn: p.installed_on || null, note: p.note || "",
+  inName: !!p.in_name, // ticked "Add to name"
+});
+const partBody = ({ part, make, model, installedOn, note, inName }) => ({
+  part, make: make || null, model: model || null, installed_on: installedOn || null, note: note || null, in_name: !!inName,
+});
+const partsPath = (printerId, subPrinterId) => `/printers/${printerId}/sub-printers/${subPrinterId}/parts`;
+const partsList = async (call) => (await call).map(normalizePart);
+export const getSubPrinterParts = (printerId, subPrinterId) => partsList(request(partsPath(printerId, subPrinterId)));
+export const addSubPrinterPart = (printerId, subPrinterId, part) =>
+  partsList(request(partsPath(printerId, subPrinterId), jsonBody("POST", partBody(part))));
+export const updateSubPrinterPart = (printerId, subPrinterId, partId, part) =>
+  partsList(request(`${partsPath(printerId, subPrinterId)}/${partId}`, jsonBody("PUT", partBody(part))));
+export const deleteSubPrinterPart = (printerId, subPrinterId, partId) => partsList(del(`${partsPath(printerId, subPrinterId)}/${partId}`));
 
 // ---- a PrusaLink printer (Prusa Core One...): live status and sending it a print. Its history, statistics, service
 // and maintenance use the same calls as a Moonraker printer's (below); its maintenance is kept in Farmhand. ----

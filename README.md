@@ -291,7 +291,32 @@ browser. Its **Mainsail** or **PrusaLink** button opens the printer's own page i
 has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
 and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink**
 section, its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
-notes), and its **print history**.
+notes, or a sub printer), and its **print history**.
+
+**Sub printers.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its
+printer presets under it, for example a 0.4 and a 0.6 nozzle. Farmhand calls those presets the printer's **sub
+printers**. Each 3MF says which one it was sliced with, so uploading it adds that sub printer if it's new, and each
+3MF version shows its sub printer under its note. 3MFs uploaded before this are linked once when Farmhand starts.
+On the printer page, **Sub printers** lists them with how many 3MF files use each: click that count to show only
+those 3MF files. **Add sub printer** adds one by hand, the pencil renames one (its 3MF files stay linked), and the bin
+removes one (its 3MF files stay, with no sub printer). They're kept in the settings copy on the NAS too.
+
+Click a sub printer's **name** to open its **Printer Settings**, laid out like PrusaSlicer BOSS edition's Printer
+Settings tab (General, Custom G-code, Machine limits, Extruder 1…, Notes, Dependencies). They're read from the newest
+3MF sliced with it, or another picked under **Settings from**, and can't be changed here. The last page, **Printer
+parts**, is Farmhand's own: write down the parts fitted to that sub printer (the part, its make, its model, when it was
+installed, a note), and change or remove them later. Every new sub printer starts with **Toolhead, Hotend, Nozzle,
+Extruder, Gantry** and **XY motor** listed, ready to fill in; add others with **Add part**. The default parts'
+names can't be changed (their make, model, date and note can, and they can be removed); a part you added can be
+renamed.
+
+Each part has an **Add to name** tick box (all the default parts but the XY motor start ticked). The ticked parts'
+models make a name: the printer's name without spaces, then each model in list order, with spaces turned into
+underscores, for example `VT1190_Stealthburner_Rapido_UHF_0.5_WC_Galileo_2`. A part with no model yet is left out,
+and the Gantry is only added when its make or model says AWD, 4WD or quad. The page shows the name as it stands. When
+you close the Printer Settings window after changing its parts, Farmhand asks whether to rename the sub printer to
+it (only if it's different). Rename the preset in PrusaSlicer to match, or 3MFs sliced with the old name will add a
+sub printer by the old name again. Parts are kept in the settings copy on the NAS as well.
 
 **Connection.** In **Add printer** or **Edit**, choose **Mainsail (Moonraker / Klipper)** or **PrusaLink
 (Prusa Core One, MK4, XL…)**:

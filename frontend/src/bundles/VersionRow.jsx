@@ -6,14 +6,16 @@ import { bundle3mfUrl, deleteBundleVersion, deleteSourceModelVersion, sourceMode
 import { useData } from "../data.jsx";
 
 import { VersionStar } from "./VersionStar.jsx";
+import { subPrinterName } from "../printers/SubPrinters.jsx";
 import { CompareSelectButton } from "../compare/CompareTray.jsx";
 import { SettingsViewer } from "../compare/SettingsBrowser.jsx";
 import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialogs.jsx";
 import { Badge, DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
 
 export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compareSelection = [], onToggleCompare }) {
-  const { refresh } = useData();
+  const { refresh, printers } = useData();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const subPrinter = showFileStatus && bundle ? subPrinterName(printers, bundle, ver) : null;
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const isBundleRow = showFileStatus && !!bundle; // a 3MF version
@@ -41,8 +43,16 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         v{ver.v}
       </div>
       <div style={monoText(12, c.textMuted)}>{ver.date}</div>
-      <div style={uiText(13, ver.note ? c.textMuted : c.textFaint)}>
-        {ver.note || "—"}
+      <div style={{ minWidth: 0 }}>
+        <div style={uiText(13, ver.note ? c.textMuted : c.textFaint)}>
+          {ver.note || "—"}
+        </div>
+        {/* the sub printer (printer preset) it was sliced with */}
+        {subPrinter && (
+          <div data-testid="version-sub-printer" title="Sub printer: the printer preset it was sliced with" style={monoText(11, c.textFaint, { marginTop: 2, overflowWrap: "anywhere" })}>
+            {subPrinter}
+          </div>
+        )}
       </div>
       {showFileStatus && (
         <div>{ver.full ? <Badge tone="teal">full files</Badge> : <Badge>params only</Badge>}</div>

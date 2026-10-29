@@ -20,13 +20,15 @@ import { MoonrakerCard, useMoonraker } from "./Moonraker.jsx";
 import { PrintHistory } from "./PrintHistory.jsx";
 import { EditPrinterForm } from "./PrinterForms.jsx";
 import { PrusaLinkCard, usePrusaLink } from "./PrusaLink.jsx";
+import { SubPrinters, usesSubPrinter } from "./SubPrinters.jsx";
 
 // Searching the 3MF files on one printer: like the Models search, every word has to be found, in any of the file's
-// names (every version), the models it was sliced from, its slicer, or its notes.
-function bundleMatches(bundle, models, words) {
+// names (every version), the sub printers they were sliced with, the models it was sliced from, its slicer, or its notes.
+function bundleMatches(bundle, models, words, subPrinters) {
   if (words.length === 0) return true;
   const haystack = [
     ...bundle.versions.map((v) => v.filename || ""),
+    ...bundle.versions.map((v) => subPrinters.find((s) => s.id === v.subPrinterId)?.name || ""),
     ...models.map((m) => m.name),
     bundle.slicer || "",
     bundle.notes || "",
@@ -118,9 +120,11 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
   const expansion = useBundleExpansion();
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
+  const [subFilter, setSubFilter] = useState(null); // only the 3MFs sliced with this sub printer (its id); null = all
 
   useEffect(() => {
-    setQuery(""); // a fresh search for each printer
+    setQuery(""); // a fresh search, and every 3MF, for each printer
+    setSubFilter(null);
   }, [printerId]);
 
   const sections = usePrinterSections();
@@ -129,9 +133,13 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
   const allBundles = useMemo(() => [...bundlesForPrinter(printer.id)].sort(newestFirst), [bundlesForPrinter, printer.id]);
   const words = useMemo(() => searchWords(query), [query]);
   const searching = words.length > 0;
+  const filterSub = printer.subPrinters.find((s) => s.id === subFilter) || null; // gone if it was removed
   const pBundles = useMemo(
-    () => allBundles.filter((b) => bundleMatches(b, modelsForBundle(b), words)),
-    [allBundles, modelsForBundle, words],
+    () =>
+      allBundles.filter(
+        (b) => (!filterSub || usesSubPrinter(b, filterSub.id)) && bundleMatches(b, modelsForBundle(b), words, printer.subPrinters),
+      ),
+    [allBundles, modelsForBundle, words, filterSub, printer.subPrinters],
   );
   const modelCount = modelsForPrinter(printer.id).length;
 
@@ -154,7 +162,7 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
             label={`Search 3MF files on ${printer.name}`}
             style={{ flex: "1 1 320px", maxWidth: 460 }}
           />
-          {searching && (
+          {(searching || filterSub) && (
             <span data-testid="printer-3mf-count" style={uiText(12, c.textFaint)}>
               {pBundles.length} of {allBundles.length} 3MF files
             </span>
@@ -224,6 +232,16 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
         </div>
       </div>
 
+      <SubPrinters
+        printer={printer}
+        bundles={allBundles}
+        filter={filterSub?.id ?? null}
+        onFilter={(id) => {
+          setSubFilter(id);
+          if (id != null && !sections.isOpen("threemf")) sections.toggle("threemf"); // so its 3MFs can be seen
+        }}
+      />
+
       <NotesSection key={printer.id} kind="printer" owner={printer} />
 
       <PrinterLive printer={printer} sections={sections} refreshPrinters={refreshPrinters}>
@@ -237,6 +255,14 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
           </div>
           {sections.isOpen("threemf") && (
           <div id="threemf-body">
+          {filterSub && (
+            <div data-testid="sub-printer-filter-note" style={uiText(13, c.textMuted, { padding: "0 4px 10px", lineHeight: 1.6 })}>
+              Showing only the 3MF files sliced with <span style={monoText(12, c.heading)}>{filterSub.name}</span>.{" "}
+              <button onClick={() => setSubFilter(null)} style={linkButton()}>
+                Show all
+              </button>
+            </div>
+          )}
           {searching && pBundles.length === 0 && (
             <div data-testid="printer-3mf-search-empty" style={uiText(13, c.textMuted, { padding: "12px 4px", lineHeight: 1.7 })}>
               No 3MF files on {printer.name} match <b style={{ color: c.heading }}>“{query.trim()}”</b>. Every word has to match a file name, a model, the slicer or the notes.{" "}

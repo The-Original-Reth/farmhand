@@ -12,7 +12,7 @@ from ..models import Bundle, BundleVersion, Printer, PrinterCamera, PrinterConne
 def list_printers(db: Session) -> list[Printer]:
     rows = (
         Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row,
-        Printer.camera_row,
+        Printer.camera_row, Printer.sub_printers,
     )
     return list(db.scalars(select(Printer).order_by(Printer.name).options(*(selectinload(r) for r in rows))))  # a batch, not 5 per printer
 

@@ -27,6 +27,12 @@ export const DAY = 86400;
 export const iso = (unix) => (unix == null ? null : new Date(unix * 1000).toISOString().replace("Z", "+00:00"));
 const NOW = Math.floor(Date.now() / 1000);
 
+// The parts a new sub printer starts with on its Printer parts page (the real API's DEFAULT_PARTS), none filled in,
+// and whether each starts ticked "Add to name"
+export const DEFAULT_PARTS = [["Toolhead", true], ["Hotend", true], ["Nozzle", true], ["Extruder", true], ["Gantry", true], ["XY motor", false]];
+export const defaultParts = (nextId) =>
+  DEFAULT_PARTS.map(([part, inName]) => ({ id: nextId(), part, make: null, model: null, installed_on: null, note: null, in_name: inName }));
+
 // A printer's lifetime figures from its jobs, the way Moonraker's /server/history/totals gives them
 export const jobTotals = (list) => ({
   total_jobs: list.length,
@@ -153,6 +159,32 @@ export function buildFarm() {
   ];
   bundles[2].starred_version_id = bundles[2].versions.find((v) => v.version === 2).id; // v2 is the keeper
 
+  // Sub printers: each printer's printer presets in PrusaSlicer, found from its 3MFs' printer_settings_id as the real
+  // API does, plus one more on the VT 1190 (a 0.4 brass nozzle) that the Frog's v3 was sliced with
+  const subPrinters = [];
+  const subPrinterFor = (printerId, name) => {
+    let s = subPrinters.find((x) => x.printer_id === printerId && x.name === name);
+    if (!s) subPrinters.push((s = { id: subPrinters.length + 1, printer_id: printerId, name }));
+    return s;
+  };
+  for (const b of bundles) for (const v of b.versions) v.sub_printer_id = subPrinterFor(b.printer_id, versionSettings[v.id].printer_settings_id).id;
+  const frogV3 = bundles[2].versions.find((v) => v.version === 3);
+  const brass = subPrinterFor(1, "Trident_Allyson_DragonBurner_0.4_brass");
+  frogV3.sub_printer_id = brass.id;
+  versionSettings[frogV3.id] = { ...versionSettings[frogV3.id], printer_settings_id: brass.name, nozzle_diameter: "0.4" };
+  // Their Printer parts pages: every sub printer starts with the default parts (as the real API does), and a few of
+  // the VT 1190's are filled in
+  let partId = 0;
+  for (const s of subPrinters) s.parts = defaultParts(() => ++partId);
+  const fill = (s, part, fields) => Object.assign(s.parts.find((p) => p.part === part), fields);
+  const rapido = subPrinters.find((s) => s.printer_id === 1 && s.name.includes("Rapido"));
+  fill(rapido, "Toolhead", { make: "Voron Design", model: "Stealthburner", installed_on: "2025-11-20" });
+  fill(rapido, "Hotend", { make: "Phaetus", model: "Rapido UHF", installed_on: "2026-03-02", note: "Replaced the Dragon after the heat-creep clogs." });
+  fill(rapido, "Nozzle", { make: "Phaetus", model: "0.5 WC", installed_on: "2026-03-02", note: "Tungsten carbide." });
+  fill(rapido, "Extruder", { make: "JaredC01", model: "Galileo 2", installed_on: "2025-11-20" });
+  fill(rapido, "XY motor", { make: "LDO", model: "42STH48-2504AC" });
+  fill(brass, "Nozzle", { make: "E3D", model: "V6 0.4 mm brass", note: "Kept for fine detail prints." });
+
   // ------------------------------------------------------------------ print history, totals and energy
   const fileNames = {
     1: ["VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.gcode", "VT_1190_-_prusa_slicer_-_MMMini_Frog_v2.gcode", "calibration_cube.gcode", "VT_1190_benchy.gcode", "spool_holder_bracket.gcode"],
@@ -261,7 +293,7 @@ export function buildFarm() {
   ];
 
   return {
-    now: NOW, printers, models, bundles, versionSettings, jobs, meterReadings, maintenance, config, shares,
+    now: NOW, printers, models, bundles, versionSettings, subPrinters, jobs, meterReadings, maintenance, config, shares,
     // printer id -> { last_sync_at, last_sync_error }: the two online printers synced recently, the MK4 is off
     connections: {
       1: { last_sync_at: iso(NOW - 40 * 60), last_sync_error: null },
@@ -271,6 +303,6 @@ export function buildFarm() {
     },
     settingsFolder: "/data/nas/farm-nas/farmhand-settings",
     storage: { stl: "/data/nas/farm-nas/models", threemf: "/data/nas/farm-nas/3mf" },
-    nextIds: { printer: 10, model: 10, bundleVersion: 50, job: 1, share: 5 },
+    nextIds: { printer: 10, model: 10, bundleVersion: 50, job: 1, share: 5, subPrinter: 20, part: 100 },
   };
 }

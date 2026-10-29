@@ -59,6 +59,20 @@ class BundleVersion(Base):
     settings: Mapped[dict] = mapped_column(JSON, nullable=False, deferred=True)
 
     bundle: Mapped["Bundle"] = relationship(back_populates="versions")
+    # The sub printer (printer preset) it was sliced with, see BundleVersionSubPrinter. Goes with the version.
+    sub_printer_link: Mapped["BundleVersionSubPrinter | None"] = relationship(  # noqa: F821
+        back_populates="version", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def sub_printer_id(self) -> int | None:
+        link = self.sub_printer_link
+        return link.sub_printer_id if link else None
+
+    @property
+    def sub_printer_name(self) -> str | None:
+        link = self.sub_printer_link
+        return link.sub_printer.name if link and link.sub_printer else None
 
     @property
     def gcode_name(self) -> str | None:

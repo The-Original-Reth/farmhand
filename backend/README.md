@@ -134,6 +134,13 @@ Postgres instance running.
 | PATCH | `/printers/{id}/decommission` | Toggle decommissioned |
 | PUT | `/printers/{id}/notes` | Save the printer's notes. Send the `base_revision` the text was based on; if someone saved since, answers **409** with their current notes and changes nothing (same rules as a model's notes, shared code in `app/notes.py`) |
 | GET | `/printers/{id}/bundles` | 3MF bundles locked to a printer |
+| POST | `/printers/{id}/sub-printers` | Add a sub printer (one of the printer's presets in PrusaSlicer) by hand: `{name}`. **409** if it already has one by that name. Sub printers are also added on their own when a 3MF sliced with a new preset (`printer_settings_id`) is uploaded, and each 3MF version says which one it was sliced with (`sub_printer_id`, `sub_printer_name`). Answers the printer, whose `sub_printers` lists them |
+| PATCH | `/printers/{id}/sub-printers/{sub_id}` | Rename a sub printer: `{name}`. Its 3MFs stay linked. **409** if another of the printer's has that name |
+| DELETE | `/printers/{id}/sub-printers/{sub_id}?confirm=true` | Remove a sub printer and the parts written down for it. Its 3MFs stay, with no sub printer |
+| GET | `/printers/{id}/sub-printers/{sub_id}/parts` | The parts fitted to a sub printer (its Printer parts page), in the order added: `[{id, part, make, model, installed_on, note}]` |
+| POST | `/printers/{id}/sub-printers/{sub_id}/parts` | Write down a part: `{part, make?, model?, installed_on? (YYYY-MM-DD), note?}`. Answers the list as it now stands |
+| PUT | `/printers/{id}/sub-printers/{sub_id}/parts/{part_id}` | Change a part (every field is replaced; blank clears). Answers the list |
+| DELETE | `/printers/{id}/sub-printers/{sub_id}/parts/{part_id}?confirm=true` | Remove a part. Answers the list |
 | GET | `/source-models` | List STL/OBJ/STEP source models |
 | POST | `/source-models` | Create a new STL folder (file optional at creation) |
 | POST | `/source-models/{id}/versions` | Add a new version of a source model's geometry |

@@ -67,6 +67,11 @@ class Printer(HasNotes, Base):
         back_populates="printer", cascade="all, delete-orphan", uselist=False
     )
 
+    # Its printer presets in the slicer (see SubPrinter), A to Z
+    sub_printers: Mapped[list["SubPrinter"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", order_by="SubPrinter.name"
+    )
+
     @property
     def camera_address(self) -> str | None:
         return self.camera_row.address if self.camera_row else None

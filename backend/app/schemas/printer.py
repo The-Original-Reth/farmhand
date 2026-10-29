@@ -60,6 +60,86 @@ class PrinterCreate(BaseModel):
         return _camera_address(v)
 
 
+class SubPrinterOut(BaseModel):
+    """One of a printer's printer presets in the slicer (see SubPrinter)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class SubPrinterIn(BaseModel):
+    name: str  # the preset's name, exactly as the slicer shows it
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("A sub printer needs a name")
+        if len(v) > 120:
+            raise ValueError("A sub printer's name can be at most 120 characters")
+        return v
+
+
+class SubPrinterPartOut(BaseModel):
+    """A part fitted to a sub printer, written down on its Printer parts page."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    part: str
+    make: str | None = None
+    model: str | None = None
+    installed_on: dt.date | None = None
+    note: str | None = None
+    in_name: bool = False
+
+
+class SubPrinterPartIn(BaseModel):
+    part: str  # what it is: "Hotend", "Nozzle"...
+    make: str | None = None  # who makes it ("Phaetus"); blank = none
+    model: str | None = None  # which one ("Rapido UHF"); blank = none
+    installed_on: dt.date | None = None
+    note: str | None = None
+    in_name: bool = False  # ticked "Add to name": its model goes into the name the sub printer can be renamed to
+
+    @field_validator("part")
+    @classmethod
+    def _part(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Say what the part is (e.g. Hotend)")
+        if len(v) > 120:
+            raise ValueError("A part's name can be at most 120 characters")
+        return v
+
+    @field_validator("make")
+    @classmethod
+    def _make(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if len(v) > 120:
+            raise ValueError("The make can be at most 120 characters")
+        return v or None
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if len(v) > 200:
+            raise ValueError("The model can be at most 200 characters")
+        return v or None
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if len(v) > 2000:
+            raise ValueError("A part's note can be at most 2000 characters")
+        return v or None
+
+
 class PrinterOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -86,6 +166,7 @@ class PrinterOut(BaseModel):
     # The 1500-hour service reminder Farmhand keeps: {state: waiting | off | ok | due, enabled, interval_hours,
     # hours_since, started_at, last_done: {done_at, hours, note} | null}
     service: dict | None = None
+    sub_printers: list[SubPrinterOut] = []  # its printer presets in the slicer, A to Z
 
 
 class PrinterDecommission(BaseModel):

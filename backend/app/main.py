@@ -15,7 +15,7 @@ from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
-from .services import config_service, previews, storage_settings_service
+from .services import config_service, previews, storage_settings_service, sub_printer_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
 
@@ -154,6 +154,10 @@ def on_startup() -> None:
             config_service.enable_background_mirror()
             config_service.request_mirror()
             threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
+            # 3MF versions from before sub printers: linked to the printer preset each was sliced with, once
+            threading.Thread(
+                target=sub_printer_service.run_link_missing, args=(SessionLocal,), name="sub-printers", daemon=True
+            ).start()
             return
         except OperationalError as e:
             last_error = e

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
-from ..schemas.printer import PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate
-from ..services import bundle_service, printer_service
-from .common import require_printer
+from ..schemas.printer import (
+    PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut,
+)
+from ..services import bundle_service, printer_service, sub_printer_service
+from .common import require_confirm, require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
 
@@ -53,6 +55,61 @@ def set_decommissioned(printer_id: int, payload: PrinterDecommission, db: Sessio
 def list_printer_bundles(printer_id: int, db: Session = Depends(get_db)):
     require_printer(db, printer_id)
     return bundle_service.list_bundles_for_printer(db, printer_id)
+
+
+@router.post("/{printer_id}/sub-printers", response_model=PrinterOut, status_code=201)
+def add_sub_printer(printer_id: int, payload: SubPrinterIn, db: Session = Depends(get_db)):
+    """Add a sub printer (one of its printer presets in the slicer) by hand. 409 if it already has one by that name."""
+    with answer_errors(409):
+        return sub_printer_service.add(db, printer_id, payload.name)
+
+
+@router.patch("/{printer_id}/sub-printers/{sub_printer_id}", response_model=PrinterOut)
+def rename_sub_printer(printer_id: int, sub_printer_id: int, payload: SubPrinterIn, db: Session = Depends(get_db)):
+    """Rename a sub printer. Its 3MFs stay linked to it. 409 if another of the printer's has that name."""
+    with answer_errors(409):
+        return sub_printer_service.rename(db, printer_id, sub_printer_id, payload.name)
+
+
+@router.delete("/{printer_id}/sub-printers/{sub_printer_id}", response_model=PrinterOut)
+def remove_sub_printer(printer_id: int, sub_printer_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    """Remove a sub printer. Its 3MFs stay, with no sub printer. Answers the printer as it now stands."""
+    require_confirm(confirm)
+    with answer_errors():
+        return sub_printer_service.remove(db, printer_id, sub_printer_id)
+
+
+@router.get("/{printer_id}/sub-printers/{sub_printer_id}/parts", response_model=list[SubPrinterPartOut])
+def list_sub_printer_parts(printer_id: int, sub_printer_id: int, db: Session = Depends(get_db)):
+    """The parts written down for a sub printer (its Printer parts page), in the order they were added."""
+    with answer_errors():
+        return sub_printer_service.parts(db, printer_id, sub_printer_id)
+
+
+@router.post("/{printer_id}/sub-printers/{sub_printer_id}/parts", response_model=list[SubPrinterPartOut], status_code=201)
+def add_sub_printer_part(printer_id: int, sub_printer_id: int, payload: SubPrinterPartIn, db: Session = Depends(get_db)):
+    """Write down a part fitted to a sub printer. Answers its parts as they now stand."""
+    with answer_errors():
+        return sub_printer_service.add_part(db, printer_id, sub_printer_id, payload.model_dump())
+
+
+@router.put("/{printer_id}/sub-printers/{sub_printer_id}/parts/{part_id}", response_model=list[SubPrinterPartOut])
+def update_sub_printer_part(
+    printer_id: int, sub_printer_id: int, part_id: int, payload: SubPrinterPartIn, db: Session = Depends(get_db)
+):
+    """Change a part (every field: a blank one is cleared). Answers its parts as they now stand."""
+    with answer_errors():
+        return sub_printer_service.update_part(db, printer_id, sub_printer_id, part_id, payload.model_dump())
+
+
+@router.delete("/{printer_id}/sub-printers/{sub_printer_id}/parts/{part_id}", response_model=list[SubPrinterPartOut])
+def delete_sub_printer_part(
+    printer_id: int, sub_printer_id: int, part_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)
+):
+    """Remove a part from the list. Answers its parts as they now stand."""
+    require_confirm(confirm)
+    with answer_errors():
+        return sub_printer_service.delete_part(db, printer_id, sub_printer_id, part_id)
 
 
 @router.put("/{printer_id}/notes", response_model=PrinterOut, responses={409: {"model": NotesConflictOut}})

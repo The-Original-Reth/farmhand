@@ -17,6 +17,7 @@ from .printer_camera import PrinterCamera
 from .printer_note import PrinterNote
 from .prusalink import MaintenanceEntry, PrusaLinkConnection
 from .source_model_note import SourceModelNote
+from .sub_printer import BundleVersionSubPrinter, SubPrinter, SubPrinterPart
 
 __all__ = [
     "Base",
@@ -41,4 +42,7 @@ __all__ = [
     "BundleNote",
     "BundleStar",
     "BundleVersion",
+    "SubPrinter",
+    "BundleVersionSubPrinter",
+    "SubPrinterPart",
 ]

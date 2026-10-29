@@ -5,8 +5,8 @@ import { errorText } from "../../api.js";
 import { cancelButton, primaryButton, uiText } from "../../styles.js";
 
 // Every destructive action goes through this: say exactly what will happen,
-// then do it only on an explicit second click.
-export function ConfirmDialog({ title, confirmLabel = "Delete", tone = "danger", onConfirm, onClose, children }) {
+// then do it only on an explicit second click. cancelLabel names the other way out ("Keep the name").
+export function ConfirmDialog({ title, confirmLabel = "Delete", cancelLabel = "Cancel", tone = "danger", onConfirm, onClose, children }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -34,7 +34,7 @@ export function ConfirmDialog({ title, confirmLabel = "Delete", tone = "danger",
           disabled={submitting}
           style={cancelButton(submitting)}
         >
-          Cancel
+          {cancelLabel}
         </button>
         <button
           onClick={run}

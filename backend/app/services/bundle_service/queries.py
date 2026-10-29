@@ -5,11 +5,13 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ...models import Bundle, BundleSourceModel, SourceModel
+from ...models import Bundle, BundleSourceModel, BundleVersion, BundleVersionSubPrinter, SourceModel
 
 # Everything a list of bundles shows (BundleOut), loaded a batch at a time rather than a few queries per bundle
 LIST_LOAD = (
-    selectinload(Bundle.versions),
+    selectinload(Bundle.versions)
+    .selectinload(BundleVersion.sub_printer_link)
+    .selectinload(BundleVersionSubPrinter.sub_printer),
     selectinload(Bundle.note_row),
     selectinload(Bundle.star_row),
     selectinload(Bundle.source_model_links).selectinload(BundleSourceModel.source_model).options(

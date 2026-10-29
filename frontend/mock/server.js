@@ -4,7 +4,7 @@
 // with a plain "not in the mockup" message. Only loaded by `npm run mock` (see vite.config.js).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildFarm, DAY, FIXTURES, HOUR, iso, jobTotals } from "./data.js";
+import { buildFarm, DAY, DEFAULT_PARTS, defaultParts, FIXTURES, HOUR, iso, jobTotals } from "./data.js";
 
 const PREFIX = "/mock-api";
 const nowUnix = () => Math.floor(Date.now() / 1000);
@@ -75,6 +75,7 @@ export function mockApi() {
     connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
     has_prusalink_password: !!p.prusalink?.hasPassword, camera_address: p.cameraAddress || null,
+    sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name }) => ({ id, name })),
   });
   const modelOut = (m) => ({
     id: m.id, name: m.name, file_type: m.file_type, created_at: m.created_at, notes: m.notes, notes_revision: m.notes_revision,
@@ -83,7 +84,8 @@ export function mockApi() {
   });
   const versionOut = (v) => {
     const { thumb, ...rest } = v;
-    return rest;
+    const sub = farm.subPrinters.find((s) => s.id === v.sub_printer_id);
+    return { ...rest, sub_printer_id: sub ? sub.id : null, sub_printer_name: sub ? sub.name : null };
   };
   const versionDetail = (v) => ({ ...versionOut(v), settings: farm.versionSettings[v.id] || {} });
   const bundleOut = (b) => ({
@@ -144,6 +146,82 @@ export function mockApi() {
     const p = printer(id);
     saveNotes(p, body, { text: "notes", rev: "notesRevision", at: "notesUpdatedAt" });
     return printerOut(p);
+  });
+  // Sub printers (a printer's presets in the slicer): added, renamed and removed by hand, with the real API's rules
+  const subPrinterName = (body) => {
+    const name = String(body.name ?? "").trim();
+    if (!name) throw new HttpError(422, "A sub printer needs a name");
+    if (name.length > 120) throw new HttpError(422, "A sub printer's name can be at most 120 characters");
+    return name;
+  };
+  const subPrinterOf = (p, subId) => {
+    const s = farm.subPrinters.find((x) => x.id === Number(subId) && x.printer_id === p.id);
+    if (!s) throw new HttpError(404, `No sub printer with id ${subId} on this printer`);
+    return s;
+  };
+  const nameTaken = (p, name, except) => {
+    if (farm.subPrinters.some((s) => s.printer_id === p.id && s.name === name && s !== except)) {
+      throw new HttpError(409, `${p.name} already has a sub printer named '${name}'`);
+    }
+  };
+  on("POST", "/printers/:id/sub-printers", ({ id }, body) => {
+    const p = printer(id);
+    const name = subPrinterName(body);
+    nameTaken(p, name);
+    farm.subPrinters.push({ id: farm.nextIds.subPrinter++, printer_id: p.id, name, parts: defaultParts(() => farm.nextIds.part++) });
+    return [201, printerOut(p)];
+  });
+  on("PATCH", "/printers/:id/sub-printers/:subId", ({ id, subId }, body) => {
+    const p = printer(id);
+    const s = subPrinterOf(p, subId);
+    const name = subPrinterName(body);
+    nameTaken(p, name, s);
+    s.name = name;
+    return printerOut(p);
+  });
+  on("DELETE", "/printers/:id/sub-printers/:subId", ({ id, subId }, _b, q) => {
+    const p = printer(id);
+    if (q.get("confirm") !== "true") throw new HttpError(409, "Deleting is permanent — pass confirm=true to proceed");
+    const s = subPrinterOf(p, subId);
+    for (const b of farm.bundles) for (const v of b.versions) if (v.sub_printer_id === s.id) v.sub_printer_id = null;
+    farm.subPrinters = farm.subPrinters.filter((x) => x !== s);
+    return printerOut(p);
+  });
+  // A sub printer's parts (its Printer parts page), with the real API's checks; each change answers the whole list
+  const partFields = (body) => {
+    const part = String(body.part ?? "").trim();
+    if (!part) throw new HttpError(422, "Say what the part is (e.g. Hotend)");
+    const text = (v) => String(v ?? "").trim() || null;
+    if (body.installed_on != null && !/^\d{4}-\d{2}-\d{2}$/.test(body.installed_on)) throw new HttpError(422, "The installed date isn't a date");
+    return { part: part.slice(0, 120), make: text(body.make), model: text(body.model), installed_on: body.installed_on || null, note: text(body.note), in_name: body.in_name === true };
+  };
+  const partOf = (s, partId) => {
+    const found = s.parts.find((x) => x.id === Number(partId));
+    if (!found) throw new HttpError(404, `No part with id ${partId} on this sub printer`);
+    return found;
+  };
+  on("GET", "/printers/:id/sub-printers/:subId/parts", ({ id, subId }) => subPrinterOf(printer(id), subId).parts);
+  on("POST", "/printers/:id/sub-printers/:subId/parts", ({ id, subId }, body) => {
+    const s = subPrinterOf(printer(id), subId);
+    s.parts.push({ id: farm.nextIds.part++, ...partFields(body) });
+    return [201, s.parts];
+  });
+  on("PUT", "/printers/:id/sub-printers/:subId/parts/:partId", ({ id, subId, partId }, body) => {
+    const s = subPrinterOf(printer(id), subId);
+    const part = partOf(s, partId);
+    const fields = partFields(body);
+    if (DEFAULT_PARTS.some(([name]) => name === part.part) && fields.part !== part.part) {
+      throw new HttpError(422, `${part.part} is one of the default parts, so its name can't be changed`);
+    }
+    Object.assign(part, fields);
+    return s.parts;
+  });
+  on("DELETE", "/printers/:id/sub-printers/:subId/parts/:partId", ({ id, subId, partId }, _b, q) => {
+    const s = subPrinterOf(printer(id), subId);
+    if (q.get("confirm") !== "true") throw new HttpError(409, "Deleting is permanent — pass confirm=true to proceed");
+    const gone = partOf(s, partId);
+    s.parts = s.parts.filter((x) => x !== gone);
+    return s.parts;
   });
   on("GET", "/printers/:id/bundles", ({ id }) => farm.bundles.filter((b) => b.printer_id === Number(id)).map(bundleOut));
 
