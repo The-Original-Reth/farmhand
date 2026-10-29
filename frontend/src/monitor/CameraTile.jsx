@@ -1,15 +1,51 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { PictureInPicture2 } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { CameraPicture } from "./players.jsx";
 import { NO_ZOOM, panned, TILE, zoomed } from "./wall.js";
 
+// Picture-in-picture: a small window that stays on top of every other one (Chrome and Edge's Document
+// Picture-in-Picture), so it works for every kind of camera, not just the ones that are video
+const canFloat = typeof window !== "undefined" && "documentPictureInPicture" in window;
+
+// The camera in its own picture-in-picture window while it's open (null until then). The tile shows a note instead,
+// so the camera isn't streamed twice. `refused`: the browser wouldn't open one just now (another is open from a
+// different tab, or it can't open windows at all).
+function useFloating(label) {
+  const [win, setWin] = useState(null);
+  const [refused, setRefused] = useState(false);
+  useEffect(() => () => win?.close(), [win]); // leaving Monitor closes it
+  useEffect(() => {
+    if (!refused) return;
+    const t = setTimeout(() => setRefused(false), 4000);
+    return () => clearTimeout(t);
+  }, [refused]);
+  const open = async () => {
+    if (win) return win.close();
+    let w;
+    try {
+      w = await window.documentPictureInPicture.requestWindow({ width: 480, height: 270 });
+    } catch {
+      return setRefused(true);
+    }
+    w.document.title = label;
+    w.document.body.style.cssText = "margin:0;background:#000;overflow:hidden;width:100vw;height:100vh";
+    w.addEventListener("pagehide", () => setWin(null));
+    setWin(w);
+  };
+  return { win, refused, open };
+}
+
 // A camera's own picture, turned and flipped as Mainsail is set to show it. Scroll over it to zoom in (up to maxZoom)
-// or out; drag a zoomed one to look around; the badge in the corner goes back to the whole picture.
+// or out; drag a zoomed one to look around; the badge in the corner goes back to the whole picture. The button in the
+// top left corner floats it in a picture-in-picture window (where the browser can).
 export function CameraTile({ label, cam, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const [el, setEl] = useState(null);
   const [zoom, setZoom] = useState(NO_ZOOM);
   const pan = useRef(null); // while dragging a zoomed picture: where it started, and whether it has moved
+  const floating = useFloating(label);
   const z = zoom.s > maxZoom ? zoomed(zoom, maxZoom / zoom.s, 0.5, 0.5, maxZoom) : zoom; // a lower max zooms back out
   const turn = [
     cam.rotation ? `rotate(${cam.rotation}deg)` : "",
@@ -91,14 +127,34 @@ export function CameraTile({ label, cam, big, hidden, place, moving, target, dra
           transform: z.s > 1 ? `translate(${z.x * 100}%, ${z.y * 100}%) scale(${z.s})` : undefined,
         }}
       >
-        <CameraPicture cam={cam} label={label} style={fill} onState={setState} />
+        {!floating.win && <CameraPicture cam={cam} label={label} style={fill} onState={setState} />}
       </div>
+      {floating.win && createPortal(<CameraPicture cam={cam} label={label} style={fill} onState={setState} />, floating.win.document.body)}
       {/* over the picture, so the wheel, drags and clicks reach the tile even where the camera is a page of its own */}
       <div style={{ position: "absolute", inset: 0 }} />
-      {state !== "showing" && (
+      {(floating.win || floating.refused || state !== "showing") && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(12), color: "#8a9198" }}>
-          {state === "failed" ? "The camera isn't answering" : "Waiting for the camera…"}
+          {floating.win ? "In a picture-in-picture window" : floating.refused ? "The browser wouldn't open a picture-in-picture window" : state === "failed" ? "The camera isn't answering" : "Waiting for the camera…"}
         </div>
+      )}
+      {canFloat && (
+        <button
+          type="button"
+          data-testid="monitor-pip"
+          aria-pressed={!!floating.win}
+          title={floating.win ? "Bring it back from picture-in-picture" : "Picture-in-picture: float it in a small window on top of everything"}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            floating.open();
+          }}
+          style={{
+            position: "absolute", left: 6, top: 6, padding: "3px 6px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
+            color: "#e6e8ea", border: "none", cursor: "pointer", display: "flex", alignItems: "center",
+          }}
+        >
+          <PictureInPicture2 size={14} />
+        </button>
       )}
       {z.s > 1 && (
         <button

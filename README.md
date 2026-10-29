@@ -386,6 +386,9 @@ for a printer.
   the badge in its corner (e.g. *2.6× ✕*) to see the whole picture again. **Max zoom** (2× to 8×, beside Save
   layout) limits how far, for everyone. Zoom only enlarges the picture the camera sends, so it gets softer the
   further in you go.
+- **Picture-in-picture:** the button in a camera's top left corner floats it in a small window that stays on top
+  of every other window, for any kind of camera; its tile says so while it's out there. Click the button again,
+  or close the small window, to bring it back. Chrome and Edge only (Firefox and Safari don't show the button).
 - **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
   changing a camera in Mainsail.
 
