@@ -665,7 +665,7 @@ So `docker-compose.yml` gives the `api` service
 matters on hosts running AppArmor, like Ubuntu). That is a real widening of what
 the container may do — acceptable for a trusted home/workshop server, worth
 knowing before you put this anywhere shared. NFS needs only `SYS_ADMIN`. The
-Storage page checks for these and says exactly which one is missing (and still
+Settings page checks for these and says exactly which one is missing (and still
 lets you add an NFS share if only the SMB one is). After changing `cap_add`, run
 `docker compose up -d` so the container is recreated with them. If you'd rather
 not grant them, you can mount the share on the host yourself and add a bind
