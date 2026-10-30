@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Archive, Cctv, HardDrive, Layers, Palette, Printer, Zap } from "lucide-react";
+import { Archive, Cctv, Layers, Palette, Printer, Settings, Zap } from "lucide-react";
 import { c, fs, ui } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance.js";
@@ -52,13 +52,14 @@ const PENDING_CONFIG_KEY = "farmhand.configPending"; // changes not yet confirme
 const SECTIONS = [
   { key: "models", label: "Models", Icon: Layers },
   { key: "printers", label: "Printers", Icon: Printer },
-  { key: "storage", label: "Storage", Icon: HardDrive },
   { key: "power", label: "Power", Icon: Zap },
   { key: "monitor", label: "Monitor", Icon: Cctv },
+  { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
   { key: "appearance", label: "Appearance", Icon: Palette },
 ];
 const sectionInAddress = () => {
-  const key = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  let key = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  if (key === "storage") key = "settings"; // its old address, so bookmarks still open it
   return SECTIONS.some((s) => s.key === key) ? key : "models";
 };
 

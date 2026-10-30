@@ -95,7 +95,7 @@ A brand-new Farmhand is empty. Go on with the setup below.
 
 The first things to do, in this order. Everything is done in the web page; there are no files to edit.
 
-1. **Storage** (left-hand menu). Where STL and 3MF files are kept. Out of the box they go in Farmhand's own
+1. **Settings** (left-hand menu, called Storage before). Where STL and 3MF files are kept. Out of the box they go in Farmhand's own
    storage on the computer it runs on. To keep them on a NAS instead, **Add network share…**, then choose the
    **STL files** and **3MF files** folders on it (see "Network storage").
 2. **Settings location**, on the same page. Choose a folder on the NAS: Farmhand keeps a copy of its settings
@@ -133,7 +133,7 @@ them at the end: all four should say **running**. Your data is kept. Then reload
 - With a **Settings location** chosen (see "Setting it up"), the settings, the network shares (without their
   passwords) and every printer's and model's records are also on the NAS, kept up to date after every change.
 - **To move to a new computer, or after a lost one:** install Farmhand there (steps 1–4), add the same network
-  share on the Storage page, choose the same settings folder, and pick **Use those settings**. Then type the
+  share on the Settings page, choose the same settings folder, and pick **Use those settings**. Then type the
   share's and PrusaLink printers' passwords in again: they are never written to the NAS.
 
 ## Stopping and removing
@@ -172,7 +172,7 @@ sudo docker compose down -v
 - **A camera doesn't show on Monitor:** under the cameras, *No camera* lists the printers without one; point at
   a name to see why. Klipper cameras are played straight from the printer, so the *browser* has to be able to
   reach the printer. After changing a camera, press **Resync**.
-- **A NAS share won't connect:** the Storage page shows the reason (see "Network storage").
+- **A NAS share won't connect:** the Settings page shows the reason (see "Network storage").
 
 ## What's in it
 
@@ -224,7 +224,7 @@ sudo docker compose down -v
 
 **Power** — the whole farm's energy use (see "Power")
 
-**Storage** — connecting a NAS (SMB or NFS) and choosing where STL and 3MF files go (see "Network storage"),
+**Settings** — connecting a NAS (SMB or NFS) and choosing where STL and 3MF files go (see "Network storage"),
 and where a copy of Farmhand's settings and records is kept
 
 **Not wired into the UI yet** (the API supports these, nothing calls them):
@@ -427,8 +427,8 @@ energy (the same figures as each printer's Energy section), added up.
 
 ## Appearance and settings
 
-**Appearance** is its own item in the left-hand menu, below **Storage** and **Power**. The **Settings
-location** (where a copy of the settings is kept on the network) is on the Storage page itself,
+**Appearance** is its own item in the left-hand menu, the last one, just below **Settings**. The **Settings
+location** (where a copy of the settings is kept on the network) is on the Settings page itself,
 since it's about where things are stored.
 
 ### Appearance
@@ -610,7 +610,7 @@ library**.
 
 ## Network storage
 
-Everything is done from **Storage** in the sidebar — nothing to set up on the
+Everything is done from **Settings** in the sidebar — nothing to set up on the
 computer running Farmhand, no files to edit.
 
 1. **Add network share…** Give it a name and **paste the NAS folder's full address
@@ -669,7 +669,7 @@ Storage page checks for these and says exactly which one is missing (and still
 lets you add an NFS share if only the SMB one is). After changing `cap_add`, run
 `docker compose up -d` so the container is recreated with them. If you'd rather
 not grant them, you can mount the share on the host yourself and add a bind
-mount for it under `/data/nas/<name>` in `docker-compose.yml`; the Storage page
+mount for it under `/data/nas/<name>` in `docker-compose.yml`; the Settings page
 will still let you pick folders on it.
 
 **Your NAS's side:** the account needs write access to the share. Farmhand runs as
@@ -709,11 +709,11 @@ The full API, with every route, is described at **http://localhost:4545/docs**.
 
 ### What has been verified
 
-Mounting has been confirmed on a real NAS: SMB and NFS shares connect from the Storage page, and
+Mounting has been confirmed on a real NAS: SMB and NFS shares connect from the Settings page, and
 they come back by themselves after `docker compose restart`. Not exercised on real hardware yet:
 a share dropping and coming back while Farmhand keeps running, and **Move them now** over a slow
 network. Both are covered against a stand-in `mount` and NAS. If a connection fails, the message
-on the Storage page is the real output of `mount`, translated.
+on the Settings page is the real output of `mount`, translated.
 
 ## For developers
 
