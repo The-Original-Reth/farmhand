@@ -1,14 +1,13 @@
-import { useMemo, useState } from "react";
-import { Check, Copy, Layers3, Pencil, Plus, Star, Wrench, X } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, Layers3, Pencil, Plus, Star, X } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
 import { addSubPrinter, copySubPrinter, deleteSubPrinter, errorText, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
 import { useData } from "../data.jsx";
-import { cancelButton, fieldBox, headerButton, linkButton, monoText, primaryButton, uiText } from "../styles.js";
+import { fieldBox, headerButton, linkButton, monoText, uiText } from "../styles.js";
 
-import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
+import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { SectionLabel, TrashButton } from "../components/common/ui.jsx";
-import { nameFromParts, PrinterParts, useSubPrinterParts } from "./PrinterParts.jsx";
-import { PrinterPresetPages } from "./PrinterPresetPages.jsx";
+import { SubPrinterSettings } from "./SubPrinterSettings.jsx";
 
 // The 3MFs on a printer sliced with one of its sub printers (any of their versions)
 export const usesSubPrinter = (bundle, subPrinterId) => bundle.versions.some((v) => v.subPrinterId === subPrinterId);
@@ -28,6 +27,27 @@ const copyName = (printer, name) => {
     if (!printer.subPrinters.some((s) => s.name === candidate)) return candidate;
   }
 };
+
+// A change to the printer's sub printers: `run(call, then)` sends `call()` (which answers the printer), puts the printer
+// it answers, then does `then`; `busy` while it's on its way, and `error` says why it didn't go through
+function useChange() {
+  const { putPrinter } = useData();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const run = async (call, then) => {
+    setBusy(true);
+    setError(null);
+    try {
+      putPrinter(await call());
+      then?.();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, error, setError, run };
+}
 
 // The box a name is typed into, with Enter to save and Escape to cancel
 function NameInput({ value, onChange, onEnter, onEscape, placeholder, testId, disabled }) {
@@ -49,131 +69,17 @@ function NameInput({ value, onChange, onEnter, onEscape, placeholder, testId, di
   );
 }
 
-// Closing the window with changes to its parts not saved: save them, close without them, or go back to them.
-// Clicking outside or the close button goes back, so nothing typed is lost by a stray click.
-function SaveChanges({ sub, parts, onKeepEditing, onDiscard, onSave }) {
+// A name typed in for a new sub printer, with its button (`label`, or `busyLabel` while it's on its way) and Cancel
+function NameForm({ value, onChange, onSave, onCancel, busy, label, busyLabel, placeholder, testId, children }) {
   return (
-    <Modal title="Save the changes to its parts?" onClose={parts.saving ? () => {} : onKeepEditing} width={480}>
-      <div data-testid="parts-save-ask" style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 14 })}>
-        You changed <span style={{ ...mono, overflowWrap: "anywhere" }}>{sub.name}</span>’s parts and haven’t saved them.
-        Save them before closing?
-      </div>
-      {parts.saveError && <div style={uiText(12, c.danger, { marginBottom: 10, lineHeight: 1.5 })}>{parts.saveError}</div>}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={onKeepEditing} disabled={parts.saving} data-testid="parts-keep-editing" style={cancelButton(parts.saving)}>
-          Keep editing
-        </button>
-        <button onClick={onDiscard} disabled={parts.saving} data-testid="parts-discard" style={cancelButton(parts.saving)}>
-          Don’t save
-        </button>
-        <button onClick={onSave} disabled={parts.saving} data-testid="parts-save-close" style={primaryButton(parts.saving)}>
-          {parts.saving ? "Saving…" : "Save"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-// A sub printer's printer settings, laid out as PrusaSlicer BOSS edition's Printer Settings tab (see
-// PrinterPresetPages). Farmhand only knows them from the 3MFs sliced with it, so they're read from one of
-// those: the newest, or another picked from the list (the preset may have been changed between them). Read-only,
-// like every setting in Farmhand.
-function SubPrinterSettings({ printer, sub, bundles, onClose }) {
-  // every 3MF version sliced with it, newest first
-  const sliced = useMemo(
-    () =>
-      bundles
-        .flatMap((b) => b.versions.filter((v) => v.subPrinterId === sub.id).map((v) => ({ bundle: b, ver: v })))
-        .sort((x, y) => Date.parse(y.ver.uploaded) - Date.parse(x.ver.uploaded)),
-    [bundles, sub.id],
-  );
-  const [pickedId, setPickedId] = useState(null);
-  const picked = sliced.find((s) => s.ver.id === pickedId) || sliced[0];
-  const { putPrinter } = useData();
-  const parts = useSubPrinterParts(printer, sub);
-  // after PrusaSlicer's own pages: the parts fitted to it, written down in Farmhand
-  const extraPages = [
-    { id: "parts", title: "Printer parts", Icon: Wrench, render: () => <PrinterParts printer={printer} sub={sub} state={parts} /> },
-  ];
-
-  // Closing: with changes to its parts not saved, first ask whether to save them. Then, once its parts were saved, if
-  // the ticked parts now make a different name, ask whether to rename it.
-  const [askSave, setAskSave] = useState(false);
-  const [renameTo, setRenameTo] = useState(null);
-  const finishClose = (saved = parts.changed ? parts.parts : null) => {
-    const proposed = saved ? nameFromParts(printer.name, saved) : null;
-    if (proposed && proposed !== sub.name) setRenameTo(proposed);
-    else onClose();
-  };
-  const requestClose = () => (parts.unsaved ? setAskSave(true) : finishClose());
-
-  if (renameTo) {
-    return (
-      <ConfirmDialog
-        title="Rename sub printer?"
-        confirmLabel="Rename"
-        cancelLabel="Keep the name"
-        tone="amber"
-        onClose={onClose}
-        onConfirm={async () => putPrinter(await renameSubPrinter(printer.id, sub.id, renameTo))}
-      >
-        Its parts changed. Rename <span style={{ ...mono, overflowWrap: "anywhere" }}>{sub.name}</span> after the ticked
-        parts, to <span data-testid="rename-to" style={monoText(13, c.heading, { overflowWrap: "anywhere" })}>{renameTo}</span>? Its 3MF files stay linked to it.
-        Rename the preset in PrusaSlicer to match, or 3MFs sliced with the old name will add the old name back.
-      </ConfirmDialog>
-    );
-  }
-
-  return (
-    <Modal title={`Printer Settings · ${printer.name}`} onClose={requestClose} width={960}>
-      <PrinterPresetPages
-        ver={picked?.ver ?? null}
-        name={sub.name}
-        extraPages={extraPages}
-        empty={
-          <div data-testid="sub-printer-no-settings" style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 14 })}>
-            No 3MF file sliced with <span style={mono}>{sub.name}</span> has been uploaded yet, so Farmhand doesn’t have its
-            printer settings. They come from the 3MF files: upload one sliced with this preset and they’ll show here.
-          </div>
-        }
-        from={
-          picked && (
-            <label style={uiText(12, c.textFaint, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 })}>
-              Settings from
-              {sliced.length > 1 ? (
-                <select
-                  data-testid="sub-printer-settings-from"
-                  value={picked.ver.id}
-                  onChange={(e) => setPickedId(Number(e.target.value))}
-                  style={{ ...fieldBox(), padding: "4px 8px", maxWidth: "100%" }}
-                >
-                  {sliced.map(({ bundle, ver }, i) => (
-                    <option key={ver.id} value={ver.id}>
-                      {ver.filename || bundle.name} · v{ver.v} · {ver.date}{i === 0 ? " (newest)" : ""}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span style={monoText(12, c.textMuted)}>{picked.ver.filename || picked.bundle.name} · v{picked.ver.v}</span>
-              )}
-            </label>
-          )
-        }
-      />
-      {askSave && (
-        // over the window, which stays as it was underneath for Keep editing
-        <SaveChanges
-          sub={sub}
-          parts={parts}
-          onKeepEditing={() => setAskSave(false)}
-          onDiscard={() => finishClose()}
-          onSave={async () => {
-            const saved = await parts.save();
-            if (saved) finishClose(saved);
-          }}
-        />
-      )}
-    </Modal>
+    <>
+      <NameInput value={value} onChange={onChange} onEnter={onSave} onEscape={onCancel} placeholder={placeholder} testId={`${testId}-input`} disabled={busy} />
+      <button onClick={onSave} disabled={busy || !value.trim()} data-testid={`${testId}-save`} style={headerButton()}>
+        {busy ? busyLabel : label}
+      </button>
+      <button onClick={onCancel} disabled={busy} style={linkButton(12)}>Cancel</button>
+      {children}
+    </>
   );
 }
 
@@ -182,54 +88,17 @@ function SubPrinterSettings({ printer, sub, bundles, onClose }) {
 // parts, named "<name> - copy" unless that's changed), Remove
 function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   const { putPrinter } = useData();
+  const { busy, error, setError, run } = useChange();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(sub.name);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [copyAs, setCopyAs] = useState(null); // the copy's name while it's being made, else null
   const isDefault = printer.defaultSubPrinterId === sub.id;
 
-  const toggleDefault = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      putPrinter(await setDefaultSubPrinter(printer.id, isDefault ? null : sub.id));
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const save = async () => {
-    if (text.trim() === sub.name) return setEditing(false);
-    setBusy(true);
-    setError(null);
-    try {
-      putPrinter(await renameSubPrinter(printer.id, sub.id, text));
-      setEditing(false);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const makeCopy = async () => {
-    if (!copyAs.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      putPrinter(await copySubPrinter(printer.id, sub.id, copyAs));
-      setCopyAs(null);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const toggleDefault = () => run(() => setDefaultSubPrinter(printer.id, isDefault ? null : sub.id));
+  const save = () => (text.trim() === sub.name ? setEditing(false) : run(() => renameSubPrinter(printer.id, sub.id, text), () => setEditing(false)));
+  const makeCopy = () => copyAs.trim() && run(() => copySubPrinter(printer.id, sub.id, copyAs), () => setCopyAs(null));
   const closeCopy = () => {
     setCopyAs(null);
     setError(null);
@@ -304,14 +173,11 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
       {copyAs != null && (
         <div data-testid="sub-printer-copy-form" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, paddingLeft: 23 }}>
           <span style={uiText(12, c.textMuted)}>Copy as</span>
-          <NameInput value={copyAs} onChange={setCopyAs} onEnter={makeCopy} onEscape={closeCopy} placeholder="The copy’s name" testId="sub-printer-copy-input" disabled={busy} />
-          <button onClick={makeCopy} disabled={busy || !copyAs.trim()} data-testid="sub-printer-copy-save" style={headerButton()}>
-            {busy ? "Copying…" : "Copy"}
-          </button>
-          <button onClick={closeCopy} disabled={busy} style={linkButton(12)}>Cancel</button>
-          <div style={uiText(11, c.textFaint, { flexBasis: "100%", lineHeight: 1.5 })}>
-            A new sub printer with the same parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
-          </div>
+          <NameForm value={copyAs} onChange={setCopyAs} onSave={makeCopy} onCancel={closeCopy} busy={busy} label="Copy" busyLabel="Copying…" placeholder="The copy’s name" testId="sub-printer-copy">
+            <div style={uiText(11, c.textFaint, { flexBasis: "100%", lineHeight: 1.5 })}>
+              A new sub printer with the same parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
+            </div>
+          </NameForm>
         </div>
       )}
       {error && <div style={uiText(12, c.danger, { marginTop: 6, paddingLeft: 23 })}>{error}</div>}
@@ -342,26 +208,16 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
 // added when a 3MF sliced with one is uploaded, and can be added, renamed and removed here. `filter` is the one whose
 // 3MFs are the only ones shown below (null: all of them).
 export function SubPrinters({ printer, bundles, filter, onFilter }) {
-  const { putPrinter } = useData();
+  const { busy, error, setError, run } = useChange();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
 
-  const add = async () => {
-    if (!name.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      putPrinter(await addSubPrinter(printer.id, name));
+  const add = () =>
+    name.trim() &&
+    run(() => addSubPrinter(printer.id, name), () => {
       setName("");
       setAdding(false);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const close = () => {
     setAdding(false);
     setName("");
@@ -393,11 +249,7 @@ export function SubPrinters({ printer, bundles, filter, onFilter }) {
         <div style={{ padding: "8px 12px", borderTop: `1px solid ${c.border}` }}>
           {adding ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <NameInput value={name} onChange={setName} onEnter={add} onEscape={close} placeholder="The preset’s name, as PrusaSlicer shows it" testId="sub-printer-add-input" disabled={busy} />
-              <button onClick={add} disabled={busy || !name.trim()} data-testid="sub-printer-add-save" style={headerButton()}>
-                {busy ? "Adding…" : "Add"}
-              </button>
-              <button onClick={close} disabled={busy} style={linkButton(12)}>Cancel</button>
+              <NameForm value={name} onChange={setName} onSave={add} onCancel={close} busy={busy} label="Add" busyLabel="Adding…" placeholder="The preset’s name, as PrusaSlicer shows it" testId="sub-printer-add" />
             </div>
           ) : (
             <button onClick={() => setAdding(true)} data-testid="sub-printer-add" style={headerButton()}>

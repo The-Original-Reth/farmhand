@@ -250,6 +250,12 @@ export function mockApi() {
     if (body.installed_on != null && !/^\d{4}-\d{2}-\d{2}$/.test(body.installed_on)) throw new HttpError(422, "The installed date isn't a date");
     return { part: part.slice(0, 120), make: text(body.make), model: text(body.model), installed_on: body.installed_on || null, note: text(body.note), in_name: body.in_name === true };
   };
+  // a default part (Toolhead, Hotend...) keeps its name
+  const keepDefaultName = (part, fields) => {
+    if (DEFAULT_PARTS.some(([name]) => name === part.part) && fields.part !== part.part) {
+      throw new HttpError(422, `${part.part} is one of the default parts, so its name can't be changed`);
+    }
+  };
   const partOf = (s, partId) => {
     const found = s.parts.find((x) => x.id === Number(partId));
     if (!found) throw new HttpError(404, `No part with id ${partId} on this sub printer`);
@@ -273,9 +279,7 @@ export function mockApi() {
       const fields = partFields(r);
       if (r.id == null) return { fields };
       const part = partOf(s, r.id);
-      if (DEFAULT_PARTS.some(([name]) => name === part.part) && fields.part !== part.part) {
-        throw new HttpError(422, `${part.part} is one of the default parts, so its name can't be changed`);
-      }
+      keepDefaultName(part, fields);
       return { part, fields };
     });
     const changed = checked.filter((r) => r.part).map((r) => Object.assign(r.part, r.fields));
@@ -286,9 +290,7 @@ export function mockApi() {
     const s = subPrinterOf(printer(id), subId);
     const part = partOf(s, partId);
     const fields = partFields(body);
-    if (DEFAULT_PARTS.some(([name]) => name === part.part) && fields.part !== part.part) {
-      throw new HttpError(422, `${part.part} is one of the default parts, so its name can't be changed`);
-    }
+    keepDefaultName(part, fields);
     Object.assign(part, fields);
     return s.parts;
   });

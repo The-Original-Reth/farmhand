@@ -27,6 +27,18 @@ DEFAULT_PARTS = (
     ("Toolhead", True), ("Hotend", True), ("Nozzle", True), ("Extruder", True), ("Gantry", True), ("XY motor", False),
 )
 DEFAULT_PART_NAMES = frozenset(name for name, _ in DEFAULT_PARTS)  # their names can't be changed
+# What's written down about a part (all of it but its id)
+PART_FIELDS = ("part", "make", "model", "installed_on", "note", "in_name")
+
+
+def _fields_of(part: SubPrinterPart) -> dict:
+    return {name: getattr(part, name) for name in PART_FIELDS}
+
+
+def _keep_default_name(part: SubPrinterPart, new_name: str) -> None:
+    """A default part (Toolhead, Hotend...) keeps its name: ValueError if `new_name` changes it."""
+    if part.part in DEFAULT_PART_NAMES and new_name != part.part:
+        raise ValueError(f"{part.part} is one of the default parts, so its name can't be changed")
 
 
 def _new(printer: Printer, name: str, *, default_parts: bool = True) -> SubPrinter:
@@ -136,10 +148,7 @@ def copy(db: Session, printer_id: int, sub_printer_id: int, name: str | None = N
     if _named(db, printer_id, name) is not None:
         raise _taken(printer, name)
     new = _new(printer, name, default_parts=False)
-    new.parts = [
-        SubPrinterPart(part=p.part, make=p.make, model=p.model, installed_on=p.installed_on, note=p.note, in_name=p.in_name)
-        for p in sub.parts
-    ]
+    new.parts = [SubPrinterPart(**_fields_of(p)) for p in sub.parts]
     db.commit()
     db.refresh(printer)
     return printer
@@ -235,8 +244,7 @@ def update_part(db: Session, printer_id: int, sub_printer_id: int, part_id: int,
     name: ValueError if it's changed.
     """
     sub, part = _part(db, printer_id, sub_printer_id, part_id)
-    if part.part in DEFAULT_PART_NAMES and fields.get("part", part.part) != part.part:
-        raise ValueError(f"{part.part} is one of the default parts, so its name can't be changed")
+    _keep_default_name(part, fields.get("part", part.part))
     for name, value in fields.items():
         setattr(part, name, value)
     db.commit()
@@ -266,8 +274,8 @@ def save_parts(db: Session, printer_id: int, sub_printer_id: int, rows: list[dic
         part = now.get(row["id"]) if row.get("id") is not None else None
         if row.get("id") is not None and part is None:
             raise NotFound(f"No part with id {row['id']} on this sub printer")
-        if part is not None and part.part in DEFAULT_PART_NAMES and row["part"] != part.part:
-            raise ValueError(f"{part.part} is one of the default parts, so its name can't be changed")
+        if part is not None:
+            _keep_default_name(part, row["part"])
 
     for part in [p for p in sub.parts if p.id not in set(ids)]:
         sub.parts.remove(part)
@@ -403,8 +411,7 @@ def restore(db: Session, printer: Printer, saved) -> bool:
                     added |= len(sub.alias_rows) != before
         if saved_parts is not None and (not sub.parts or _only_defaults(sub)):
             restored = list(filter(None, map(_restored_part, saved_parts[:500])))
-            fields = lambda ps: [(p.part, p.make, p.model, p.installed_on, p.note, p.in_name) for p in ps]  # noqa: E731
-            if fields(restored) != fields(sub.parts):
+            if [_fields_of(p) for p in restored] != [_fields_of(p) for p in sub.parts]:
                 sub.parts = restored
                 added = True
     if default is not None and printer.default_sub_printer_row is None:  # never replaces one picked here
