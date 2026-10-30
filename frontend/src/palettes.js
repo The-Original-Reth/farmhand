@@ -114,6 +114,37 @@ export const PRESETS = [
   },
 ];
 
+// A 3MF's settings window wears the colours of the slicer that made it, dark or light to match the scheme in use:
+// PrusaSlicer's orange, OrcaSlicer's teal green. `accent` is the slicer's own colour, for fills (tick boxes, the
+// selected tab's underline); `accentText` is the shade of it that's legible as text and icons on `bg` and on
+// `accentDim` (the selected page). `field` is the box a value sits in.
+export const SLICER_SCHEMES = {
+  prusa: {
+    dark: {
+      bg: "#2B2B2D", field: "#3A3A3D", border: "#4E4E52", borderStrong: "#6E6E73",
+      heading: "#FFFFFF", textPrimary: "#EDEDED", textMuted: "#C9C9CC", textFaint: "#A9A9AE",
+      accent: "#ED6B21", accentText: "#F3874A", accentDim: "#4A2F1F",
+    },
+    light: {
+      bg: "#FFFFFF", field: "#F4F4F4", border: "#D2D2D2", borderStrong: "#A2A2A2",
+      heading: "#000000", textPrimary: "#1A1A1A", textMuted: "#3C3C3C", textFaint: "#5C5C5C",
+      accent: "#ED6B21", accentText: "#AD4A0F", accentDim: "#FDE8DB",
+    },
+  },
+  orca: {
+    dark: {
+      bg: "#2D2D31", field: "#38383E", border: "#4A4A51", borderStrong: "#6B6B74",
+      heading: "#FFFFFF", textPrimary: "#EFEFF0", textMuted: "#C9C9CE", textFaint: "#A8A8AF",
+      accent: "#009688", accentText: "#2EBBAB", accentDim: "#16403C",
+    },
+    light: {
+      bg: "#FFFFFF", field: "#F5F5F6", border: "#DBDBDB", borderStrong: "#ABABAB",
+      heading: "#262E30", textPrimary: "#262E30", textMuted: "#454D50", textFaint: "#5E6668",
+      accent: "#009688", accentText: "#00796B", accentDim: "#E2F3F1",
+    },
+  },
+};
+
 export const FONTS = [
   { id: "archivo", name: "Archivo", note: "default", stack: "'Archivo', system-ui, sans-serif" },
   { id: "system", name: "System", note: "your device's own font", stack: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" },

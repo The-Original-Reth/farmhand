@@ -1,6 +1,6 @@
 // Choosing and applying a look: colour scheme, text brightness, font, text size, 3MF file name colour. Saved per browser.
 import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE } from "./palettes.js";
-import { c, ui, setFontScale } from "./theme.js";
+import { c, look, ui, setFontScale } from "./theme.js";
 import { readStored, writeStored } from "./lib/storage.js";
 
 const STORAGE_KEY = "farmhand.appearance";
@@ -53,6 +53,7 @@ export function applyAppearance(appearance) {
   const { colors, mode } = paletteFor(a.scheme, a.contrast);
   if (a.file_name_color !== "auto") colors.fileName = a.file_name_color; // a colour of their own for 3MF names
   Object.assign(c, colors);
+  look.mode = mode;
   ui.fontFamily = FONTS.find((f) => f.id === a.font).stack;
   setFontScale(SIZES.find((s) => s.id === a.size).scale);
   if (typeof document !== "undefined") {

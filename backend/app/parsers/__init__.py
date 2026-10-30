@@ -9,6 +9,7 @@ __all__ = ["ParsedBundle", "RawThreeMF", "parse_3mf"]
 _PARSERS = {
     "prusaslicer": prusaslicer.parse,
     "orcaslicer": orcaslicer.parse,
+    "bambustudio": lambda raw: orcaslicer.parse(raw, "bambustudio"),
 }
 
 
@@ -16,15 +17,14 @@ def parse_3mf(path: str) -> ParsedBundle:
     """
     Read a .3mf file from disk and parse it with whichever slicer-family
     parser applies. Raises ValueError if the file has no recognizable
-    slicer config at all, or NotImplementedError if it's a family we
-    haven't built a real parser for yet (currently: OrcaSlicer).
+    slicer config at all (or one that can't be read).
     """
     raw = read_3mf(path)
     if raw.config_text is None:
         raise ValueError(
             f"No slicer config found in {path!r} (checked: "
             f"{', '.join(prusaslicer_and_friends_paths())}) — is this a "
-            "valid PrusaSlicer/OrcaSlicer-exported .3mf?"
+            "valid PrusaSlicer, OrcaSlicer or Bambu Studio .3mf?"
         )
     family = detect_slicer_family(raw)
     parser = _PARSERS.get(family)

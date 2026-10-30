@@ -113,6 +113,7 @@ export function buildFarm() {
     model(3, "MMMini_Frog_horizontalEyes_Keychain_v01.stl", "STL", 255, ["stl-frog-keychain", "stl-frog-keychain"]),
     model(4, "Calibration cube.stl", "STL", 400, [null], "20 mm cube for flow and dimension checks."),
     model(5, "Spool holder bracket.step", "STEP", 120, [null]),
+    model(6, "Flexi-Starfish.stl", "STL", 20, [null]),
   ];
 
   // ------------------------------------------------------------------ 3MF files (bundles) and their versions
@@ -120,6 +121,7 @@ export function buildFarm() {
     "shark-vt1190": settingsFixture("shark-vt1190"),
     "shark-v2bog": settingsFixture("shark-v2bog"),
     "frog-vt1190": settingsFixture("frog-vt1190"),
+    "starfish-orca": settingsFixture("starfish-orca"), // sliced in OrcaSlicer, so shown in its layout
   };
   const versionSettings = {}; // version id -> settings
   let bundleVersionId = 0;
@@ -130,7 +132,7 @@ export function buildFarm() {
       // later versions get a few real-looking changes, so Compare has something to show
       versionSettings[id] = { ...base, ...(f.changes || {}) };
       return {
-        id, version: i + 1, filename: f.name, slicer_family: "prusaslicer",
+        id, version: i + 1, filename: f.name, slicer_family: f.family || "prusaslicer",
         slicer_display_name: f.slicer || "PrusaSlicer 2.9.6",
         printer_profile_name: printers.find((p) => p.id === printerId).name,
         uploaded_at: iso(NOW - (createdDaysAgo - i * 21) * DAY),
@@ -157,6 +159,7 @@ export function buildFarm() {
       { name: "VT_1190_-_prusa_slicer_-_MMMini_Frog_v3.3mf", changes: { first_layer_temperature: "220", temperature: "212", brim_width: "0", fill_pattern: "gyroid" } },
     ], { notes: "Mixed plate: both frogs together.\nTextured sheet, glue stick for the keychain loops.", notes_revision: 2, notes_updated_at: iso(NOW - 12 * DAY) }),
   ];
+  bundles.push(bundle(4, 2, [6], "starfish-orca", 18, [{ name: "V2_BOG_-_Orca_Slicer_-_Flexi-Starfish.3mf", slicer: "OrcaSlicer 2.4.2", family: "orcaslicer" }]));
   bundles[2].starred_version_id = bundles[2].versions.find((v) => v.version === 2).id; // v2 is the keeper
 
   // Sub printers: each printer's printer presets in PrusaSlicer, found from its 3MFs' printer_settings_id as the real

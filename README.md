@@ -189,7 +189,11 @@ sudo docker compose down -v
 - **Stars.** A 3MF's first version has a silver star. Any later version can be starred gold — one per 3MF,
   clicking another moves it, clicking the gold one clears it.
 - **G-code** (see "G-code" below): uploaded for a 3MF, shown under it, downloaded, or sent to the printer
-- The 3MF settings viewer (PrusaSlicer-tab-style) and the compare/diff between any two versions
+- The 3MF settings viewer, laid out the way the slicer that made the 3MF shows its settings: PrusaSlicer BOSS
+  edition's Print / Filament / Printer Settings tabs (pages down the left), or OrcaSlicer's (and Bambu Studio's)
+  Process / Filament / Printer settings (pages across the top), each in that slicer's own colours (Prusa orange,
+  Orca teal green), dark or light to match your colour scheme. Settings with no place on those pages are on an
+  **Other** page, so none is hidden. And the compare/diff between any two versions
 - Downloading a 3MF (greyed out once a version's files are pruned by the rolling window), its G-code, and a
   model's file
 - **The Models list** is sortable by name, date added, number of 3MF files, number of printers, or type, in

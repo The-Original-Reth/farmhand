@@ -40,7 +40,7 @@ class BundleVersion(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 
     filename: Mapped[str] = mapped_column(String(255), nullable=False)  # original uploaded .3mf filename
-    slicer_family: Mapped[str] = mapped_column(String(50), nullable=False)  # "prusaslicer" | "orcaslicer"
+    slicer_family: Mapped[str] = mapped_column(String(50), nullable=False)  # "prusaslicer" | "orcaslicer" | "bambustudio"
     slicer_display_name: Mapped[str] = mapped_column(String(100), nullable=False)  # "PrusaSlicer 2.9.5-rc1"
     printer_profile_name: Mapped[str | None] = mapped_column(String(120))  # as read from the 3MF itself
 

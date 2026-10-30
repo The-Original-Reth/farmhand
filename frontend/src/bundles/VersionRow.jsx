@@ -100,7 +100,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
       </div>
 
       {settingsOpen && bundle && (
-        <Modal title="Display Settings" onClose={() => setSettingsOpen(false)} width={860}>
+        <Modal title="Display Settings" onClose={() => setSettingsOpen(false)} width={960}>
           <SettingsViewer bundle={bundle} ver={ver} />
         </Modal>
       )}

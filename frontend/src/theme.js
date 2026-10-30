@@ -4,6 +4,8 @@
 import { PRESETS, FONTS, DEFAULT_APPEARANCE } from "./palettes.js";
 
 export const c = { ...PRESETS.find((p) => p.id === DEFAULT_APPEARANCE.scheme).colors };
+// Whether the scheme in use is dark or light (a slicer's settings window takes its dark or light colours from it)
+export const look = { mode: PRESETS.find((p) => p.id === DEFAULT_APPEARANCE.scheme).mode };
 
 export const ui = { fontFamily: FONTS.find((f) => f.id === DEFAULT_APPEARANCE.font).stack };
 export const mono = { fontFamily: "'JetBrains Mono', ui-monospace, monospace" };

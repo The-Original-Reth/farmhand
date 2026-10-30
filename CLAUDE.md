@@ -58,7 +58,7 @@ needs an entry there. Passwords are never written to the mirror.
 
 **Frontend**: `src/api.js` is the single HTTP client. It also normalizes API shapes into the shapes the UI
 components use. The API host comes from the browser's own hostname at runtime (port 4545), and
-`VITE_API_BASE` overrides it. `src/` has one folder per area (models, bundles, printers, power, storage,
+`VITE_API_BASE` overrides it. `src/` has one folder per area (models, bundles, printers, power, storage, settings,
 monitor, notes, compare). Colours come from `palettes.js`/`theme.js`; don't hard-code colours, or the
 contrast check stops covering them.
 

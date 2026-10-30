@@ -116,6 +116,7 @@ export const normalizeBundle = (b) => {
     full: v.full_files_retained,
     filename: v.filename,
     slicer: v.slicer_display_name,
+    slicerFamily: v.slicer_family || "prusaslicer", // which slicer wrote it: prusaslicer | orcaslicer | bambustudio
     profile: v.printer_profile_name || null, // the slicer's printer profile it was sliced under
     uploaded: v.uploaded_at,
     thumb: v.thumbnail_path ? `${API_BASE}/bundles/versions/${v.id}/thumbnail?r=${Date.parse(v.uploaded_at) || 0}` : null,

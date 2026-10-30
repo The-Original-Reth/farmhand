@@ -25,9 +25,14 @@ files from the farm, not synthetic ones).
   (~458 keys on the real farm files), the embedded thumbnail, and the
   printer profile it was sliced for. Verified against all three real
   sample files from the mockup phase.
-- **OrcaSlicer parser**: stubbed, not implemented — there's no real Orca-
-  exported `.3mf` to build and test against yet. Don't guess at the
-  format; get a sample file first, same as PrusaSlicer was done.
+- **OrcaSlicer / Bambu Studio parser** (`app/parsers/orcaslicer.py`): reads
+  `Metadata/project_settings.config` (JSON) and tells Orca from Bambu Studio
+  by `3D/3dmodel.model`'s metadata. Lists (one value per filament or
+  extruder) are kept joined as PrusaSlicer writes them, and any print-host
+  login in the file is dropped. `slicer_family` is `orcaslicer` or
+  `bambustudio`; the printer preset (`printer_settings_id`) names the printer,
+  as Orca has no physical printer in a 3MF. Built against a real OrcaSlicer
+  2.4.2 file.
 - **Versioning engine** (`app/services/bundle_service.py`): the rolling
   5-version full-file window, monument exemption (with required note to
   monument, required confirmation to un-monument), and the locked-printer
@@ -40,7 +45,6 @@ files from the farm, not synthetic ones).
 
 ## What's NOT implemented yet
 
-- OrcaSlicer parsing (stub only — see above)
 - Alembic migrations — currently uses `Base.metadata.create_all()` on
   startup, fine for early development, not for a production DB with data
   worth preserving across schema changes

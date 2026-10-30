@@ -3,19 +3,19 @@ Low-level .3mf (zip) access shared by every slicer-specific parser.
 
 A .3mf file is a standard zip archive. Different slicers put their config
 dump in different places inside it:
-  - PrusaSlicer / PrusaSlicer BOSS: Metadata/Slic3r_PE.config
-  - OrcaSlicer:                     Metadata/Slic3r_PE.config as well in
-                                     most builds, but with different key
-                                     names/coverage — handled by its own
-                                     parser (see orcaslicer.py, stubbed).
+  - PrusaSlicer / PrusaSlicer BOSS: Metadata/Slic3r_PE.config ("; key = value" lines)
+  - OrcaSlicer / Bambu Studio:      Metadata/project_settings.config (JSON), and
+                                     3D/3dmodel.model's <metadata> names the app
+                                     ("Application", plus "OrcaSlicer" in Orca's)
 
 This module only knows how to open the zip and pull out well-known member
 paths. It has no opinion about what the config file's contents mean.
 """
 from __future__ import annotations
 
+import re
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 THUMBNAIL_CANDIDATES = [
     "Metadata/thumbnail.png",
@@ -25,7 +25,11 @@ THUMBNAIL_CANDIDATES = [
 
 CONFIG_CANDIDATES = [
     "Metadata/Slic3r_PE.config",
+    "Metadata/project_settings.config",
 ]
+ORCA_CONFIG = "Metadata/project_settings.config"
+MODEL_MEMBER = "3D/3dmodel.model"
+_MODEL_META_RE = re.compile(r'<metadata\s+name="([^"]+)"\s*>([^<]*)</metadata>')
 
 
 @dataclass
@@ -37,6 +41,16 @@ class RawThreeMF:
     thumbnail_bytes: bytes | None
     thumbnail_member: str | None
     all_members: list[str]
+    # The <metadata> of 3D/3dmodel.model: which app wrote it ({"Application": "BambuStudio-02.06.00.51", ...})
+    model_metadata: dict[str, str] = field(default_factory=dict)
+
+
+def _model_metadata(zf: zipfile.ZipFile, members: list[str]) -> dict[str, str]:
+    if MODEL_MEMBER not in members:
+        return {}
+    with zf.open(MODEL_MEMBER) as fh:
+        head = fh.read(64 * 1024).decode("utf-8", errors="replace")  # the metadata comes before the objects
+    return {name: value.strip() for name, value in _MODEL_META_RE.findall(head)}
 
 
 def read_3mf(path: str) -> RawThreeMF:
@@ -65,6 +79,7 @@ def read_3mf(path: str) -> RawThreeMF:
             thumbnail_bytes=thumbnail_bytes,
             thumbnail_member=thumbnail_member,
             all_members=members,
+            model_metadata=_model_metadata(zf, members),
         )
 
 
@@ -74,11 +89,16 @@ def detect_slicer_family(raw: RawThreeMF) -> str:
 
     PrusaSlicer and PrusaSlicer BOSS share an output format (per spec: BOSS
     just exposes more variables, doesn't change the format), so both are
-    handled by the 'prusaslicer' family. OrcaSlicer is detected by looking
-    at the config's own declared app name where present.
+    handled by the 'prusaslicer' family. OrcaSlicer and Bambu Studio share
+    Bambu's (JSON settings), and the model's metadata says which one it was.
     """
     if not raw.config_text:
         return "unknown"
+    if raw.config_member == ORCA_CONFIG:
+        meta = raw.model_metadata
+        if "OrcaSlicer" in meta or meta.get("Application", "").lower().startswith("orcaslicer"):
+            return "orcaslicer"
+        return "bambustudio"
     first_lines = raw.config_text.splitlines()[:5]
     header = " ".join(first_lines).lower()
     if "orcaslicer" in header:
