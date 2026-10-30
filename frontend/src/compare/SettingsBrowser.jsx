@@ -68,7 +68,7 @@ function SettingsBrowser({ bundle, ver, settings }) {
 
 // The slicer's window: its tabs, the tab's preset, and its pages. In a comparison two of these sit side by side,
 // turning together (`tabId` / `onTab`, `pageId` / `onPage`), and `compare` = { side, keys (the settings that differ),
-// has (rows either file has), diffsOn (differences on a page) } marks what differs.
+// has (rows either file has), diffsOn (differences on a page), scroll (to scroll with the other side) } marks what differs.
 export function SlicerWindow({ layout, tabs, settings, value, title, tabId, onTab, pageId, onPage, compare }) {
   const tab = tabs.find((t) => t.id === tabId) || tabs[0];
   const p = slicerColors(layout.slicer);
@@ -117,7 +117,7 @@ export function SlicerWindow({ layout, tabs, settings, value, title, tabId, onTa
               )}
               <SettingsPages
                 key={tab.id} pages={tab.pages} value={value} choices={layout.choices} nav={layout.nav} label={`${tab.title} pages`}
-                pageId={pageId} onPage={onPage} has={compare?.has} diffsOn={compare?.diffsOn}
+                pageId={pageId} onPage={onPage} has={compare?.has} diffsOn={compare?.diffsOn} scroll={compare?.scroll}
               />
             </>
           )}

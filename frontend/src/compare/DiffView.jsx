@@ -129,6 +129,35 @@ function SlicerCompare({ left, right, leftLabel, rightLabel, leftSettings, right
   const [tabIds, setTabIds] = useState({ left: null, right: null });
   const [pageIds, setPageIds] = useState({ left: null, right: null });
 
+  // Linked sides scroll together: scrolling one page moves the other to the same place. The rows line up, so the
+  // same distance down shows the same settings. `moved` remembers where we put the other side, so its own scroll
+  // event (fired by our move) isn't passed back.
+  const bodies = useRef({ left: null, right: null, moved: {} });
+  const linkedRef = useRef(linked);
+  linkedRef.current = linked;
+  const scroll = useMemo(() => {
+    const other = { left: "right", right: "left" };
+    const one = (side) => ({
+      ref: (el) => {
+        bodies.current[side] = el;
+      },
+      onScroll: (e) => {
+        const b = bodies.current;
+        const top = e.currentTarget.scrollTop;
+        if (b.moved[side] === top) {
+          delete b.moved[side];
+          return;
+        }
+        const target = b[other[side]];
+        if (!linkedRef.current || !target || target.scrollTop === top) return;
+        const before = target.scrollTop;
+        target.scrollTop = top; // the browser stops it at the bottom if that side is shorter
+        if (target.scrollTop !== before) b.moved[other[side]] = target.scrollTop;
+      },
+    });
+    return { left: one("left"), right: one("right") };
+  }, []);
+
   const sides = useMemo(() => {
     const valueL = leftLayout.value(leftSettings);
     const valueR = rightLayout.value(rightSettings);
@@ -161,7 +190,7 @@ function SlicerCompare({ left, right, leftLabel, rightLabel, leftSettings, right
           setPageIds((p) => ({ ...p, [key]: null })); // a new tab opens on its first page
         }}
         onPage={(id) => setPageIds((p) => ({ ...p, [key]: id }))}
-        compare={{ side, keys: differing, has: s.has, diffsOn: s.diffsOn }}
+        compare={{ side, keys: differing, has: s.has, diffsOn: s.diffsOn, scroll: scroll[side] }}
       />
     );
   };

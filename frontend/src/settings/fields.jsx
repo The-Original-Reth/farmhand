@@ -168,8 +168,8 @@ export const pageKeys = (page) => (page.groups || []).flatMap((g) => g.rows.map(
 // a setting for a page (an Extruder page reads its own extruder's value). `choices`: how the slicer names drop-down
 // choices, by key. In a comparison the page is chosen from outside (`pageId`, `onPage`) so both sides turn together,
 // `has(key, page)` shows the rows either file has (so the two sides line up), and `diffsOn(page)` counts the
-// differences on a page for its button.
-export function SettingsPages({ pages, value, choices = {}, nav = "left", label, pageId: shownId, onPage, has, diffsOn }) {
+// differences on a page for its button, and `scroll` = { ref, onScroll } lets the two sides scroll together.
+export function SettingsPages({ pages, value, choices = {}, nav = "left", label, pageId: shownId, onPage, has, diffsOn, scroll }) {
   const col = useSlicerColors();
   const [ownId, setOwnId] = useState(pages[0]?.id);
   const pageId = shownId !== undefined ? shownId : ownId;
@@ -217,7 +217,7 @@ export function SettingsPages({ pages, value, choices = {}, nav = "left", label,
           );
         })}
       </nav>
-      <div data-testid="preset-page-body" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12, maxHeight: "62vh", overflowY: "auto", paddingRight: 4 }}>
+      <div data-testid="preset-page-body" ref={scroll?.ref} onScroll={scroll?.onScroll} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12, maxHeight: "62vh", overflowY: "auto", paddingRight: 4 }}>
         {page.render
           ? page.render()
           : page.groups.map((g) => {
