@@ -246,6 +246,27 @@ export function mockApi() {
     s.parts.push({ id: farm.nextIds.part++, ...partFields(body) });
     return [201, s.parts];
   });
+  // The whole list at once (the page's Save): with an id it's changed, without it's added, left out it's removed
+  // (confirm=true). All of it or nothing.
+  on("PUT", "/printers/:id/sub-printers/:subId/parts", ({ id, subId }, body, q) => {
+    const s = subPrinterOf(printer(id), subId);
+    const rows = Array.isArray(body) ? body : [];
+    const kept = new Set(rows.map((r) => r.id).filter((x) => x != null));
+    if (s.parts.some((x) => !kept.has(x.id)) && q.get("confirm") !== "true") throw new HttpError(409, "Saving removes parts: say confirm=true");
+    if (kept.size !== rows.filter((r) => r.id != null).length) throw new HttpError(422, "The same part is in the list twice");
+    const checked = rows.map((r) => {
+      const fields = partFields(r);
+      if (r.id == null) return { fields };
+      const part = partOf(s, r.id);
+      if (DEFAULT_PARTS.some(([name]) => name === part.part) && fields.part !== part.part) {
+        throw new HttpError(422, `${part.part} is one of the default parts, so its name can't be changed`);
+      }
+      return { part, fields };
+    });
+    const changed = checked.filter((r) => r.part).map((r) => Object.assign(r.part, r.fields));
+    s.parts = [...changed.sort((a, b) => a.id - b.id), ...checked.filter((r) => !r.part).map((r) => ({ id: farm.nextIds.part++, ...r.fields }))];
+    return s.parts;
+  });
   on("PUT", "/printers/:id/sub-printers/:subId/parts/:partId", ({ id, subId, partId }, body) => {
     const s = subPrinterOf(printer(id), subId);
     const part = partOf(s, partId);

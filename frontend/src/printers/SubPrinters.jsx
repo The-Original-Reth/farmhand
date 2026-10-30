@@ -3,7 +3,7 @@ import { Check, Layers3, Pencil, Plus, Star, Wrench, X } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
 import { addSubPrinter, deleteSubPrinter, errorText, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
 import { useData } from "../data.jsx";
-import { fieldBox, headerButton, linkButton, monoText, uiText } from "../styles.js";
+import { cancelButton, fieldBox, headerButton, linkButton, monoText, primaryButton, uiText } from "../styles.js";
 
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { SectionLabel, TrashButton } from "../components/common/ui.jsx";
@@ -39,6 +39,31 @@ function NameInput({ value, onChange, onEnter, onEscape, placeholder, testId, di
   );
 }
 
+// Closing the window with changes to its parts not saved: save them, close without them, or go back to them.
+// Clicking outside or the close button goes back, so nothing typed is lost by a stray click.
+function SaveChanges({ sub, parts, onKeepEditing, onDiscard, onSave }) {
+  return (
+    <Modal title="Save the changes to its parts?" onClose={parts.saving ? () => {} : onKeepEditing} width={480}>
+      <div data-testid="parts-save-ask" style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 14 })}>
+        You changed <span style={{ ...mono, overflowWrap: "anywhere" }}>{sub.name}</span>’s parts and haven’t saved them.
+        Save them before closing?
+      </div>
+      {parts.saveError && <div style={uiText(12, c.danger, { marginBottom: 10, lineHeight: 1.5 })}>{parts.saveError}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={onKeepEditing} disabled={parts.saving} data-testid="parts-keep-editing" style={cancelButton(parts.saving)}>
+          Keep editing
+        </button>
+        <button onClick={onDiscard} disabled={parts.saving} data-testid="parts-discard" style={cancelButton(parts.saving)}>
+          Don’t save
+        </button>
+        <button onClick={onSave} disabled={parts.saving} data-testid="parts-save-close" style={primaryButton(parts.saving)}>
+          {parts.saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // A sub printer's printer settings, laid out as PrusaSlicer BOSS edition's Printer Settings tab (see
 // PrinterPresetPages). Farmhand only knows them from the 3MFs sliced with it, so they're read from one of
 // those: the newest, or another picked from the list (the preset may have been changed between them). Read-only,
@@ -61,13 +86,16 @@ function SubPrinterSettings({ printer, sub, bundles, onClose }) {
     { id: "parts", title: "Printer parts", Icon: Wrench, render: () => <PrinterParts printer={printer} sub={sub} state={parts} /> },
   ];
 
-  // Closing after its parts changed: if the ticked parts now make a different name, ask whether to rename it
+  // Closing: with changes to its parts not saved, first ask whether to save them. Then, once its parts were saved, if
+  // the ticked parts now make a different name, ask whether to rename it.
+  const [askSave, setAskSave] = useState(false);
   const [renameTo, setRenameTo] = useState(null);
-  const requestClose = () => {
-    const proposed = parts.changed ? nameFromParts(printer.name, parts.parts) : null;
+  const finishClose = (saved = parts.changed ? parts.parts : null) => {
+    const proposed = saved ? nameFromParts(printer.name, saved) : null;
     if (proposed && proposed !== sub.name) setRenameTo(proposed);
     else onClose();
   };
+  const requestClose = () => (parts.unsaved ? setAskSave(true) : finishClose());
 
   if (renameTo) {
     return (
@@ -122,6 +150,19 @@ function SubPrinterSettings({ printer, sub, bundles, onClose }) {
           )
         }
       />
+      {askSave && (
+        // over the window, which stays as it was underneath for Keep editing
+        <SaveChanges
+          sub={sub}
+          parts={parts}
+          onKeepEditing={() => setAskSave(false)}
+          onDiscard={() => finishClose()}
+          onSave={async () => {
+            const saved = await parts.save();
+            if (saved) finishClose(saved);
+          }}
+        />
+      )}
     </Modal>
   );
 }

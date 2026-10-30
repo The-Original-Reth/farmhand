@@ -145,6 +145,12 @@ class SubPrinterPartIn(BaseModel):
         return v or None
 
 
+class SubPrinterPartRow(SubPrinterPartIn):
+    """One part in the whole list, saved at once: with its id when it's already written down, without when it's new."""
+
+    id: int | None = None
+
+
 class PrinterOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -315,8 +315,11 @@ Click a sub printer's **name** to open its **Printer Settings**, laid out like P
 Settings tab (General, Custom G-code, Machine limits, Extruder 1…, Notes, Dependencies). They're read from the newest
 3MF sliced with it, or another picked under **Settings from**, and can't be changed here. The last page, **Printer
 parts**, is Farmhand's own: write down the parts fitted to that sub printer (the part, its make, its model, when it was
-installed, a note), and change or remove them later. Every new sub printer starts with **Toolhead, Hotend, Nozzle,
-Extruder, Gantry** and **XY motor** listed, ready to fill in; add others with **Add part**. The default parts'
+installed, a note). Every part on the page can be typed into at once: change any of them, add others with **Add
+part**, remove some with the bin, then **Save**, next to Add part, to keep the whole list in one go (nothing is
+kept until then, and a part added and left empty is dropped). Close the window with changes not saved and Farmhand
+asks whether to **Save** them, close and lose them (**Don't save**), or **Keep editing**. Every new sub printer starts
+with **Toolhead, Hotend, Nozzle, Extruder, Gantry** and **XY motor** listed, ready to fill in. The default parts'
 names can't be changed (their make, model, date and note can, and they can be removed); a part you added can be
 renamed.
 
@@ -324,7 +327,7 @@ Each part has an **Add to name** tick box (all the default parts but the XY moto
 models make a name: the printer's name without spaces, then each model in list order, with spaces turned into
 underscores, for example `VT1190_Stealthburner_Rapido_UHF_0.5_WC_Galileo_2`. A part with no model yet is left out,
 and the Gantry is only added when its make or model says AWD, 4WD or quad. The page shows the name as it stands. When
-you close the Printer Settings window after changing its parts, Farmhand asks whether to rename the sub printer to
+you close the Printer Settings window after saving changes to its parts, Farmhand asks whether to rename the sub printer to
 it (only if it's different). Rename the preset in PrusaSlicer to match, or 3MFs sliced with the old name will add a
 sub printer by the old name again. Parts are kept in the settings copy on the NAS as well.
 

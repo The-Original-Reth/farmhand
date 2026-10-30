@@ -143,6 +143,7 @@ Postgres instance running.
 | DELETE | `/printers/{id}/sub-printers/{sub_id}?confirm=true` | Remove a sub printer and the parts written down for it. Its 3MFs stay, with no sub printer (and if it was the default, there's none) |
 | PUT | `/printers/{id}/default-sub-printer` | The printer's default sub printer: `{sub_printer_id}` (one of its own, else **404**), or `{sub_printer_id: null}` for none. The UI picks it for every 3MF uploaded to the printer, whatever its preset (an upload that names no sub printer still goes by the preset). Answers the printer, with `default_sub_printer_id` |
 | GET | `/printers/{id}/sub-printers/{sub_id}/parts` | The parts fitted to a sub printer (its Printer parts page), in the order added: `[{id, part, make, model, installed_on, note}]` |
+| PUT | `/printers/{id}/sub-printers/{sub_id}/parts` | Save the whole list at once (the Printer parts page's Save): `[{id?, part, make?, model?, installed_on?, note?, in_name?}]`. A part with its `id` is changed, one without is added (after the rest), one left out is removed, which needs `?confirm=true` (409 without). All of it or nothing. Answers the list |
 | POST | `/printers/{id}/sub-printers/{sub_id}/parts` | Write down a part: `{part, make?, model?, installed_on? (YYYY-MM-DD), note?}`. Answers the list as it now stands |
 | PUT | `/printers/{id}/sub-printers/{sub_id}/parts/{part_id}` | Change a part (every field is replaced; blank clears). Answers the list |
 | DELETE | `/printers/{id}/sub-printers/{sub_id}/parts/{part_id}?confirm=true` | Remove a part. Answers the list |

@@ -285,7 +285,7 @@ export const setDefaultSubPrinter = (printerId, subPrinterId) =>
 export const deleteSubPrinter = (printerId, subPrinterId) => del(`/printers/${printerId}/sub-printers/${subPrinterId}`);
 
 // A sub printer's parts (its Printer parts page): [{ id, part, make, model, installedOn: "2026-08-14" | null, note }].
-// Each change resolves to the whole list as it now stands.
+// Saving resolves to the whole list as it now stands.
 const normalizePart = (p) => ({
   id: p.id, part: p.part, make: p.make || "", model: p.model || "", installedOn: p.installed_on || null, note: p.note || "",
   inName: !!p.in_name, // ticked "Add to name"
@@ -296,11 +296,10 @@ const partBody = ({ part, make, model, installedOn, note, inName }) => ({
 const partsPath = (printerId, subPrinterId) => `/printers/${printerId}/sub-printers/${subPrinterId}/parts`;
 const partsList = async (call) => (await call).map(normalizePart);
 export const getSubPrinterParts = (printerId, subPrinterId) => partsList(request(partsPath(printerId, subPrinterId)));
-export const addSubPrinterPart = (printerId, subPrinterId, part) =>
-  partsList(request(partsPath(printerId, subPrinterId), jsonBody("POST", partBody(part))));
-export const updateSubPrinterPart = (printerId, subPrinterId, partId, part) =>
-  partsList(request(`${partsPath(printerId, subPrinterId)}/${partId}`, jsonBody("PUT", partBody(part))));
-export const deleteSubPrinterPart = (printerId, subPrinterId, partId) => partsList(del(`${partsPath(printerId, subPrinterId)}/${partId}`));
+// The whole list at once, as the page was edited: a part with an id is changed, one without is added, and one left out
+// is removed (`removes`: the list leaves some out, which the API wants confirmed). All of it, or nothing.
+export const saveSubPrinterParts = (printerId, subPrinterId, parts, removes) =>
+  partsList(request(`${partsPath(printerId, subPrinterId)}${removes ? "?confirm=true" : ""}`, jsonBody("PUT", parts.map((p) => ({ id: p.id ?? null, ...partBody(p) })))));
 
 // ---- a PrusaLink printer (Prusa Core One...): live status and sending it a print. Its history, statistics, service
 // and maintenance use the same calls as a Moonraker printer's (below); its maintenance is kept in Farmhand. ----

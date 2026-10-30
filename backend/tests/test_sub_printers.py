@@ -205,6 +205,37 @@ def test_a_sub_printers_parts_can_be_written_down_changed_and_removed(api):
     assert api.get(base).status_code == 404
 
 
+def test_a_sub_printers_whole_parts_list_is_saved_at_once(api):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    sid = api.post(f"/printers/{pid}/sub-printers", json={"name": "Trident 0.4 brass"}).json()["sub_printers"][0]["id"]
+    base = f"/printers/{pid}/sub-printers/{sid}/parts"
+    parts = api.get(base).json()
+    hotend, xy = parts[1], parts[5]
+    edited = [
+        {**p, "make": "Phaetus", "model": "Rapido UHF"} if p["id"] == hotend["id"] else {**p, "note": "swapped"} if p["part"] == "Nozzle" else p
+        for p in parts if p["id"] != xy["id"]
+    ] + [{"part": "Bed", "model": "300 x 300"}]
+
+    r = api.put(base, json=edited)
+    assert r.status_code == 409  # it removes the XY motor, so it has to say so
+    assert api.get(base).json() == parts  # and nothing was saved
+
+    r = api.put(f"{base}?confirm=true", json=edited)
+    assert r.status_code == 200
+    saved = r.json()
+    assert [p["part"] for p in saved] == ["Toolhead", "Hotend", "Nozzle", "Extruder", "Gantry", "Bed"]  # new ones after the rest
+    assert saved[1]["id"] == hotend["id"] and saved[1]["model"] == "Rapido UHF" and saved[2]["note"] == "swapped"
+    assert api.put(base, json=saved).status_code == 200  # removing nothing needs no confirm
+
+    # all or nothing: one bad row and none of it is saved
+    renamed = [{**p, "part": "Hot end"} if p["id"] == hotend["id"] else {**p, "note": "x"} for p in saved]
+    r = api.put(base, json=renamed)
+    assert r.status_code == 422 and "default parts" in r.json()["detail"]
+    assert api.put(base, json=[*saved, {**saved[0]}]).status_code == 422  # the same part twice
+    assert api.put(f"{base}?confirm=true", json=[{**saved[0], "id": 99999}, *saved[1:]]).status_code == 404  # not its part
+    assert api.get(base).json() == saved
+
+
 def test_sub_printers_and_their_parts_are_kept_in_the_settings_copy_and_restored(db_session, tmp_path):
     printer = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
     sub = sub_printer_service.add(db_session, printer.id, "V2_BOG_Rapido_Ace_0.5_WC").sub_printers[0]

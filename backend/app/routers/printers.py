@@ -8,7 +8,7 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    DefaultSubPrinterIn, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut,
+    DefaultSubPrinterIn, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
 )
 from ..services import bundle_service, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
@@ -101,6 +101,24 @@ def add_sub_printer_part(printer_id: int, sub_printer_id: int, payload: SubPrint
     """Write down a part fitted to a sub printer. Answers its parts as they now stand."""
     with answer_errors():
         return sub_printer_service.add_part(db, printer_id, sub_printer_id, payload.model_dump())
+
+
+@router.put("/{printer_id}/sub-printers/{sub_printer_id}/parts", response_model=list[SubPrinterPartOut])
+def save_sub_printer_parts(
+    printer_id: int, sub_printer_id: int, payload: list[SubPrinterPartRow], confirm: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """
+    Save the whole parts list at once (the Printer parts page's Save): a part with its id is changed, one without is
+    added, and one left out is removed, which needs confirm=true. All of it or nothing. Answers the list.
+    """
+    rows = [row.model_dump() for row in payload]
+    with answer_errors():
+        left_out = sub_printer_service.parts_left_out(db, printer_id, sub_printer_id, rows)
+    if left_out:
+        require_confirm(confirm, "Saving removes parts: say confirm=true")
+    with answer_errors():
+        return sub_printer_service.save_parts(db, printer_id, sub_printer_id, rows)
 
 
 @router.put("/{printer_id}/sub-printers/{sub_printer_id}/parts/{part_id}", response_model=list[SubPrinterPartOut])

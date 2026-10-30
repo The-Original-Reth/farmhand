@@ -212,6 +212,45 @@ def update_part(db: Session, printer_id: int, sub_printer_id: int, part_id: int,
     return list(sub.parts)
 
 
+def parts_left_out(db: Session, printer_id: int, sub_printer_id: int, rows: list[dict]) -> list[SubPrinterPart]:
+    """The parts written down now that `rows` (the whole list, as save_parts takes it) leaves out: saving removes them."""
+    kept = {row.get("id") for row in rows}
+    return [p for p in parts(db, printer_id, sub_printer_id) if p.id not in kept]
+
+
+def save_parts(db: Session, printer_id: int, sub_printer_id: int, rows: list[dict]) -> list[SubPrinterPart]:
+    """
+    Save a sub printer's whole parts list at once, as its Printer parts page was edited: a row with an id changes that
+    part, one without is added (after the rest), and a part the rows leave out is removed. All of it, or nothing:
+    ValueError for a default part renamed or a part listed twice, NotFound for an id that isn't one of its parts.
+    """
+    _printer(db, printer_id)
+    sub = _sub_printer(db, printer_id, sub_printer_id)
+    now = {p.id: p for p in sub.parts}
+    ids = [row["id"] for row in rows if row.get("id") is not None]
+    if len(ids) != len(set(ids)):
+        raise ValueError("The same part is in the list twice")
+    for row in rows:
+        part = now.get(row["id"]) if row.get("id") is not None else None
+        if row.get("id") is not None and part is None:
+            raise NotFound(f"No part with id {row['id']} on this sub printer")
+        if part is not None and part.part in DEFAULT_PART_NAMES and row["part"] != part.part:
+            raise ValueError(f"{part.part} is one of the default parts, so its name can't be changed")
+
+    for part in [p for p in sub.parts if p.id not in set(ids)]:
+        sub.parts.remove(part)
+    for row in rows:
+        fields = {k: v for k, v in row.items() if k != "id"}
+        if row.get("id") is None:
+            sub.parts.append(SubPrinterPart(**fields))
+        else:
+            for name, value in fields.items():
+                setattr(now[row["id"]], name, value)
+    db.commit()
+    db.refresh(sub)
+    return list(sub.parts)
+
+
 def delete_part(db: Session, printer_id: int, sub_printer_id: int, part_id: int) -> list[SubPrinterPart]:
     sub, part = _part(db, printer_id, sub_printer_id, part_id)
     sub.parts.remove(part)
