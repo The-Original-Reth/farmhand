@@ -1,9 +1,9 @@
 import {
-  CircleDot, Cog, FileCode, Fan, Gauge, Layers, Link2, Paintbrush, Printer, Puzzle, ScrollText, SlidersHorizontal,
-  Spline, SquareStack, StickyNote, Thermometer, Waypoints, Wind, Wrench,
+  Cog, FileCode, Fan, Gauge, Layers, Link2, Paintbrush, Printer, ScrollText, SlidersHorizontal, Spline, SquareStack,
+  Thermometer, Waypoints, Wind, Wrench,
 } from "lucide-react";
 import { classifyPrusa } from "../settingsLayout.js";
-import { keyLabel, nth, placedKeys, unescape } from "./fields.jsx";
+import { extruderCount, extruderPages, groupKeys, notesPage, otherPage, pageValue, presetName } from "./pages.js";
 
 // PrusaSlicer (BOSS edition) settings, laid out as its Print Settings, Filament Settings and Printer Settings tabs: the
 // same pages down the left, the same titled groups on each page, the same labels and units. A setting with no place
@@ -527,7 +527,7 @@ const EXTRUDER = [
     rows: [["retract_length_toolchange", "Length", "mm"], ["retract_restart_extra_toolchange", "Extra length on restart", "mm"]],
   },
 ];
-const PER_EXTRUDER = new Set(EXTRUDER.flatMap((g) => g.rows.map((r) => r[0])));
+const PER_EXTRUDER = new Set(groupKeys(EXTRUDER));
 
 // How PrusaSlicer names the choices in its drop-downs
 export const BOSS_CHOICES = {
@@ -559,30 +559,21 @@ export const BOSS_CHOICES = {
 };
 for (const k of ["top_fill_pattern", "bottom_fill_pattern", "support_material_pattern", "support_material_interface_pattern"]) BOSS_CHOICES[k] = BOSS_CHOICES.fill_pattern;
 
-const tidyPreset = (v) => unescape(v || "").replace(/^"|"$/g, "");
 // inherits_cummulative: "print parent; filament parent(s)...; printer parent"
-const parents = (settings) => String(settings?.inherits_cummulative ?? "").split(";").map(tidyPreset);
+const parents = (settings) => String(settings?.inherits_cummulative ?? "").split(";").map(presetName);
 const dependencies = (current, parentKey, extra = []) => [
   { title: "Profile dependencies", rows: [[current, "Current preset"], [parentKey, "Parent preset"], ...extra] },
 ];
 
-// "Other": a tab's settings that none of the pages has a place for (`pages`: all of them, so none shows twice)
-const otherPage = (settings, pages, belongs, title) => {
-  const placed = placedKeys(pages);
-  const rest = Object.keys(settings).filter((k) => !placed.has(k) && belongs(k)).sort();
-  return rest.length ? [{ id: "other", title: "Other", Icon: Puzzle, groups: [{ title, rows: rest.map((k) => [k, keyLabel(k)]) }] }] : [];
-};
-
 // The Printer Settings pages for these settings, followed by `extraPages` of Farmhand's own
 export function bossPrinterPages(settings, extraPages = []) {
   if (!settings) return extraPages;
-  const extruders = bossExtruders(settings);
   const list = [
     { id: "general", title: "General", Icon: Printer, groups: GENERAL },
     { id: "gcode", title: "Custom G-code", Icon: FileCode, groups: CUSTOM_GCODE },
     { id: "limits", title: "Machine limits", Icon: Gauge, groups: MACHINE_LIMITS },
-    ...Array.from({ length: extruders }, (_, i) => ({ id: `extruder${i}`, title: `Extruder ${i + 1}`, Icon: CircleDot, groups: EXTRUDER, extruder: i })),
-    { id: "notes", title: "Notes", Icon: StickyNote, groups: [{ title: "Notes", rows: [["printer_notes", "", "gcode"]] }] },
+    ...extruderPages(extruderCount(settings), EXTRUDER),
+    notesPage("printer_notes"),
     {
       id: "deps", title: "Dependencies", Icon: Link2,
       groups: dependencies("printer_settings_id", "@printerParent", [["printer_vendor", "Vendor"], ["printer_model", "Printer model"], ["printer_variant", "Variant"], ["printer_technology", "Printer technology"]]),
@@ -593,20 +584,18 @@ export function bossPrinterPages(settings, extraPages = []) {
   return [...list, ...extraPages];
 }
 
-const bossExtruders = (settings) => Math.max(1, String(settings?.nozzle_diameter ?? "").split(",").filter((s) => s !== "").length);
-
 // A setting as a BOSS page shows it: "@" ones are worked out, and an Extruder page shows its own extruder's value
 export function bossValue(settings) {
   const p = parents(settings);
   const none = "(none: it doesn’t inherit from a system preset)";
+  const read = pageValue(settings, PER_EXTRUDER);
   return (key, page) => {
     if (!settings) return undefined;
-    if (key === "@extruders") return String(bossExtruders(settings));
+    if (key === "@extruders") return String(extruderCount(settings));
     if (key === "@printParent") return p.length > 1 ? p[0] || none : none;
     if (key === "@filamentParent") return p.length > 2 ? p.slice(1, -1).filter(Boolean).join("; ") || none : none;
     if (key === "@printerParent") return p.length > 1 ? p[p.length - 1] || none : none;
-    const raw = settings[key];
-    return page?.extruder != null && PER_EXTRUDER.has(key) ? nth(raw, page.extruder) : raw;
+    return read(key, page);
   };
 }
 
@@ -621,7 +610,7 @@ export function bossTabs(settings) {
     { id: "multi", title: "Multiple Extruders", Icon: Paintbrush, groups: MULTI_EXTRUDERS },
     { id: "advanced", title: "Advanced", Icon: Cog, groups: PRINT_ADVANCED },
     { id: "output", title: "Output options", Icon: ScrollText, groups: OUTPUT },
-    { id: "notes", title: "Notes", Icon: StickyNote, groups: [{ title: "Notes", rows: [["notes", "", "gcode"]] }] },
+    notesPage("notes"),
     { id: "deps", title: "Dependencies", Icon: Link2, groups: dependencies("print_settings_id", "@printParent") },
   ];
   const filamentPages = [
@@ -630,7 +619,7 @@ export function bossTabs(settings) {
     { id: "advanced", title: "Advanced", Icon: Wrench, groups: FILAMENT_ADVANCED },
     { id: "overrides", title: "Filament Overrides", Icon: SlidersHorizontal, groups: OVERRIDES },
     { id: "gcode", title: "Custom G-code", Icon: FileCode, groups: FILAMENT_GCODE },
-    { id: "notes", title: "Notes", Icon: StickyNote, groups: [{ title: "Notes", rows: [["filament_notes", "", "gcode"]] }] },
+    notesPage("filament_notes"),
     { id: "deps", title: "Dependencies", Icon: Link2, groups: dependencies("filament_settings_id", "@filamentParent") },
   ];
   const printerPages = bossPrinterPages(settings);

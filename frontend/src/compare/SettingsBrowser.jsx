@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
-import { errorText, fetchVersionSettings } from "../api.js";
-import { boxStyle, DiffMarks, pagesWithContent, SettingsPages, SlicerColors, slicerColors, unescape } from "../settings/fields.jsx";
+import { boxStyle, DiffMarks, SettingsPages, SlicerColors, slicerColors } from "../settings/fields.jsx";
+import { hasValue, pagesWithContent, presetName } from "../settings/pages.js";
+import { useVersionSettings } from "../settings/useVersionSettings.js";
 import { BOSS_CHOICES, bossTabs, bossValue } from "../settings/boss.js";
 import { ORCA_CHOICES, orcaTabs, orcaValue } from "../settings/orca.js";
 
@@ -19,32 +20,18 @@ const LAYOUTS = {
 };
 export const layoutFor = (family) => (family === "orcaslicer" || family === "bambustudio" ? LAYOUTS.orca : LAYOUTS.boss);
 
-// A slicer's tabs for these settings, each with only the pages `hasFor(page)` finds something on
-export const slicerTabs = (layout, settings, hasFor) =>
-  layout.tabs(settings).map((t) => ({ ...t, pages: pagesWithContent(t.pages, hasFor) })).filter((t) => t.pages.length);
+// A slicer's tabs for these settings, each with only the pages that show a row by `has(key, page)`
+export const slicerTabs = (layout, settings, has) =>
+  layout.tabs(settings).map((t) => ({ ...t, pages: pagesWithContent(t.pages, has) })).filter((t) => t.pages.length);
 
 // Loads a version's settings, then hands them to SettingsBrowser. Kept as two
 // components on purpose: SettingsBrowser has its own state hooks, and they
 // must not sit after the loading/error early returns (React requires the
 // same hooks in the same order on every render of a component).
 export function SettingsViewer({ bundle, ver }) {
-  const [settings, setSettings] = useState(null);
-  const [loadError, setLoadError] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSettings(null);
-    setLoadError(null);
-    fetchVersionSettings(ver.id)
-      .then((s) => !cancelled && setSettings(s))
-      .catch((e) => !cancelled && setLoadError(errorText(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [ver.id]);
-
-  if (loadError) {
-    return <div style={uiText(13, c.amber)}>Couldn't load settings: {loadError}</div>;
+  const { settings, error } = useVersionSettings(ver.id);
+  if (error) {
+    return <div style={uiText(13, c.amber)}>Couldn't load settings: {error}</div>;
   }
   if (!settings) {
     return <div style={uiText(13, c.textFaint)}>Loading settings…</div>;
@@ -56,7 +43,7 @@ export function SettingsViewer({ bundle, ver }) {
 function SettingsBrowser({ bundle, ver, settings }) {
   const layout = layoutFor(ver.slicerFamily);
   const value = useMemo(() => layout.value(settings), [layout, settings]);
-  const tabs = useMemo(() => slicerTabs(layout, settings, (page) => (key) => value(key, page) !== undefined), [layout, settings, value]);
+  const tabs = useMemo(() => slicerTabs(layout, settings, hasValue(value)), [layout, settings, value]);
   const [tabId, setTabId] = useState(tabs[0]?.id);
   return (
     <SlicerWindow
@@ -72,7 +59,7 @@ function SettingsBrowser({ bundle, ver, settings }) {
 export function SlicerWindow({ layout, tabs, settings, value, title, tabId, onTab, pageId, onPage, compare }) {
   const tab = tabs.find((t) => t.id === tabId) || tabs[0];
   const p = slicerColors(layout.slicer);
-  const preset = tab?.presetKey && settings[tab.presetKey] ? unescape(settings[tab.presetKey]).replace(/^"|"$/g, "") : "";
+  const preset = tab?.presetKey && settings[tab.presetKey] ? presetName(settings[tab.presetKey]) : "";
 
   return (
     <SlicerColors.Provider value={p}>

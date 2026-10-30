@@ -3,10 +3,9 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { categorizeKey, formatVal } from "../settingsLayout.js";
-import { errorText, fetchVersionSettings } from "../api.js";
 import { useData } from "../data.jsx";
-import { pageKeys } from "../settings/fields.jsx";
-import { layoutFor, SlicerWindow, slicerTabs } from "./SettingsBrowser.jsx";
+import { useVersionSettings } from "../settings/useVersionSettings.js";
+import { SlicerCompare } from "./SlicerCompare.jsx";
 
 import { Badge } from "../components/common/ui.jsx";
 
@@ -120,96 +119,6 @@ function DiffValue({ settings, other, k, side, differs }) {
   );
 }
 
-// The two files side by side, each laid out as its slicer shows it, with the settings that differ marked. When both
-// came from the same kind of slicer their pages line up, and choosing a tab or page on either side turns both.
-function SlicerCompare({ left, right, leftLabel, rightLabel, leftSettings, rightSettings, differing, onlyDiffs }) {
-  const leftLayout = layoutFor(left.version.slicerFamily);
-  const rightLayout = layoutFor(right.version.slicerFamily);
-  const linked = leftLayout.id === rightLayout.id;
-  const [tabIds, setTabIds] = useState({ left: null, right: null });
-  const [pageIds, setPageIds] = useState({ left: null, right: null });
-
-  // Linked sides scroll together: scrolling one page moves the other to the same place. The rows line up, so the
-  // same distance down shows the same settings. `moved` remembers where we put the other side, so its own scroll
-  // event (fired by our move) isn't passed back.
-  const bodies = useRef({ left: null, right: null, moved: {} });
-  const linkedRef = useRef(linked);
-  linkedRef.current = linked;
-  const scroll = useMemo(() => {
-    const other = { left: "right", right: "left" };
-    const one = (side) => ({
-      ref: (el) => {
-        bodies.current[side] = el;
-      },
-      onScroll: (e) => {
-        const b = bodies.current;
-        const top = e.currentTarget.scrollTop;
-        if (b.moved[side] === top) {
-          delete b.moved[side];
-          return;
-        }
-        const target = b[other[side]];
-        if (!linkedRef.current || !target || target.scrollTop === top) return;
-        const before = target.scrollTop;
-        target.scrollTop = top; // the browser stops it at the bottom if that side is shorter
-        if (target.scrollTop !== before) b.moved[other[side]] = target.scrollTop;
-      },
-    });
-    return { left: one("left"), right: one("right") };
-  }, []);
-
-  const sides = useMemo(() => {
-    const valueL = leftLayout.value(leftSettings);
-    const valueR = rightLayout.value(rightSettings);
-    const diffsOn = (page) => new Set(pageKeys(page).filter((k) => differing.has(k))).size;
-    const shown = (own) => (key, page) => (onlyDiffs ? differing.has(key) : own(key, page));
-    if (linked) {
-      // one set of pages for both, with a row wherever either file has the setting, so the two sides line up
-      const either = (key, page) => valueL(key, page) !== undefined || valueR(key, page) !== undefined;
-      const has = shown(either);
-      const tabs = slicerTabs(leftLayout, { ...rightSettings, ...leftSettings }, (page) => (key) => has(key, page));
-      return { left: { tabs, value: valueL, has, diffsOn }, right: { tabs, value: valueR, has, diffsOn } };
-    }
-    const one = (layout, settings, value) => {
-      const has = shown((key, page) => value(key, page) !== undefined);
-      return { tabs: slicerTabs(layout, settings, (page) => (key) => has(key, page)), value, has, diffsOn };
-    };
-    return { left: one(leftLayout, leftSettings, valueL), right: one(rightLayout, rightSettings, valueR) };
-  }, [leftLayout, rightLayout, leftSettings, rightSettings, differing, onlyDiffs, linked]);
-
-  const pane = (side, version, label, settings, layout) => {
-    const s = sides[side];
-    const key = linked ? "left" : side; // linked: both sides read and set the same choice
-    return (
-      <SlicerWindow
-        layout={layout} tabs={s.tabs} settings={settings} value={s.value}
-        title={`${label} · ${version.slicer || "unknown slicer"}`}
-        tabId={tabIds[key]} pageId={pageIds[key]}
-        onTab={(id) => {
-          setTabIds((t) => ({ ...t, [key]: id }));
-          setPageIds((p) => ({ ...p, [key]: null })); // a new tab opens on its first page
-        }}
-        onPage={(id) => setPageIds((p) => ({ ...p, [key]: id }))}
-        compare={{ side, keys: differing, has: s.has, diffsOn: s.diffsOn, scroll: scroll[side] }}
-      />
-    );
-  };
-
-  return (
-    <div data-testid="slicer-compare" style={{ padding: "14px 16px" }}>
-      {!linked && (
-        <div style={uiText(12, c.textMuted, { marginBottom: 10, lineHeight: 1.5 })}>
-          These two were made in different slicers, so their pages don’t line up: each side turns on its own.
-        </div>
-      )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(520px, 1fr))", gap: 12, alignItems: "start" }}>
-        {pane("left", left.version, leftLabel, leftSettings, leftLayout)}
-        {pane("right", right.version, rightLabel, rightSettings, rightLayout)}
-      </div>
-    </div>
-  );
-}
-
 export function DiffView({ left, right, onClose }) {
   // left / right are { bundle, version }: exactly the two versions that were picked
   const { versionLabel } = useData();
@@ -217,30 +126,13 @@ export function DiffView({ left, right, onClose }) {
   const rightLabel = versionLabel(right);
   const [onlyDiffs, setOnlyDiffs] = useState(false);
   const [view, setView] = useState("slicer"); // "slicer": side by side as the slicers show them | "list": every setting by name
-  const [leftSettings, setLeftSettings] = useState(null);
-  const [rightSettings, setRightSettings] = useState(null);
-  const [loadError, setLoadError] = useState(null);
+  const { settings: leftSettings, error: leftError } = useVersionSettings(left.version.id);
+  const { settings: rightSettings, error: rightError } = useVersionSettings(right.version.id);
+  const loadError = leftError || rightError;
   const [cursor, setCursor] = useState(-1); // which difference the Previous/Next buttons are on
   const rowRefs = useRef({});
 
-  useEffect(() => {
-    let cancelled = false;
-    setLeftSettings(null);
-    setRightSettings(null);
-    setLoadError(null);
-    setCursor(-1);
-    Promise.all([fetchVersionSettings(left.version.id), fetchVersionSettings(right.version.id)])
-      .then(([l, r]) => {
-        if (!cancelled) {
-          setLeftSettings(l);
-          setRightSettings(r);
-        }
-      })
-      .catch((e) => !cancelled && setLoadError(errorText(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [left.version.id, right.version.id]);
+  useEffect(() => setCursor(-1), [left.version.id, right.version.id]);
 
   // Every setting by category, and which differ: worked out once per pair of versions, not on every click
   const derived = useMemo(() => {

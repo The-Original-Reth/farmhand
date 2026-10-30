@@ -3,12 +3,12 @@ import { ChevronDown } from "lucide-react";
 import { SLICER_SCHEMES } from "../palettes.js";
 import { c, fs, look, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
+import { hasValue, shownRows, unescape } from "./pages.js";
 
 // A slicer's settings pages, drawn the way the slicer draws them but never editable: tick boxes, drop-downs, colour
 // swatches, G-code boxes, each with its label and unit. The layouts themselves (which pages, which groups, which
-// settings) are in boss.js and orca.js.
+// settings) are in boss.js and orca.js, built from the parts in pages.js, which says what a page looks like.
 //
-// A page: { id, title, Icon, groups: [{ title, rows: [[key, label, kind or unit]], limits? }], extruder?, render? }.
 // Kinds: "bool" (a tick box), "enum" (a drop-down), "color", "gcode" (a text box across the page), "bed". Anything
 // else is the unit shown after the field. A row whose setting isn't in the file is left out (each slicer version
 // has its own), and so is a group or page left with nothing in it.
@@ -29,16 +29,10 @@ const appColors = () => ({
 export const useSlicerColors = () => useContext(SlicerColors) || appColors();
 
 const KINDS = ["bool", "enum", "color", "gcode", "bed"];
+// The label column and the value column, the same in every group so the fields line up down a page
+const COLUMNS = "minmax(110px, 260px) minmax(0, 1fr)";
 
-// Text settings are saved with \n, \\ and \" escapes in a PrusaSlicer 3MF
-export const unescape = (v) => String(v).replace(/\\(.)/g, (_, ch) => (ch === "n" ? "\n" : ch === "t" ? "\t" : ch));
 const isOn = (v) => v === "1" || v === 1 || v === true || v === "true";
-// One value of a per-extruder (or per-filament) setting: they're kept joined, by ";" when the values hold commas
-export const nth = (raw, index) => {
-  if (raw == null || index == null) return raw;
-  const parts = String(raw).split(String(raw).includes(";") ? ";" : ",");
-  return parts[index] ?? parts[0];
-};
 const bedSummary = (raw) => {
   const pts = String(raw || "").split(",").map((p) => p.split("x").map(Number)).filter((p) => p.length === 2 && p.every(Number.isFinite));
   if (pts.length < 3) return raw || "";
@@ -46,8 +40,6 @@ const bedSummary = (raw) => {
   const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
   return pts.length === 4 ? `Rectangular, ${w} × ${h} mm, origin ${-Math.min(...xs)}, ${-Math.min(...ys)}` : `Custom shape, ${pts.length} points, ${w} × ${h} mm`;
 };
-// "Ripe_PLA" -> "Ripe PLA": a setting no page has a place for gets its key as a label
-export const keyLabel = (k) => k.replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase());
 
 // The box a value sits in, in `p`'s colours (a slicer's, or Farmhand's own)
 export const boxStyle = (extra, p = appColors()) => ({
@@ -116,7 +108,7 @@ function PlainRow({ label, kind, unit, value, limits, choices }) {
   // a speed or width given as a percentage ("50%") is of something else, so the unit doesn't apply
   const showUnit = unit && !values.every((v) => String(v ?? "").trim().endsWith("%"));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(110px, 260px) minmax(0, 1fr)", gap: 12, alignItems: "center", padding: "3px 0" }}>
+    <div style={{ display: "grid", gridTemplateColumns: COLUMNS, gap: 12, alignItems: "center", padding: "3px 0" }}>
       <div style={uiText(12, p.textMuted, { textAlign: "right" })}>{label}:</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
         {values.map((v, i) => <Field key={i} kind={kind} value={v} choices={choices} />)}
@@ -126,17 +118,13 @@ function PlainRow({ label, kind, unit, value, limits, choices }) {
   );
 }
 
-// The rows of a group to show: the ones `has` says (by default, the ones the file has a value for; a "@" key is
-// worked out, so has one whenever there are settings at all)
-const shownRows = (group, has) => group.rows.filter(([key]) => has(key));
-
 function Group({ group, rows, value, choices }) {
   const p = useSlicerColors();
   return (
     <fieldset style={{ border: `1px solid ${p.border}`, borderRadius: 4, padding: "6px 14px 10px", margin: 0, minWidth: 0 }}>
       <legend style={uiText(13, p.heading, { fontWeight: 600, padding: "0 6px" })}>{group.title}</legend>
       {group.limits && (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(110px, 260px) minmax(0, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: COLUMNS, gap: 12 }}>
           <span />
           <span style={uiText(11, p.textFaint, { display: "flex", gap: 8 })}>
             <span style={{ minWidth: 90 }}>Normal</span>
@@ -154,21 +142,11 @@ function Group({ group, rows, value, choices }) {
   );
 }
 
-// Every key a list of pages has a place for, so the rest can go on an "Other" page
-export const placedKeys = (pages) => new Set(pages.flatMap((p) => (p.groups || []).flatMap((g) => g.rows.map((r) => r[0]))));
-
-// The pages that have something to show for these settings (a page of Farmhand's own, with `render`, always does)
-// `hasFor(page)` gives the test for that page: (key) => whether to show its row (see shownRows)
-export const pagesWithContent = (pages, hasFor) =>
-  pages.filter((p) => p.render || (p.groups || []).some((g) => shownRows(g, hasFor(p)).length));
-// The keys on a page (for counting the differences on it)
-export const pageKeys = (page) => (page.groups || []).flatMap((g) => g.rows.map((r) => r[0]));
-
 // A set of pages with their list down the left (PrusaSlicer) or across the top (OrcaSlicer). `value(key, page)` reads
 // a setting for a page (an Extruder page reads its own extruder's value). `choices`: how the slicer names drop-down
-// choices, by key. In a comparison the page is chosen from outside (`pageId`, `onPage`) so both sides turn together,
-// `has(key, page)` shows the rows either file has (so the two sides line up), and `diffsOn(page)` counts the
-// differences on a page for its button, and `scroll` = { ref, onScroll } lets the two sides scroll together.
+// choices, by key. `has(key, page)` picks the rows to show (by default, the ones the file has a value for). In a
+// comparison the page is chosen from outside (`pageId`, `onPage`) so both sides turn together, `diffsOn(page)`
+// counts the differences on a page for its button, and `scroll` = { ref, onScroll } lets the two sides scroll together.
 export function SettingsPages({ pages, value, choices = {}, nav = "left", label, pageId: shownId, onPage, has, diffsOn, scroll }) {
   const col = useSlicerColors();
   const [ownId, setOwnId] = useState(pages[0]?.id);
@@ -177,7 +155,7 @@ export function SettingsPages({ pages, value, choices = {}, nav = "left", label,
   const page = pages.find((p) => p.id === pageId) || pages[0];
   if (!page) return <div style={uiText(13, col.textFaint)}>Nothing on these pages in this file.</div>;
   const read = (key) => value(key, page);
-  const show = has ? (key) => has(key, page) : (key) => read(key) !== undefined;
+  const show = has || hasValue(value);
   const left = nav === "left";
 
   return (
@@ -221,7 +199,7 @@ export function SettingsPages({ pages, value, choices = {}, nav = "left", label,
         {page.render
           ? page.render()
           : page.groups.map((g) => {
-              const rows = shownRows(g, show);
+              const rows = shownRows(g, show, page);
               return rows.length ? <Group key={g.title} group={g} rows={rows} value={read} choices={choices} /> : null;
             })}
       </div>

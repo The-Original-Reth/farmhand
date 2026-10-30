@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ChevronDown, Printer } from "lucide-react";
-import { errorText, fetchVersionSettings } from "../api.js";
 import { monoText, uiText } from "../styles.js";
-import { boxStyle, pagesWithContent, SettingsPages, SlicerColors, slicerColors } from "../settings/fields.jsx";
+import { boxStyle, SettingsPages, SlicerColors, slicerColors } from "../settings/fields.jsx";
+import { hasValue, pagesWithContent } from "../settings/pages.js";
 import { BOSS_CHOICES, bossPrinterPages, bossValue } from "../settings/boss.js";
+import { useVersionSettings } from "../settings/useVersionSettings.js";
 
 // A printer preset (a sub printer) laid out as PrusaSlicer's (and BOSS edition's) Printer Settings tab: the same
 // pages down the left, the same titled groups on each page, the same labels and units, and one Extruder page per
@@ -14,7 +15,7 @@ import { BOSS_CHOICES, bossPrinterPages, bossValue } from "../settings/boss.js";
 // `extraPages`: pages of Farmhand's own ({ id, title, Icon, render }), such as the sub printer's Printer parts
 function PresetPages({ settings, extraPages = [] }) {
   const value = useMemo(() => bossValue(settings), [settings]);
-  const pages = useMemo(() => pagesWithContent(bossPrinterPages(settings, extraPages), (page) => (key) => value(key, page) !== undefined), [settings, extraPages, value]);
+  const pages = useMemo(() => pagesWithContent(bossPrinterPages(settings, extraPages), hasValue(value)), [settings, extraPages, value]);
   return <SettingsPages pages={pages} value={value} choices={BOSS_CHOICES} label="Printer Settings pages" />;
 }
 
@@ -22,22 +23,7 @@ function PresetPages({ settings, extraPages = [] }) {
 // preset, shown at the top the way PrusaSlicer's preset drop-down shows it. With no version (no 3MF was sliced with
 // it yet) only the extra pages are shown, under `empty`, which says why.
 export function PrinterPresetPages({ ver, name, from, extraPages, empty }) {
-  const [settings, setSettings] = useState(null);
-  const [loadError, setLoadError] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSettings(null);
-    setLoadError(null);
-    if (!ver) return undefined;
-    fetchVersionSettings(ver.id)
-      .then((s) => !cancelled && setSettings(s))
-      .catch((e) => !cancelled && setLoadError(errorText(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [ver?.id]);
-
+  const { settings, error } = useVersionSettings(ver?.id);
   const p = slicerColors("prusa");
   return (
     <SlicerColors.Provider value={p}>
@@ -55,8 +41,8 @@ export function PrinterPresetPages({ ver, name, from, extraPages, empty }) {
           {empty}
           <PresetPages settings={null} extraPages={extraPages} />
         </>
-      ) : loadError ? (
-        <div style={uiText(13, p.accentText)}>Couldn't load its settings: {loadError}</div>
+      ) : error ? (
+        <div style={uiText(13, p.accentText)}>Couldn't load its settings: {error}</div>
       ) : !settings ? (
         <div style={uiText(13, p.textFaint)}>Loading settings…</div>
       ) : (

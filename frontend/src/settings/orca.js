@@ -1,8 +1,8 @@
 import {
-  Box, CircleDot, Cog, Fan, FileCode, Gauge, Layers, Link2, Paintbrush, Printer, Puzzle, Shield, SlidersHorizontal,
-  SquareStack, StickyNote, Thermometer, Waypoints, Wind, Wrench,
+  Box, Cog, Fan, FileCode, Gauge, Layers, Link2, Paintbrush, Printer, Shield, SlidersHorizontal, SquareStack,
+  Thermometer, Waypoints, Wind, Wrench,
 } from "lucide-react";
-import { keyLabel, nth, placedKeys } from "./fields.jsx";
+import { extruderCount, extruderPages, groupKeys, notesPage, otherPage, pageValue } from "./pages.js";
 
 // OrcaSlicer (and Bambu Studio, whose format it writes) settings, laid out as Orca shows them: the Process settings
 // with their tabs across the top (Quality, Strength, Speed, Support, Multimaterial, Others), and the Filament and
@@ -598,7 +598,7 @@ const EXTRUDER = [
   },
   { title: "Preview", rows: [["extruder_colour", "Extruder Color", "color"]] },
 ];
-const PER_EXTRUDER = new Set(EXTRUDER.flatMap((g) => g.rows.map((r) => r[0])));
+const PER_EXTRUDER = new Set(groupKeys(EXTRUDER));
 // Speed, acceleration and jerk limits hold two values each, Normal and Stealth (silent) mode
 const MOTION = [
   {
@@ -689,20 +689,11 @@ const windowOf = (k) => {
   return printerish ? "printer" : "process";
 };
 
-const otherPage = (settings, pages, belongs) => {
-  const placed = placedKeys(pages);
-  const rest = Object.keys(settings).filter((k) => !placed.has(k) && belongs(k) && !k.endsWith("_settings_id")).sort();
-  return rest.length ? [{ id: "other", title: "Other", Icon: Puzzle, groups: [{ title: "More settings in this 3MF", rows: rest.map((k) => [k, keyLabel(k)]) }] }] : [];
-};
-const extruders = (settings) => Math.max(1, String(settings?.nozzle_diameter ?? "").split(/[;,]/).filter((s) => s !== "").length);
+// For a window's Other page: the settings that belong in it (a preset's name already has its place at the top)
+const belongsIn = (window) => (k) => windowOf(k) === window && !k.endsWith("_settings_id");
 
 // A setting as an Orca page shows it: an Extruder page shows its own extruder's value
-export function orcaValue(settings) {
-  return (key, page) => {
-    const raw = settings?.[key];
-    return page?.extruder != null && PER_EXTRUDER.has(key) ? nth(raw, page.extruder) : raw;
-  };
-}
+export const orcaValue = (settings) => pageValue(settings, PER_EXTRUDER);
 
 // The three windows, as OrcaSlicer shows them
 export function orcaTabs(settings) {
@@ -721,21 +712,21 @@ export function orcaTabs(settings) {
     { id: "advanced", title: "Advanced", Icon: Wrench, groups: FILAMENT_ADVANCED },
     { id: "multi", title: "Multimaterial", Icon: Paintbrush, groups: FILAMENT_MULTI },
     { id: "deps", title: "Dependencies", Icon: Link2, groups: FILAMENT_DEPS },
-    { id: "notes", title: "Notes", Icon: StickyNote, groups: [{ title: "Notes", rows: [["filament_notes", "", "gcode"]] }] },
+    notesPage("filament_notes"),
   ];
   const printer = [
     { id: "basic", title: "Basic information", Icon: Printer, groups: BASIC },
     { id: "gcode", title: "Machine G-code", Icon: FileCode, groups: MACHINE_GCODE },
     { id: "multi", title: "Multimaterial", Icon: Box, groups: PRINTER_MULTI },
-    ...Array.from({ length: extruders(settings) }, (_, i) => ({ id: `extruder${i}`, title: `Extruder ${i + 1}`, Icon: CircleDot, groups: EXTRUDER, extruder: i })),
+    ...extruderPages(extruderCount(settings), EXTRUDER),
     { id: "motion", title: "Motion ability", Icon: Cog, groups: MOTION },
-    { id: "notes", title: "Notes", Icon: StickyNote, groups: [{ title: "Notes", rows: [["printer_notes", "", "gcode"]] }] },
+    notesPage("printer_notes"),
   ];
   // the settings each window's pages above have no place for; placed anywhere counts, so none shows twice
   const all = [...process, ...filament, ...printer];
-  process.push(...otherPage(settings, all, (k) => windowOf(k) === "process"));
-  filament.push(...otherPage(settings, all, (k) => windowOf(k) === "filament"));
-  printer.push(...otherPage(settings, all, (k) => windowOf(k) === "printer"));
+  process.push(...otherPage(settings, all, belongsIn("process")));
+  filament.push(...otherPage(settings, all, belongsIn("filament")));
+  printer.push(...otherPage(settings, all, belongsIn("printer")));
   return [
     { id: "process", title: "Process", Icon: SquareStack, presetKey: "print_settings_id", pages: process },
     { id: "filament", title: "Filament", Icon: Wind, presetKey: "filament_settings_id", pages: filament },
