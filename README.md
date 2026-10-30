@@ -306,8 +306,10 @@ that, else a new one named after it. Change it to another of the printer's sub p
 printer…** with any name; Farmhand remembers the choice, so the next 3MF with that preset is guessed to go there
 too (renaming a sub printer does the same for its old name). Each 3MF version shows its sub printer under its note. 3MFs uploaded before this are linked once when Farmhand starts.
 On the printer page, **Sub printers** lists them with how many 3MF files use each: click that count to show only
-those 3MF files. **Add sub printer** adds one by hand, the pencil renames one (its 3MF files stay linked), and the bin
-removes one (its 3MF files stay, with no sub printer). The star makes one the printer's **default** (marked "default"
+those 3MF files. **Add sub printer** adds one by hand, the pencil renames one (its 3MF files stay linked), the copy
+button makes a new one with the same parts, named "<its name> - copy" to start with (change it before you press
+**Copy**; "- copy 2" and so on when that name's taken; its 3MF files and the default stay with the original), and the
+bin removes one (its 3MF files stay, with no sub printer). The star makes one the printer's **default** (marked "default"
 in orange; click the star again for none): every 3MF uploaded to that printer then starts on it instead of Farmhand's
 guess, and can still be changed on the upload. They're kept in the settings copy on the NAS too.
 

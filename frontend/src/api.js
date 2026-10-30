@@ -276,6 +276,9 @@ export const updatePrinter = (
 // ---- a printer's sub printers: its printer presets in the slicer (found from its 3MFs, or added here). Each
 // resolves to the whole printer as it now stands. 409 when the printer already has one by that name. ----
 export const addSubPrinter = (printerId, name) => request(`/printers/${printerId}/sub-printers`, jsonBody("POST", { name }));
+// a new sub printer with a copy of its parts, called `name` (its 3MFs and being the default stay with the original)
+export const copySubPrinter = (printerId, subPrinterId, name) =>
+  request(`/printers/${printerId}/sub-printers/${subPrinterId}/copy`, jsonBody("POST", { name }));
 export const renameSubPrinter = (printerId, subPrinterId, name) =>
   request(`/printers/${printerId}/sub-printers/${subPrinterId}`, jsonBody("PATCH", { name }));
 // the one its uploads start on, whatever preset a 3MF was sliced with; null: none (Farmhand guesses from the preset)

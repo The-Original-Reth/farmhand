@@ -113,6 +113,38 @@ def add(db: Session, printer_id: int, name: str) -> Printer:
     return printer
 
 
+def copy_name(printer: Printer, name: str) -> str:
+    """The name a copy of `name` gets unless told otherwise: "<name> - copy", or "- copy 2", 3... when that's taken."""
+    taken = {s.name for s in printer.sub_printers}
+    n = 1
+    while True:
+        tail = " - copy" if n == 1 else f" - copy {n}"
+        candidate = name[: MAX_NAME - len(tail)].rstrip() + tail
+        if candidate not in taken:
+            return candidate
+        n += 1
+
+
+def copy(db: Session, printer_id: int, sub_printer_id: int, name: str | None = None) -> Printer:
+    """
+    A new sub printer on the same printer, with a copy of its parts. Its 3MFs, the names it was known by and being
+    the default stay with the original. `name` defaults to copy_name; ValueError if the printer already has one by it.
+    """
+    printer = _printer(db, printer_id)
+    sub = _sub_printer(db, printer_id, sub_printer_id)
+    name = _clean(name) if name is not None else copy_name(printer, sub.name)
+    if _named(db, printer_id, name) is not None:
+        raise _taken(printer, name)
+    new = _new(printer, name, default_parts=False)
+    new.parts = [
+        SubPrinterPart(part=p.part, make=p.make, model=p.model, installed_on=p.installed_on, note=p.note, in_name=p.in_name)
+        for p in sub.parts
+    ]
+    db.commit()
+    db.refresh(printer)
+    return printer
+
+
 def rename(db: Session, printer_id: int, sub_printer_id: int, name: str) -> Printer:
     """
     Rename one: its 3MFs stay linked to it, and 3MFs sliced with either name go to it from now on (the old one is

@@ -8,7 +8,7 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    DefaultSubPrinterIn, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
+    DefaultSubPrinterIn, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
 )
 from ..services import bundle_service, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
@@ -69,6 +69,18 @@ def rename_sub_printer(printer_id: int, sub_printer_id: int, payload: SubPrinter
     """Rename a sub printer. Its 3MFs stay linked to it. 409 if another of the printer's has that name."""
     with answer_errors(409):
         return sub_printer_service.rename(db, printer_id, sub_printer_id, payload.name)
+
+
+@router.post("/{printer_id}/sub-printers/{sub_printer_id}/copy", response_model=PrinterOut, status_code=201)
+def copy_sub_printer(
+    printer_id: int, sub_printer_id: int, payload: SubPrinterCopyIn | None = None, db: Session = Depends(get_db)
+):
+    """
+    A copy of a sub printer, with its parts, named `name` or "<its name> - copy". Its 3MFs and being the default stay
+    with the original. 409 if the printer already has one by that name. Answers the printer as it now stands.
+    """
+    with answer_errors(409):
+        return sub_printer_service.copy(db, printer_id, sub_printer_id, payload.name if payload else None)
 
 
 @router.delete("/{printer_id}/sub-printers/{sub_printer_id}", response_model=PrinterOut)

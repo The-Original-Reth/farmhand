@@ -205,6 +205,46 @@ def test_a_sub_printers_parts_can_be_written_down_changed_and_removed(api):
     assert api.get(base).status_code == 404
 
 
+def test_a_sub_printer_can_be_copied_with_its_parts(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    _upload(api, sample_3mf_paths["frog_vt1190"], pid)
+    original = _subs(api, pid)[FROG_PRESET]
+    api.put(f"/printers/{pid}/default-sub-printer", json={"sub_printer_id": original["id"]})
+    base = f"/printers/{pid}/sub-printers/{original['id']}/parts"
+    parts = api.get(base).json()
+    api.put(base, json=[{**parts[1], "make": "Phaetus", "model": "Rapido UHF", "note": "after the clog"}, *parts[2:]], params={"confirm": "true"})
+    wanted = [{k: v for k, v in p.items() if k != "id"} for p in api.get(base).json()]
+
+    r = api.post(f"/printers/{pid}/sub-printers/{original['id']}/copy")
+    assert r.status_code == 201
+    printer = r.json()
+    copy = _subs(api, pid)[f"{FROG_PRESET} - copy"]
+    assert printer["default_sub_printer_id"] == original["id"]  # the default stays with the original
+    copied = api.get(f"/printers/{pid}/sub-printers/{copy['id']}/parts").json()
+    assert [{k: v for k, v in p.items() if k != "id"} for p in copied] == wanted  # the same parts, as their own rows
+    assert not {p["id"] for p in copied} & {p["id"] for p in api.get(base).json()}
+    assert copy["aliases"] == []
+
+    # a second copy doesn't take the first's name; a name can be given; one already taken is refused
+    api.post(f"/printers/{pid}/sub-printers/{original['id']}/copy")
+    assert f"{FROG_PRESET} - copy 2" in _subs(api, pid)
+    assert api.post(f"/printers/{pid}/sub-printers/{original['id']}/copy", json={"name": "Trident spare"}).status_code == 201
+    assert api.post(f"/printers/{pid}/sub-printers/{original['id']}/copy", json={"name": "Trident spare"}).status_code == 409
+    assert api.post(f"/printers/{pid}/sub-printers/99999/copy").status_code == 404
+
+    # changing the copy's parts leaves the original's alone
+    copy_base = f"/printers/{pid}/sub-printers/{copy['id']}/parts"
+    api.put(copy_base, json=[{**p, "note": "copy only"} for p in copied])
+    assert all(p["note"] != "copy only" for p in api.get(base).json())
+
+
+def test_a_long_names_copy_still_fits():
+    printer = Printer(name="VT 1190")
+    printer.sub_printers = []
+    name = "x" * 120
+    assert sub_printer_service.copy_name(printer, name) == "x" * 113 + " - copy"
+
+
 def test_a_sub_printers_whole_parts_list_is_saved_at_once(api):
     pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
     sid = api.post(f"/printers/{pid}/sub-printers", json={"name": "Trident 0.4 brass"}).json()["sub_printers"][0]["id"]

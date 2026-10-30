@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Check, Layers3, Pencil, Plus, Star, Wrench, X } from "lucide-react";
+import { Check, Copy, Layers3, Pencil, Plus, Star, Wrench, X } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
-import { addSubPrinter, deleteSubPrinter, errorText, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
+import { addSubPrinter, copySubPrinter, deleteSubPrinter, errorText, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
 import { useData } from "../data.jsx";
 import { cancelButton, fieldBox, headerButton, linkButton, monoText, primaryButton, uiText } from "../styles.js";
 
@@ -18,6 +18,16 @@ export const subPrinterName = (printers, bundle, ver) =>
   ver.subPrinterId == null
     ? null
     : printers.find((p) => p.id === bundle.printerId)?.subPrinters.find((s) => s.id === ver.subPrinterId)?.name ?? null;
+
+// The name a copy of `name` starts with: "<name> - copy", or "- copy 2", 3... when the printer has that one already
+// (as the API names it when given none)
+const copyName = (printer, name) => {
+  for (let n = 1; ; n++) {
+    const tail = n === 1 ? " - copy" : ` - copy ${n}`;
+    const candidate = name.slice(0, 120 - tail.length).trimEnd() + tail;
+    if (!printer.subPrinters.some((s) => s.name === candidate)) return candidate;
+  }
+};
 
 // The box a name is typed into, with Enter to save and Escape to cancel
 function NameInput({ value, onChange, onEnter, onEscape, placeholder, testId, disabled }) {
@@ -168,7 +178,8 @@ function SubPrinterSettings({ printer, sub, bundles, onClose }) {
 }
 
 // One sub printer: its name (click for its printer settings; renamed in place), how many 3MFs were sliced with it (click
-// to show only those), a star to make it the default (the one the printer's uploads start on), Remove
+// to show only those), a star to make it the default (the one the printer's uploads start on), Copy (a new one with its
+// parts, named "<name> - copy" unless that's changed), Remove
 function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   const { putPrinter } = useData();
   const [editing, setEditing] = useState(false);
@@ -177,6 +188,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   const [error, setError] = useState(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [copyAs, setCopyAs] = useState(null); // the copy's name while it's being made, else null
   const isDefault = printer.defaultSubPrinterId === sub.id;
 
   const toggleDefault = async () => {
@@ -203,6 +215,24 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const makeCopy = async () => {
+    if (!copyAs.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      putPrinter(await copySubPrinter(printer.id, sub.id, copyAs));
+      setCopyAs(null);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const closeCopy = () => {
+    setCopyAs(null);
+    setError(null);
   };
 
   const iconButton = { ...headerButton(), padding: "0 7px" };
@@ -258,10 +288,32 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
               <Star size={12} fill={isDefault ? c.amber : "none"} />
             </button>
             <button onClick={() => { setText(sub.name); setEditing(true); }} title="Rename" style={iconButton}><Pencil size={12} /></button>
+            <button
+              onClick={() => { setError(null); setCopyAs(copyName(printer, sub.name)); }}
+              data-testid="sub-printer-copy"
+              title="Make a copy, with its parts"
+              aria-label={`Copy ${sub.name}`}
+              style={iconButton}
+            >
+              <Copy size={12} />
+            </button>
             <TrashButton title="Remove this sub printer" onClick={() => setRemoveOpen(true)} />
           </>
         )}
       </div>
+      {copyAs != null && (
+        <div data-testid="sub-printer-copy-form" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, paddingLeft: 23 }}>
+          <span style={uiText(12, c.textMuted)}>Copy as</span>
+          <NameInput value={copyAs} onChange={setCopyAs} onEnter={makeCopy} onEscape={closeCopy} placeholder="The copy’s name" testId="sub-printer-copy-input" disabled={busy} />
+          <button onClick={makeCopy} disabled={busy || !copyAs.trim()} data-testid="sub-printer-copy-save" style={headerButton()}>
+            {busy ? "Copying…" : "Copy"}
+          </button>
+          <button onClick={closeCopy} disabled={busy} style={linkButton(12)}>Cancel</button>
+          <div style={uiText(11, c.textFaint, { flexBasis: "100%", lineHeight: 1.5 })}>
+            A new sub printer with the same parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
+          </div>
+        </div>
+      )}
       {error && <div style={uiText(12, c.danger, { marginTop: 6, paddingLeft: 23 })}>{error}</div>}
       {settingsOpen && <SubPrinterSettings printer={printer} sub={sub} bundles={bundles} onClose={() => setSettingsOpen(false)} />}
       {removeOpen && (

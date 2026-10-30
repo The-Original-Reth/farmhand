@@ -202,6 +202,21 @@ export function mockApi() {
     newSubPrinter(p, name);
     return [201, printerOut(p)];
   });
+  // A copy with its parts, named as given or "<name> - copy" (- copy 2... when taken); its 3MFs and the default stay
+  on("POST", "/printers/:id/sub-printers/:subId/copy", ({ id, subId }, body) => {
+    const p = printer(id);
+    const s = subPrinterOf(p, subId);
+    let name = body?.name != null ? subPrinterName(body) : null;
+    for (let n = 1; name == null; n++) {
+      const tail = n === 1 ? " - copy" : ` - copy ${n}`;
+      const candidate = s.name.slice(0, 120 - tail.length).trimEnd() + tail;
+      if (!farm.subPrinters.some((x) => x.printer_id === p.id && x.name === candidate)) name = candidate;
+    }
+    nameTaken(p, name);
+    const copy = newSubPrinter(p, name);
+    copy.parts = s.parts.map((part) => ({ ...part, id: farm.nextIds.part++ }));
+    return [201, printerOut(p)];
+  });
   on("PATCH", "/printers/:id/sub-printers/:subId", ({ id, subId }, body) => {
     const p = printer(id);
     const s = subPrinterOf(p, subId);

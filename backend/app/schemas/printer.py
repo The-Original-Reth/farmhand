@@ -84,6 +84,10 @@ class SubPrinterIn(BaseModel):
         return v
 
 
+class SubPrinterCopyIn(BaseModel):
+    name: str | None = None  # the copy's name; none: "<its name> - copy" (- copy 2... when that's taken)
+
+
 class DefaultSubPrinterIn(BaseModel):
     sub_printer_id: int | None = None  # one of the printer's sub printers; null: no default
 
