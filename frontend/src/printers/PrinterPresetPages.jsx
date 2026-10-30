@@ -14,7 +14,7 @@ import { BOSS_CHOICES, bossPrinterPages, bossValue } from "../settings/boss.js";
 // `extraPages`: pages of Farmhand's own ({ id, title, Icon, render }), such as the sub printer's Printer parts
 function PresetPages({ settings, extraPages = [] }) {
   const value = useMemo(() => bossValue(settings), [settings]);
-  const pages = useMemo(() => pagesWithContent(bossPrinterPages(settings, extraPages), (page) => (key) => value(key, page)), [settings, extraPages, value]);
+  const pages = useMemo(() => pagesWithContent(bossPrinterPages(settings, extraPages), (page) => (key) => value(key, page) !== undefined), [settings, extraPages, value]);
   return <SettingsPages pages={pages} value={value} choices={BOSS_CHOICES} label="Printer Settings pages" />;
 }
 

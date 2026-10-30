@@ -638,8 +638,8 @@ export function bossTabs(settings) {
   printPages.push(...otherPage(settings, all, (k) => classifyPrusa(k).tab === "Print Settings" && !k.endsWith("_settings_id"), "More print settings in this 3MF"));
   filamentPages.push(...otherPage(settings, all, (k) => classifyPrusa(k).tab === "Filament Settings", "More filament settings in this 3MF"));
   return [
-    { id: "print", title: "Print Settings", Icon: Layers, preset: tidyPreset(settings.print_settings_id), pages: printPages },
-    { id: "filament", title: "Filament Settings", Icon: Wind, preset: tidyPreset(settings.filament_settings_id), pages: filamentPages },
-    { id: "printer", title: "Printer Settings", Icon: Printer, preset: tidyPreset(settings.printer_settings_id), pages: printerPages },
+    { id: "print", title: "Print Settings", Icon: Layers, presetKey: "print_settings_id", pages: printPages },
+    { id: "filament", title: "Filament Settings", Icon: Wind, presetKey: "filament_settings_id", pages: filamentPages },
+    { id: "printer", title: "Printer Settings", Icon: Printer, presetKey: "printer_settings_id", pages: printerPages },
   ];
 }

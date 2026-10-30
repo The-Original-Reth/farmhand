@@ -5,6 +5,8 @@ import { monoText, uiText } from "../styles.js";
 import { categorizeKey, formatVal } from "../settingsLayout.js";
 import { errorText, fetchVersionSettings } from "../api.js";
 import { useData } from "../data.jsx";
+import { pageKeys } from "../settings/fields.jsx";
+import { layoutFor, SlicerWindow, slicerTabs } from "./SettingsBrowser.jsx";
 
 import { Badge } from "../components/common/ui.jsx";
 
@@ -118,12 +120,74 @@ function DiffValue({ settings, other, k, side, differs }) {
   );
 }
 
+// The two files side by side, each laid out as its slicer shows it, with the settings that differ marked. When both
+// came from the same kind of slicer their pages line up, and choosing a tab or page on either side turns both.
+function SlicerCompare({ left, right, leftLabel, rightLabel, leftSettings, rightSettings, differing, onlyDiffs }) {
+  const leftLayout = layoutFor(left.version.slicerFamily);
+  const rightLayout = layoutFor(right.version.slicerFamily);
+  const linked = leftLayout.id === rightLayout.id;
+  const [tabIds, setTabIds] = useState({ left: null, right: null });
+  const [pageIds, setPageIds] = useState({ left: null, right: null });
+
+  const sides = useMemo(() => {
+    const valueL = leftLayout.value(leftSettings);
+    const valueR = rightLayout.value(rightSettings);
+    const diffsOn = (page) => new Set(pageKeys(page).filter((k) => differing.has(k))).size;
+    const shown = (own) => (key, page) => (onlyDiffs ? differing.has(key) : own(key, page));
+    if (linked) {
+      // one set of pages for both, with a row wherever either file has the setting, so the two sides line up
+      const either = (key, page) => valueL(key, page) !== undefined || valueR(key, page) !== undefined;
+      const has = shown(either);
+      const tabs = slicerTabs(leftLayout, { ...rightSettings, ...leftSettings }, (page) => (key) => has(key, page));
+      return { left: { tabs, value: valueL, has, diffsOn }, right: { tabs, value: valueR, has, diffsOn } };
+    }
+    const one = (layout, settings, value) => {
+      const has = shown((key, page) => value(key, page) !== undefined);
+      return { tabs: slicerTabs(layout, settings, (page) => (key) => has(key, page)), value, has, diffsOn };
+    };
+    return { left: one(leftLayout, leftSettings, valueL), right: one(rightLayout, rightSettings, valueR) };
+  }, [leftLayout, rightLayout, leftSettings, rightSettings, differing, onlyDiffs, linked]);
+
+  const pane = (side, version, label, settings, layout) => {
+    const s = sides[side];
+    const key = linked ? "left" : side; // linked: both sides read and set the same choice
+    return (
+      <SlicerWindow
+        layout={layout} tabs={s.tabs} settings={settings} value={s.value}
+        title={`${label} · ${version.slicer || "unknown slicer"}`}
+        tabId={tabIds[key]} pageId={pageIds[key]}
+        onTab={(id) => {
+          setTabIds((t) => ({ ...t, [key]: id }));
+          setPageIds((p) => ({ ...p, [key]: null })); // a new tab opens on its first page
+        }}
+        onPage={(id) => setPageIds((p) => ({ ...p, [key]: id }))}
+        compare={{ side, keys: differing, has: s.has, diffsOn: s.diffsOn }}
+      />
+    );
+  };
+
+  return (
+    <div data-testid="slicer-compare" style={{ padding: "14px 16px" }}>
+      {!linked && (
+        <div style={uiText(12, c.textMuted, { marginBottom: 10, lineHeight: 1.5 })}>
+          These two were made in different slicers, so their pages don’t line up: each side turns on its own.
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(520px, 1fr))", gap: 12, alignItems: "start" }}>
+        {pane("left", left.version, leftLabel, leftSettings, leftLayout)}
+        {pane("right", right.version, rightLabel, rightSettings, rightLayout)}
+      </div>
+    </div>
+  );
+}
+
 export function DiffView({ left, right, onClose }) {
   // left / right are { bundle, version }: exactly the two versions that were picked
   const { versionLabel } = useData();
   const leftLabel = versionLabel(left);
   const rightLabel = versionLabel(right);
   const [onlyDiffs, setOnlyDiffs] = useState(false);
+  const [view, setView] = useState("slicer"); // "slicer": side by side as the slicers show them | "list": every setting by name
   const [leftSettings, setLeftSettings] = useState(null);
   const [rightSettings, setRightSettings] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -224,6 +288,25 @@ export function DiffView({ left, right, onClose }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div role="radiogroup" aria-label="How to show them" style={{ display: "flex", border: `1px solid ${c.border}`, borderRadius: 3, overflow: "hidden" }}>
+            {[["slicer", "Slicer view"], ["list", "List"]].map(([id, name]) => (
+              <button
+                key={id}
+                role="radio"
+                aria-checked={view === id}
+                data-testid={`diff-view-${id}`}
+                onClick={() => setView(id)}
+                style={{
+                  ...ui, fontSize: fs(12), padding: "4px 10px", border: "none", cursor: "pointer",
+                  background: view === id ? c.amberDim : "transparent", color: view === id ? c.amber : c.textMuted, fontWeight: view === id ? 600 : 400,
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          {view === "list" && (
+            <>
           <button data-testid="diff-prev" onClick={() => goTo(cursor < 0 ? diffCount - 1 : cursor - 1)} disabled={!diffCount} style={stepButton}>
             <ArrowUp size={12} />
             Previous
@@ -235,6 +318,8 @@ export function DiffView({ left, right, onClose }) {
           <span data-testid="diff-position" style={monoText(11, c.textFaint, { minWidth: 54 })}>
             {diffCount ? (cursor >= 0 ? `${cursor + 1} of ${diffCount}` : `${diffCount} total`) : ""}
           </span>
+            </>
+          )}
           <label style={{ display: "flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textMuted, cursor: "pointer", flexShrink: 0 }}>
             <input type="checkbox" checked={onlyDiffs} onChange={(e) => setOnlyDiffs(e.target.checked)} style={{ accentColor: c.amber }} />
             Only show differences
@@ -248,6 +333,12 @@ export function DiffView({ left, right, onClose }) {
         </div>
       )}
 
+      {view === "slicer" ? (
+        <SlicerCompare
+          left={left} right={right} leftLabel={leftLabel} rightLabel={rightLabel}
+          leftSettings={leftSettings} rightSettings={rightSettings} differing={differing} onlyDiffs={onlyDiffs}
+        />
+      ) : (
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 20 }}>
         {categoryOrder.map((cat) => {
           const keys = grouped[cat];
@@ -299,6 +390,7 @@ export function DiffView({ left, right, onClose }) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

@@ -496,7 +496,7 @@ function FarmhandApp() {
       />
 
       {diffModalOpen && diffLeft && diffRight && (
-        <Modal title="Compare 3MF files" onClose={() => setDiffModalOpen(false)} width={760}>
+        <Modal title="Compare 3MF files" onClose={() => setDiffModalOpen(false)} width={1500}>
           <DiffView
             left={diffLeft}
             right={diffRight}

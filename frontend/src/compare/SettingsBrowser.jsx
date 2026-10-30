@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { errorText, fetchVersionSettings } from "../api.js";
-import { boxStyle, pagesWithContent, SettingsPages, SlicerColors, slicerColors, unescape } from "../settings/fields.jsx";
+import { boxStyle, DiffMarks, pagesWithContent, SettingsPages, SlicerColors, slicerColors, unescape } from "../settings/fields.jsx";
 import { BOSS_CHOICES, bossTabs, bossValue } from "../settings/boss.js";
 import { ORCA_CHOICES, orcaTabs, orcaValue } from "../settings/orca.js";
 
@@ -14,10 +14,14 @@ import { ORCA_CHOICES, orcaTabs, orcaValue } from "../settings/orca.js";
 // (Prusa orange, Orca teal green), dark or light to match the scheme in use.
 // ---------------------------------------------------------------------------
 const LAYOUTS = {
-  boss: { slicer: "prusa", tabs: bossTabs, value: bossValue, choices: BOSS_CHOICES, nav: "left" },
-  orca: { slicer: "orca", tabs: orcaTabs, value: orcaValue, choices: ORCA_CHOICES, nav: "top" },
+  boss: { id: "boss", slicer: "prusa", tabs: bossTabs, value: bossValue, choices: BOSS_CHOICES, nav: "left" },
+  orca: { id: "orca", slicer: "orca", tabs: orcaTabs, value: orcaValue, choices: ORCA_CHOICES, nav: "top" },
 };
-const layoutFor = (family) => (family === "orcaslicer" || family === "bambustudio" ? LAYOUTS.orca : LAYOUTS.boss);
+export const layoutFor = (family) => (family === "orcaslicer" || family === "bambustudio" ? LAYOUTS.orca : LAYOUTS.boss);
+
+// A slicer's tabs for these settings, each with only the pages `hasFor(page)` finds something on
+export const slicerTabs = (layout, settings, hasFor) =>
+  layout.tabs(settings).map((t) => ({ ...t, pages: pagesWithContent(t.pages, hasFor) })).filter((t) => t.pages.length);
 
 // Loads a version's settings, then hands them to SettingsBrowser. Kept as two
 // components on purpose: SettingsBrowser has its own state hooks, and they
@@ -52,61 +56,73 @@ export function SettingsViewer({ bundle, ver }) {
 function SettingsBrowser({ bundle, ver, settings }) {
   const layout = layoutFor(ver.slicerFamily);
   const value = useMemo(() => layout.value(settings), [layout, settings]);
-  // the slicer's tabs, each with only the pages this file has something on
-  const tabs = useMemo(
-    () => layout.tabs(settings).map((t) => ({ ...t, pages: pagesWithContent(t.pages, (page) => (key) => value(key, page)) })).filter((t) => t.pages.length),
-    [layout, settings, value],
-  );
+  const tabs = useMemo(() => slicerTabs(layout, settings, (page) => (key) => value(key, page) !== undefined), [layout, settings, value]);
   const [tabId, setTabId] = useState(tabs[0]?.id);
+  return (
+    <SlicerWindow
+      layout={layout} tabs={tabs} settings={settings} value={value} tabId={tabId} onTab={setTabId}
+      title={`${ver.filename || bundle.name} · v${ver.v} · ${ver.slicer || "unknown slicer"} · ${Object.keys(settings).length} settings`}
+    />
+  );
+}
+
+// The slicer's window: its tabs, the tab's preset, and its pages. In a comparison two of these sit side by side,
+// turning together (`tabId` / `onTab`, `pageId` / `onPage`), and `compare` = { side, keys (the settings that differ),
+// has (rows either file has), diffsOn (differences on a page) } marks what differs.
+export function SlicerWindow({ layout, tabs, settings, value, title, tabId, onTab, pageId, onPage, compare }) {
   const tab = tabs.find((t) => t.id === tabId) || tabs[0];
   const p = slicerColors(layout.slicer);
+  const preset = tab?.presetKey && settings[tab.presetKey] ? unescape(settings[tab.presetKey]).replace(/^"|"$/g, "") : "";
 
   return (
     <SlicerColors.Provider value={p}>
-    <div data-testid="slicer-window" style={{ background: p.bg, color: p.textPrimary, border: `1px solid ${p.border}`, borderRadius: 4, padding: 14 }}>
-      <div style={uiText(12, p.textFaint, { marginBottom: 12 })}>
-        {ver.filename || bundle.name} · v{ver.v} · {ver.slicer || "unknown slicer"} · {Object.keys(settings).length} settings
-      </div>
+      <DiffMarks.Provider value={compare ? { side: compare.side, keys: compare.keys } : null}>
+        <div data-testid="slicer-window" style={{ background: p.bg, color: p.textPrimary, border: `1px solid ${p.border}`, borderRadius: 4, padding: 14, minWidth: 0 }}>
+          <div style={uiText(12, p.textFaint, { marginBottom: 12, overflowWrap: "anywhere" })}>{title}</div>
 
-      <div role="tablist" style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12, borderBottom: `1px solid ${p.border}` }}>
-        {tabs.map((t) => {
-          const on = t.id === tab?.id;
-          return (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={on}
-              data-testid="settings-tab"
-              onClick={() => setTabId(t.id)}
-              style={{
-                ...ui, fontSize: fs(13), display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", marginBottom: -1,
-                border: `1px solid ${on ? p.border : "transparent"}`, borderBottom: `2px solid ${on ? p.accent : "transparent"}`,
-                borderRadius: "4px 4px 0 0", background: on ? p.field : "transparent", color: on ? p.heading : p.textMuted,
-                fontWeight: on ? 600 : 400, cursor: "pointer",
-              }}
-            >
-              <t.Icon size={14} color={on ? p.accentText : p.textFaint} />
-              {t.title}
-            </button>
-          );
-        })}
-      </div>
+          <div role="tablist" style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12, borderBottom: `1px solid ${p.border}` }}>
+            {tabs.map((t) => {
+              const on = t.id === tab?.id;
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={on}
+                  data-testid="settings-tab"
+                  onClick={() => onTab(t.id)}
+                  style={{
+                    ...ui, fontSize: fs(13), display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", marginBottom: -1,
+                    border: `1px solid ${on ? p.border : "transparent"}`, borderBottom: `2px solid ${on ? p.accent : "transparent"}`,
+                    borderRadius: "4px 4px 0 0", background: on ? p.field : "transparent", color: on ? p.heading : p.textMuted,
+                    fontWeight: on ? 600 : 400, cursor: "pointer",
+                  }}
+                >
+                  <t.Icon size={14} color={on ? p.accentText : p.textFaint} />
+                  {t.title}
+                </button>
+              );
+            })}
+          </div>
 
-      {tab && (
-        <>
-          {tab.preset && (
-            <div style={{ marginBottom: 14 }}>
-              <span data-testid="settings-preset" style={boxStyle({ ...monoText(13, p.heading), padding: "5px 10px", gap: 8, maxWidth: "100%", overflowWrap: "anywhere" }, p)}>
-                <tab.Icon size={14} color={p.accentText} />
-                {unescape(tab.preset).replace(/^"|"$/g, "")}
-                <ChevronDown size={13} color={p.textFaint} />
-              </span>
-            </div>
+          {tab && (
+            <>
+              {preset && (
+                <div style={{ marginBottom: 14 }}>
+                  <span data-testid="settings-preset" style={boxStyle({ ...monoText(13, p.heading), padding: "5px 10px", gap: 8, maxWidth: "100%", overflowWrap: "anywhere" }, p)}>
+                    <tab.Icon size={14} color={p.accentText} />
+                    {preset}
+                    <ChevronDown size={13} color={p.textFaint} />
+                  </span>
+                </div>
+              )}
+              <SettingsPages
+                key={tab.id} pages={tab.pages} value={value} choices={layout.choices} nav={layout.nav} label={`${tab.title} pages`}
+                pageId={pageId} onPage={onPage} has={compare?.has} diffsOn={compare?.diffsOn}
+              />
+            </>
           )}
-          <SettingsPages key={tab.id} pages={tab.pages} value={value} choices={layout.choices} nav={layout.nav} label={`${tab.title} pages`} />
-        </>
-      )}
-    </div>
+        </div>
+      </DiffMarks.Provider>
     </SlicerColors.Provider>
   );
 }

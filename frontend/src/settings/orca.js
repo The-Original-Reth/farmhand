@@ -737,8 +737,8 @@ export function orcaTabs(settings) {
   filament.push(...otherPage(settings, all, (k) => windowOf(k) === "filament"));
   printer.push(...otherPage(settings, all, (k) => windowOf(k) === "printer"));
   return [
-    { id: "process", title: "Process", Icon: SquareStack, preset: settings.print_settings_id, pages: process },
-    { id: "filament", title: "Filament", Icon: Wind, preset: settings.filament_settings_id, pages: filament },
-    { id: "printer", title: "Printer", Icon: Printer, preset: settings.printer_settings_id, pages: printer },
+    { id: "process", title: "Process", Icon: SquareStack, presetKey: "print_settings_id", pages: process },
+    { id: "filament", title: "Filament", Icon: Wind, presetKey: "filament_settings_id", pages: filament },
+    { id: "printer", title: "Printer", Icon: Printer, presetKey: "printer_settings_id", pages: printer },
   ];
 }

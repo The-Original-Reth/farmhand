@@ -17,6 +17,9 @@ import { uiText } from "../styles.js";
 // inside <SlicerColors.Provider value={slicerColors("prusa")}>. Outside one they take Farmhand's own colours.
 
 export const SlicerColors = createContext(null);
+// In a comparison: the settings that differ between the two files, and which side this is ("left" | "right"), so
+// those rows are marked in that side's colour (Farmhand's: the accent left, the secondary right)
+export const DiffMarks = createContext(null);
 // A slicer's colours, dark or light to match the scheme in use
 export const slicerColors = (slicer) => SLICER_SCHEMES[slicer][look.mode === "light" ? "light" : "dark"];
 const appColors = () => ({
@@ -81,7 +84,18 @@ function Field({ kind, value, choices }) {
   return <span style={box({ minWidth: 90, maxWidth: "100%", overflowWrap: "anywhere" })}>{unescape(value)}</span>;
 }
 
-function Row({ label, kind, unit, value, limits, choices }) {
+function Row(props) {
+  const marks = useContext(DiffMarks);
+  if (!marks?.keys.has(props.settingKey)) return <PlainRow {...props} />;
+  const color = marks.side === "right" ? c.teal : c.amber;
+  return (
+    <div data-testid="diff-field" data-side={marks.side} style={{ borderLeft: `3px solid ${color}`, background: `${color}1F`, borderRadius: 2, paddingLeft: 4 }}>
+      <PlainRow {...props} />
+    </div>
+  );
+}
+
+function PlainRow({ label, kind, unit, value, limits, choices }) {
   const p = useSlicerColors();
   if (kind === "gcode") {
     const text = value == null ? "" : unescape(value);
@@ -102,7 +116,7 @@ function Row({ label, kind, unit, value, limits, choices }) {
   // a speed or width given as a percentage ("50%") is of something else, so the unit doesn't apply
   const showUnit = unit && !values.every((v) => String(v ?? "").trim().endsWith("%"));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(140px, 280px) 1fr", gap: 12, alignItems: "center", padding: "3px 0" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(110px, 260px) minmax(0, 1fr)", gap: 12, alignItems: "center", padding: "3px 0" }}>
       <div style={uiText(12, p.textMuted, { textAlign: "right" })}>{label}:</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
         {values.map((v, i) => <Field key={i} kind={kind} value={v} choices={choices} />)}
@@ -112,8 +126,9 @@ function Row({ label, kind, unit, value, limits, choices }) {
   );
 }
 
-// The rows of a group that the file has a value for (a "@" key is worked out, so always has one)
-const shownRows = (group, value) => group.rows.filter(([key]) => key.startsWith("@") || value(key) !== undefined);
+// The rows of a group to show: the ones `has` says (by default, the ones the file has a value for; a "@" key is
+// worked out, so has one whenever there are settings at all)
+const shownRows = (group, has) => group.rows.filter(([key]) => has(key));
 
 function Group({ group, rows, value, choices }) {
   const p = useSlicerColors();
@@ -121,7 +136,7 @@ function Group({ group, rows, value, choices }) {
     <fieldset style={{ border: `1px solid ${p.border}`, borderRadius: 4, padding: "6px 14px 10px", margin: 0, minWidth: 0 }}>
       <legend style={uiText(13, p.heading, { fontWeight: 600, padding: "0 6px" })}>{group.title}</legend>
       {group.limits && (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(140px, 280px) 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(110px, 260px) minmax(0, 1fr)", gap: 12 }}>
           <span />
           <span style={uiText(11, p.textFaint, { display: "flex", gap: 8 })}>
             <span style={{ minWidth: 90 }}>Normal</span>
@@ -132,7 +147,7 @@ function Group({ group, rows, value, choices }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {rows.map(([key, label, kindOrUnit]) => {
           const kind = KINDS.includes(kindOrUnit) ? kindOrUnit : null;
-          return <Row key={key} label={label} kind={kind} unit={kind ? null : kindOrUnit} value={value(key)} limits={group.limits} choices={choices[key]} />;
+          return <Row key={key} settingKey={key} label={label} kind={kind} unit={kind ? null : kindOrUnit} value={value(key)} limits={group.limits} choices={choices[key]} />;
         })}
       </div>
     </fieldset>
@@ -143,18 +158,26 @@ function Group({ group, rows, value, choices }) {
 export const placedKeys = (pages) => new Set(pages.flatMap((p) => (p.groups || []).flatMap((g) => g.rows.map((r) => r[0]))));
 
 // The pages that have something to show for these settings (a page of Farmhand's own, with `render`, always does)
-export const pagesWithContent = (pages, valueFor) =>
-  pages.filter((p) => p.render || (p.groups || []).some((g) => shownRows(g, valueFor(p)).length));
+// `hasFor(page)` gives the test for that page: (key) => whether to show its row (see shownRows)
+export const pagesWithContent = (pages, hasFor) =>
+  pages.filter((p) => p.render || (p.groups || []).some((g) => shownRows(g, hasFor(p)).length));
+// The keys on a page (for counting the differences on it)
+export const pageKeys = (page) => (page.groups || []).flatMap((g) => g.rows.map((r) => r[0]));
 
 // A set of pages with their list down the left (PrusaSlicer) or across the top (OrcaSlicer). `value(key, page)` reads
 // a setting for a page (an Extruder page reads its own extruder's value). `choices`: how the slicer names drop-down
-// choices, by key.
-export function SettingsPages({ pages, value, choices = {}, nav = "left", label }) {
+// choices, by key. In a comparison the page is chosen from outside (`pageId`, `onPage`) so both sides turn together,
+// `has(key, page)` shows the rows either file has (so the two sides line up), and `diffsOn(page)` counts the
+// differences on a page for its button.
+export function SettingsPages({ pages, value, choices = {}, nav = "left", label, pageId: shownId, onPage, has, diffsOn }) {
   const col = useSlicerColors();
-  const [pageId, setPageId] = useState(pages[0]?.id);
+  const [ownId, setOwnId] = useState(pages[0]?.id);
+  const pageId = shownId !== undefined ? shownId : ownId;
+  const setPageId = onPage || setOwnId;
   const page = pages.find((p) => p.id === pageId) || pages[0];
   if (!page) return <div style={uiText(13, col.textFaint)}>Nothing on these pages in this file.</div>;
   const read = (key) => value(key, page);
+  const show = has ? (key) => has(key, page) : (key) => read(key) !== undefined;
   const left = nav === "left";
 
   return (
@@ -185,6 +208,11 @@ export function SettingsPages({ pages, value, choices = {}, nav = "left", label 
             >
               <p.Icon size={14} color={on ? col.accentText : col.textFaint} />
               {p.title}
+              {diffsOn?.(p) > 0 && (
+                <span data-testid="page-diffs" title="Settings that differ on this page" style={uiText(11, col.textMuted, { marginLeft: "auto", paddingLeft: 6, fontWeight: 600 })}>
+                  {diffsOn(p)}
+                </span>
+              )}
             </button>
           );
         })}
@@ -193,7 +221,7 @@ export function SettingsPages({ pages, value, choices = {}, nav = "left", label 
         {page.render
           ? page.render()
           : page.groups.map((g) => {
-              const rows = shownRows(g, read);
+              const rows = shownRows(g, show);
               return rows.length ? <Group key={g.title} group={g} rows={rows} value={read} choices={choices} /> : null;
             })}
       </div>

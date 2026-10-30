@@ -536,10 +536,17 @@ the page to jump to it, and **Esc** to clear it (a second **Esc** leaves the box
 Every version row of a 3MF has its own **Compare** button. Tick any two versions and press
 **Compare** in the bar at the bottom: **v1 against v2 of the same 3MF**, two versions of
 different entries, or versions on different printers — any pair. The diff names exactly the
-two versions it's showing, lists every setting with the differences highlighted (the
-*Only show differences* box narrows it), and says how many differ.
+two versions it's showing and says how many settings differ. It opens in one of two views:
 
-- **Differences are highlighted.** A differing row has a tinted background and an amber bar down
+- **Slicer view** (the default): the two files side by side, each laid out as its slicer shows its settings, the
+  same as a version's **Settings** button, in that slicer's colours. When both came from the same kind of slicer, their tabs and
+  pages turn together: choose **Infill** on either side and both show their Infill page. A setting that differs
+  has a bar down its edge on both sides (amber left, teal right), and each page shows how many of its settings
+  differ. *Only show differences* leaves just those settings and their pages. A PrusaSlicer file against an
+  OrcaSlicer one can be compared too, but their pages don't line up, so each side turns on its own.
+- **List**: every setting by name, as described below.
+
+- **Differences are highlighted** (List). A differing row has a tinted background and an amber bar down
   its edge, and identical rows fade back so the changes stand out. Both values sit in a chip in
   their column's colour (amber left, teal right) with the part that actually changed picked out —
   the `18` in `0.18`, the `_rear` in `aligned_rear`, one edited character inside a long start
