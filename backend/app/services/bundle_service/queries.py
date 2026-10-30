@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from ...errors import NotFound
 from ...models import Bundle, BundleSourceModel, BundleVersion, BundleVersionSubPrinter, SourceModel
 
 # Everything a list of bundles shows (BundleOut), loaded a batch at a time rather than a few queries per bundle
@@ -22,6 +23,22 @@ LIST_LOAD = (
 
 def get_bundle(db: Session, bundle_id: int) -> Bundle | None:
     return db.get(Bundle, bundle_id)
+
+
+def require_bundle(db: Session, bundle_id: int) -> Bundle:
+    """The bundle, or NotFound."""
+    bundle = get_bundle(db, bundle_id)
+    if bundle is None:
+        raise NotFound(f"No bundle with id {bundle_id}")
+    return bundle
+
+
+def require_version(db: Session, version_id: int) -> BundleVersion:
+    """The bundle version, or NotFound."""
+    version = db.get(BundleVersion, version_id)
+    if version is None:
+        raise NotFound(f"No bundle version with id {version_id}")
+    return version
 
 
 def list_all_bundles(db: Session) -> list[Bundle]:

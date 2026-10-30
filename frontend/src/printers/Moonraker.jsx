@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { c } from "../theme.js";
-import { headerButton, uiText } from "../styles.js";
+import { foldHeading, headerButton, panelBox, uiText } from "../styles.js";
 import { errorText, getMoonrakerStatus, getPrintStats, syncPrinterHistory } from "../api.js";
 
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
@@ -107,7 +107,7 @@ export function MoonrakerCard({ printer, mr, open = true, onToggle }) {
 
   return (
     <div data-testid="moonraker-card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+      <div style={foldHeading(open)}>
         <SectionToggle open={open} onToggle={onToggle} controlsId="moonraker-card-body" testId="toggle-connection" indent={20}>
           Connection and statistics
         </SectionToggle>
@@ -133,7 +133,7 @@ export function MoonrakerCard({ printer, mr, open = true, onToggle }) {
         )}
       </div>
       {open && (
-      <div id="moonraker-card-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+      <div id="moonraker-card-body" style={panelBox({ padding: 14 })}>
         <ConnectionLine testId="moonraker-status" dot={dot} line={line} reachable={status?.reachable} url={printer.moonrakerUrl} />
 
         {status?.print && (

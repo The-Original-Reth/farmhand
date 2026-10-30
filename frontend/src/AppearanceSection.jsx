@@ -1,5 +1,5 @@
 import { c, ui, mono, fs } from "./theme.js";
-import { monoText, uiText } from "./styles.js";
+import { monoText, panelBox, toneColor, uiText } from "./styles.js";
 import { PRESETS, FONTS, SIZES, DEFAULT_APPEARANCE, FILE_NAME_COLORS } from "./palettes.js";
 
 // The Appearance controls, as a section of the Storage page. The page re-renders in the new look as each
@@ -103,7 +103,7 @@ export function AppearanceSection({ appearance, saved, onChange, onSave, onDisca
     : saveStatusLine(saveState, locationPath);
 
   return (
-    <div data-testid="appearance-section" data-dirty={dirty ? "true" : "false"} style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 16, ...ui }}>
+    <div data-testid="appearance-section" data-dirty={dirty ? "true" : "false"} style={panelBox({ padding: 16, ...ui })}>
       <div style={{ fontSize: fs(15), color: c.heading, marginBottom: 2 }}>Appearance</div>
       <div style={{ fontSize: fs(12), color: c.textFaint, lineHeight: 1.5 }}>
         Colours, lettering and text size for the whole site. Changes show here as you make them; press Save to keep them.
@@ -225,7 +225,7 @@ export function AppearanceSection({ appearance, saved, onChange, onSave, onDisca
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
         <div
           data-testid="appearance-save-status"
-          style={{ fontSize: fs(12), lineHeight: 1.5, flex: 1, minWidth: 200, color: status.tone === "warn" ? c.amber : status.tone === "good" ? c.green : c.textFaint }}
+          style={{ fontSize: fs(12), lineHeight: 1.5, flex: 1, minWidth: 200, color: toneColor(status.tone) }}
         >
           {status.text}
         </div>

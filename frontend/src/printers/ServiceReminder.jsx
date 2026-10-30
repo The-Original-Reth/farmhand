@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { c } from "../theme.js";
-import { errorText, serviceDone, setServiceEnabled } from "../api.js";
+import { serviceDone, setServiceEnabled } from "../api.js";
 import { headerButton, monoText, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge } from "../components/common/ui.jsx";
 import { NotesSection } from "../notes/NotesSection.jsx";
@@ -15,25 +16,17 @@ import { PerformMaintenanceForm } from "./MaintenanceForm.jsx";
 export function ServiceReminder({ printer }) {
   const { putPrinter } = useData();
   const [dialog, setDialog] = useState(null); // "done" | null
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const { busy, error, run } = useAction();
   const s = printer.service;
   const interval = s.interval_hours;
   const since = s.hours_since ?? 0;
   const pct = Math.min(100, (since / interval) * 100);
   const n = (v) => Math.floor(v).toLocaleString();
 
-  const toggle = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const toggle = () =>
+    run(async () => {
       putPrinter(await setServiceEnabled(printer.id, !s.enabled));
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   let text;
   if (s.state === "waiting") text = "Starts counting once the printer's print time has been synced.";

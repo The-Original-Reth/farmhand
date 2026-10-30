@@ -5,6 +5,7 @@ import { uiText } from "../styles.js";
 
 import { Badge, Thumb } from "../components/common/ui.jsx";
 import { Highlighted } from "../lib/search.jsx";
+import { notesHint } from "../lib/format.js";
 
 export function ModelListRow({ model, bundleCount, printerCount, borderBottom, borderRight, onOpen, words = [], reasons = [] }) {
   const [hover, setHover] = useState(false);
@@ -49,7 +50,7 @@ export function ModelListRow({ model, bundleCount, printerCount, borderBottom, b
       </div>
       <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
         {model.notes && (
-          <span data-testid="has-notes" title={`Has notes: ${model.notes.slice(0, 120)}${model.notes.length > 120 ? "…" : ""}`} style={{ display: "flex" }}>
+          <span data-testid="has-notes" title={notesHint(model.notes)} style={{ display: "flex" }}>
             <StickyNote size={14} color={c.textFaint} />
           </span>
         )}

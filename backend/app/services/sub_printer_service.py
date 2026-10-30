@@ -66,11 +66,7 @@ def _clean(name: str) -> str:
     return name
 
 
-def _printer(db: Session, printer_id: int) -> Printer:
-    printer = printer_service.get_printer(db, printer_id)
-    if printer is None:
-        raise NotFound(f"No printer with id {printer_id}")
-    return printer
+_printer = printer_service.require_printer
 
 
 def _sub_printer(db: Session, printer_id: int, sub_printer_id: int) -> SubPrinter:

@@ -14,9 +14,9 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Printer, PrinterServiceReminder, PrintJob
+from ...models import Printer, PrintJob
 from ...timeutil import as_utc
-from ..printer_service import ensure_connection, record_sync_error
+from ..printer_service import record_sync_error, record_sync_ok
 from . import client
 from .client import PrusaLinkError
 
@@ -37,15 +37,7 @@ def poll(db: Session, printer: Printer) -> tuple[dict, dict | None]:
         raise
     now = dt.datetime.now(dt.timezone.utc)
     _record(db, printer, current, now)
-    conn = ensure_connection(printer)
-    conn.totals = totals(db, printer.id)
-    conn.last_sync_at = now
-    conn.last_sync_error = None
-    if printer.service_row is None:
-        # the 1500-hour service count starts from the print time Farmhand has recorded so far
-        printer.service_row = PrinterServiceReminder(
-            printer_id=printer.id, start_printtime=float(conn.totals["total_print_time"]), history=[]
-        )
+    record_sync_ok(printer, totals(db, printer.id), now)  # the totals of the prints Farmhand has recorded so far
     db.commit()
     return status, current
 

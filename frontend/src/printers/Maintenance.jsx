@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, Pencil, Wrench } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import {
@@ -9,7 +9,7 @@ import {
   performMaintenance,
   updateMaintenance,
 } from "../api.js";
-import { headerButton, monoText, uiText } from "../styles.js";
+import { foldHeading, headerButton, monoText, panelBox, uiText } from "../styles.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { Badge, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { fmtUnix } from "../lib/format.js";
@@ -76,15 +76,21 @@ export function MaintenanceSection({ printer, reachable, onDueCount, open: unfol
   const [dialog, setDialog] = useState(null); // { kind: "add" | "edit" | "done" | "delete", entry }
   const [showDone, setShowDone] = useState(false);
 
+  // Only the latest answer counts: switching printers while one is on its way must not show the last printer's list
+  const ask = useRef(0);
   const load = async () => {
+    const mine = ++ask.current;
     try {
-      setData(await getMaintenance(printer.id));
+      const d = await getMaintenance(printer.id);
+      if (mine !== ask.current) return;
+      setData(d);
       setError(null);
     } catch (e) {
-      setError(errorText(e));
+      if (mine === ask.current) setError(errorText(e));
     }
   };
   useEffect(() => {
+    ask.current++; // whatever was asked for the last printer is no longer wanted
     setData(null);
     setError(null);
     setShowDone(false);
@@ -103,7 +109,7 @@ export function MaintenanceSection({ printer, reachable, onDueCount, open: unfol
 
   return (
     <div data-testid="maintenance-section">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: unfolded ? 10 : 0 }}>
+      <div style={{ ...foldHeading(unfolded), flexWrap: "nowrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <SectionToggle open={unfolded} onToggle={onToggle} controlsId="maintenance-body" testId="toggle-maintenance" indent={20}>
             Maintenance
@@ -123,7 +129,7 @@ export function MaintenanceSection({ printer, reachable, onDueCount, open: unfol
         )}
       </div>
       {unfolded && (
-      <div id="maintenance-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel }}>
+      <div id="maintenance-body" style={panelBox()}>
         <ServiceReminder printer={printer} />
         <div style={{ borderTop: `1px solid ${c.border}` }}>
         {!reachable ? (

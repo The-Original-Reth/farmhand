@@ -44,6 +44,10 @@ const formBody = (method, fields) => {
 // A delete. The API refuses deletes without confirm=true; the UI's own confirmation
 // dialog is the real guard, so every delete is made after the user said yes.
 const del = (path) => request(`${path}${path.includes("?") ? "&" : "?"}confirm=true`, { method: "DELETE" });
+// A POST that sends nothing but the asking ("sync now", "connect")
+const post = (path) => request(path, { method: "POST" });
+// Notes, saved with the revision they were based on (a 409 answers with someone else's newer notes)
+const notesBody = (notes, baseRevision) => jsonBody("PUT", { notes, base_revision: baseRevision });
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
@@ -242,7 +246,7 @@ export const inspectThreemf = async (threemf) => {
 // A 3MF version's G-code (.gcode / .bgcode sliced from it), replacing one it had. Resolves to the whole 3MF.
 export const uploadGcode = (versionId, gcode) => request(`/bundles/versions/${versionId}/gcode`, formBody("PUT", { gcode }));
 // Sends a version's G-code to its 3MF's printer and starts it: { sent, printer }. 409 while the printer is busy.
-export const sendGcode = (versionId) => request(`/bundles/versions/${versionId}/print`, { method: "POST" });
+export const sendGcode = (versionId) => post(`/bundles/versions/${versionId}/print`);
 
 export const addBundleVersion = ({ bundleId, threemf, gcode, subPrinter = {} }) =>
   request(`/bundles/${bundleId}/versions`, formBody("POST", { threemf, gcode: gcode || undefined, ...subPrinterFields(subPrinter) })); // the G-code is optional
@@ -320,7 +324,7 @@ export const sendPrint = (printerId, file) => request(`/printers/${printerId}/pr
 // { reachable, klippy_state, moonraker_version, error, error_kind, print: { state: printing | paused, file, progress
 //   (0-100), print_duration, time_remaining, extruder, heater_bed } | null, last_sync_at, totals, ... }
 export const getMoonrakerStatus = (printerId) => request(`/printers/${printerId}/moonraker`);
-export const syncPrinterHistory = (printerId) => request(`/printers/${printerId}/moonraker/sync`, { method: "POST" });
+export const syncPrinterHistory = (printerId) => post(`/printers/${printerId}/moonraker/sync`);
 export const getPrintStats = (printerId) => request(`/printers/${printerId}/print-stats`);
 // A printer's cameras as set up in Mainsail, for the Monitor page: { webcams: [{ name, service, mjpeg, stream_url,
 // snapshot_url, flip_horizontal, flip_vertical, rotation, aspect_ratio }], error }. Never fails: error says why there are none.
@@ -354,7 +358,7 @@ export const setServiceEnabled = (printerId, enabled) => request(`/printers/${pr
 // Notes kept with the service: the same rules as other notes (a save names the revision it started from; 409 if moved
 // on). Resolves to the printer (as .printer); NotesSection reads `notes` / `notes_revision` from what onSave returns, hence the reshape.
 export const saveServiceNotes = async ({ printerId, notes, baseRevision }) => {
-  const p = await request(`/printers/${printerId}/service/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
+  const p = await request(`/printers/${printerId}/service/notes`, notesBody(notes, baseRevision));
   return { notes: p.service.notes, notes_revision: p.service.notes_revision, printer: p };
 };
 
@@ -388,15 +392,15 @@ export const renameBundle = async (bundle, filename) => {
 // baseRevision is the revision the text was written from (0 = there were none). If someone else has saved since, the
 // server answers 409 and the error's .body.current holds their version: nothing is overwritten.
 export const saveModelNotes = ({ modelId, notes, baseRevision }) =>
-  request(`/source-models/${modelId}/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
+  request(`/source-models/${modelId}/notes`, notesBody(notes, baseRevision));
 
 // ---- notes about a printer (the same rules as a model's: a save names the revision it started from) ----
 export const savePrinterNotes = ({ printerId, notes, baseRevision }) =>
-  request(`/printers/${printerId}/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
+  request(`/printers/${printerId}/notes`, notesBody(notes, baseRevision));
 
 // ---- notes about a 3MF (the same rules again) ----
 export const saveBundleNotes = ({ bundleId, notes, baseRevision }) =>
-  request(`/bundles/${bundleId}/notes`, jsonBody("PUT", { notes, base_revision: baseRevision }));
+  request(`/bundles/${bundleId}/notes`, notesBody(notes, baseRevision));
 
 // Star one version of a 3MF (only one per 3MF; never v1), or pass versionId: null to clear the star
 export const setStarredVersion = ({ bundleId, versionId }) =>
@@ -489,17 +493,17 @@ export const createShare = async (data) => normalizeShare(await request("/settin
 export const updateShare = async (id, data) =>
   normalizeShare(await request(`/settings/storage/shares/${id}`, jsonBody("PATCH", data)));
 export const reconnectShare = async (id) =>
-  normalizeShare(await request(`/settings/storage/shares/${id}/connect`, { method: "POST" }));
+  normalizeShare(await post(`/settings/storage/shares/${id}/connect`));
 export const deleteShare = (id) => del(`/settings/storage/shares/${id}`);
 
 export const migrateStorage = async () => {
-  const r = await request("/settings/storage/migrate", { method: "POST" });
+  const r = await post("/settings/storage/migrate");
   return { movedStl: r.moved_stl, movedThreemf: r.moved_threemf, missing: r.missing, failed: r.failed };
 };
 
 // Redraw one version's preview from its file with the current renderer. Resolves to { updated }.
 export const redrawPreview = ({ modelId, version }) =>
-  request(`/source-models/${modelId}/versions/${version}/thumbnail`, { method: "POST" });
+  post(`/source-models/${modelId}/versions/${version}/thumbnail`);
 
 // ---- settings: appearance + display preferences, kept on the server and copied to a network folder ----
 
@@ -581,14 +585,14 @@ export const saveConfigOnExit = (patch) => {
   }
 };
 
-export const saveConfigNow = () => request("/settings/config/save-now", { method: "POST" });
-export const restoreConfig = async () => normalizeRestore(await request("/settings/config/restore", { method: "POST" }));
+export const saveConfigNow = () => post("/settings/config/save-now");
+export const restoreConfig = async () => normalizeRestore(await post("/settings/config/restore"));
 
 // ---- scanning the STL folder for files added from outside Farmhand ----
 
 // Read-only: lists model files in the STL folder that aren't in the library yet.
 export const scanStlFolder = async () => {
-  const r = await request("/source-models/scan", { method: "POST" });
+  const r = await post("/source-models/scan");
   return {
     root: r.root,
     truncated: r.truncated,

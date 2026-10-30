@@ -7,20 +7,15 @@ from urllib.parse import quote
 import httpx
 
 from ...models import Printer
-
-TIMEOUT = httpx.Timeout(6.0, connect=3.0)
-UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big .bgcode over the printer's network takes a while
+from .. import printer_http
+from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
 
 # Tests swap this for an httpx.MockTransport that plays a fake PrusaLink
 transport: httpx.BaseTransport | None = None
 
 
-class PrusaLinkError(Exception):
+class PrusaLinkError(printer_http.PrinterLinkError):
     """kind: no_address | unreachable | unauthorized | not_found | busy | bad_response"""
-
-    def __init__(self, kind: str, message: str):
-        super().__init__(message)
-        self.kind = kind
 
 
 def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChunks | None = None, headers: dict | None = None,
@@ -30,21 +25,16 @@ def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChun
         raise PrusaLinkError("no_address", "This printer has no IP address or PrusaLink address set.")
     link = printer.prusalink_row
     auth = httpx.DigestAuth(link.username or "maker", link.password or "") if link and link.password else None
-    try:
-        with httpx.Client(timeout=timeout, transport=transport, auth=auth) as client:
-            r = client.request(method, f"{base}{path}", content=content, headers=headers)
-    except httpx.TimeoutException:
-        raise PrusaLinkError("unreachable", f"PrusaLink at {base} didn't answer in time. Is the printer on?") from None
-    except httpx.HTTPError as e:
-        raise PrusaLinkError("unreachable", f"Couldn't connect to PrusaLink at {base} ({type(e).__name__}).") from None
+    r = printer_http.request(
+        PrusaLinkError, "PrusaLink", base, method, path, transport=transport, timeout=timeout, auth=auth,
+        content=content, headers=headers,
+    )
     if r.status_code == 401:
         raise PrusaLinkError(
             "unauthorized",
             "PrusaLink refused the login. Check the username (usually maker) and the password shown on the printer "
             "under Settings > Network > PrusaLink.",
         )
-    if r.status_code == 404:
-        raise PrusaLinkError("not_found", "Not found on PrusaLink.")
     if r.status_code == 409:
         raise PrusaLinkError("busy", "The printer is busy (printing, or waiting for someone at it), so it can't do that now.")
     if r.status_code >= 400:

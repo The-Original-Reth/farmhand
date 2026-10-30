@@ -16,9 +16,6 @@ const CATEGORY_RULES = [
 ];
 export const categorizeKey = (key) => (CATEGORY_RULES.find((r) => r.test(key)) || { category: "Other Settings" }).category;
 
-export const humanizeLabel = (key) =>
-  key.split("_").join(" ").replace(/\b\w/g, (ch) => ch.toUpperCase());
-
 export function formatVal(raw) {
   if (raw === undefined || raw === null || raw === "") return "—";
   const s = String(raw);
@@ -26,22 +23,12 @@ export function formatVal(raw) {
 }
 
 // ---------------------------------------------------------------------------
-// PrusaSlicer 2.9–style classification for the single-file "Display Settings"
-// viewer — mirrors the three top-level tabs (Print / Filament / Printer
-// Settings) and their left-hand sub-page navigation, so a bundle's settings
-// read the way they would inside PrusaSlicer itself. Best-effort mapping by
-// key pattern (PrusaSlicer's own config has no tab metadata in the file) —
-// order matters, first match wins, checked top to bottom.
+// Which of PrusaSlicer's three tabs (Print / Filament / Printer Settings) a
+// setting belongs on, and roughly which page: settings/boss.js uses the tab to
+// put a setting none of its pages has a place for on the right tab's "Other"
+// page. Best-effort mapping by key pattern (PrusaSlicer's own config has no tab
+// metadata in the file) — order matters, first match wins, top to bottom.
 // ---------------------------------------------------------------------------
-export const PRUSA_SECTIONS = {
-  "Print Settings": [
-    "Layers and perimeters", "Infill", "Skirt and brim", "Support material",
-    "Speed", "Multiple Extruders", "Advanced", "Output options", "Notes", "Dependencies",
-  ],
-  "Filament Settings": ["Filament", "Cooling", "Advanced", "Multimaterial", "Custom G-code", "Notes", "Dependencies"],
-  "Printer Settings": ["General", "Extruder 1", "Custom G-code", "Notes", "Firmware"],
-};
-
 const PRUSA_RULES = [
   // Custom G-code — split by which profile owns it
   { test: (k) => k === "start_filament_gcode" || k === "end_filament_gcode", tab: "Filament Settings", section: "Custom G-code" },

@@ -3,6 +3,8 @@ import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
 import { errorText, redrawPreview } from "../api.js";
 import { useData } from "../data.jsx";
+import { ProgressBar } from "../components/common/ui.jsx";
+import { plural } from "../lib/format.js";
 
 // Previews drawn by older versions of Farmhand (the first one thinned detailed models, leaving them
 // see-through) are redrawn from their files, one at a time so progress shows.
@@ -35,7 +37,6 @@ export function RedrawPreviewsDialog({ onClose }) {
     setPhase("done");
   };
 
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const button = (label, onClick, primary, extra = {}) => (
     <button
       onClick={onClick}
@@ -51,9 +52,7 @@ export function RedrawPreviewsDialog({ onClose }) {
         <div style={uiText(13, c.textMuted, { marginBottom: 10 })}>
           Redrawing {Math.min(done + 1, targets.length)} of {targets.length}…
         </div>
-        <div style={{ height: 6, borderRadius: 3, background: c.panelAlt, overflow: "hidden" }}>
-          <div style={{ width: `${targets.length ? (done / targets.length) * 100 : 0}%`, height: "100%", background: c.amber, transition: "width 0.2s ease" }} />
-        </div>
+        <ProgressBar pct={targets.length ? (done / targets.length) * 100 : 0} smooth />
       </div>
     );
   }

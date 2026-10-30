@@ -11,6 +11,7 @@ import {
 } from "../api.js";
 import { linkButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 
 import { SubPrinterChoice, subPrinterFields, useSubPrinterPick } from "./SubPrinterChoice.jsx";
 import { newestFirst } from "./versions.jsx";
@@ -29,8 +30,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
   const [existingModelId, setExistingModelId] = useState("");
   const [threemfFile, setThreemfFile] = useState(null);
   const [gcodeFile, setGcodeFile] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
 
   // What the 3MF says about its own printer, from the backend (null until a file is dropped)
   const [inspecting, setInspecting] = useState(false);
@@ -109,16 +109,11 @@ export function Upload3mfForm({ presetModel, onClose }) {
     if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new sub printer a name.");
     if (versionTarget) {
       // A newer version of an existing entry: nothing new to create, the printer is already matched
-      setSubmitting(true);
-      try {
+      await run(async () => {
         await addBundleVersion({ bundleId: versionTarget.id, threemf: threemfFile, gcode: gcodeFile, subPrinter: subPrinterFields(sub.pick) });
         await refresh();
         onClose();
-      } catch (e) {
-        setErrorMsg(errorText(e));
-      } finally {
-        setSubmitting(false);
-      }
+      });
       return;
     }
 
@@ -130,8 +125,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
       return setErrorMsg("Pick which printer this file belongs to.");
     }
 
-    setSubmitting(true);
-    try {
+    await run(async () => {
       let sourceModelIds;
       if (presetModel) {
         sourceModelIds = [presetModel.id];
@@ -168,11 +162,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
       await createBundle({ sourceModelIds, threemf: threemfFile, gcode: gcodeFile, printerId, subPrinter: subPrinterFields(sub.pick) });
       await refresh();
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

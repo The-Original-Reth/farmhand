@@ -8,7 +8,7 @@ import { fieldBox, uiText } from "../styles.js";
 // after it. Either can be changed to another of the printer's sub printers, or to a new one with any name.
 //   pick: { kind: "existing", id } | { kind: "new", name } | { kind: "none" }
 
-export function guessSubPrinter(printer, presetName) {
+function guessSubPrinter(printer, presetName) {
   const subs = printer?.subPrinters || [];
   const def = subs.find((s) => s.id === printer?.defaultSubPrinterId);
   if (def) return { kind: "existing", id: def.id };

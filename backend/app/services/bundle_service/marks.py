@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from ...errors import NotFound
 from ... import notes as notes_helper
 from ...models import Bundle, BundleNote, BundleStar, BundleVersion
-from .queries import get_bundle
+from .queries import get_bundle, require_bundle
 
 
 class StarNotAllowed(ValueError):
@@ -19,9 +18,7 @@ def set_starred_version(db: Session, bundle_id: int, version_id: int | None) -> 
     Star one version of a 3MF (gold), or clear the star with None. Only one version per 3MF is starred: starring
     another moves the star there. Version 1, the initial upload, can't be starred (it always shows as silver).
     """
-    bundle = get_bundle(db, bundle_id)
-    if bundle is None:
-        raise NotFound(f"No bundle with id {bundle_id}")
+    bundle = require_bundle(db, bundle_id)
     if version_id is None:
         bundle.star_row = None  # delete-orphan removes the row
     else:
@@ -41,9 +38,7 @@ def set_starred_version(db: Session, bundle_id: int, version_id: int | None) -> 
 
 def set_notes(db: Session, bundle_id: int, notes: str, base_revision: int) -> Bundle:
     """Save the notes for a 3MF (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
-    bundle = get_bundle(db, bundle_id)
-    if bundle is None:
-        raise NotFound(f"No bundle with id {bundle_id}")
+    bundle = require_bundle(db, bundle_id)
     return notes_helper.save(
         db, owner=bundle, note_cls=BundleNote, owner_key="bundle_id", base_revision=base_revision,
         notes=notes, reload=lambda: get_bundle(db, bundle_id),

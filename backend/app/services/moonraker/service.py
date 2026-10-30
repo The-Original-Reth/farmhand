@@ -12,14 +12,19 @@ from ..printer_service import ensure_connection
 from .client import MoonrakerError, job_totals
 
 
+def _service_row(printer: Printer):
+    """The printer's 1500-hour service count, which starts at its first sync (ValueError before that)."""
+    if printer.service_row is None:
+        raise ValueError("The service count starts once the printer has been synced at least once")
+    return printer.service_row
+
+
 def service_done(db: Session, printer: Printer, *, note: str | None) -> None:
     """
     Mark the 1500-hour service done: the next 1500 hours count from the printer's print time now. That's asked of
     the printer if it answers (and kept as the latest totals), else taken from the last sync.
     """
-    row = printer.service_row
-    if row is None:
-        raise ValueError("The service count starts once the printer has been synced at least once")
+    row = _service_row(printer)
     conn = ensure_connection(printer)
     if printer.connection_type == "moonraker":
         try:
@@ -62,7 +67,5 @@ def set_service_notes(db: Session, printer: Printer, notes: str, base_revision: 
 
 def set_service_enabled(db: Session, printer: Printer, enabled: bool) -> None:
     """Switch a printer's 1500-hour reminder off (it never comes due) or back on (the count carries on)."""
-    if printer.service_row is None:
-        raise ValueError("The service count starts once the printer has been synced at least once")
-    printer.service_row.enabled = enabled
+    _service_row(printer).enabled = enabled
     db.commit()

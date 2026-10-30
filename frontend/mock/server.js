@@ -38,6 +38,10 @@ export function mockApi() {
     }
     return fail404("Bundle version not found");
   };
+  // a delete has to say confirm=true, as the real API asks (routers/common.py require_confirm), checked first
+  function requireConfirm(q, detail = "Deleting is permanent — pass confirm=true to proceed") {
+    if (q.get("confirm") !== "true") throw new HttpError(409, detail);
+  }
   function fail404(detail) {
     throw new HttpError(404, detail);
   }
@@ -229,8 +233,8 @@ export function mockApi() {
     return printerOut(p);
   });
   on("DELETE", "/printers/:id/sub-printers/:subId", ({ id, subId }, _b, q) => {
+    requireConfirm(q);
     const p = printer(id);
-    if (q.get("confirm") !== "true") throw new HttpError(409, "Deleting is permanent — pass confirm=true to proceed");
     const s = subPrinterOf(p, subId);
     for (const b of farm.bundles) for (const v of b.versions) if (v.sub_printer_id === s.id) v.sub_printer_id = null;
     farm.subPrinters = farm.subPrinters.filter((x) => x !== s);
@@ -295,8 +299,8 @@ export function mockApi() {
     return s.parts;
   });
   on("DELETE", "/printers/:id/sub-printers/:subId/parts/:partId", ({ id, subId, partId }, _b, q) => {
+    requireConfirm(q);
     const s = subPrinterOf(printer(id), subId);
-    if (q.get("confirm") !== "true") throw new HttpError(409, "Deleting is permanent — pass confirm=true to proceed");
     const gone = partOf(s, partId);
     s.parts = s.parts.filter((x) => x !== gone);
     return s.parts;
@@ -335,6 +339,7 @@ export function mockApi() {
     return modelOut(m);
   });
   on("DELETE", "/source-models/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
     const m = model(id);
     const used = farm.bundles.filter((b) => b.source_model_ids.includes(m.id));
     if (used.length && q.get("cascade") !== "true") throw new HttpError(409, `${used.length} 3MF file(s) were sliced from this model — pass cascade=true to delete them too`);
@@ -342,7 +347,8 @@ export function mockApi() {
     farm.models = farm.models.filter((x) => x.id !== m.id);
     return [204, null];
   });
-  on("DELETE", "/source-models/:id/versions/:v", ({ id, v }) => {
+  on("DELETE", "/source-models/:id/versions/:v", ({ id, v }, _b, q) => {
+    requireConfirm(q);
     const m = model(id);
     m.versions = m.versions.filter((x) => x.version !== Number(v));
     return [204, null];
@@ -481,14 +487,16 @@ export function mockApi() {
     }
     return versionDetail(v);
   });
-  on("DELETE", "/bundles/versions/:id", ({ id }) => {
+  on("DELETE", "/bundles/versions/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
     const { b, v } = version(id);
     b.versions = b.versions.filter((x) => x.id !== v.id);
     if (b.starred_version_id === v.id) b.starred_version_id = null;
     if (!b.versions.length) farm.bundles = farm.bundles.filter((x) => x.id !== b.id);
     return [204, null];
   });
-  on("DELETE", "/bundles/:id", ({ id }) => {
+  on("DELETE", "/bundles/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
     farm.bundles = farm.bundles.filter((b) => b.id !== Number(id));
     return [204, null];
   });
@@ -698,8 +706,8 @@ export function mockApi() {
     return { next_id: nextId, ...maintenanceList(p) };
   });
   on("DELETE", "/printers/:id/maintenance/:key", ({ id, key }, _b, q) => {
+    requireConfirm(q, "Deleting is permanent (in Mainsail too) — pass confirm=true to proceed");
     const p = printer(id);
-    if (q.get("confirm") !== "true") throw new HttpError(409, "Deleting is permanent (in Mainsail too) — pass confirm=true to proceed");
     reach(p);
     entryFor(p, key);
     delete farm.maintenance[p.id][decodeURIComponent(key)];
@@ -804,7 +812,8 @@ export function mockApi() {
   on("POST", "/settings/storage/shares", () => { throw notInMockup("Connecting a network share"); });
   on("PATCH", "/settings/storage/shares/:id", () => { throw notInMockup("Changing a network share"); });
   on("POST", "/settings/storage/shares/:id/connect", ({ id }) => farm.shares.find((s) => s.id === Number(id)) || fail404("Share not found"));
-  on("DELETE", "/settings/storage/shares/:id", ({ id }) => {
+  on("DELETE", "/settings/storage/shares/:id", ({ id }, _b, q) => {
+    requireConfirm(q, "Pass confirm=true to proceed");
     farm.shares = farm.shares.filter((s) => s.id !== Number(id));
     return [204, null];
   });

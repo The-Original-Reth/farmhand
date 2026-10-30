@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Printer
 from ..services import prusalink as pl
-from ..services.send_print import PRUSALINK_FREE
+from ..services.send_print import PrinterBusy, send_to_prusalink
 from .common import require_printer, sync_state
 
 # A PrusaLink printer (Prusa Core One, MK4, XL...): its live status and sending it a print. Its print history,
@@ -93,18 +94,14 @@ def send_print(printer_id: int, file: UploadFile = File(...), db: Session = Depe
         raise HTTPException(status_code=413, detail="That file is too large to send.")
     if not size:
         raise HTTPException(status_code=422, detail="That file is empty.")
-    status, _ = pl.poll(db, printer)
-    state = (status.get("printer") or {}).get("state")
-    if state not in PRUSALINK_FREE:
-        raise HTTPException(status_code=409, detail=f"The printer isn't ready for a new print (it says {state or 'nothing'}).")
     try:
-        where = pl.upload_and_print(printer, name, file.file, size)
+        where = send_to_prusalink(
+            db, printer, name, lambda: contextlib.nullcontext((file.file, size)), who="The printer"
+        )
+    except PrinterBusy as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
     except pl.PrusaLinkError as e:
-        if e.kind == "busy":
-            raise HTTPException(status_code=409, detail=str(e))
+        if e.kind == "busy":  # it said it was ready, then turned the print down
+            raise HTTPException(status_code=409, detail=str(e)) from None
         raise
-    try:
-        pl.poll(db, printer)  # start recording it straight away
-    except pl.PrusaLinkError:
-        pass  # it was sent; the next look will pick it up
     return {"sent": where}

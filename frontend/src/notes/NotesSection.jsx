@@ -2,11 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { errorText } from "../api.js";
-import { toolButton, uiText } from "../styles.js";
+import { toneColor, toolButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { readStored, readStoredObject, writeStored } from "../lib/storage.js";
 import { NOTE_KINDS } from "./noteKinds.js";
+import { fmtWhen } from "../lib/format.js";
 
 const NOTES_MAX = 20000;
 const draftKey = (kind, id) => `${NOTE_KINDS[kind].storage.draft}.${id}`;
@@ -148,7 +149,6 @@ export function NotesSection({ kind, owner }) {
     writeDraft(kind, ownerId, null);
   };
 
-  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
   const busy = phase === "saving";
   let status;
   if (busy) status = { tone: "faint", text: "Saving…" };
@@ -159,8 +159,8 @@ export function NotesSection({ kind, owner }) {
       tone: "warn",
       text: `${restored ? "Restored your unsaved draft. " : ""}Unsaved changes. A draft is kept in this browser until you save.`,
     };
-  } else if (rev > 0 && saved) status = { tone: "good", text: `Saved. Last edited ${when(updatedAt)}.` };
-  else if (rev > 0) status = { tone: "faint", text: `Notes cleared ${when(updatedAt)}.` };
+  } else if (rev > 0 && saved) status = { tone: "good", text: `Saved. Last edited ${fmtWhen(updatedAt, "")}.` };
+  else if (rev > 0) status = { tone: "faint", text: `Notes cleared ${fmtWhen(updatedAt, "")}.` };
   else status = { tone: "faint", text: "" }; // never had notes: nothing to say
 
   // Folded with nothing written (and nothing to warn about), the section is just its heading and the Expand button
@@ -255,7 +255,7 @@ export function NotesSection({ kind, owner }) {
           <div data-testid="notes-conflict" style={{ marginTop: 12, border: `1px solid ${c.amber}`, borderRadius: 4, padding: 12, background: c.panelAlt }}>
             <div style={uiText(13, c.heading, { marginBottom: 4 })}>Someone else saved these notes while you were editing.</div>
             <div style={uiText(12, c.textMuted, { lineHeight: 1.6, marginBottom: 8 })}>
-              Nothing was overwritten. Their version{conflict.updatedAt ? ` (saved ${when(conflict.updatedAt)})` : ""} is below, and yours is still in the box above.
+              Nothing was overwritten. Their version{conflict.updatedAt ? ` (saved ${fmtWhen(conflict.updatedAt, "")})` : ""} is below, and yours is still in the box above.
             </div>
             <pre
               data-testid="notes-theirs"
@@ -277,7 +277,7 @@ export function NotesSection({ kind, owner }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
           <div
             data-testid="notes-status"
-            style={{ ...ui, fontSize: fs(12), lineHeight: 1.5, flex: 1, minWidth: 200, color: status.tone === "warn" ? c.amber : status.tone === "good" ? c.green : c.textFaint }}
+            style={{ ...ui, fontSize: fs(12), lineHeight: 1.5, flex: 1, minWidth: 200, color: toneColor(status.tone) }}
           >
             {status.text}
             {text.length >= NOTES_MAX - 2000 && (

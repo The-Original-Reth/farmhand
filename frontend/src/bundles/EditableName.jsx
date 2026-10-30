@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Pencil, X } from "lucide-react";
 import { c } from "../theme.js";
-import { errorText } from "../api.js";
 import { uiText } from "../styles.js";
+import { useAction } from "../hooks/useAction.js";
 
 // A file's name with a pencil beside it: click the pencil to rename it in place (Enter saves, Escape cancels).
 // Only the part before the extension can be edited: the extension (.stl, .3mf...) is shown beside the box and always
@@ -18,8 +18,7 @@ export function EditableName({ value, onSave, label, textStyle, testId, extensio
   const [stem, extension] = splitExtension(value, fallbackExtension);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(stem);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const { busy, error, setError, run } = useAction();
   const [hover, setHover] = useState(false);
   const inputRef = useRef(null);
   const stop = (e) => e.stopPropagation(); // the name often sits in a header that folds or opens when clicked
@@ -40,16 +39,10 @@ export function EditableName({ value, onSave, label, textStyle, testId, extensio
   };
   const save = async () => {
     if (text.trim() === stem) return cancel();
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       await onSave(text.trim() + extension); // the extension always stays as it was; onSave updates the page's data
       setEditing(false);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   if (!editing) {

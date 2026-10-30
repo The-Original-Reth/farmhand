@@ -11,13 +11,12 @@ import tempfile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...errors import NotFound
 from ... import storage
 from .. import printer_service, sub_printer_service
 from ...names import with_version
 from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
 from ...parsers import parse_3mf
-from .queries import get_bundle
+from .queries import require_bundle
 from .versions import _enforce_rolling_window, check_gcode_name, check_gcode_printer, known_profiles, wrong_printer
 
 
@@ -176,9 +175,7 @@ def add_bundle_version(
     embedded printer profile still matches, as a data-integrity check
     (catches 'wrong file dragged into the wrong folder' mistakes).
     """
-    bundle = get_bundle(db, bundle_id)
-    if bundle is None:
-        raise NotFound(f"No bundle with id {bundle_id}")
+    bundle = require_bundle(db, bundle_id)
     if gcode_file_obj is not None:
         check_gcode_name(gcode_filename)
 

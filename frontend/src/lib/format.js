@@ -9,11 +9,15 @@ export const fmtDuration = (s) => {
   return h ? `${h.toLocaleString()}h ${String(m).padStart(2, "0")}m` : `${m}m`;
 };
 export const fmtMetres = (mm) => `${((mm || 0) / 1000).toLocaleString(undefined, { maximumFractionDigits: (mm || 0) >= 100000 ? 0 : 1 })} m`;
-export const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
+export const fmtWhen = (iso, missing = "—") => (iso ? new Date(iso).toLocaleString() : missing);
 export const fmtUnix = (s) => (s ? new Date(s * 1000).toLocaleString() : "—");
 // ---- energy: per print (from the history) and the whole printer (from the power meter's readings) ----
 // always to the watt-hour (3 decimals), so the figures are exact rather than rounded
 export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kWh`);
+// "1 file", "3 files"
+export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// a hover hint for something with notes: its notes' first 120 characters
+export const notesHint = (notes) => `Has notes: ${notes.slice(0, 120)}${notes.length > 120 ? "…" : ""}`;
 // a file or a disk's size: "512 B", "3.4 MB", "120 GB"
 export function formatBytes(n) {
   if (n == null) return "—";

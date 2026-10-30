@@ -33,7 +33,8 @@ import os
 import re
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from .config import settings
@@ -123,28 +124,27 @@ def ensure_ready_folder(path: str, noun: str) -> Path:
     return root
 
 
-def source_model_version_dir(source_model_id: int, version: int) -> Path:
-    d = ready_root("stl") / str(source_model_id) / f"v{version}"
+def _version_dir(base: Path, owner_id: int, version: int) -> Path:
+    """{base}/{id}/v{n}, made if it isn't there yet."""
+    d = base / str(owner_id) / f"v{version}"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def source_model_version_dir(source_model_id: int, version: int) -> Path:
+    return _version_dir(ready_root("stl"), source_model_id, version)
 
 
 def bundle_version_dir(bundle_id: int, version: int) -> Path:
-    d = ready_root("threemf") / str(bundle_id) / f"v{version}"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return _version_dir(ready_root("threemf"), bundle_id, version)
 
 
 def source_model_thumbnail_dir(source_model_id: int, version: int) -> Path:
-    d = thumbnails_root() / "source_models" / str(source_model_id) / f"v{version}"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return _version_dir(thumbnails_root() / "source_models", source_model_id, version)
 
 
 def bundle_thumbnail_dir(bundle_id: int, version: int) -> Path:
-    d = thumbnails_root() / "bundles" / str(bundle_id) / f"v{version}"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return _version_dir(thumbnails_root() / "bundles", bundle_id, version)
 
 
 # ------------------------------------------------------------------ writing
@@ -166,6 +166,22 @@ def preview_cache_headers(request_query: dict) -> dict:
     return {"Cache-Control": "public, max-age=31536000, immutable" if "r" in request_query else "no-cache"}
 
 
+@contextmanager
+def _written_whole(dest: Path) -> Iterator[Path]:
+    """
+    Write `dest` whole or not at all: the block writes the temporary file it's given ("<name>.part"), which then
+    replaces `dest`. If anything goes wrong part-way (a share dropping mid-write), the temporary file is removed and
+    `dest` is left as it was, so a truncated file never looks real.
+    """
+    part = dest.with_name(dest.name + ".part")
+    try:
+        yield part
+        os.replace(part, dest)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+
+
 def save_upload(dest_dir: Path, filename: str, file_obj) -> str:
     """
     Write an uploaded file (anything with .read()) into dest_dir. Written under a
@@ -173,14 +189,8 @@ def save_upload(dest_dir: Path, filename: str, file_obj) -> str:
     mid-write) never leaves a truncated file that looks real.
     """
     dest = Path(dest_dir) / _safe_name(filename)
-    part = dest.with_name(dest.name + ".part")
-    try:
-        with open(part, "wb") as out:
-            shutil.copyfileobj(file_obj, out)
-        os.replace(part, dest)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
+    with _written_whole(dest) as part, open(part, "wb") as out:
+        shutil.copyfileobj(file_obj, out)
     return str(dest)
 
 
@@ -189,14 +199,8 @@ def write_text_atomically(target: str | os.PathLike, text: str) -> None:
     Write a UTF-8 text file whole or not at all: under a temporary name, then renamed over the old one, so a share
     dropping mid-write never leaves a half-written file behind (the settings file, the printer and model files).
     """
-    target = Path(target)
-    part = target.with_name(target.name + ".part")
-    try:
+    with _written_whole(Path(target)) as part:
         part.write_text(text, encoding="utf-8")
-        os.replace(part, target)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
 
 
 def preview_beside(model_file: str | None) -> str | None:
@@ -210,17 +214,12 @@ def save_preview_beside(model_file: str, png: bytes) -> str | None:
     working when a share is offline), so this fails soft: a folder that can't be written to just goes without.
     """
     target = Path(preview_beside(model_file))
-    part = target.with_name(target.name + ".part")
     try:
-        part.write_bytes(png)
-        os.replace(part, target)
+        with _written_whole(target) as part:
+            part.write_bytes(png)
         return str(target)
     except OSError as e:
         log.warning("Couldn't save the preview next to %s: %s", model_file, e)
-        try:
-            part.unlink()
-        except OSError:
-            pass
         return None
 
 
@@ -234,15 +233,10 @@ def copy_verified(src: str | os.PathLike, dest_dir: str | os.PathLike, name: str
     """Copy a file into dest_dir and confirm the size matches before it counts. Returns the new path."""
     src = Path(src)
     dest = Path(dest_dir) / _safe_name(name or src.name)
-    part = dest.with_name(dest.name + ".part")
-    try:
+    with _written_whole(dest) as part:
         shutil.copy2(src, part)
         if part.stat().st_size != src.stat().st_size:
             raise OSError(f"Copy of {src.name} came out the wrong size — it was not used")
-        os.replace(part, dest)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
     return str(dest)
 
 
@@ -358,7 +352,7 @@ def resolve_location(raw: str) -> Path:
     if not p.is_absolute():
         raise ValueError("Use a full path (starting with /).")
     real, root = _real(p), browse_root()
-    if not (real == root or root in real.parents):
+    if not is_inside(real, root):
         raise ValueError(
             f"That folder isn't under {root}. Only folders where network storage is mounted for "
             "Farmhand can be chosen — see the README for how to mount a share."
@@ -429,13 +423,23 @@ def mark_location(path: Path) -> None:
         )
 
 
+def folder_status(folder: Path, *, needs_marker: bool = True) -> dict:
+    """
+    Whether a folder can be used: it's there, it can be written to, and (when `needs_marker`, as for every chosen
+    folder) its marker is in it, so it isn't the empty folder left behind by a share that isn't mounted.
+    """
+    exists = folder.is_dir()
+    writable = exists and _probe_writable(folder)
+    marker_ok = (exists and (folder / MARKER_NAME).is_file()) if needs_marker else True
+    return {"exists": exists, "writable": writable, "marker_ok": marker_ok, "ready": bool(exists and writable and marker_ok)}
+
+
 def location_status(kind: str) -> dict:
     root, custom = effective_root(kind), bool(_custom[kind])
     if not custom:
         root.mkdir(parents=True, exist_ok=True)
-    exists = root.is_dir()
-    writable = exists and _probe_writable(root)
-    marker_ok = (root / MARKER_NAME).is_file() if (custom and exists) else (not custom)
+    status = folder_status(root, needs_marker=custom)  # the default folder is the app's own: no marker needed
+    exists = status["exists"]
     free = total = None
     separate = False
     if exists:
@@ -445,15 +449,7 @@ def location_status(kind: str) -> dict:
         except OSError:
             pass
         separate = _has_mount_ancestor(_real(root)) and not is_inside(root, local_root())
-    return {
-        "exists": exists,
-        "writable": writable,
-        "marker_ok": marker_ok,
-        "ready": bool(exists and writable and marker_ok),
-        "free_bytes": free,
-        "total_bytes": total,
-        "separate_volume": separate,
-    }
+    return {**status, "free_bytes": free, "total_bytes": total, "separate_volume": separate}
 
 
 def list_subdirs(raw: str | None) -> dict:

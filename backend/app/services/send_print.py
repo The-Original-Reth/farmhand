@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import contextlib
 import os
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Callable, ContextManager, Iterator
 
 from sqlalchemy.orm import Session
 
-from ..errors import NotFound
-from ..models import BundleVersion
+from ..models import BundleVersion, Printer
+from . import bundle_service
 from . import moonraker as mr
 from . import prusalink as pl
 
@@ -25,25 +25,14 @@ class PrinterBusy(Exception):
 
 def send_gcode(db: Session, version_id: int) -> dict:
     """Send the version's G-code to its printer and start it. Returns {sent: where it went, printer: its name}."""
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
+    version = bundle_service.require_version(db, version_id)
     name = version.gcode_name
     if not name:
         raise ValueError("This version has no G-code to send. Upload one first.")
     printer = version.bundle.printer
 
     if printer.connection_type == "prusalink":
-        status, _ = pl.poll(db, printer)
-        state = (status.get("printer") or {}).get("state")
-        if state not in PRUSALINK_FREE:
-            raise PrinterBusy(f"{printer.name} isn't ready for a new print (it says {state or 'nothing'}).")
-        with _opened(version) as (gcode, size):
-            where = pl.upload_and_print(printer, name, gcode, size)
-        try:
-            pl.poll(db, printer)  # start recording the print straight away
-        except pl.PrusaLinkError:
-            pass  # it was sent; the next look will pick it up
+        where = send_to_prusalink(db, printer, name, lambda: _opened(version), who=printer.name)
     else:
         if name.lower().endswith(".bgcode"):
             raise ValueError(f"{printer.name} runs Klipper, which can't print a .bgcode (Prusa's binary G-code). Slice a plain .gcode for it.")
@@ -53,6 +42,26 @@ def send_gcode(db: Session, version_id: int) -> dict:
         with _opened(version) as (gcode, _size):
             where = mr.upload_and_print(printer, name, gcode)
     return {"sent": where, "printer": printer.name}
+
+
+def send_to_prusalink(
+    db: Session, printer: Printer, name: str, opened: Callable[[], ContextManager[tuple[BinaryIO, int]]], *, who: str,
+) -> str:
+    """
+    Send a G-code to a PrusaLink printer and start it, once it says it's ready for one (else PrinterBusy, which names
+    it as `who`). `opened()` gives the file and its size, opened only once the printer is ready. Returns where it went.
+    """
+    status, _ = pl.poll(db, printer)
+    state = (status.get("printer") or {}).get("state")
+    if state not in PRUSALINK_FREE:
+        raise PrinterBusy(f"{who} isn't ready for a new print (it says {state or 'nothing'}).")
+    with opened() as (gcode, size):
+        where = pl.upload_and_print(printer, name, gcode, size)
+    try:
+        pl.poll(db, printer)  # start recording the print straight away
+    except pl.PrusaLinkError:
+        pass  # it was sent; the next look will pick it up
+    return where
 
 
 @contextlib.contextmanager

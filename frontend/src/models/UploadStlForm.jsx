@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { addSourceModelVersion, createSourceModel, errorText } from "../api.js";
+import { addSourceModelVersion, createSourceModel } from "../api.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, TextField } from "../components/common/fields.jsx";
@@ -13,8 +14,7 @@ export function UploadStlForm({ onClose }) {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [choice, setChoice] = useState(null); // null = take the default; "new"; or the id of an existing model
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
 
   const handleFile = (f) => {
     setFile(f);
@@ -37,17 +37,12 @@ export function UploadStlForm({ onClose }) {
     setErrorMsg(null);
     if (!file) return setErrorMsg("Choose an STL / OBJ / STEP file first.");
     if (!name.trim()) return setErrorMsg("Give it a name.");
-    setSubmitting(true);
-    try {
+    await run(async () => {
       if (target) await addSourceModelVersion({ modelId: target.id, file, note: note.trim() });
       else await createSourceModel({ name: name.trim(), file });
       await refresh();
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

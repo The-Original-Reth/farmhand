@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { createPrinter, errorText, updatePrinter } from "../api.js";
+import { createPrinter, updatePrinter } from "../api.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
@@ -99,21 +100,15 @@ export function AddPrinterForm({ onClose }) {
   const [wiredIp, setWiredIp] = useState("");
   const [wirelessIp, setWirelessIp] = useState("");
   const [conn, setConn] = useState(() => newConnection());
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
 
   const handleSubmit = async () => {
     setErrorMsg(null);
     if (!name.trim()) return setErrorMsg("A printer needs a name.");
-    setSubmitting(true);
-    try {
+    await run(async () => {
       putPrinter(await createPrinter({ name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim(), ...connectionFields(conn) }));
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -139,15 +134,13 @@ export function EditPrinterForm({ printer, onClose }) {
   const [wirelessIp, setWirelessIp] = useState(printer.wireless || "");
   const [decommissioned, setDecommissioned] = useState(!!printer.decommissioned);
   const [conn, setConn] = useState(() => newConnection(printer));
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
   const hasFiles = bundlesForPrinter(printer.id).length > 0;
 
   const handleSubmit = async () => {
     setErrorMsg(null);
     if (!name.trim()) return setErrorMsg("A printer needs a name.");
-    setSubmitting(true);
-    try {
+    await run(async () => {
       putPrinter(await updatePrinter(printer.id, {
         name: name.trim(),
         kind: kind.trim(),
@@ -157,11 +150,7 @@ export function EditPrinterForm({ printer, onClose }) {
         ...connectionFields(conn),
       }));
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

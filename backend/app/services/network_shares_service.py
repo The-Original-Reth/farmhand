@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import mounts, storage
-from ..models import BundleVersion, NetworkShare, SourceModelVersion
+from ..models import NetworkShare
 from ..mounts import MountError, ShareSpec
+from .storage_settings_service import count_version_files
 
 log = logging.getLogger("farmhand.shares")
 
@@ -43,15 +44,8 @@ def _spec(row: NetworkShare) -> ShareSpec:
 
 
 def _files_here(db: Session, mount_point: Path) -> int:
-    n = sum(
-        1
-        for path in db.scalars(select(SourceModelVersion.file_path))
-        if path and storage.is_inside(path, mount_point)
-    )
-    for threemf, gcode in db.execute(select(BundleVersion.threemf_path, BundleVersion.gcode_path)):
-        if any(p and storage.is_inside(p, mount_point) for p in (threemf, gcode)):
-            n += 1
-    return n
+    here = lambda p: storage.is_inside(p, mount_point)  # noqa: E731
+    return sum(count_version_files(db, here, here))
 
 
 def _out(db: Session, row: NetworkShare) -> dict:
@@ -108,24 +102,31 @@ def create_share(db: Session, data: dict) -> dict:
         db.commit()
     except Exception:
         db.rollback()
-        try:
-            mounts.unmount(mount_point)
-        except MountError:
-            pass
+        _unmount_quietly(mount_point)
         raise
     mounts.clear_error(row.id)
     return _out(db, row)
 
 
-def _discard_scratch(scratch: Path) -> None:
+def _unmount_quietly(mount_point: Path, lazy: bool = False) -> None:
+    """Unmount it if that can be done; tidying up, so a failure isn't news."""
     try:
-        mounts.unmount(scratch, lazy=True)
+        mounts.unmount(mount_point, lazy=lazy)
     except MountError:
         pass
+
+
+def _rmdir_quietly(folder: Path) -> None:
+    """Remove the folder if it's empty (and leave it if it isn't)."""
     try:
-        scratch.rmdir()
+        folder.rmdir()
     except OSError:
         pass
+
+
+def _discard_scratch(scratch: Path) -> None:
+    _unmount_quietly(scratch, lazy=True)
+    _rmdir_quietly(scratch)
 
 
 def update_share(db: Session, share_id: int, changes: dict) -> dict:
@@ -207,10 +208,7 @@ def delete_share(db: Session, share_id: int) -> None:
     db.delete(row)
     db.commit()
     mounts.clear_error(share_id)
-    try:
-        mount_point.rmdir()  # only succeeds if empty
-    except OSError:
-        pass
+    _rmdir_quietly(mount_point)
 
 
 def ensure_mounted(db: Session) -> None:
@@ -228,11 +226,9 @@ def ensure_mounted(db: Session) -> None:
         if err and err[0] in _NO_AUTO_RETRY:
             continue
         try:
-            mounts.mount(_spec(row), mount_point)
-            mounts.clear_error(row.id)
+            _mount_noting_errors(row, _spec(row), mount_point)
             log.info("Mounted network share %r at %s", row.name, mount_point)
         except MountError as e:
-            mounts.set_error(row.id, e.kind, str(e))
             log.warning("Couldn't mount network share %r: %s", row.name, e)
 
 

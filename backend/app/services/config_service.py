@@ -182,11 +182,8 @@ def describe(db: Session) -> dict:
     status = file = None
     if path:
         folder = Path(path)
-        exists = folder.is_dir()
-        writable = exists and storage._probe_writable(folder)
-        marker_ok = exists and (folder / storage.MARKER_NAME).is_file()
-        status = {"exists": exists, "writable": writable, "marker_ok": marker_ok, "ready": bool(exists and writable and marker_ok)}
-        file = config_store.file_info(folder) if exists else {"exists": False, "modified_at": None, "size": None}
+        status = storage.folder_status(folder)
+        file = config_store.file_info(folder) if status["exists"] else {"exists": False, "modified_at": None, "size": None}
     return {"path": path, "is_set": bool(path), "status": status, "file": file, "last_write": dict(_last_mirror)}
 
 

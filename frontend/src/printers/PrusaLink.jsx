@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Upload } from "lucide-react";
 import { c } from "../theme.js";
-import { headerButton, uiText } from "../styles.js";
+import { foldHeading, headerButton, panelBox, uiText } from "../styles.js";
 import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
@@ -99,7 +99,7 @@ export function PrusaLinkCard({ printer, pl, open = true, onToggle }) {
 
   return (
     <div data-testid="prusalink-card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+      <div style={foldHeading(open)}>
         <SectionToggle open={open} onToggle={onToggle} controlsId="prusalink-card-body" testId="toggle-connection" indent={20}>
           Live status and statistics
         </SectionToggle>
@@ -135,7 +135,7 @@ export function PrusaLinkCard({ printer, pl, open = true, onToggle }) {
         )}
       </div>
       {open && (
-      <div id="prusalink-card-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+      <div id="prusalink-card-body" style={panelBox({ padding: 14 })}>
         <ConnectionLine testId="prusalink-status" dot={dot} line={line} reachable={status?.reachable} url={printer.prusalinkUrl} />
 
         {job && (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { c, fs, ui } from "../theme.js";
 import { errorText, getConfig, inspectConfigFolder, restoreConfig, saveConfigNow, setConfigLocation } from "../api.js";
 import { cancelButton, primaryButton, uiText } from "../styles.js";
+import { useAction } from "../hooks/useAction.js";
 
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { SectionLabel } from "../components/common/ui.jsx";
@@ -18,8 +19,7 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
   const [configFound, setConfigFound] = useState(null); // the folder just chosen already holds a settings file
   const [configRestoreOpen, setConfigRestoreOpen] = useState(false);
   const [configResult, setConfigResult] = useState(null);
-  const [configBusy, setConfigBusy] = useState(false);
-  const [configError, setConfigError] = useState(null);
+  const { busy: configBusy, error: configError, setError: setConfigError, run } = useAction();
 
   const refreshConfigInfo = async () => {
     try {
@@ -37,10 +37,8 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
     }
     setConfigInfo((await setConfigLocation({ path })).location);
   };
-  const resolveFound = async (choice) => {
-    setConfigBusy(true);
-    setConfigError(null);
-    try {
+  const resolveFound = (choice) =>
+    run(async () => {
       const r = await setConfigLocation({ path: configFound.path, ifExists: choice });
       setConfigInfo(r.location);
       if (r.restored) {
@@ -49,12 +47,7 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
         await reloadAll();
       }
       setConfigFound(null);
-    } catch (e) {
-      setConfigError(errorText(e));
-    } finally {
-      setConfigBusy(false);
-    }
-  };
+    });
   const clearConfigFolder = async () => {
     setConfigError(null);
     setConfigInfo((await setConfigLocation({ path: null })).location);

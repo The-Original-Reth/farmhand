@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -7,7 +9,8 @@ from ..errors import NotFound
 from .. import notes as notes_helper
 from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from ..models import (
-    Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrusaLinkConnection, SubPrinter,
+    Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrinterServiceReminder,
+    PrusaLinkConnection, SubPrinter,
 )
 
 
@@ -44,10 +47,16 @@ def create_printer(
     return printer
 
 
-def set_decommissioned(db: Session, printer_id: int, decommissioned: bool) -> Printer:
+def require_printer(db: Session, printer_id: int) -> Printer:
+    """The printer, or NotFound."""
     printer = get_printer(db, printer_id)
     if printer is None:
         raise NotFound(f"No printer with id {printer_id}")
+    return printer
+
+
+def set_decommissioned(db: Session, printer_id: int, decommissioned: bool) -> Printer:
+    printer = require_printer(db, printer_id)
     printer.decommissioned = decommissioned
     db.commit()
     db.refresh(printer)
@@ -82,6 +91,21 @@ def ensure_connection(printer: Printer) -> PrinterConnection:
     return printer.connection_row
 
 
+def record_sync_ok(printer: Printer, totals: dict, now: dt.datetime) -> None:
+    """
+    Syncing the printer went through: note when, with its lifetime totals. The 1500-hour service count starts from the
+    print time in them, the first time.
+    """
+    conn = ensure_connection(printer)
+    conn.totals = totals
+    conn.last_sync_at = now
+    conn.last_sync_error = None
+    if printer.service_row is None:
+        printer.service_row = PrinterServiceReminder(
+            printer_id=printer.id, start_printtime=float(totals.get("total_print_time") or 0), history=[]
+        )
+
+
 def record_sync_error(db: Session, printer: Printer, error: Exception) -> None:
     """Syncing the printer (or looking at it) failed: drop what that had changed, and note why on its connection."""
     db.rollback()
@@ -90,9 +114,7 @@ def record_sync_error(db: Session, printer: Printer, error: Exception) -> None:
 
 
 def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
-    printer = get_printer(db, printer_id)
-    if printer is None:
-        raise NotFound(f"No printer with id {printer_id}")
+    printer = require_printer(db, printer_id)
 
     new_name = changes.get("name")
     if new_name is not None and new_name != printer.name:
@@ -150,9 +172,7 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
 
 def set_notes(db: Session, printer_id: int, notes: str, base_revision: int) -> Printer:
     """Save the notes for a printer (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
-    printer = get_printer(db, printer_id)
-    if printer is None:
-        raise NotFound(f"No printer with id {printer_id}")
+    printer = require_printer(db, printer_id)
     return notes_helper.save(
         db, owner=printer, note_cls=PrinterNote, owner_key="printer_id", base_revision=base_revision,
         notes=notes, reload=lambda: get_printer(db, printer_id),

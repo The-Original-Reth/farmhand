@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
 import { toolButton, uiText } from "../styles.js";
-import { addSourceModelVersion, deleteSourceModel, errorText } from "../api.js";
+import { addSourceModelVersion, deleteSourceModel } from "../api.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 
 import { ConfirmDialog, DeleteWarning, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, TextField } from "../components/common/fields.jsx";
@@ -70,22 +71,16 @@ export function AddModelFileForm({ model, isNewVersion = false, onClose }) {
   const { refresh } = useData();
   const [file, setFile] = useState(null);
   const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
 
   const handleSubmit = async () => {
     setErrorMsg(null);
     if (!file) return setErrorMsg("Choose an STL / OBJ / STEP file first.");
-    setSubmitting(true);
-    try {
+    await run(async () => {
       await addSourceModelVersion({ modelId: model.id, file, note: note.trim() });
       await refresh();
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

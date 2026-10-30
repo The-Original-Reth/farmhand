@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Check, Copy, Layers3, Pencil, Plus, Star, X } from "lucide-react";
 import { c, fs, mono } from "../theme.js";
-import { addSubPrinter, copySubPrinter, deleteSubPrinter, errorText, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
+import { addSubPrinter, copySubPrinter, deleteSubPrinter, renameSubPrinter, setDefaultSubPrinter } from "../api.js";
 import { useData } from "../data.jsx";
-import { fieldBox, headerButton, linkButton, monoText, uiText } from "../styles.js";
+import { useAction } from "../hooks/useAction.js";
+import { fieldBox, headerButton, linkButton, monoText, panelBox, uiText } from "../styles.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { SectionLabel, TrashButton } from "../components/common/ui.jsx";
@@ -32,21 +33,13 @@ const copyName = (printer, name) => {
 // it answers, then does `then`; `busy` while it's on its way, and `error` says why it didn't go through
 function useChange() {
   const { putPrinter } = useData();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const run = async (call, then) => {
-    setBusy(true);
-    setError(null);
-    try {
+  const action = useAction();
+  const run = (call, then) =>
+    action.run(async () => {
       putPrinter(await call());
       then?.();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return { busy, error, setError, run };
+    });
+  return { ...action, run };
 }
 
 // The box a name is typed into, with Enter to save and Escape to cancel
@@ -227,7 +220,7 @@ export function SubPrinters({ printer, bundles, filter, onFilter }) {
   return (
     <div data-testid="sub-printers">
       <SectionLabel>Sub printers: its printer presets in PrusaSlicer</SectionLabel>
-      <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel }}>
+      <div style={panelBox()}>
         {printer.subPrinters.length === 0 && (
           <div style={uiText(13, c.textFaint, { padding: "10px 12px", lineHeight: 1.6 })}>
             None yet. One is added when a 3MF sliced with one of {printer.name}’s presets is uploaded, or add one here.

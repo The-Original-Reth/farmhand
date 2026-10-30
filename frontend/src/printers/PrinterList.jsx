@@ -9,6 +9,7 @@ import { Badge, Row } from "../components/common/ui.jsx";
 import { writeStored } from "../lib/storage.js";
 import { nameCollator } from "../models/modelSort.js";
 import { AddPrinterForm } from "./PrinterForms.jsx";
+import { notesHint } from "../lib/format.js";
 
 const PRINTER_SORT_KEY = "farmhand.printerSort";
 const SORTS = { name: "Name", kind: "Type", wired: "Wired IP", wireless: "Wireless IP" }; // the columns the list sorts by
@@ -117,7 +118,7 @@ export function PrinterList({ setPath }) {
                   {p.name}
                   {bCount > 0 && <Lock size={12} color={c.textFaint} />}
                   {p.notes && (
-                    <span data-testid="printer-has-notes" title={`Has notes: ${p.notes.slice(0, 120)}${p.notes.length > 120 ? "…" : ""}`} style={{ display: "flex" }}>
+                    <span data-testid="printer-has-notes" title={notesHint(p.notes)} style={{ display: "flex" }}>
                       <StickyNote size={13} color={c.textFaint} />
                     </span>
                   )}

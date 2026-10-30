@@ -15,7 +15,7 @@ from ..names import download_name
 from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service, send_print
-from .common import preview_response, require_confirm, require_readable
+from .common import preview_response, require_bundle, require_bundle_version, require_confirm, require_readable
 
 router = APIRouter(prefix="/bundles", tags=["bundles"])
 
@@ -72,10 +72,7 @@ def create_bundle(
 
 @router.get("/{bundle_id}", response_model=BundleOut)
 def get_bundle(bundle_id: int, db: Session = Depends(get_db)):
-    bundle = bundle_service.get_bundle(db, bundle_id)
-    if bundle is None:
-        raise HTTPException(status_code=404, detail="Bundle not found")
-    return bundle
+    return require_bundle(db, bundle_id)
 
 
 @router.post("/{bundle_id}/versions", response_model=BundleOut, status_code=201)
@@ -122,10 +119,7 @@ def save_notes(bundle_id: int, payload: NotesUpdate, db: Session = Depends(get_d
 @router.get("/versions/{version_id}", response_model=BundleVersionDetailOut)
 def get_bundle_version(version_id: int, db: Session = Depends(get_db)):
     """Full detail including parsed settings — this is what the compare/diff view fetches for each side."""
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise HTTPException(status_code=404, detail="Bundle version not found")
-    return version
+    return require_bundle_version(db, version_id)
 
 
 @router.patch("/versions/{version_id}/monument", response_model=BundleVersionDetailOut)
@@ -214,8 +208,7 @@ def delete_bundle_version(version_id: int, confirm: bool = Query(False), db: Ses
     remaining version deletes the whole bundle.
     """
     require_confirm(confirm)
-    if db.get(BundleVersion, version_id) is None:
-        raise HTTPException(status_code=404, detail="Bundle version not found")
+    require_bundle_version(db, version_id)
     bundle_service.delete_bundle_version(db, version_id)
     return Response(status_code=204)
 
@@ -224,7 +217,6 @@ def delete_bundle_version(version_id: int, confirm: bool = Query(False), db: Ses
 def delete_bundle(bundle_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
     """Delete a bundle and every one of its versions."""
     require_confirm(confirm)
-    if bundle_service.get_bundle(db, bundle_id) is None:
-        raise HTTPException(status_code=404, detail="Bundle not found")
+    require_bundle(db, bundle_id)
     bundle_service.delete_bundle(db, bundle_id)
     return Response(status_code=204)

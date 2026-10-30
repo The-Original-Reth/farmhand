@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { errorText, getEnergy } from "../api.js";
-import { headerButton, monoText, uiText } from "../styles.js";
+import { headerButton, monoText, panelBox, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
@@ -128,7 +128,7 @@ export function PowerSection() {
         />
       </div>
 
-      <div data-testid="power-periods" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, overflowX: "auto" }}>
+      <div data-testid="power-periods" style={panelBox({ overflowX: "auto" })}>
         <div style={{ minWidth: 480 }}>
           <div style={{ ...head, gridTemplateColumns: cols }}>
             <div>{by === "month" ? "Month" : "Year"}</div>
@@ -176,7 +176,7 @@ export function PowerSection() {
         <div data-testid="power-printers-heading" style={uiText(13, c.textFaint, { marginBottom: 10 })}>
           By printer, {selected === current ? word.toLowerCase() : word}
         </div>
-        <div data-testid="power-printers" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, overflowX: "auto" }}>
+        <div data-testid="power-printers" style={panelBox({ overflowX: "auto" })}>
           <div style={{ minWidth: 560 }}>
             <div style={{ ...head, gridTemplateColumns: "minmax(140px, 1fr) 120px 110px 70px 100px" }}>
               <div>Printer</div>

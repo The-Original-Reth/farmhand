@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { c, fs, ui } from "../theme.js";
-import { headerButton, monoText, uiText } from "../styles.js";
+import { foldHeading, headerButton, monoText, panelBox, uiText } from "../styles.js";
 import { errorText, getEnergy } from "../api.js";
 
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
@@ -88,7 +88,7 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
 
   return (
     <div data-testid="energy-panel">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+      <div style={foldHeading(open)}>
         <SectionToggle open={open} onToggle={onToggle} controlsId="energy-body" testId="toggle-energy" indent={20}>
           Energy
         </SectionToggle>
@@ -104,7 +104,7 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
         )}
       </div>
       {open && (
-      <div id="energy-body" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 14 }}>
+      <div id="energy-body" style={panelBox({ padding: 14 })}>
         {error ? (
           <div style={uiText(13, c.amber)}>Couldn't load energy: {error}</div>
         ) : !data ? (

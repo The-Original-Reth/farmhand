@@ -7,20 +7,15 @@ from urllib.parse import urljoin
 import httpx
 
 from ...models import Printer
-
-TIMEOUT = httpx.Timeout(6.0, connect=3.0)
-UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big G-code over the printer's network takes a while
+from .. import printer_http
+from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
 
 # Tests swap this for an httpx.MockTransport that plays a fake Moonraker
 transport: httpx.BaseTransport | None = None
 
 
-class MoonrakerError(Exception):
+class MoonrakerError(printer_http.PrinterLinkError):
     """kind: no_address | unreachable | unauthorized | not_found | bad_response"""
-
-    def __init__(self, kind: str, message: str):
-        super().__init__(message)
-        self.kind = kind
 
 
 def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None,
@@ -32,21 +27,16 @@ def _call(printer: Printer, method: str, path: str, *, params: dict | None = Non
     headers = {}
     if printer.connection_row and printer.connection_row.api_key:
         headers["X-Api-Key"] = printer.connection_row.api_key
-    try:
-        with httpx.Client(timeout=timeout, transport=transport) as client:
-            r = client.request(method, f"{base}{path}", params=params, json=json, files=files, data=data, headers=headers)
-    except httpx.TimeoutException:
-        raise MoonrakerError("unreachable", f"Moonraker at {base} didn't answer in time. Is the printer on?") from None
-    except httpx.HTTPError as e:
-        raise MoonrakerError("unreachable", f"Couldn't connect to Moonraker at {base} ({type(e).__name__}).") from None
+    r = printer_http.request(
+        MoonrakerError, "Moonraker", base, method, path, transport=transport, timeout=timeout,
+        params=params, json=json, files=files, data=data, headers=headers,
+    )
     if r.status_code in (401, 403):
         raise MoonrakerError(
             "unauthorized",
             "Moonraker refused the request. Add this printer's Moonraker API key, or add Farmhand's address to "
             "[authorization] trusted_clients in moonraker.conf.",
         )
-    if r.status_code == 404:
-        raise MoonrakerError("not_found", "Not found on Moonraker.")
     if r.status_code >= 400:
         raise MoonrakerError("bad_response", f"Moonraker answered {r.status_code}: {_error_text(r)}")
     try:

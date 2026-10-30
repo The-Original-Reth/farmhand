@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy import select
@@ -18,19 +19,26 @@ def apply_saved_locations(db: Session) -> None:
     storage.configure(stl_path=app_settings.get(db, KEYS["stl"]), threemf_path=app_settings.get(db, KEYS["threemf"]))
 
 
+def count_version_files(db: Session, stl: Callable[[str], bool], threemf: Callable[[str], bool]) -> tuple[int, int]:
+    """
+    How many STL versions have a file `stl(path)` picks, and how many 3MF versions have a 3MF or G-code `threemf(path)`
+    picks (a 3MF version counts once, whichever of its files it is).
+    """
+    n_stl = sum(1 for path in db.scalars(select(SourceModelVersion.file_path)) if path and stl(path))
+    n_3mf = sum(
+        1
+        for paths in db.execute(select(BundleVersion.threemf_path, BundleVersion.gcode_path))
+        if any(p and threemf(p) for p in paths)
+    )
+    return n_stl, n_3mf
+
+
 def _count_outside(db: Session) -> dict:
     stl_root = storage.effective_root("stl")
     threemf_root = storage.effective_root("threemf")
-
-    n_stl = sum(
-        1
-        for path in db.scalars(select(SourceModelVersion.file_path))
-        if path and not storage.is_inside(path, stl_root)
+    n_stl, n_3mf = count_version_files(
+        db, lambda p: not storage.is_inside(p, stl_root), lambda p: not storage.is_inside(p, threemf_root)
     )
-    n_3mf = 0
-    for threemf_path, gcode_path in db.execute(select(BundleVersion.threemf_path, BundleVersion.gcode_path)):
-        if any(p and not storage.is_inside(p, threemf_root) for p in (threemf_path, gcode_path)):
-            n_3mf += 1
     return {"stl": n_stl, "threemf": n_3mf}
 
 

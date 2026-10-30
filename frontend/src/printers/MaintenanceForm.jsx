@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { c, fs, ui } from "../theme.js";
-import { errorText } from "../api.js";
 import { uiText } from "../styles.js";
+import { useAction } from "../hooks/useAction.js";
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { SegmentedToggle, TextField } from "../components/common/fields.jsx";
 
@@ -28,8 +28,7 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
     REMINDER_PARTS.forEach(({ key }) => (r[key] = { bool: !!r[key]?.bool, value: r[key]?.value ?? null }));
     return r;
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
   const setPart = (key, change) => setReminder((r) => ({ ...r, [key]: { ...r[key], ...change } }));
 
   const submit = async () => {
@@ -38,8 +37,7 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
     if (reminder.type && !parts.some(({ key }) => reminder[key].bool)) {
       return setErrorMsg(`Pick at least one of print time${noFilament ? "" : ", filament"} or days for the reminder.`);
     }
-    setSubmitting(true);
-    try {
+    await run(async () => {
       const r = { type: reminder.type };
       REMINDER_PARTS.forEach(({ key }) => {
         const on = !!reminder.type && reminder[key].bool;
@@ -47,10 +45,7 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
       });
       await onSubmit({ name: name.trim(), note: note.trim(), reminder: r });
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   const input = { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, fontSize: fs(13), ...ui };
@@ -109,19 +104,12 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
 // message: replaces the usual "marks it done on the printer" explanation (the 1500-hour service lives in Farmhand)
 export function PerformMaintenanceForm({ entry, onSubmit, onClose, message }) {
   const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
-  const submit = async () => {
-    setSubmitting(true);
-    setErrorMsg(null);
-    try {
+  const { busy: submitting, error: errorMsg, run } = useAction();
+  const submit = () =>
+    run(async () => {
       await onSubmit({ note: note.trim() });
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-      setSubmitting(false);
-    }
-  };
+    });
   return (
     <>
       <div style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 12 })}>

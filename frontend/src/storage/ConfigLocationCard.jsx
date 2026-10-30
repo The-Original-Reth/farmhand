@@ -1,20 +1,24 @@
 import { HardDrive } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { monoText, uiText } from "../styles.js";
+import { monoText, panelBox, uiText } from "../styles.js";
 
 import { Badge } from "../components/common/ui.jsx";
+import { fmtWhen } from "../lib/format.js";
+
+// Why a chosen folder can't be used right now (null when it can): the words on its card's badge
+export const locationProblem = (status) =>
+  !status.exists ? "Folder not found" : !status.writable ? "Not writable" : !status.markerOk ? "Marker missing — the share may be unmounted" : null;
 
 // Where the copy of Farmhand's settings is kept on the network (the server also keeps them itself)
 export function ConfigLocationCard({ info, onChoose, onSaveNow, onRestore, onClear, error }) {
   const btn = { ...ui, fontSize: fs(13), background: "none", color: c.textMuted, border: `1px solid ${c.borderStrong}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" };
   const set = info?.isSet;
   const status = info?.status;
-  const problem = !set ? null : !status.exists ? "Folder not found" : !status.writable ? "Not writable" : !status.markerOk ? "Marker missing — the share may be unmounted" : null;
-  const when = (iso) => (iso ? new Date(iso).toLocaleString() : null);
+  const problem = set ? locationProblem(status) : null;
   const lastError = info?.lastWrite && info.lastWrite.ok === false ? info.lastWrite.error : null;
 
   return (
-    <div data-testid="config-card" style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 16 }}>
+    <div data-testid="config-card" style={panelBox({ padding: 16 })}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
         <div style={uiText(15, c.heading)}>Settings location</div>
         <div style={{ display: "flex", gap: 6 }}>
@@ -40,7 +44,7 @@ export function ConfigLocationCard({ info, onChoose, onSaveNow, onRestore, onCle
         <div data-testid="config-file" style={uiText(12, c.textFaint, { marginBottom: 10 })}>
           {info.file?.exists ? (
             <>
-              <span style={mono}>farmhand-config.json</span> — last written {when(info.file.modifiedAt)}. Next to it, a file per
+              <span style={mono}>farmhand-config.json</span> — last written {fmtWhen(info.file.modifiedAt, null)}. Next to it, a file per
               printer in <span style={mono}>printers/</span> and per model in <span style={mono}>models/</span>.
             </>
           ) : (

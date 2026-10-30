@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { c, mono } from "../theme.js";
-import { errorText, uploadGcode } from "../api.js";
+import { uploadGcode } from "../api.js";
 import { uiText } from "../styles.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, FieldSelect } from "../components/common/fields.jsx";
@@ -13,8 +14,7 @@ export function UploadGcodeForm({ bundles, onClose }) {
   const { printers, putBundle } = useData();
   const [bundleId, setBundleId] = useState(bundles.length === 1 ? String(bundles[0].id) : "");
   const [file, setFile] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
   const printerName = (b) => printers.find((p) => p.id === b.printerId)?.name || "?";
   const target = bundles.find((b) => String(b.id) === bundleId);
   const newest = target?.versions[0];
@@ -23,15 +23,10 @@ export function UploadGcodeForm({ bundles, onClose }) {
     setErrorMsg(null);
     if (!target) return setErrorMsg("Pick the 3MF this G-code was sliced from.");
     if (!file) return setErrorMsg("Drop the .gcode or .bgcode file first.");
-    setSubmitting(true);
-    try {
+    await run(async () => {
       putBundle(await uploadGcode(newest.id, file)); // the 3MF as it now stands
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

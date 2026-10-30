@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Server } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
-import { createShare, errorText, updateShare } from "../api.js";
+import { createShare, updateShare } from "../api.js";
 import { describeLocation, parseLocation } from "../location.js";
+import { useAction } from "../hooks/useAction.js";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
@@ -17,8 +18,7 @@ export function ShareForm({ existing, capability, onClose, onSaved }) {
   const [password, setPassword] = useState("");
   const [domain, setDomain] = useState(existing?.domain || "");
   const [version, setVersion] = useState(existing?.version || "auto");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
 
   // How the address reads: decides SMB-only fields and the version list. Just a preview —
   // the server parses and validates the address itself.
@@ -36,8 +36,7 @@ export function ShareForm({ existing, capability, onClose, onSaved }) {
     if (editing && parsed.protocol && parsed.protocol !== existing.protocol) {
       return setErrorMsg(`This is an ${existing.protocol.toUpperCase()} share — enter an ${existing.protocol.toUpperCase()} address, or add a new share instead.`);
     }
-    setSubmitting(true);
-    try {
+    await run(async () => {
       const versionOut = versionValue === "auto" ? "" : versionValue;
       const login = smb ? { username, domain } : {};
       if (editing) {
@@ -52,11 +51,7 @@ export function ShareForm({ existing, capability, onClose, onSaved }) {
       }
       await onSaved();
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.source_model import SourceModelOut
 from ..schemas.scan import ScanImportOut, ScanImportRequest, ScanOut
 from ..services import bundle_service, source_model_service
-from .common import preview_response, require_confirm, require_readable
+from .common import preview_response, require_confirm, require_readable, require_source_model, require_source_model_version
 
 router = APIRouter(prefix="/source-models", tags=["source-models"])
 
@@ -60,10 +60,7 @@ def import_scanned(payload: ScanImportRequest, db: Session = Depends(get_db)):
 
 @router.get("/{source_model_id}", response_model=SourceModelOut)
 def get_source_model(source_model_id: int, db: Session = Depends(get_db)):
-    model = source_model_service.get_source_model(db, source_model_id)
-    if model is None:
-        raise HTTPException(status_code=404, detail="Source model not found")
-    return model
+    return require_source_model(db, source_model_id)
 
 
 class Rename(BaseModel):
@@ -103,16 +100,13 @@ def add_source_model_version(
 
 @router.get("/{source_model_id}/bundles", response_model=list[BundleOut])
 def list_source_model_bundles(source_model_id: int, db: Session = Depends(get_db)):
-    if source_model_service.get_source_model(db, source_model_id) is None:
-        raise HTTPException(status_code=404, detail="Source model not found")
+    require_source_model(db, source_model_id)
     return bundle_service.list_bundles_for_source_model(db, source_model_id)
 
 
 @router.get("/{source_model_id}/versions/{version}/download")
 def download_source_model_version(source_model_id: int, version: int, db: Session = Depends(get_db)):
-    v = source_model_service.get_source_model_version(db, source_model_id, version)
-    if v is None:
-        raise HTTPException(status_code=404, detail="Source model version not found")
+    v = require_source_model_version(db, source_model_id, version)
     require_readable(v.file_path)
     return FileResponse(v.file_path, filename=download_name(v.source_model.name, v.file_path))  # under its current name
 
@@ -127,8 +121,7 @@ def get_source_model_version_thumbnail(source_model_id: int, version: int, reque
 @router.post("/{source_model_id}/versions/{version}/thumbnail")
 def redraw_source_model_version_thumbnail(source_model_id: int, version: int, db: Session = Depends(get_db)):
     """Redraw this version's preview from its file with the current renderer."""
-    if source_model_service.get_source_model_version(db, source_model_id, version) is None:
-        raise HTTPException(status_code=404, detail="Source model version not found")
+    require_source_model_version(db, source_model_id, version)
     with answer_errors():
         return {"updated": source_model_service.regenerate_thumbnail(db, source_model_id, version)}
 
@@ -142,8 +135,7 @@ def delete_source_model_version(
 ):
     """Delete one version's file. The folder itself stays, even if that was its only version."""
     require_confirm(confirm)
-    if source_model_service.get_source_model_version(db, source_model_id, version) is None:
-        raise HTTPException(status_code=404, detail="Source model version not found")
+    require_source_model_version(db, source_model_id, version)
     source_model_service.delete_source_model_version(db, source_model_id, version)
     return Response(status_code=204)
 
@@ -161,8 +153,7 @@ def delete_source_model(
     this model are refused (409) unless cascade=true.
     """
     require_confirm(confirm)
-    if source_model_service.get_source_model(db, source_model_id) is None:
-        raise HTTPException(status_code=404, detail="Source model not found")
+    require_source_model(db, source_model_id)
     with answer_errors(409):
         source_model_service.delete_source_model(db, source_model_id, cascade=cascade)
     return Response(status_code=204)

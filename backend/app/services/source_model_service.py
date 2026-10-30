@@ -37,6 +37,32 @@ def get_source_model_version(db: Session, source_model_id: int, version: int) ->
     )
 
 
+def _save_thumbnail(source_model_id: int, version: int, png: bytes) -> str:
+    """The version's preview, in the app's own thumbnails folder (the copy the page shows)."""
+    return storage.save_bytes(storage.source_model_thumbnail_dir(source_model_id, version), "thumbnail.png", png)
+
+
+def _delete_version_files(file_path: str, thumbnail_path: str | None, managed: bool) -> None:
+    """A version's file, the preview beside it, and its own preview. A scanned-in file's folders are the owner's, not
+    ours (`managed` is False then), so they're left even if that empties them."""
+    storage.delete_files([file_path, storage.preview_beside(file_path)], prune=managed)
+    storage.delete_files([thumbnail_path])
+
+
+def _require_model(db: Session, source_model_id: int) -> SourceModel:
+    model = get_source_model(db, source_model_id)
+    if model is None:
+        raise NotFound(f"No source model with id {source_model_id}")
+    return model
+
+
+def _require_version(db: Session, source_model_id: int, version: int) -> SourceModelVersion:
+    v = get_source_model_version(db, source_model_id, version)
+    if v is None:
+        raise NotFound(f"No version {version} of source model {source_model_id}")
+    return v
+
+
 def create_source_model(
     db: Session, *, name: str, file_type: SourceFileType, file_obj=None, note: str | None = None
 ) -> SourceModel:
@@ -61,9 +87,7 @@ def create_source_model(
 def add_source_model_version(
     db: Session, *, source_model_id: int, file_obj, filename: str, note: str | None = None
 ) -> SourceModelVersion:
-    model = get_source_model(db, source_model_id)
-    if model is None:
-        raise NotFound(f"No source model with id {source_model_id}")
+    model = _require_model(db, source_model_id)
 
     next_version = (model.latest_version.version + 1) if model.latest_version else 1
     dest_dir = storage.source_model_version_dir(source_model_id, next_version)
@@ -76,8 +100,7 @@ def add_source_model_version(
         # gotten to) — fails soft rather than blocking the upload either way.
         thumb_bytes = render_stl_thumbnail(file_path)
         if thumb_bytes:
-            thumb_dir = storage.source_model_thumbnail_dir(source_model_id, next_version)
-            thumbnail_path = storage.save_bytes(thumb_dir, "thumbnail.png", thumb_bytes)
+            thumbnail_path = _save_thumbnail(source_model_id, next_version, thumb_bytes)
             storage.save_preview_beside(file_path, thumb_bytes)  # and a copy with the STL, on the NAS if it's there
 
     version = SourceModelVersion(
@@ -95,16 +118,12 @@ def add_source_model_version(
 
 def delete_source_model_version(db: Session, source_model_id: int, version: int) -> None:
     """Delete one version's file. The folder stays, even if that was its only version."""
-    v = get_source_model_version(db, source_model_id, version)
-    if v is None:
-        raise NotFound(f"No version {version} of source model {source_model_id}")
+    v = _require_version(db, source_model_id, version)
     file_path, thumbnail_path = v.file_path, v.thumbnail_path
     managed = storage.is_managed_layout(file_path, v.source_model_id, v.version)
     db.delete(v)
     db.commit()
-    # a scanned-in file's folders are the owner's, not ours; its preview beside it goes with it
-    storage.delete_files([file_path, storage.preview_beside(file_path)], prune=managed)
-    storage.delete_files([thumbnail_path])
+    _delete_version_files(file_path, thumbnail_path, managed)
 
 
 def delete_source_model(db: Session, source_model_id: int, cascade: bool = False) -> list[int]:
@@ -116,9 +135,7 @@ def delete_source_model(db: Session, source_model_id: int, cascade: bool = False
     source at all: those are refused unless cascade=True, in which case they
     are deleted too. Returns the ids of any bundles deleted that way.
     """
-    model = get_source_model(db, source_model_id)
-    if model is None:
-        raise NotFound(f"No source model with id {source_model_id}")
+    model = _require_model(db, source_model_id)
 
     exclusive = [
         b for b in bundle_service.list_bundles_for_source_model(db, source_model_id)
@@ -145,8 +162,7 @@ def delete_source_model(db: Session, source_model_id: int, cascade: bool = False
     db.delete(model)
     db.commit()
     for file_path, managed, thumbnail_path in doomed:
-        storage.delete_files([file_path, storage.preview_beside(file_path)], prune=managed)
-        storage.delete_files([thumbnail_path])
+        _delete_version_files(file_path, thumbnail_path, managed)
     return deleted_bundle_ids
 
 
@@ -162,9 +178,7 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
     Raises ValueError if the file isn't reachable (e.g. it's on a share that isn't connected): a
     redraw must never replace a preview with nothing.
     """
-    v = get_source_model_version(db, source_model_id, version)
-    if v is None:
-        raise NotFound(f"No version {version} of source model {source_model_id}")
+    v = _require_version(db, source_model_id, version)
     if v.source_model.file_type != SourceFileType.stl:
         return False
     if not os.path.isfile(v.file_path):
@@ -175,7 +189,7 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
     if not image:
         return False  # keep whatever preview there was
     storage.save_preview_beside(v.file_path, image)
-    new_path = storage.save_bytes(storage.source_model_thumbnail_dir(source_model_id, version), "thumbnail.png", image)
+    new_path = _save_thumbnail(source_model_id, version, image)
     old_path = v.thumbnail_path
     if old_path != new_path:
         v.thumbnail_path = new_path
@@ -263,8 +277,7 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
     if file_type == "STL":
         thumb_bytes = render_stl_thumbnail(full)  # fails soft: no preview is better than no import
         if thumb_bytes:
-            thumb_dir = storage.source_model_thumbnail_dir(model.id, 1)
-            thumbnail_path = storage.save_bytes(thumb_dir, "thumbnail.png", thumb_bytes)
+            thumbnail_path = _save_thumbnail(model.id, 1, thumb_bytes)
 
     dest_dir: Path | None = None
     moved_to: str | None = None
@@ -331,9 +344,7 @@ def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
     Change the name a model is shown, searched and downloaded by; its extension (.stl, .obj, .step) always stays.
     Its stored file keeps its own name.
     """
-    model = get_source_model(db, source_model_id)
-    if model is None:
-        raise NotFound(f"No source model with id {source_model_id}")
+    model = _require_model(db, source_model_id)
     file_type = model.file_type.value if hasattr(model.file_type, "value") else str(model.file_type)
     model.name = clean_file_name(name, extension=extension_of(model.name, TYPE_EXTENSIONS.get(file_type, ".stl")))
     db.commit()
@@ -343,9 +354,7 @@ def rename(db: Session, source_model_id: int, name: str) -> SourceModel:
 
 def set_notes(db: Session, source_model_id: int, notes: str, base_revision: int) -> SourceModel:
     """Save the notes for a model (the rules are in app/notes.py: conflict-safe, tidied, length-limited)."""
-    model = get_source_model(db, source_model_id)
-    if model is None:
-        raise NotFound(f"No source model with id {source_model_id}")
+    model = _require_model(db, source_model_id)
     return notes_helper.save(
         db, owner=model, note_cls=SourceModelNote, owner_key="source_model_id", base_revision=base_revision,
         notes=notes, reload=lambda: get_source_model(db, source_model_id),

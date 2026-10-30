@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { c, fs, ui } from "../theme.js";
-import { fieldBox, monoText, uiText } from "../styles.js";
+import { fieldBox, foldHeading, monoText, uiText } from "../styles.js";
 import { errorText, getPrintJobs } from "../api.js";
 
 import { Badge, SectionToggle } from "../components/common/ui.jsx";
@@ -50,7 +50,7 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
   const cols = "minmax(140px, 170px) minmax(200px, 1fr) 100px 90px 80px 80px"; // below ~730px wide the table scrolls sideways
   return (
     <div data-testid="print-history">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 10 : 0, flexWrap: "wrap" }}>
+      <div style={foldHeading(open)}>
         <SectionToggle open={open} onToggle={onToggle} controlsId="print-history-body" testId="toggle-history">
           Print history
           {total != null && <span style={{ color: c.textFaint }}>({total.toLocaleString()} {total === 1 ? "print" : "prints"})</span>}

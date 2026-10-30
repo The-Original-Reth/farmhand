@@ -1,5 +1,5 @@
 """
-What several routers answer the same way: a printer that isn't there, a delete that wasn't confirmed, a stored file
+What several routers answer the same way: a printer, model, 3MF or version that isn't there, a delete that wasn't confirmed, a stored file
 that can't be read right now, a preview image, and how a printer's last sync went.
 """
 from __future__ import annotations
@@ -11,18 +11,38 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from .. import storage
-from ..models import Printer
-from ..services import printer_service
+from ..models import Bundle, BundleVersion, Printer, SourceModel, SourceModelVersion
+from ..services import bundle_service, printer_service, source_model_service
 from ..timeutil import utc_iso
 
 CONFIRM_DELETE = "Deleting is permanent — pass confirm=true to proceed"
 
 
+def _found(thing, detail: str):
+    if thing is None:
+        raise HTTPException(status_code=404, detail=detail)
+    return thing
+
+
 def require_printer(db: Session, printer_id: int) -> Printer:
-    printer = printer_service.get_printer(db, printer_id)
-    if printer is None:
-        raise HTTPException(status_code=404, detail="Printer not found")
-    return printer
+    return _found(printer_service.get_printer(db, printer_id), "Printer not found")
+
+
+def require_source_model(db: Session, source_model_id: int) -> SourceModel:
+    return _found(source_model_service.get_source_model(db, source_model_id), "Source model not found")
+
+
+def require_source_model_version(db: Session, source_model_id: int, version: int) -> SourceModelVersion:
+    v = source_model_service.get_source_model_version(db, source_model_id, version)
+    return _found(v, "Source model version not found")
+
+
+def require_bundle(db: Session, bundle_id: int) -> Bundle:
+    return _found(bundle_service.get_bundle(db, bundle_id), "Bundle not found")
+
+
+def require_bundle_version(db: Session, version_id: int) -> BundleVersion:
+    return _found(db.get(BundleVersion, version_id), "Bundle version not found")
 
 
 def require_confirm(confirm: bool, detail: str = CONFIRM_DELETE) -> None:

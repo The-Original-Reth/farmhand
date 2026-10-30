@@ -11,26 +11,21 @@ import {
   reconnectShare,
   saveStorageSettings,
 } from "../api.js";
-import { monoText, uiText } from "../styles.js";
+import { monoText, panelBox, uiText } from "../styles.js";
 
 import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialogs.jsx";
 import { Badge, SectionLabel } from "../components/common/ui.jsx";
-import { formatBytes } from "../lib/format.js";
+import { formatBytes, plural } from "../lib/format.js";
 import { FolderPicker } from "./FolderPicker.jsx";
 import { SettingsCopy } from "./SettingsCopy.jsx";
 import { ShareForm, SharesCard } from "./Shares.jsx";
+import { locationProblem } from "./ConfigLocationCard.jsx";
 
 function LocationCard({ title, blurb, location, onChange, onReset }) {
   const s = location.status;
-  const problem = !s.exists
-    ? "Folder not found"
-    : !s.writable
-      ? "Not writable"
-      : !s.markerOk
-        ? "Marker missing — the share may be unmounted"
-        : null;
+  const problem = locationProblem(s);
   return (
-    <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, padding: 16 }}>
+    <div style={panelBox({ padding: 16 })}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
         <div style={uiText(15, c.heading)}>{title}</div>
         <div style={{ display: "flex", gap: 6 }}>
@@ -138,7 +133,6 @@ export function StorageSection({ onSettingsRestored }) {
   };
   const outsideStl = info.outside.stl;
   const outsideThreemf = info.outside.threemf;
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 820 }}>

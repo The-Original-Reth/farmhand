@@ -9,20 +9,12 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...errors import NotFound
 from ... import storage
 from ...config import settings
 from ...models import Bundle, BundleVersion
 from ...names import clean_file_name
 from ...parsers.gcode import printer_profile
-from .queries import get_bundle
-
-
-def _version(db: Session, version_id: int) -> BundleVersion:
-    version = db.get(BundleVersion, version_id)
-    if version is None:
-        raise NotFound(f"No bundle version with id {version_id}")
-    return version
+from .queries import require_bundle, require_version
 
 
 def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
@@ -57,7 +49,7 @@ def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
 def set_monument(
     db: Session, *, version_id: int, monument: bool, note: str | None = None, confirm: bool = False
 ) -> BundleVersion:
-    version = _version(db, version_id)
+    version = require_version(db, version_id)
 
     if monument:
         if not note:
@@ -82,7 +74,7 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
     was never uploaded for this version (it's optional). Raises if this
     version has been pruned (no files left for either).
     """
-    version = _version(db, version_id)
+    version = require_version(db, version_id)
     if not version.full_files_retained:
         raise ValueError(
             "This version's original files were pruned (parsed parameters are still available, "
@@ -90,6 +82,11 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
             "happens to keep it downloadable"
         )
     return version.threemf_path, version.gcode_path
+
+
+def _files_of(v: BundleVersion) -> list[str | None]:
+    """Every file a version has: its 3MF, G-code and preview, and the preview kept beside the 3MF."""
+    return [v.threemf_path, v.gcode_path, v.thumbnail_path, storage.preview_beside(v.threemf_path)]
 
 
 GCODE_EXTENSIONS = (".gcode", ".bgcode")  # plain G-code, and Prusa's binary G-code
@@ -128,7 +125,7 @@ def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> Bundl
     """
     Give a 3MF version its G-code (sliced from it), replacing one it already had. It's kept beside the version's 3MF.
     """
-    version = _version(db, version_id)
+    version = require_version(db, version_id)
     check_gcode_name(filename)
     if not version.full_files_retained or not version.threemf_path:
         raise ValueError("This version's files were pruned, so it can't be given a G-code any more")
@@ -145,10 +142,8 @@ def attach_gcode(db: Session, version_id: int, file_obj, filename: str) -> Bundl
 
 def delete_bundle(db: Session, bundle_id: int) -> None:
     """Permanently delete a bundle: every version's row, parsed settings, and stored files."""
-    bundle = get_bundle(db, bundle_id)
-    if bundle is None:
-        raise NotFound(f"No bundle with id {bundle_id}")
-    paths = [p for v in bundle.versions for p in (v.threemf_path, v.gcode_path, v.thumbnail_path, storage.preview_beside(v.threemf_path))]
+    bundle = require_bundle(db, bundle_id)
+    paths = [p for v in bundle.versions for p in _files_of(v)]
     db.delete(bundle)  # cascades to its versions and its source-model links
     db.commit()
     # Files go after the DB commit: if this fails the records are already
@@ -164,12 +159,12 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
     with it — a bundle with no versions has nothing left to show.
     Returns True if the whole bundle was deleted.
     """
-    version = _version(db, version_id)
+    version = require_version(db, version_id)
     bundle = version.bundle
     if len(bundle.versions) <= 1:
         delete_bundle(db, bundle.id)
         return True
-    paths = [version.threemf_path, version.gcode_path, version.thumbnail_path, storage.preview_beside(version.threemf_path)]
+    paths = _files_of(version)
     if bundle.star_row is not None and bundle.star_row.version_id == version.id:
         bundle.star_row = None  # the starred version is going: so is its star
     db.delete(version)
@@ -183,7 +178,7 @@ def rename_version(db: Session, version_id: int, filename: str) -> BundleVersion
     Change the file name a 3MF version is shown and downloaded as; it always stays a .3mf. The stored file keeps
     the name it was saved under, so nothing on disk moves.
     """
-    version = _version(db, version_id)
+    version = require_version(db, version_id)
     version.filename = clean_file_name(filename, extension=".3mf")
     db.commit()
     db.refresh(version)

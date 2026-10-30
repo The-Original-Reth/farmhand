@@ -1,26 +1,18 @@
-import { useState } from "react";
 import { X } from "lucide-react";
 import { c } from "../../theme.js";
-import { errorText } from "../../api.js";
+import { useAction } from "../../hooks/useAction.js";
 import { cancelButton, primaryButton, uiText } from "../../styles.js";
 
 // Every destructive action goes through this: say exactly what will happen,
 // then do it only on an explicit second click. cancelLabel names the other way out ("Keep the name").
 export function ConfirmDialog({ title, confirmLabel = "Delete", cancelLabel = "Cancel", tone = "danger", onConfirm, onClose, children }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, run: act } = useAction();
 
-  const run = async () => {
-    setSubmitting(true);
-    setErrorMsg(null);
-    try {
+  const run = () =>
+    act(async () => {
       await onConfirm();
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-      setSubmitting(false);
-    }
-  };
+    });
 
   return (
     <Modal title={title} onClose={submitting ? () => {} : onClose} width={480}>

@@ -2,8 +2,9 @@ import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { uiText } from "../styles.js";
-import { addBundleVersion, deleteBundle, errorText, inspectThreemf } from "../api.js";
+import { addBundleVersion, deleteBundle, inspectThreemf } from "../api.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone } from "../components/common/fields.jsx";
@@ -20,8 +21,7 @@ function NewBundleVersionDialog({ bundle, onClose }) {
   const { refresh, printers } = useData();
   const [threemf, setThreemf] = useState(null);
   const [gcode, setGcode] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
   const [wrong, setWrong] = useState(null); // the dropped 3MF was sliced for another printer: why it can't be added
   const latest = useRef(null); // the 3MF dropped last: a slower look at an earlier one mustn't speak for it
   const current = bundle.versions[0]?.v || 0;
@@ -57,17 +57,12 @@ function NewBundleVersionDialog({ bundle, onClose }) {
     if (!threemf) return setErrorMsg("Drop the newer .3mf file first.");
     if (wrong) return setErrorMsg(wrong);
     if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new sub printer a name.");
-    setSubmitting(true);
-    try {
+    await run(async () => {
       // until the file has been read, Farmhand's own guess on the server (nothing sent)
       await addBundleVersion({ bundleId: bundle.id, threemf, gcode, subPrinter: preset.read ? subPrinterFields(sub.pick) : {} });
       await refresh();
       onClose();
-    } catch (e) {
-      setErrorMsg(errorText(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (

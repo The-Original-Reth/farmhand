@@ -20,6 +20,14 @@ def _http_url(v: str | None) -> str | None:
     return v
 
 
+def _text(v: str | None, limit: int, too_long: str) -> str | None:
+    """Optional text, trimmed: blank = none; longer than `limit` is refused with `too_long`."""
+    v = (v or "").strip()
+    if len(v) > limit:
+        raise ValueError(too_long)
+    return v or None
+
+
 def _camera_address(v: str | None) -> str | None:
     """A camera's IP or host name, or a whole rtsp:// URL; blank = no camera."""
     if v is None or not v.strip():
@@ -117,36 +125,25 @@ class SubPrinterPartIn(BaseModel):
     @field_validator("part")
     @classmethod
     def _part(cls, v: str) -> str:
-        v = v.strip()
+        v = _text(v, 120, "A part's name can be at most 120 characters")
         if not v:
             raise ValueError("Say what the part is (e.g. Hotend)")
-        if len(v) > 120:
-            raise ValueError("A part's name can be at most 120 characters")
         return v
 
     @field_validator("make")
     @classmethod
     def _make(cls, v: str | None) -> str | None:
-        v = (v or "").strip()
-        if len(v) > 120:
-            raise ValueError("The make can be at most 120 characters")
-        return v or None
+        return _text(v, 120, "The make can be at most 120 characters")
 
     @field_validator("model")
     @classmethod
     def _model(cls, v: str | None) -> str | None:
-        v = (v or "").strip()
-        if len(v) > 200:
-            raise ValueError("The model can be at most 200 characters")
-        return v or None
+        return _text(v, 200, "The model can be at most 200 characters")
 
     @field_validator("note")
     @classmethod
     def _note(cls, v: str | None) -> str | None:
-        v = (v or "").strip()
-        if len(v) > 2000:
-            raise ValueError("A part's note can be at most 2000 characters")
-        return v or None
+        return _text(v, 2000, "A part's note can be at most 2000 characters")
 
 
 class SubPrinterPartRow(SubPrinterPartIn):

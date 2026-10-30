@@ -4,8 +4,8 @@ import { cancelButton, monoText, uiText } from "../styles.js";
 import { errorText, importScannedFiles, scanStlFolder } from "../api.js";
 import { useData } from "../data.jsx";
 
-import { Badge } from "../components/common/ui.jsx";
-import { formatBytes } from "../lib/format.js";
+import { Badge, ProgressBar } from "../components/common/ui.jsx";
+import { formatBytes, plural } from "../lib/format.js";
 
 const SCAN_BATCH = 10; // files added per request, so a big import shows progress and one slow batch can't time out the lot
 
@@ -60,7 +60,6 @@ export function ScanStlDialog({ onClose }) {
     setPhase("done");
   };
 
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const closeBtn = (label = "Close") => (
     <button
       onClick={onClose}
@@ -88,9 +87,7 @@ export function ScanStlDialog({ onClose }) {
         <div style={uiText(13, c.textMuted, { marginBottom: 10 })}>
           Moving {Math.min(progress + 1, chosen.length)}–{Math.min(progress + SCAN_BATCH, chosen.length)} of {chosen.length}… (making previews can take a moment)
         </div>
-        <div style={{ height: 6, borderRadius: 3, background: c.panelAlt, overflow: "hidden" }}>
-          <div style={{ width: `${pct}%`, height: "100%", background: c.amber, transition: "width 0.2s ease" }} />
-        </div>
+        <ProgressBar pct={pct} smooth />
       </div>
     );
   }

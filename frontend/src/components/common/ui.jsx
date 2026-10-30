@@ -171,6 +171,16 @@ export function TrashButton({ onClick, title }) {
 }
 
 
+// A bar filled `pct` (0-100) of the way, in `color`. `smooth`: the fill slides to each new value (for progress that
+// moves while you watch); `style` adds to the track (its margin, a narrower one).
+export function ProgressBar({ pct, color = c.amber, height = 6, smooth = false, style }) {
+  return (
+    <div style={{ height, borderRadius: height / 2, background: c.panelAlt, overflow: "hidden", ...style }}>
+      <div style={{ width: `${Math.min(100, pct || 0)}%`, height: "100%", background: color, ...(smooth && { transition: "width 0.2s ease" }) }} />
+    </div>
+  );
+}
+
 export function StatTile({ label, value, hint }) {
   return (
     <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: "10px 12px", background: c.panelAlt, minWidth: 0 }} title={hint}>

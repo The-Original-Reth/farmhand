@@ -6,9 +6,9 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Printer, PrinterEnergyReading, PrinterServiceReminder, PrintJob
+from ...models import Printer, PrinterEnergyReading, PrintJob
 from ...timeutil import as_utc
-from ..printer_service import ensure_connection, record_sync_error
+from ..printer_service import ensure_connection, record_sync_error, record_sync_ok
 from .client import MoonrakerError, _call, history_totals, meter_reading
 
 PAGE = 100  # history entries asked for per request
@@ -61,17 +61,10 @@ def sync_history(db: Session, printer: Printer) -> dict:
     except MoonrakerError as e:
         record_sync_error(db, printer, e)
         raise
-    conn.totals = totals
     conn.auxiliary_totals = aux_totals
-    conn.last_sync_at = dt.datetime.now(dt.timezone.utc)
-    conn.last_sync_error = None
     if reading is not None:
         _record_reading(db, printer, *reading)
-    if printer.service_row is None:
-        # the 1500-hour service count starts from the print time the printer has now
-        printer.service_row = PrinterServiceReminder(
-            printer_id=printer.id, start_printtime=float(totals.get("total_print_time") or 0), history=[]
-        )
+    record_sync_ok(printer, totals, dt.datetime.now(dt.timezone.utc))  # the totals are the printer's own
     db.commit()
     return {"added": added, "updated": updated}
 
