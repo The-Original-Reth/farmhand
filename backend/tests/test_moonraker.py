@@ -538,3 +538,73 @@ def test_the_printer_api_carries_the_moonraker_settings(client):
     assert body["moonraker_url"] == "http://voron.local:7125" and body["moonraker_url_override"] == "http://voron.local:7125"
     assert body["has_moonraker_api_key"] is True and "moonraker_api_key" not in body
     assert c.patch(f"/printers/{pid}", json={"moonraker_url": "ftp://x"}).status_code == 422
+
+
+# ------------------------------------------------------------------ a Klipper machine on cable and Wi-Fi: two IPs
+
+
+def _two_ips(monkeypatch, fake, *, quiet=False):
+    """The fake at both IPs, its wired one (10.0.6.21) unplugged, or `quiet` (it connects, then never answers)."""
+    asked: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.host)
+        if request.url.host == "10.0.6.21":
+            if quiet:
+                raise httpx.ReadTimeout("no answer", request=request)
+            raise httpx.ConnectError("no route to host", request=request)
+        return fake.handle(request)
+
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(handle))
+    return asked
+
+
+def _on_both(db, name="V2 BOG"):
+    return printer_service.create_printer(db, name=name, kind="Voron", wired_ip="10.0.6.21", wireless_ip="10.0.6.121")
+
+
+def test_moonraker_is_asked_at_the_wired_ip_first(db_session, fake):
+    p = _on_both(db_session)
+    assert p.moonraker_urls == ["http://10.0.6.21:7125", "http://10.0.6.121:7125"]
+    mr.server_info(p)
+    assert mr.answered_at(p) == "http://10.0.6.21:7125"  # the cable, while it works
+
+
+def test_moonraker_is_reached_at_its_wifi_ip_when_its_cable_is_out(db_session, fake, monkeypatch):
+    p = _on_both(db_session)
+    asked = _two_ips(monkeypatch, fake)
+    assert mr.server_info(p)["moonraker_version"]
+    assert mr.answered_at(p) == "http://10.0.6.121:7125"
+    asked.clear()
+    mr.server_info(p)
+    assert set(asked) == {"10.0.6.121"}  # it remembers: the dead address isn't waited on every time
+
+
+def test_a_moonraker_that_went_quiet_isnt_asked_again_elsewhere(db_session, fake, monkeypatch):
+    # it connected, so the request may have been carried out (a print started): it must not be sent twice
+    p = _on_both(db_session)
+    asked = _two_ips(monkeypatch, fake, quiet=True)
+    with pytest.raises(mr.MoonrakerError) as e:
+        mr.server_info(p)
+    assert e.value.kind == "unreachable" and "10.0.6.121" not in asked
+
+
+def test_a_moonraker_address_set_by_hand_is_the_only_one_tried(db_session, fake, monkeypatch):
+    p = printer_service.update_printer(db_session, _on_both(db_session).id, {"moonraker_url": "http://10.0.6.21:7125"})
+    assert p.moonraker_urls == ["http://10.0.6.21:7125"]
+    asked = _two_ips(monkeypatch, fake)
+    with pytest.raises(mr.MoonrakerError):
+        mr.server_info(p)
+    assert set(asked) == {"10.0.6.21"}
+
+
+def test_the_connection_and_cameras_follow_the_address_that_answered(api, fake, monkeypatch):
+    pid = api.post("/printers", json={"name": "V2 BOG", "wired_ip": "10.0.6.21", "wireless_ip": "10.0.6.121"}).json()["id"]
+    fake.webcams = [{"name": "Bed", "enabled": True, "service": "mjpegstreamer", "stream_url": "/webcam/?action=stream",
+                     "snapshot_url": "/webcam/?action=snapshot"}]
+    _two_ips(monkeypatch, fake)
+    status = api.get(f"/printers/{pid}/moonraker").json()
+    assert status["reachable"]
+    assert (status["moonraker_url"], status["mainsail_url"]) == ("http://10.0.6.121:7125", "http://10.0.6.121/")
+    cams = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert cams[0]["stream_url"] == "http://10.0.6.121/webcam/?action=stream"  # the camera on the Wi-Fi side too

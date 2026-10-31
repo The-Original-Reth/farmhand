@@ -15,6 +15,15 @@ from app import config, models  # noqa: F401 registers all models on Base
 from app import storage
 from app.database import Base, get_db
 from app.main import app
+from app.services.moonraker import client as moonraker_client
+from app.services.prusalink import client as prusalink_client
+
+
+@pytest.fixture(autouse=True)
+def _no_remembered_addresses(monkeypatch):
+    """Where each printer last answered is forgotten between tests: every test's database starts its ids over."""
+    monkeypatch.setattr(moonraker_client, "_answered_at", {})
+    monkeypatch.setattr(prusalink_client, "_answered_at", {})
 
 
 # Tests of POSIX behaviour (file permissions, "/" paths, real mounts) only mean something on Linux, where Farmhand

@@ -11,7 +11,7 @@ import { FieldSelect, TextField } from "../components/common/fields.jsx";
 // How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink", moonrakerUrl,
 // apiKey, removeKey, prusalinkUrl, prusalinkUsername, prusalinkPassword, cameraAddress }. saved: the printer as it is (Edit), for
 // saying a key or password is already saved; null when adding. ips: the wired and wireless IPs typed above (either may be
-// blank), for the default addresses: Moonraker's is the first, and PrusaLink is tried at both, wired first.
+// blank), for the default addresses: Moonraker and PrusaLink are each tried at both, wired first.
 const CONNECTIONS = [
   { value: "moonraker", label: "Mainsail (Moonraker / Klipper: Voron...)" },
   { value: "prusalink", label: "PrusaLink (Prusa Core One, MK4, XL...)" },
@@ -78,7 +78,11 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
             label="Moonraker address (optional)"
             value={conn.moonrakerUrl}
             onChange={set("moonrakerUrl")}
-            placeholder={ip ? `Leave blank to use http://${ip}:7125` : "Add an IP above, or give the address here"}
+            placeholder={
+              !ip ? "Add an IP above, or give the address here"
+                : both ? `Leave blank to use http://${ip}:7125, or http://${otherIp}:7125 when that doesn't answer`
+                  : `Leave blank to use http://${ip}:7125`
+            }
           />
           <TextField
             label="Moonraker API key (optional)"

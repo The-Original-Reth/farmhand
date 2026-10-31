@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 import httpx
 
 from ...models import Printer
+from ...models.printer import mainsail_for
 from .. import printer_http
 from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
 
@@ -18,18 +19,32 @@ class MoonrakerError(printer_http.PrinterLinkError):
     """kind: no_address | unreachable | unauthorized | not_found | bad_response"""
 
 
+# Where each printer's Moonraker last answered (printer id -> address), asked first next time: a Klipper machine on
+# cable and Wi-Fi answers at both its IPs, and with one of them down the other is used without waiting on the dead one
+_answered_at: dict[int, str] = {}
+
+
+def answered_at(printer: Printer) -> str | None:
+    """The address the printer's Moonraker answered at last (None until it has, or when it's no longer one of its)."""
+    last = _answered_at.get(printer.id)
+    return last if last in printer.moonraker_urls else None
+
+
 def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None,
           files: dict | None = None, data: dict | None = None, timeout: httpx.Timeout = TIMEOUT, unwrapped: bool = False):
-    """One Moonraker request; returns its "result" (or, unwrapped, the whole answer: an upload's isn't wrapped)."""
-    base = printer.moonraker_url
-    if not base:
+    """
+    One Moonraker request; returns its "result" (or, unwrapped, the whole answer: an upload's isn't wrapped). Asked at
+    the printer's wired IP, or its Wi-Fi IP when the wired one can't be reached (see printer_http.request_first_answering).
+    """
+    bases = printer.moonraker_urls
+    if not bases:
         raise MoonrakerError("no_address", "This printer has no IP address or Moonraker address set.")
     headers = {}
     if printer.connection_row and printer.connection_row.api_key:
         headers["X-Api-Key"] = printer.connection_row.api_key
-    r = printer_http.request(
-        MoonrakerError, "Moonraker", base, method, path, transport=transport, timeout=timeout,
-        params=params, json=json, files=files, data=data, headers=headers,
+    r, base = printer_http.request_first_answering(
+        MoonrakerError, "Moonraker", bases, _answered_at, printer.id, method, path,
+        transport=transport, timeout=timeout, params=params, json=json, files=files, data=data, headers=headers,
     )
     if r.status_code in (401, 403):
         raise MoonrakerError(
@@ -142,11 +157,13 @@ MJPEG_SERVICES = {"mjpegstreamer", "uv4l-mjpeg", "ipstream"}
 def webcams(printer: Printer) -> list[dict]:
     """
     The cameras set up in the printer's Mainsail / Moonraker (enabled ones only), with their stream and snapshot
-    addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is.
+    addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is
+    (on whichever of its IPs it answered at).
     """
-    base = printer.mainsail_url or ""
+    listed = _call(printer, "GET", "/server/webcams/list").get("webcams") or []
+    base = mainsail_for(answered_at(printer) or printer.moonraker_url) or ""
     out = []
-    for cam in _call(printer, "GET", "/server/webcams/list").get("webcams") or []:
+    for cam in listed:
         if cam.get("enabled") is False:
             continue
         stream = urljoin(base, cam["stream_url"]) if cam.get("stream_url") else None
