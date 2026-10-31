@@ -45,7 +45,7 @@ def request_first_answering(
             if e.never_sent and i < len(bases) - 1:
                 continue
             raise
-        printer_links.remember(kind, printer_id, base)
+        printer_links.remember(kind, printer_id, base, fell_back=i > 0)
         return r, base
     raise AssertionError("unreachable: bases is never empty here")
 

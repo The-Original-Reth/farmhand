@@ -647,3 +647,33 @@ def test_a_camera_written_out_with_the_printers_wired_ip_follows_it_to_wifi(api,
         ("http://10.0.6.121:8080/webrtc", "http://10.0.6.121/webcam/?action=snapshot"),
         ("http://10.0.6.99/stream", None),
     ]
+
+
+def test_back_on_the_cable_even_while_it_keeps_being_asked_over_wifi(db_session, fake, monkeypatch):
+    # The server asks each printer about every minute. Those answers over Wi-Fi mustn't put off trying the cable: two
+    # minutes after it fell back, the cable is tried first. While it's still out, it stays on Wi-Fi without waiting
+    # on the cable at every request.
+    from app import printer_links
+
+    clock = [1000.0]
+    monkeypatch.setattr(printer_links.time, "monotonic", lambda: clock[0])
+    p = _on_both(db_session)
+    asked = _two_ips(monkeypatch, fake)  # the cable's out
+    mr.server_info(p)  # falls back to Wi-Fi at 1000
+    for t in (1060, 1110):  # asked every minute or so, over Wi-Fi: the cable isn't tried
+        clock[0] = t
+        asked.clear()
+        mr.server_info(p)
+        assert asked == ["10.0.6.121"]
+    clock[0] = 1125  # two minutes on: the cable is tried first, it's still out, so Wi-Fi again for two more minutes
+    asked.clear()
+    mr.server_info(p)
+    assert asked == ["10.0.6.21", "10.0.6.121"]
+    clock[0] = 1185
+    asked.clear()
+    mr.server_info(p)
+    assert asked == ["10.0.6.121"]  # not waited on again a minute later
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(fake.handle))  # plugged back in
+    clock[0] = 1250  # two minutes after the last fall back
+    mr.server_info(p)
+    assert mr.answered_at(p) == "http://10.0.6.21:7125"  # on the cable again
