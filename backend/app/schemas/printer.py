@@ -194,6 +194,10 @@ class DiscoveredPrinterOut(BaseModel):
     version: str | None = None  # of the API it answered on (Moonraker's version)
     state: str | None = None  # e.g. Klipper's: ready | startup | shutdown | error | disconnected
     needs_api_key: bool = False  # it answered but refused: it wants an API key
+    # What `ip` is, by the name of the interface it's on (wlan0 / eth0): "wired" | "wireless"; None when it can't tell
+    link: str | None = None
+    wired_ip: str | None = None  # its addresses on each, from the interfaces it lists; a machine on both is
+    wireless_ip: str | None = None  # listed once, at its wired IP
 
 
 class PrinterDecommission(BaseModel):

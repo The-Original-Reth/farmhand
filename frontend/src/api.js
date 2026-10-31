@@ -205,6 +205,9 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
     version: f.version || null,
     state: f.state || null,
     needsApiKey: !!f.needs_api_key,
+    link: f.link || null, // how `ip` reached it: "wired" | "wireless"; null when it couldn't tell
+    wiredIp: f.wired_ip || null, // a printer on both is found once, at its wired IP, with both of these
+    wirelessIp: f.wireless_ip || null,
   }));
 
 // The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter

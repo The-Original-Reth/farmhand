@@ -118,7 +118,8 @@ export function mockApi() {
   // ------------------------------------------------------------------ the farm
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
   // A network scan (before /printers/:id, which would take "discover" for an id): a few made-up printers at fixed
-  // places in the range, skipping addresses the farm's printers have. Two share MainsailOS's default hostname.
+  // places in the range, skipping addresses the farm's printers have. Two share MainsailOS's default hostname; the
+  // Trident is on both cable and Wi-Fi, so it's listed once, at its wired IP.
   on("GET", "/printers/discover", async (_, __, q) => {
     const cidr = (q.get("cidr") || "").trim();
     const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(cidr);
@@ -130,21 +131,25 @@ export function mockApi() {
     const start = (m.slice(1, 5).reduce((n, o) => n * 256 + Number(o), 0) >>> (32 - bits)) * 2 ** (32 - bits);
     const ipAt = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join(".");
     const known = new Set(farm.printers.flatMap((p) => [p.wired_ip, p.wireless_ip]).filter(Boolean));
-    const sample = [
-      [31, "mainsailos", "Klipper", false],
-      [32, "mainsailos", "Klipper", false],
-      [40, "trident-300", "Kalico", false],
-      [77, null, null, true],
+    const sample = [ // [offset, hostname, firmware, needs a key, link, the other link's offset]
+      [31, "mainsailos", "Klipper", false, "wired", null],
+      [32, "mainsailos", "Klipper", false, "wireless", null],
+      [40, "trident-300", "Kalico", false, "wired", 41],
+      [77, null, null, true, null, null],
     ];
+    const inRange = (offset) => offset < 2 ** (32 - bits) - (bits < 31 ? 1 : 0);
     return sample
-      .filter(([offset]) => offset < 2 ** (32 - bits) - (bits < 31 ? 1 : 0) && !known.has(ipAt(start + offset)))
-      .map(([offset, hostname, firmware, needsKey]) => {
+      .filter(([offset]) => inRange(offset))
+      .map(([offset, hostname, firmware, needsKey, link, other]) => {
         const ip = ipAt(start + offset);
+        const otherIp = other != null && inRange(other) ? ipAt(start + other) : null;
         return {
           ip, connection_type: "moonraker", address: `http://${ip}:7125`, web_url: `http://${ip}/`, hostname, firmware,
-          version: needsKey ? null : "v0.9.3", state: needsKey ? null : "ready", needs_api_key: needsKey,
+          version: needsKey ? null : "v0.9.3", state: needsKey ? null : "ready", needs_api_key: needsKey, link,
+          wired_ip: link === "wired" ? ip : null, wireless_ip: link === "wireless" ? ip : otherIp,
         };
-      });
+      })
+      .filter((f) => ![f.ip, f.wired_ip, f.wireless_ip].some((h) => h && known.has(h)));
   });
   on("GET", "/printers/:id", ({ id }) => printerOut(printer(id)));
   on("POST", "/printers", (_, body) => {

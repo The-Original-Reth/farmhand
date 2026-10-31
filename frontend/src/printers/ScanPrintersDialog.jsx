@@ -105,7 +105,9 @@ export function ScanPrintersDialog({ onClose }) {
       if (stopped.current) return;
       const name = names[f.ip].trim();
       try {
-        putPrinter(await createPrinter({ name, kind: f.firmware || "", wiredIp: f.ip, connectionType: f.connectionType }));
+        // Its own IPs when it said which is which; otherwise the address it answered on, as its wired IP
+        const ips = f.wiredIp || f.wirelessIp ? { wiredIp: f.wiredIp, wirelessIp: f.wirelessIp } : { wiredIp: f.ip };
+        putPrinter(await createPrinter({ name, kind: f.firmware || "", ...ips, connectionType: f.connectionType }));
         added += 1;
       } catch (e) {
         failed.push({ name, error: errorText(e) });
@@ -202,7 +204,7 @@ export function ScanPrintersDialog({ onClose }) {
         <div style={uiText(14, c.heading, { marginBottom: 8 })}>Added {plural(summary.added, "printer", "printers")}.</div>
         {summary.added > 0 && (
           <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 8 })}>
-            Each one's address went in as its wired IP. Rename them to match your slicer's printer profiles, and add an API key to any marked as needing one, on the printer's own page.
+            Each one's wired and Wi-Fi IPs went in as it reported them (the address it answered on counts as wired when it didn't say). Rename them to match your slicer's printer profiles, and add an API key to any marked as needing one, on the printer's own page.
           </div>
         )}
         {summary.failed.length > 0 && (
@@ -237,7 +239,7 @@ export function ScanPrintersDialog({ onClose }) {
       </>
     );
   }
-  const cols = "28px 1fr 120px 110px";
+  const cols = "28px 1fr 150px 110px";
   const head = uiText(12, c.textFaint);
   return (
     <div data-testid="scan-results">
@@ -283,7 +285,16 @@ export function ScanPrintersDialog({ onClose }) {
                 />
                 {problem && <div style={uiText(11, c.danger, { marginTop: 2 })}>{problem}</div>}
               </div>
-              <div style={monoText(12, c.textMuted)}>{f.ip}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={monoText(12, c.textMuted)}>{f.ip}</div>
+                {f.link && (
+                  <div style={uiText(11, c.textFaint, { marginTop: 2 })}>
+                    {f.link === "wired" ? "Wired" : "Wi-Fi"}
+                    {f.link === "wired" && f.wirelessIp && ` · Wi-Fi ${f.wirelessIp}`}
+                    {f.link === "wireless" && f.wiredIp && ` · wired ${f.wiredIp}`}
+                  </div>
+                )}
+              </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                 <span style={uiText(12, c.textMuted)}>{f.firmware || "Unknown"}</span>
                 {f.needsApiKey && <Badge tone="amber">needs API key</Badge>}

@@ -4,6 +4,9 @@ printer Farmhand can talk to is there. Addresses a printer in Farmhand already h
 included. Nothing is added: the answer is a list for the user to choose from, and choosing one is an ordinary
 POST /printers.
 
+A machine on both a cable and Wi-Fi answers at two addresses. Where the scanner can tell (Moonraker lists its network
+interfaces), those answers become one entry: the wired one, carrying both IPs.
+
 A scanner is one kind of printer (Moonraker today; PrusaLink or OctoPrint later): a module with a `probe(ip)` that
 answers what it found there, or None. Adding a kind is a new module and a line in SCANNERS.
 """
@@ -40,8 +43,9 @@ def scan(db: Session, cidr: str) -> list[dict]:
     known = _known_hosts(db)
     targets = [str(ip) for ip in (net.hosts() if net.num_addresses > 1 else [net.network_address]) if str(ip) not in known]
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        found = pool.map(_probe, targets)
-    return [f for f in found if f]
+        found = [f for f in pool.map(_probe, targets) if f]
+    merged = sorted(_one_per_machine(found), key=lambda f: ipaddress.ip_address(f["ip"]))
+    return [f for f in merged if not known & _ips(f)]
 
 
 def _probe(ip: str) -> dict | None:
@@ -49,8 +53,31 @@ def _probe(ip: str) -> dict | None:
         found = scanner.probe(ip)
         if found:
             return {"ip": ip, "hostname": None, "firmware": None, "version": None, "state": None, "web_url": None,
-                    "needs_api_key": False, **found}
+                    "needs_api_key": False, "link": None, "wired_ip": None, "wireless_ip": None, **found}
     return None
+
+
+def _ips(found: dict) -> set[str]:
+    return {h for h in (found["ip"], found["wired_ip"], found["wireless_ip"]) if h}
+
+
+def _one_per_machine(found: list[dict]) -> list[dict]:
+    """
+    Answers from the same machine merged into one, kept where the wired answer was (else the first). Two answers are
+    the same machine when one's address is among the IPs the other said it has.
+    """
+    kept: list[dict] = []
+    for f in found:
+        twin = next((k for k in kept if f["ip"] in _ips(k) or k["ip"] in _ips(f)), None)
+        if twin is None:
+            kept.append(f)
+            continue
+        merged = f if f["link"] == "wired" and twin["link"] != "wired" else twin
+        other = twin if merged is f else f
+        merged = {**merged, "wired_ip": merged["wired_ip"] or other["wired_ip"],
+                  "wireless_ip": merged["wireless_ip"] or other["wireless_ip"]}
+        kept[kept.index(twin)] = merged
+    return kept
 
 
 def _known_hosts(db: Session) -> set[str]:

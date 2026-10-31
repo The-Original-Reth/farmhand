@@ -23,6 +23,8 @@ class FakeMoonraker:
         self.down = False  # True: behaves like a printer that's switched off
         self.hostname = "mainsail"  # the machine's name, as Klipper's /printer/info gives it
         self.app = "Klipper"  # ...and what it says it is (a Kalico printer says "Kalico")
+        # Its network interfaces, as /machine/system_info lists them: {name: [ipv4 address, ...]}; None = won't say
+        self.interfaces: dict[str, list[str]] | None = {}
         self.requests: list[tuple[str, str]] = []
         # A power meter like a smart plug over MQTT: None = the printer has none (and no [sensor] at all)
         self.meter_kwh: float | None = None
@@ -69,6 +71,13 @@ class FakeMoonraker:
             return self._ok({"klippy_state": "ready", "moonraker_version": "v0.9.3-fake"})
         if path == "/printer/info":
             return self._ok({"state": "ready", "hostname": self.hostname, "app": self.app, "software_version": "v0.12.0-fake"})
+        if path == "/machine/system_info":
+            if self.interfaces is None:
+                return self._error(404, "Not Found")
+            network = {name: {"mac_address": f"02:00:00:00:00:{i:02x}", "ip_addresses": [
+                {"family": "ipv4", "address": a, "is_link_local": False} for a in addresses
+            ]} for i, (name, addresses) in enumerate(self.interfaces.items())}
+            return self._ok({"system_info": {"network": network}})
         if path == "/server/history/totals":
             aux = []
             if hasattr(self, "energy_total"):

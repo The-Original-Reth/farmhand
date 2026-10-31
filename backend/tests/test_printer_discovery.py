@@ -39,7 +39,7 @@ def test_finds_the_moonrakers_in_the_range_and_skips_known_printers(api, network
     assert r.json() == [{
         "ip": "10.0.6.40", "connection_type": "moonraker", "address": "http://10.0.6.40:7125",
         "web_url": "http://10.0.6.40/", "hostname": "trident", "firmware": "Klipper", "version": "v0.9.3-fake",
-        "state": "ready", "needs_api_key": False,
+        "state": "ready", "needs_api_key": False, "link": None, "wired_ip": None, "wireless_ip": None,
     }]
     assert "10.0.6.21" not in asked and "10.0.6.22" not in asked  # known printers aren't even asked
     assert len(api.get("/printers").json()) == 2  # nothing was added
@@ -81,6 +81,41 @@ def test_a_single_address_can_be_scanned(api, network):
     hosts, _ = network
     hosts["10.0.0.9"] = FakeMoonraker()
     assert [f["ip"] for f in api.get("/printers/discover", params={"cidr": "10.0.0.9/32"}).json()] == ["10.0.0.9"]
+
+
+def _links(found):
+    return [(f["ip"], f["link"], f["wired_ip"], f["wireless_ip"]) for f in found]
+
+
+@pytest.mark.parametrize("wired, wireless", [("eth0", "wlan0"), ("end0", "wlp2s0"), ("enx00e04c680001", "wlx001122334455")])
+def test_a_printer_on_cable_and_wifi_is_listed_once_at_its_wired_ip(api, network, wired, wireless):
+    hosts, _ = network
+    fake = FakeMoonraker()
+    fake.interfaces = {"lo": ["127.0.0.1"], wireless: ["10.0.0.3"], wired: ["10.0.0.5"], "docker0": ["172.17.0.1"]}
+    hosts["10.0.0.3"] = hosts["10.0.0.5"] = fake  # the wireless address comes first in the range
+    assert _links(api.get("/printers/discover", params={"cidr": "10.0.0.0/29"}).json()) == [
+        ("10.0.0.5", "wired", "10.0.0.5", "10.0.0.3")]
+
+
+def test_each_answer_says_whether_it_came_by_cable_or_wifi(api, network):
+    hosts, _ = network
+    hosts["10.0.0.2"], hosts["10.0.0.3"], hosts["10.0.0.4"] = FakeMoonraker(), FakeMoonraker(), FakeMoonraker()
+    hosts["10.0.0.2"].interfaces = {"eth0": ["10.0.0.2"], "wlan0": []}  # Wi-Fi not joined
+    hosts["10.0.0.3"].interfaces = {"wlan0": ["10.0.0.3"], "eth0": ["192.168.50.7"]}  # its cable is on another network
+    hosts["10.0.0.4"].interfaces = None  # an older Moonraker: still found, just not known which
+    assert _links(api.get("/printers/discover", params={"cidr": "10.0.0.0/29"}).json()) == [
+        ("10.0.0.2", "wired", "10.0.0.2", None),
+        ("10.0.0.3", "wireless", "192.168.50.7", "10.0.0.3"),
+        ("10.0.0.4", None, None, None),
+    ]
+
+
+def test_a_printer_known_by_its_other_ip_is_skipped(api, network):
+    hosts, _ = network
+    hosts["10.0.0.3"] = FakeMoonraker()
+    hosts["10.0.0.3"].interfaces = {"wlan0": ["10.0.0.3"], "eth0": ["192.168.50.7"]}
+    api.post("/printers", json={"name": "V2", "wired_ip": "192.168.50.7"}).raise_for_status()
+    assert api.get("/printers/discover", params={"cidr": "10.0.0.0/29"}).json() == []
 
 
 @pytest.mark.parametrize("cidr", ["not-a-range", "10.0.0.0/21", "fd00::/120"])
