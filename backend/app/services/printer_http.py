@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import httpx
 
+from .. import printer_links
+
 TIMEOUT = httpx.Timeout(6.0, connect=3.0)
 UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big G-code over the printer's network takes a while
 PROBE_TIMEOUT = httpx.Timeout(1.5, connect=0.5)  # a network scan asks hundreds of addresses; most aren't there
@@ -26,18 +28,16 @@ class PrinterLinkError(Exception):
 
 
 def request_first_answering(
-    error: type[PrinterLinkError], label: str, bases: list[str], answered: dict, key, method: str, path: str, **kwargs,
+    error: type[PrinterLinkError], label: str, kind: str, printer_id, bases: list[str], method: str, path: str, **kwargs,
 ) -> tuple[httpx.Response, str]:
     """
-    One request to a printer that may answer at more than one address (`bases`, in the order to try: its wired IP, then
-    its Wi-Fi one). The address it answered at last (`answered[key]`) is tried first, so one that's down isn't waited
-    on every time. The next address is only tried when this one couldn't be reached at all (`never_sent`): a request
-    that got there and then went quiet may have been carried out (a print started), and mustn't happen twice. Returns
-    the answer and the address it came from, and notes that address in `answered`.
+    One request to a printer that may answer at more than one address (`bases`: its wired IP, then its Wi-Fi one).
+    The address it answered at last is tried first while that counts (printer_links: a fall back to Wi-Fi is checked
+    against the cable again after a while), so one that's down isn't waited on every time. The next address is only
+    tried when this one couldn't be reached at all (`never_sent`): a request that got there and then went quiet may
+    have been carried out (a print started), and mustn't happen twice. Returns the answer and the address it came from.
     """
-    last = answered.get(key)
-    if last in bases:
-        bases = [last, *(b for b in bases if b != last)]
+    bases = printer_links.in_order(kind, printer_id, bases)
     for i, base in enumerate(bases):
         try:
             r = request(error, label, base, method, path, **kwargs)
@@ -45,7 +45,7 @@ def request_first_answering(
             if e.never_sent and i < len(bases) - 1:
                 continue
             raise
-        answered[key] = base
+        printer_links.remember(kind, printer_id, base)
         return r, base
     raise AssertionError("unreachable: bases is never empty here")
 

@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import answer_errors
 from ..models import Printer, PrinterEnergyReading, PrintJob
-from ..models.printer import mainsail_for
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
 from ..services import moonraker as mr
@@ -44,8 +43,8 @@ def connection_status(printer_id: int, db: Session = Depends(get_db)):
     except mr.MoonrakerError as e:
         out.update(error=str(e), error_kind=e.kind)
         return out
-    if mr.answered_at(printer):  # the one of its IPs it answered at (its Wi-Fi one when its cable is out)
-        out.update(moonraker_url=mr.answered_at(printer), mainsail_url=mainsail_for(mr.answered_at(printer)))
+    # the one of its IPs it answered at just now (its Wi-Fi one when its cable is out)
+    out.update(moonraker_url=printer.moonraker_url, mainsail_url=printer.mainsail_url)
     if out["klippy_state"] == "ready":
         try:
             out["print"] = mr.live_print(printer)

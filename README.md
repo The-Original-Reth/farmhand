@@ -342,12 +342,16 @@ sub printer by the old name again. Parts are kept in the settings copy on the NA
 
 **Connection.** In **Add printer** or **Edit**, choose **Mainsail (Moonraker / Klipper)** or **PrusaLink
 (Prusa Core One, MK4, XL…)**. A printer on both a cable and Wi-Fi answers at both its IPs: give its **Wired IP**
-and **Wireless IP** and leave the address below blank, and Farmhand talks to it over the cable, and over Wi-Fi only
-when the wired IP can't be reached (it remembers which answered, so a dead one isn't waited on each time). It only
-switches when a request never got through: one the printer took and then went quiet on is never sent twice, so a
-print can't start twice. An address typed in is the only one used.
+and **Wireless IP** and leave the address below blank, and everything Farmhand does with it goes over the cable, and
+over Wi-Fi only when the wired IP can't be reached: its status, prints, history and maintenance, its cameras on
+**Monitor** (and in Mainsail, a camera written out with the printer's wired IP is moved to its Wi-Fi one too), and its
+**Mainsail** / **PrusaLink** button. Farmhand remembers which IP answered, so a dead one isn't waited on each time, and
+after two minutes on Wi-Fi it tries the cable first again, so it's back on the cable soon after it's plugged back in.
+It only switches when a request never got through: one the printer took and then went quiet on is never sent twice,
+so a print can't start twice. An address typed in is the only one used. (A Prusa's Buddy3D camera has one IP of its
+own, so it has nothing to switch to.)
 - Moonraker: the address defaults to port 7125 of the printer's IP; an API key is only needed if Moonraker asks
-  for one. Its cameras' addresses follow the IP it answered at.
+  for one.
 - PrusaLink: the address defaults to the printer's IP. The username is usually `maker`, and the password is shown on the printer (Settings › Network › PrusaLink). A **Buddy3D camera IP** can be given too (see "Monitor").
 API keys and passwords are stored as-is (they're needed for every call) but never sent back to the browser or
 written to the copy on the NAS.

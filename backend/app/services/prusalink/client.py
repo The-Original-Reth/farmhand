@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 import httpx
 
+from ... import printer_links
 from ...models import Printer
 from .. import printer_http
 from ..printer_http import PROBE_TIMEOUT, TIMEOUT, UPLOAD_TIMEOUT
@@ -18,15 +19,9 @@ class PrusaLinkError(printer_http.PrinterLinkError):
     """kind: no_address | unreachable | unauthorized | not_found | busy | bad_response"""
 
 
-# Where each printer's PrusaLink last answered (printer id -> address), asked first next time: a Prusa on cable and
-# Wi-Fi answers at both its IPs, and with one of them down the other is used without trying the dead one each time
-_answered_at: dict[int, str] = {}
-
-
 def answered_at(printer: Printer) -> str | None:
-    """The address the printer's PrusaLink answered at last (None until it has, or when it's no longer one of its)."""
-    last = _answered_at.get(printer.id)
-    return last if last in printer.prusalink_urls else None
+    """The address the printer's PrusaLink answered at last, while that counts (see printer_links)."""
+    return printer_links.answered("prusalink", printer.id, printer.prusalink_urls)
 
 
 def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChunks | None = None, headers: dict | None = None,
@@ -37,7 +32,7 @@ def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChun
     link = printer.prusalink_row
     auth = httpx.DigestAuth(link.username or "maker", link.password or "") if link and link.password else None
     r, _ = printer_http.request_first_answering(
-        PrusaLinkError, "PrusaLink", bases, _answered_at, printer.id, method, path,
+        PrusaLinkError, "PrusaLink", "prusalink", printer.id, bases, method, path,
         transport=transport, timeout=timeout, auth=auth, content=content, headers=headers,
     )
     if r.status_code == 401:
