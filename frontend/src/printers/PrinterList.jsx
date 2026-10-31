@@ -155,17 +155,18 @@ export function PrinterList({ setPath }) {
   );
 }
 
-// Opens the printer's own web page in a new tab: PrusaLink for a Prusa reached that way, Mainsail for a Klipper one
-function WebUiButton({ printer }) {
+// Opens the printer's own web page in a new tab: PrusaLink for a Prusa reached that way, Mainsail for a Klipper one.
+// With no address it shows "—" in the list (`orDash`), or nothing; `style` dresses it like the buttons beside it.
+export function WebUiButton({ printer, orDash = true, style = headerButton() }) {
   const prusa = printer.connectionType === "prusalink";
   const url = prusa ? printer.prusalinkUrl : printer.mainsailUrl;
   const name = prusa ? "PrusaLink" : "Mainsail";
-  if (!url) return <span style={monoText(12, c.textFaint)}>—</span>;
+  if (!url) return orDash ? <span style={monoText(12, c.textFaint)}>—</span> : null;
   return (
     <a
       data-testid={prusa ? "printer-open-prusalink" : "printer-open-mainsail"} href={url} target="_blank" rel="noreferrer"
       onClick={(e) => e.stopPropagation()} // not also opening the printer's page here
-      title={`Open ${printer.name}'s ${name} in a new tab (${url})`} style={{ ...headerButton(), display: "inline-flex" }}
+      title={`Open ${printer.name}'s ${name} in a new tab (${url})`} style={{ ...style, display: "inline-flex", textDecoration: "none" }}
     >
       <ExternalLink size={12} />
       {name}
