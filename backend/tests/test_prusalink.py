@@ -20,6 +20,7 @@ from .fake_prusalink import FakePrusaLink
 def fake(monkeypatch):
     f = FakePrusaLink()
     monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(f.handle))
+    monkeypatch.setattr(pl_client, "_answered_at", {})  # each test's database starts its ids over
     return f
 
 
@@ -300,3 +301,61 @@ def test_a_printer_added_as_mainsail_keeps_its_moonraker_details(api):
     assert p["moonraker_url"] == "http://10.0.6.21:7125" and p["has_moonraker_api_key"] and "KEY" not in r.text
     plain = api.post("/printers", json={"name": "Plain"}).json()
     assert plain["connection_type"] == "moonraker" and plain["has_moonraker_api_key"] is False
+
+
+# ------------------------------------------------------------------ a Prusa on cable and Wi-Fi: two IPs
+
+
+def _two_ips(monkeypatch, fake, *, wired_down=True, quiet=False):
+    """The fake at both IPs: the wired one unplugged (no connection), or `quiet` (it connects, then never answers)."""
+    asked: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.host)
+        if request.url.host == "10.0.6.40" and wired_down:
+            if quiet:
+                raise httpx.ReadTimeout("no answer", request=request)
+            raise httpx.ConnectError("no route to host", request=request)
+        return fake.handle(request)
+
+    monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(handle))
+    return asked
+
+
+def test_a_prusa_is_reached_at_its_wifi_ip_when_its_cable_is_out(db_session, fake, monkeypatch):
+    p = printer_service.update_printer(db_session, _core_one(db_session).id, {"wireless_ip": "10.0.6.41"})
+    assert p.prusalink_urls == ["http://10.0.6.40", "http://10.0.6.41"]  # wired first
+    asked = _two_ips(monkeypatch, fake)
+
+    assert pl.version(p)["text"] == "PrusaLink"  # through the Wi-Fi, after the cable didn't connect
+    assert pl.answered_at(p) == "http://10.0.6.41"
+    asked.clear()
+    pl.version(p)
+    assert set(asked) == {"10.0.6.41"}  # it remembers: the dead address isn't tried every time
+
+
+def test_a_prusa_that_went_quiet_isnt_asked_again_elsewhere(db_session, fake, monkeypatch):
+    # it connected, so the request may have been carried out (a print started): it must not be sent twice
+    p = printer_service.update_printer(db_session, _core_one(db_session, name="Quiet").id, {"wireless_ip": "10.0.6.41"})
+    asked = _two_ips(monkeypatch, fake, quiet=True)
+    with pytest.raises(pl.PrusaLinkError) as e:
+        pl.version(p)
+    assert e.value.kind == "unreachable" and "10.0.6.41" not in asked
+
+
+def test_a_prusalink_address_set_by_hand_is_the_only_one_tried(db_session, fake, monkeypatch):
+    p = _core_one(db_session, name="By hand")
+    p = printer_service.update_printer(db_session, p.id, {"wireless_ip": "10.0.6.41", "prusalink_url": "http://10.0.6.40"})
+    assert p.prusalink_urls == ["http://10.0.6.40"]
+    asked = _two_ips(monkeypatch, fake)
+    with pytest.raises(pl.PrusaLinkError):
+        pl.version(p)
+    assert set(asked) == {"10.0.6.40"}
+
+
+def test_the_live_status_says_the_address_that_answered(api, fake, monkeypatch):
+    p = api.post("/printers", json={"name": "Prusa_2", "wired_ip": "10.0.6.40", "wireless_ip": "10.0.6.41",
+                                    "connection_type": "prusalink", "prusalink_password": "secret123"}).json()
+    _two_ips(monkeypatch, fake)
+    out = api.get(f"/printers/{p['id']}/prusalink").json()
+    assert out["reachable"] and out["prusalink_url"] == "http://10.0.6.41"

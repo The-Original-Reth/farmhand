@@ -12,11 +12,16 @@ UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big G-code over the prin
 
 
 class PrinterLinkError(Exception):
-    """A printer that couldn't be asked, or didn't answer as it should. `kind` says which (each client lists its own)."""
+    """
+    A printer that couldn't be asked, or didn't answer as it should. `kind` says which (each client lists its own).
+    `never_sent`: the request didn't reach the printer at all (no connection could be made), so it's safe to ask again
+    somewhere else; a request that timed out waiting for an answer may have been carried out.
+    """
 
-    def __init__(self, kind: str, message: str):
+    def __init__(self, kind: str, message: str, *, never_sent: bool = False):
         super().__init__(message)
         self.kind = kind
+        self.never_sent = never_sent
 
 
 def request(
@@ -31,10 +36,12 @@ def request(
     try:
         with httpx.Client(timeout=timeout, transport=transport, auth=auth) as client:
             r = client.request(method, f"{base}{path}", **kwargs)
-    except httpx.TimeoutException:
-        raise error("unreachable", f"{label} at {base} didn't answer in time. Is the printer on?") from None
+    except httpx.TimeoutException as e:
+        raise error("unreachable", f"{label} at {base} didn't answer in time. Is the printer on?",
+                    never_sent=isinstance(e, httpx.ConnectTimeout)) from None
     except httpx.HTTPError as e:
-        raise error("unreachable", f"Couldn't connect to {label} at {base} ({type(e).__name__}).") from None
+        raise error("unreachable", f"Couldn't connect to {label} at {base} ({type(e).__name__}).",
+                    never_sent=isinstance(e, httpx.ConnectError)) from None
     if r.status_code == 404:
         raise error("not_found", f"Not found on {label}.")
     return r
