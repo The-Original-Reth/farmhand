@@ -159,15 +159,19 @@ class Printer(HasNotes, Base):
         return f"http://{_host(self.preferred_ip)}:7125" if self.preferred_ip else None
 
     @property
+    def moonraker_urls(self) -> list[str]:
+        """
+        Every address its Moonraker may answer at, in the order to try: a Klipper machine on cable and Wi-Fi answers at
+        both its IPs, so its wired IP, then its wireless one. An address set for it is the only one tried.
+        """
+        if self.moonraker_url_override:
+            return [self.moonraker_url_override.rstrip("/")]
+        return list(dict.fromkeys(f"http://{_host(ip)}:7125" for ip in (self.wired_ip, self.wireless_ip) if ip))
+
+    @property
     def mainsail_url(self) -> str | None:
         """Mainsail is served on port 80 of the same machine as Moonraker."""
-        base = self.moonraker_url
-        if not base:
-            return None
-        from urllib.parse import urlsplit
-
-        host = urlsplit(base).hostname
-        return f"http://{_host(host)}/" if host else None
+        return mainsail_for(self.moonraker_url)
 
     @property
     def has_moonraker_api_key(self) -> bool:
@@ -177,6 +181,14 @@ class Printer(HasNotes, Base):
     def preferred_ip(self) -> str | None:
         """Wired is always preferred when both are available, per spec."""
         return self.wired_ip or self.wireless_ip
+
+
+def mainsail_for(moonraker_base: str | None) -> str | None:
+    """Mainsail's address for a Moonraker address: port 80 of the same machine. None for none."""
+    from urllib.parse import urlsplit
+
+    host = urlsplit(moonraker_base).hostname if moonraker_base else None
+    return f"http://{_host(host)}/" if host else None
 
 
 def _host(host: str) -> str:

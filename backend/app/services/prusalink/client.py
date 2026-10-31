@@ -34,25 +34,12 @@ def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChun
     bases = printer.prusalink_urls
     if not bases:
         raise PrusaLinkError("no_address", "This printer has no IP address or PrusaLink address set.")
-    last = answered_at(printer)
-    if last:
-        bases = [last, *(b for b in bases if b != last)]
     link = printer.prusalink_row
     auth = httpx.DigestAuth(link.username or "maker", link.password or "") if link and link.password else None
-    for i, base in enumerate(bases):
-        try:
-            r = printer_http.request(
-                PrusaLinkError, "PrusaLink", base, method, path, transport=transport, timeout=timeout, auth=auth,
-                content=content, headers=headers,
-            )
-        except PrusaLinkError as e:
-            # its other IP, but only when this one couldn't be reached at all: a request that got there and then went
-            # quiet may have been carried out (a print started), and mustn't happen twice
-            if e.never_sent and i < len(bases) - 1:
-                continue
-            raise
-        _answered_at[printer.id] = base
-        break
+    r, _ = printer_http.request_first_answering(
+        PrusaLinkError, "PrusaLink", bases, _answered_at, printer.id, method, path,
+        transport=transport, timeout=timeout, auth=auth, content=content, headers=headers,
+    )
     if r.status_code == 401:
         raise PrusaLinkError(
             "unauthorized",

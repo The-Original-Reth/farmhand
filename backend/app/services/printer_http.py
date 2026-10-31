@@ -25,6 +25,31 @@ class PrinterLinkError(Exception):
         self.never_sent = never_sent
 
 
+def request_first_answering(
+    error: type[PrinterLinkError], label: str, bases: list[str], answered: dict, key, method: str, path: str, **kwargs,
+) -> tuple[httpx.Response, str]:
+    """
+    One request to a printer that may answer at more than one address (`bases`, in the order to try: its wired IP, then
+    its Wi-Fi one). The address it answered at last (`answered[key]`) is tried first, so one that's down isn't waited
+    on every time. The next address is only tried when this one couldn't be reached at all (`never_sent`): a request
+    that got there and then went quiet may have been carried out (a print started), and mustn't happen twice. Returns
+    the answer and the address it came from, and notes that address in `answered`.
+    """
+    last = answered.get(key)
+    if last in bases:
+        bases = [last, *(b for b in bases if b != last)]
+    for i, base in enumerate(bases):
+        try:
+            r = request(error, label, base, method, path, **kwargs)
+        except PrinterLinkError as e:
+            if e.never_sent and i < len(bases) - 1:
+                continue
+            raise
+        answered[key] = base
+        return r, base
+    raise AssertionError("unreachable: bases is never empty here")
+
+
 def request(
     error: type[PrinterLinkError], label: str, base: str, method: str, path: str, *,
     transport: httpx.BaseTransport | None, timeout: httpx.Timeout = TIMEOUT, auth: httpx.Auth | None = None, **kwargs,

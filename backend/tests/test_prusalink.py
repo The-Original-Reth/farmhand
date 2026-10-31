@@ -20,7 +20,6 @@ from .fake_prusalink import FakePrusaLink
 def fake(monkeypatch):
     f = FakePrusaLink()
     monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(f.handle))
-    monkeypatch.setattr(pl_client, "_answered_at", {})  # each test's database starts its ids over
     return f
 
 
