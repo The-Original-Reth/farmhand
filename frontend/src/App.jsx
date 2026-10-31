@@ -439,13 +439,13 @@ function FarmhandApp() {
           </div>
         </div>
         {MOCKUP && <MockupBadge />}
-        {/* at the foot of the menu: the 3D Printing Elves logo (frontend/public), their website in a new tab when clicked */}
+        {/* at the foot of the menu: the 3D Printing Elves logo (frontend/public), their donation page in a new tab when clicked */}
         <a
-          href="https://www.3dprintingelves.org"
+          href="https://www.3dprintingelves.org/donate-now"
           target="_blank"
           rel="noreferrer"
           data-testid="elves-logo"
-          title="3D Printing Elves (opens their website in a new tab)"
+          title="Donate to 3D Printing Elves (opens their donation page in a new tab)"
           style={{ display: "block", marginTop: "auto", padding: "16px 14px 0", textDecoration: "none", flexShrink: 0 }}
         >
           <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
