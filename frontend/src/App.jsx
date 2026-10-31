@@ -423,6 +423,9 @@ function FarmhandApp() {
           background: c.panel,
           padding: 16,
           flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflowY: "auto", // a window too short for all of it scrolls the menu, rather than covering anything
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, padding: "0 4px" }}>
@@ -434,22 +437,22 @@ function FarmhandApp() {
           <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
             An archive: nothing here re-slices, and a print only goes to a printer when you send it.
           </div>
-          {/* the 3D Printing Elves logo (frontend/public), their website in a new tab when clicked */}
-          <a
-            href="https://www.3dprintingelves.org"
-            target="_blank"
-            rel="noreferrer"
-            data-testid="elves-logo"
-            title="3D Printing Elves (opens their website in a new tab)"
-            style={{ display: "block", padding: "14px 14px 0", textDecoration: "none" }}
-          >
-            <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
-            <span data-testid="elves-thanks" style={{ display: "block", width: 150, marginTop: 6, textAlign: "center", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
-              Your support is appreciated
-            </span>
-          </a>
         </div>
         {MOCKUP && <MockupBadge />}
+        {/* at the foot of the menu: the 3D Printing Elves logo (frontend/public), their website in a new tab when clicked */}
+        <a
+          href="https://www.3dprintingelves.org"
+          target="_blank"
+          rel="noreferrer"
+          data-testid="elves-logo"
+          title="3D Printing Elves (opens their website in a new tab)"
+          style={{ display: "block", marginTop: "auto", padding: "16px 14px 0", textDecoration: "none", flexShrink: 0 }}
+        >
+          <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
+          <span data-testid="elves-thanks" style={{ display: "block", width: 150, marginTop: 6, textAlign: "center", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
+            Your support is appreciated
+          </span>
+        </a>
       </div>
 
       {/* Main */}
