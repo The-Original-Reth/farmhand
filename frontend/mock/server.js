@@ -139,6 +139,7 @@ export function mockApi() {
       [32, "mainsailos", "Klipper", false, "wireless", null],
       [40, "trident-300", "Kalico", false, "wired", 41],
       [77, null, null, true, null, null],
+      [129, null, "Prusa", true, null, null], // a Core One: PrusaLink wants its password, so it gives no name
     ];
     const inRange = (offset) => offset < 2 ** (32 - bits) - (bits < 31 ? 1 : 0);
     return sample
@@ -146,6 +147,12 @@ export function mockApi() {
       .map(([offset, hostname, firmware, needsKey, link, other]) => {
         const ip = ipAt(start + offset);
         const otherIp = other != null && inRange(other) ? ipAt(start + other) : null;
+        if (firmware === "Prusa") {
+          return {
+            ip, connection_type: "prusalink", address: `http://${ip}`, web_url: `http://${ip}/`, hostname, firmware,
+            version: null, state: null, needs_api_key: needsKey, link: null, wired_ip: null, wireless_ip: null,
+          };
+        }
         return {
           ip, connection_type: "moonraker", address: `http://${ip}:7125`, web_url: `http://${ip}/`, hostname, firmware,
           version: needsKey ? null : "v0.9.3", state: needsKey ? null : "ready", needs_api_key: needsKey, link,

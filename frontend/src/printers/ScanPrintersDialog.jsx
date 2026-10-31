@@ -150,7 +150,7 @@ export function ScanPrintersDialog({ onClose }) {
           style={{ width: "100%", background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, padding: "8px 10px", fontSize: fs(13), ...ui }}
         />
         <div style={uiText(11, c.textFaint, { marginTop: 8, lineHeight: 1.5 })}>
-          Farmhand asks every address in the range whether a Klipper or Kalico printer (Mainsail, Fluidd) answers there.
+          Farmhand asks every address in the range whether a Klipper or Kalico printer (Mainsail, Fluidd) or a Prusa (PrusaLink) answers there.
           Printers already in Farmhand are skipped. Nothing is added until you pick from what's found.
         </div>
         <Actions>
@@ -205,7 +205,7 @@ export function ScanPrintersDialog({ onClose }) {
         <div style={uiText(14, c.heading, { marginBottom: 8 })}>Added {plural(summary.added, "printer", "printers")}.</div>
         {summary.added > 0 && (
           <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 8 })}>
-            Each one's wired and Wi-Fi IPs went in as it reported them (the address it answered on counts as wired when it didn't say). Rename them to match your slicer's printer profiles, and add an API key to any marked as needing one, on the printer's own page.
+            Each one's wired and Wi-Fi IPs went in as it reported them (the address it answered on counts as wired when it didn't say). Rename them to match your slicer's printer profiles, and on the printer's own page (Edit) add the API key or PrusaLink password to any marked as needing one.
           </div>
         )}
         {summary.failed.length > 0 && (
@@ -298,7 +298,7 @@ export function ScanPrintersDialog({ onClose }) {
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                 <span style={uiText(12, c.textMuted)}>{f.firmware || "Unknown"}</span>
-                {f.needsApiKey && <Badge tone="amber">needs API key</Badge>}
+                {f.needsApiKey && <Badge tone="amber">{f.connectionType === "prusalink" ? "needs password" : "needs API key"}</Badge>}
               </div>
             </div>
           );

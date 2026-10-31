@@ -4,24 +4,32 @@ import httpx
 import pytest
 
 from app.services.moonraker import client as mr_client
+from app.services.prusalink import client as pl_client
 
 from .fake_moonraker import FakeMoonraker
+from .fake_prusalink import FakePrusaLink
 
 
 @pytest.fixture()
 def network(monkeypatch):
-    """A stand-in network: {ip: FakeMoonraker}. Every other address refuses the connection, like nothing's there."""
-    hosts: dict[str, FakeMoonraker] = {}
+    """
+    A stand-in network: {ip: FakeMoonraker (answering on port 7125) or FakePrusaLink (port 80), or a web page of
+    something else (an httpx.Response handler, port 80)}. Every other address and port refuses the connection.
+    """
+    hosts: dict = {}
     asked: list[str] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         asked.append(request.url.host)
-        fake = hosts.get(request.url.host)
-        if fake is None:
-            raise httpx.ConnectError("connection refused", request=request)
-        return fake.handle(request)
+        fake, port = hosts.get(request.url.host), request.url.port or 80
+        if isinstance(fake, FakeMoonraker) and port == 7125 or isinstance(fake, FakePrusaLink) and port == 80:
+            return fake.handle(request)
+        if callable(fake) and port == 80:
+            return fake(request)
+        raise httpx.ConnectError("connection refused", request=request)
 
     monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(handle))
+    monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(handle))
     return hosts, asked
 
 
@@ -145,3 +153,29 @@ def test_an_odd_answer_is_skipped_not_the_whole_scan(api, network, monkeypatch):
     r = api.get("/printers/discover", params={"cidr": "10.0.0.0/29"})
     assert r.status_code == 200
     assert [f["ip"] for f in r.json()] == ["10.0.0.2", "10.0.0.3"]  # .2's odd interfaces read past; .4 skipped
+
+
+def test_a_prusa_is_found_by_its_prusalink_login(api, network):
+    hosts, _ = network
+    hosts["192.168.10.129"] = FakePrusaLink()  # wants its password, like a Core One: known by the login it asks for
+    hosts["192.168.10.130"] = FakePrusaLink(password=None)  # one that asks for none says its name
+    hosts["192.168.10.131"] = lambda request: httpx.Response(  # a router's page: also a login, but not Prusa's
+        401, headers={"WWW-Authenticate": 'Basic realm="Router"'})
+    hosts["192.168.10.132"] = lambda request: httpx.Response(200, text="<html>NAS</html>")  # a web page, not PrusaLink
+    hosts["192.168.10.133"] = FakeMoonraker()  # a Klipper machine: Moonraker's, though it has a web page too
+
+    found = api.get("/printers/discover", params={"cidr": "192.168.10.128/28"}).json()
+    assert [(f["ip"], f["connection_type"], f["firmware"], f["needs_api_key"], f["hostname"]) for f in found] == [
+        ("192.168.10.129", "prusalink", "Prusa", True, None),
+        ("192.168.10.130", "prusalink", "Prusa", False, "prusa-coreone"),
+        ("192.168.10.133", "moonraker", "Klipper", False, "mainsail"),
+    ]
+    assert found[0]["address"] == "http://192.168.10.129" and found[0]["web_url"] == "http://192.168.10.129/"
+
+
+def test_a_prusa_already_in_farmhand_is_skipped(api, network):
+    hosts, asked = network
+    hosts["192.168.10.129"] = FakePrusaLink()
+    api.post("/printers", json={"name": "Prusa_2", "wired_ip": "192.168.10.129", "connection_type": "prusalink"}).raise_for_status()
+    assert api.get("/printers/discover", params={"cidr": "192.168.10.128/28"}).json() == []
+    assert "192.168.10.129" not in asked

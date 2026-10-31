@@ -8,7 +8,7 @@ import httpx
 
 from ...models import Printer
 from .. import printer_http
-from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
+from ..printer_http import PROBE_TIMEOUT, TIMEOUT, UPLOAD_TIMEOUT
 
 # Tests swap this for an httpx.MockTransport that plays a fake Moonraker
 transport: httpx.BaseTransport | None = None
@@ -56,9 +56,6 @@ def server_info(printer: Printer) -> dict:
     """Is it reachable, and what state is Klipper in (ready, startup, shutdown, error, disconnected)?"""
     info = _call(printer, "GET", "/server/info")
     return {"klippy_state": info.get("klippy_state"), "moonraker_version": info.get("moonraker_version")}
-
-
-PROBE_TIMEOUT = httpx.Timeout(1.5, connect=0.5)  # a network scan asks hundreds of addresses; most aren't there
 
 
 def probe(base: str) -> dict | None:

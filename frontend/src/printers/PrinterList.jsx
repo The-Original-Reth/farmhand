@@ -71,7 +71,7 @@ export function PrinterList({ setPath }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 14 }}>
-        <button onClick={() => setScanOpen(true)} style={toolButton(13)} title="Find Klipper printers on your network that aren't in Farmhand yet">
+        <button onClick={() => setScanOpen(true)} style={toolButton(13)} title="Find Klipper and Prusa printers on your network that aren't in Farmhand yet">
           <ScanSearch size={13} />
           Scan network
         </button>

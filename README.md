@@ -108,8 +108,10 @@ The first things to do, in this order. Everything is done in the web page; there
      (Settings › Network › PrusaLink). The username is usually `maker`. A Buddy3D camera's IP goes here too
      (see "Monitor").
    A 3MF upload can also add the printer it was sliced for.
-4. **Scan network** (beside Add printer) finds Klipper and Kalico printers in a range such as `192.168.1.0/24` and adds the
-    ones you tick, named after their hostnames. Each shows whether it answered over a cable or Wi-Fi (judged by its
+4. **Scan network** (beside Add printer) finds Klipper and Kalico printers, and Prusas running PrusaLink, in a range such
+    as `192.168.1.0/24` and adds the ones you tick, named after their hostnames. A Prusa that wants its PrusaLink password
+    (as a Core One does) doesn't say its name, so it's listed by its IP, marked "needs password": add the password on its
+    page afterwards. Each shows whether it answered over a cable or Wi-Fi (judged by its
     interface's name, such as `eth0` or `wlan0`). A printer on both is listed once, at its wired IP, and is added with
     both IPs. Rename them afterwards to match your slicer's printer profiles. Only your own network can be scanned
     (a range starting 10., 172.16 to 172.31, or 192.168.).

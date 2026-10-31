@@ -201,10 +201,10 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
     connectionType: f.connection_type,
     address: f.address,
     webUrl: f.web_url || null,
-    firmware: f.firmware || null, // "Klipper" | "Kalico"; null when it wouldn't say
+    firmware: f.firmware || null, // "Klipper" | "Kalico" | "Prusa"; null when it wouldn't say
     version: f.version || null,
     state: f.state || null,
-    needsApiKey: !!f.needs_api_key,
+    needsApiKey: !!f.needs_api_key, // it wants its login: Moonraker's API key, or PrusaLink's password
     link: f.link || null, // how `ip` reached it: "wired" | "wireless"; null when it couldn't tell
     wiredIp: f.wired_ip || null, // a printer on both is found once, at its wired IP, with both of these
     wirelessIp: f.wireless_ip || null,

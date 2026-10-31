@@ -186,14 +186,14 @@ class DiscoveredPrinterOut(BaseModel):
     """A printer found by a network scan that isn't in Farmhand yet. Nothing is added until the user picks it."""
 
     ip: str
-    connection_type: str  # what POST /printers is given for it: "moonraker" (more kinds of scanner later)
+    connection_type: str  # what POST /printers is given for it: "moonraker" | "prusalink"
     address: str  # where Farmhand would reach it, e.g. http://10.0.6.21:7125
     web_url: str | None = None  # its own web page (Mainsail / Fluidd)
     hostname: str | None = None  # the machine's own name, a suggestion for the printer's
-    firmware: str | None = None  # "Klipper" | "Kalico"; None when it wouldn't say (it wants an API key)
+    firmware: str | None = None  # "Klipper" | "Kalico" | "Prusa"; None when it wouldn't say (it wants an API key)
     version: str | None = None  # of the API it answered on (Moonraker's version)
     state: str | None = None  # e.g. Klipper's: ready | startup | shutdown | error | disconnected
-    needs_api_key: bool = False  # it answered but refused: it wants an API key
+    needs_api_key: bool = False  # it answered but refused: it wants its login (Moonraker's API key, PrusaLink's password)
     # What `ip` is, by the name of the interface it's on (wlan0 / eth0): "wired" | "wireless"; None when it can't tell
     link: str | None = None
     wired_ip: str | None = None  # its addresses on each, from the interfaces it lists; a machine on both is

@@ -7,7 +7,7 @@ POST /printers.
 A machine on both a cable and Wi-Fi answers at two addresses. Where the scanner can tell (Moonraker lists its network
 interfaces), those answers become one entry: the wired one, carrying both IPs.
 
-A scanner is one kind of printer (Moonraker today; PrusaLink or OctoPrint later): a module with a `probe(ip)` that
+A scanner is one kind of printer (Moonraker and PrusaLink; OctoPrint could follow): a module with a `probe(ip)` that
 answers what it found there, or None. Adding a kind is a new module and a line in SCANNERS.
 """
 from __future__ import annotations
@@ -21,15 +21,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Printer
-from . import moonraker
+from . import moonraker, prusalink
 
 log = logging.getLogger("farmhand.discovery")
 
 MAX_ADDRESSES = 1024  # a /22; a bigger range would take minutes and is more likely a typo
 WORKERS = 32
 
-# Asked in this order; the first that recognises an address has it (a machine is listed once)
-SCANNERS = [moonraker]
+# Asked in this order; the first that recognises an address has it (a machine is listed once). Moonraker first: a
+# Klipper machine serves its Mainsail page on port 80 too, so it's known for what it is before PrusaLink is asked.
+SCANNERS = [moonraker, prusalink]
 
 
 def scan(db: Session, cidr: str) -> list[dict]:

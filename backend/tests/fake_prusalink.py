@@ -20,7 +20,8 @@ def _md5(text: str) -> str:
 
 class FakePrusaLink:
     def __init__(self, username="maker", password="secret123"):
-        self.username, self.password = username, password
+        self.username, self.password = username, password  # password None: no login asked (as an unset one)
+        self.hostname = "prusa-coreone"  # the name /api/version gives, to one logged in (or when none is asked)
         self.state = "IDLE"
         self.job: dict | None = None  # {id, state, progress, time_printing, time_remaining, file: {...}}
         self.usb_present = True
@@ -49,6 +50,8 @@ class FakePrusaLink:
     # ------------------------------------------------------------------ the HTTP side
 
     def _authorized(self, request: httpx.Request) -> bool:
+        if self.password is None:
+            return True
         header = request.headers.get("Authorization", "")
         if not header.startswith("Digest "):
             return False
@@ -71,7 +74,7 @@ class FakePrusaLink:
             return httpx.Response(401, headers={"WWW-Authenticate": f'Digest realm="{REALM}", nonce="{NONCE}", qop="auth"'})
         path = request.url.path
         if path == "/api/version":
-            return httpx.Response(200, json={"api": "2.0.0", "server": "2.1.2", "text": "PrusaLink", "firmware": "6.2.0", "printer": "COREONE"})
+            return httpx.Response(200, json={"api": "2.0.0", "server": "2.1.2", "text": "PrusaLink", "firmware": "6.2.0", "printer": "COREONE", "hostname": self.hostname})
         if path == "/api/v1/status":
             body = {"printer": {"state": self.state, "temp_nozzle": 215.2, "target_nozzle": 215.0, "temp_bed": 60.1, "target_bed": 60.0}}
             if self.job:
