@@ -134,6 +134,7 @@ Postgres instance running.
 |---|---|---|
 | GET | `/printers` | List printers |
 | POST | `/printers` | Register a printer (name is the unique key) |
+| GET | `/printers/discover?cidr=192.168.1.0/24` | Printers in an IPv4 range (up to a /22) that aren't in Farmhand yet: Klipper / Kalico, found by their Moonraker on port 7125. Addresses a printer already has are skipped. Nothing is added; each answer is `{ip, connection_type, address, web_url, hostname, firmware, version, state, needs_api_key}` |
 | PATCH | `/printers/{id}` | Edit a printer — partial update (only fields present are changed; `null` clears an IP/type). Renaming is safe: see "Renaming a printer" below |
 | PATCH | `/printers/{id}/decommission` | Toggle decommissioned |
 | PUT | `/printers/{id}/notes` | Save the printer's notes. Send the `base_revision` the text was based on; if someone saved since, answers **409** with their current notes and changes nothing (same rules as a model's notes, shared code in `app/notes.py`) |

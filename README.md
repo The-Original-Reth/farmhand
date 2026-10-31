@@ -108,8 +108,10 @@ The first things to do, in this order. Everything is done in the web page; there
      (Settings › Network › PrusaLink). The username is usually `maker`. A Buddy3D camera's IP goes here too
      (see "Monitor").
    A 3MF upload can also add the printer it was sliced for.
-4. **Models**: upload STL models and 3MF files, or copy them onto the NAS and use **Scan STL folder**.
-5. **Monitor**: every printer's camera on one screen. Klipper printers' cameras appear by themselves, as set up
+4. **Scan network** (beside Add printer) finds Klipper mand Kalico printers in a range such as `192.168.1.0/24` and adds the 
+    ones you tick, named after their hostnames. Rename them afterwards to match your slicer's printer profiles.
+5. **Models**: upload STL models and 3MF files, or copy them onto the NAS and use **Scan STL folder**.
+6. **Monitor**: every printer's camera on one screen. Klipper printers' cameras appear by themselves, as set up
    in Mainsail.
 
 ## Updating

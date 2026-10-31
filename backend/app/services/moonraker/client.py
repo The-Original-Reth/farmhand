@@ -63,9 +63,9 @@ PROBE_TIMEOUT = httpx.Timeout(1.5, connect=0.5)  # a network scan asks hundreds 
 
 def probe(base: str) -> dict | None:
     """
-    Is there a Moonraker at `base` (e.g. http://10.0.6.21:7125)? Its version, Klipper's state and the machine's
-    hostname when there is; None when nothing there answers like Moonraker. One that wants an API key still counts:
-    the printer is there, it just needs the key (needs_api_key).
+    Is there a Moonraker at `base` (e.g. http://10.0.6.21:7125)? Its version, Klipper's state, and what Klipper says
+    of itself (hostname, app, software_version) when there is; None when nothing there answers like Moonraker. One
+    that wants an API key still counts: the printer is there, it just needs the key (needs_api_key).
     """
     try:
         r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/server/info",
@@ -82,7 +82,8 @@ def probe(base: str) -> dict | None:
     try:
         r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/printer/info",
                                  transport=transport, timeout=PROBE_TIMEOUT)
-        found["hostname"] = r.json()["result"].get("hostname")
+        klipper = r.json()["result"]
+        found.update({k: klipper.get(k) for k in ("hostname", "app", "software_version")})
     except (MoonrakerError, ValueError, KeyError, TypeError, AttributeError):
         pass  # Klipper isn't up yet: found all the same, just without a name to suggest
     return found

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Cable, ExternalLink, Lock, Printer, StickyNote, Wifi, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Cable, ExternalLink, Lock, Printer, ScanSearch, StickyNote, Wifi, Wrench } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, toolButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
@@ -9,6 +9,7 @@ import { Badge, Row } from "../components/common/ui.jsx";
 import { writeStored } from "../lib/storage.js";
 import { nameCollator } from "../models/modelSort.js";
 import { AddPrinterForm } from "./PrinterForms.jsx";
+import { ScanPrintersDialog } from "./ScanPrintersDialog.jsx";
 import { notesHint } from "../lib/format.js";
 
 const PRINTER_SORT_KEY = "farmhand.printerSort";
@@ -57,6 +58,7 @@ const COLUMNS = "1fr 1fr 120px 140px 140px 90px"; // name, type, web UI, wired I
 export function PrinterList({ setPath }) {
   const { printers, bundlesForPrinter } = useData();
   const [addPrinterOpen, setAddPrinterOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   // The printer list's order: a column (SORTS) and "asc" | "desc", remembered in this browser
   const [printerSort, setPrinterSortState] = useState(loadSort);
   // a column's arrow: the first click sorts by it A→Z (or low to high), the next reverses it
@@ -68,7 +70,11 @@ export function PrinterList({ setPath }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 14 }}>
+        <button onClick={() => setScanOpen(true)} style={toolButton(13)} title="Find Klipper printers on your network that aren't in Farmhand yet">
+          <ScanSearch size={13} />
+          Scan network
+        </button>
         <button
           onClick={() => setAddPrinterOpen(true)}
           style={toolButton(13)}
@@ -77,6 +83,11 @@ export function PrinterList({ setPath }) {
           Add printer
         </button>
       </div>
+      {scanOpen && (
+        <Modal title="Scan the network for printers" width={640} closeOnBackdrop={false} onClose={() => setScanOpen(false)}>
+          <ScanPrintersDialog onClose={() => setScanOpen(false)} />
+        </Modal>
+      )}
       {addPrinterOpen && (
         <Modal title="Add printer" onClose={() => setAddPrinterOpen(false)}>
           <AddPrinterForm onClose={() => setAddPrinterOpen(false)} />

@@ -183,15 +183,17 @@ class PrinterOut(BaseModel):
 
 
 class DiscoveredPrinterOut(BaseModel):
-    """A Moonraker found by a network scan that isn't in Farmhand yet. Nothing is added until the user picks it."""
+    """A printer found by a network scan that isn't in Farmhand yet. Nothing is added until the user picks it."""
 
     ip: str
-    moonraker_url: str
-    mainsail_url: str
-    moonraker_version: str | None = None
-    klippy_state: str | None = None  # ready | startup | shutdown | error | disconnected
+    connection_type: str  # what POST /printers is given for it: "moonraker" (more kinds of scanner later)
+    address: str  # where Farmhand would reach it, e.g. http://10.0.6.21:7125
+    web_url: str | None = None  # its own web page (Mainsail / Fluidd)
     hostname: str | None = None  # the machine's own name, a suggestion for the printer's
-    needs_api_key: bool = False  # it answered but refused: it wants a Moonraker API key
+    firmware: str | None = None  # "Klipper" | "Kalico"; None when it wouldn't say (it wants an API key)
+    version: str | None = None  # of the API it answered on (Moonraker's version)
+    state: str | None = None  # e.g. Klipper's: ready | startup | shutdown | error | disconnected
+    needs_api_key: bool = False  # it answered but refused: it wants an API key
 
 
 class PrinterDecommission(BaseModel):

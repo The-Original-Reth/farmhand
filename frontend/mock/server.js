@@ -117,6 +117,35 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ the farm
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
+  // A network scan (before /printers/:id, which would take "discover" for an id): a few made-up printers at fixed
+  // places in the range, skipping addresses the farm's printers have. Two share MainsailOS's default hostname.
+  on("GET", "/printers/discover", async (_, __, q) => {
+    const cidr = (q.get("cidr") || "").trim();
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(cidr);
+    if (cidr.includes(":")) throw new HttpError(422, "Only IPv4 ranges can be scanned, like 192.168.1.0/24.");
+    if (!m || m.slice(1, 5).some((o) => Number(o) > 255) || Number(m[5] ?? 32) > 32) throw new HttpError(422, `'${cidr}' isn't a network range. Write it like 192.168.1.0/24.`);
+    const bits = Number(m[5] ?? 32);
+    if (2 ** (32 - bits) > 1024) throw new HttpError(422, `That range has ${2 ** (32 - bits)} addresses. Scan 1024 or fewer at a time (a /22 or smaller).`);
+    await new Promise((done) => setTimeout(done, 2000)); // a real scan of a /24 takes a few seconds
+    const start = (m.slice(1, 5).reduce((n, o) => n * 256 + Number(o), 0) >>> (32 - bits)) * 2 ** (32 - bits);
+    const ipAt = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join(".");
+    const known = new Set(farm.printers.flatMap((p) => [p.wired_ip, p.wireless_ip]).filter(Boolean));
+    const sample = [
+      [31, "mainsailos", "Klipper", false],
+      [32, "mainsailos", "Klipper", false],
+      [40, "trident-300", "Kalico", false],
+      [77, null, null, true],
+    ];
+    return sample
+      .filter(([offset]) => offset < 2 ** (32 - bits) - (bits < 31 ? 1 : 0) && !known.has(ipAt(start + offset)))
+      .map(([offset, hostname, firmware, needsKey]) => {
+        const ip = ipAt(start + offset);
+        return {
+          ip, connection_type: "moonraker", address: `http://${ip}:7125`, web_url: `http://${ip}/`, hostname, firmware,
+          version: needsKey ? null : "v0.9.3", state: needsKey ? null : "ready", needs_api_key: needsKey,
+        };
+      });
+  });
   on("GET", "/printers/:id", ({ id }) => printerOut(printer(id)));
   on("POST", "/printers", (_, body) => {
     if (!body.name?.trim()) throw new HttpError(422, "A printer needs a name");

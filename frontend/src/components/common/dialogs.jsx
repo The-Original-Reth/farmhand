@@ -44,13 +44,14 @@ export function DeleteWarning({ children }) {
   return <div style={{ color: c.amber, marginTop: 8 }}>{children}</div>;
 }
 
-// A dialog over the page: a title bar with a close button, and its content. Clicking outside it closes it.
-export function Modal({ title, onClose, children, width = 420 }) {
+// A dialog over the page: a title bar with a close button, and its content. Clicking outside it closes it, unless
+// closeOnBackdrop is false (a dialog with work under way that only its own Cancel should end).
+export function Modal({ title, onClose, children, width = 420, closeOnBackdrop = true }) {
   return (
     <div
       onClick={(e) => {
         e.stopPropagation();
-        onClose();
+        if (closeOnBackdrop) onClose();
       }}
       style={{
         position: "fixed",

@@ -37,8 +37,9 @@ def test_finds_the_moonrakers_in_the_range_and_skips_known_printers(api, network
     r = api.get("/printers/discover", params={"cidr": "10.0.6.0/24"})
     assert r.status_code == 200
     assert r.json() == [{
-        "ip": "10.0.6.40", "moonraker_url": "http://10.0.6.40:7125", "mainsail_url": "http://10.0.6.40/",
-        "moonraker_version": "v0.9.3-fake", "klippy_state": "ready", "hostname": "trident", "needs_api_key": False,
+        "ip": "10.0.6.40", "connection_type": "moonraker", "address": "http://10.0.6.40:7125",
+        "web_url": "http://10.0.6.40/", "hostname": "trident", "firmware": "Klipper", "version": "v0.9.3-fake",
+        "state": "ready", "needs_api_key": False,
     }]
     assert "10.0.6.21" not in asked and "10.0.6.22" not in asked  # known printers aren't even asked
     assert len(api.get("/printers").json()) == 2  # nothing was added
@@ -50,7 +51,30 @@ def test_a_moonraker_that_wants_an_api_key_is_still_found(api, network):
     hosts["192.168.1.5"].api_key = "secret"
 
     found = api.get("/printers/discover", params={"cidr": "192.168.1.0/28"}).json()
-    assert [(f["ip"], f["needs_api_key"], f["moonraker_version"]) for f in found] == [("192.168.1.5", True, None)]
+    assert [(f["ip"], f["needs_api_key"], f["firmware"]) for f in found] == [("192.168.1.5", True, None)]
+
+
+def test_kalico_is_told_apart_from_klipper(api, network):
+    hosts, _ = network
+    hosts["10.0.0.2"], hosts["10.0.0.3"] = FakeMoonraker(), FakeMoonraker()
+    hosts["10.0.0.3"].app = "Kalico"
+    found = api.get("/printers/discover", params={"cidr": "10.0.0.0/29"}).json()
+    assert [(f["ip"], f["firmware"]) for f in found] == [("10.0.0.2", "Klipper"), ("10.0.0.3", "Kalico")]
+
+
+def test_each_address_goes_to_the_first_scanner_that_knows_it(api, network, monkeypatch):
+    from app.services import printer_discovery
+
+    class OctoPrint:  # a later kind of scanner, the way one plugs in
+        @staticmethod
+        def probe(ip):
+            return {"connection_type": "octoprint", "address": f"http://{ip}"} if ip in ("10.0.0.2", "10.0.0.3") else None
+
+    hosts, _ = network
+    hosts["10.0.0.2"] = FakeMoonraker()
+    monkeypatch.setattr(printer_discovery, "SCANNERS", [*printer_discovery.SCANNERS, OctoPrint])
+    found = api.get("/printers/discover", params={"cidr": "10.0.0.0/29"}).json()
+    assert [(f["ip"], f["connection_type"]) for f in found] == [("10.0.0.2", "moonraker"), ("10.0.0.3", "octoprint")]
 
 
 def test_a_single_address_can_be_scanned(api, network):

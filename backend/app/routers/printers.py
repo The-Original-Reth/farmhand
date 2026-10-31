@@ -36,7 +36,7 @@ def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
 # Before /{printer_id}, or "discover" would be taken for a printer id. A GET, since it changes nothing.
 @router.get("/discover", response_model=list[DiscoveredPrinterOut])
 def discover_printers(cidr: str = Query(..., description="The range to scan, e.g. 192.168.1.0/24"), db: Session = Depends(get_db)):
-    """Klipper printers (Moonraker on port 7125) in the range that aren't in Farmhand yet. Nothing is added."""
+    """Printers in the range that aren't in Farmhand yet (Klipper / Kalico, by their Moonraker). Nothing is added."""
     with answer_errors():
         return printer_discovery.scan(db, cidr)
 

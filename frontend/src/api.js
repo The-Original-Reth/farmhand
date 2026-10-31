@@ -192,6 +192,21 @@ const fileTypeFor = ({ name, file }) => {
   return typeFromExt(ext(name)) || "STL";
 };
 
+// The printers in a network range (e.g. "192.168.1.0/24") that aren't in Farmhand yet. Nothing is added; `signal`
+// lets the dialog stop waiting (the scan itself runs to its end on the server).
+export const discoverPrinters = async (cidr, { signal } = {}) =>
+  (await request(`/printers/discover?cidr=${encodeURIComponent(cidr)}`, { signal })).map((f) => ({
+    ip: f.ip,
+    hostname: f.hostname || "",
+    connectionType: f.connection_type,
+    address: f.address,
+    webUrl: f.web_url || null,
+    firmware: f.firmware || null, // "Klipper" | "Kalico"; null when it wouldn't say
+    version: f.version || null,
+    state: f.state || null,
+    needsApiKey: !!f.needs_api_key,
+  }));
+
 // The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter
 export const createPrinter = ({
   name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,

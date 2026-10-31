@@ -22,6 +22,7 @@ class FakeMoonraker:
         self.api_key: str | None = None  # when set, requests without this X-Api-Key are refused
         self.down = False  # True: behaves like a printer that's switched off
         self.hostname = "mainsail"  # the machine's name, as Klipper's /printer/info gives it
+        self.app = "Klipper"  # ...and what it says it is (a Kalico printer says "Kalico")
         self.requests: list[tuple[str, str]] = []
         # A power meter like a smart plug over MQTT: None = the printer has none (and no [sensor] at all)
         self.meter_kwh: float | None = None
@@ -67,7 +68,7 @@ class FakeMoonraker:
         if path == "/server/info":
             return self._ok({"klippy_state": "ready", "moonraker_version": "v0.9.3-fake"})
         if path == "/printer/info":
-            return self._ok({"state": "ready", "hostname": self.hostname})
+            return self._ok({"state": "ready", "hostname": self.hostname, "app": self.app, "software_version": "v0.12.0-fake"})
         if path == "/server/history/totals":
             aux = []
             if hasattr(self, "energy_total"):
