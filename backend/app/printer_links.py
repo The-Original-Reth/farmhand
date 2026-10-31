@@ -17,10 +17,18 @@ RECHECK_WIRED = 120.0  # seconds a fall back to the Wi-Fi IP lasts before the wi
 _answered: dict[tuple[str, int], tuple[str, float]] = {}
 
 
-def remember(kind: str, printer_id, base: str) -> None:
-    """`base` (one of the printer's addresses, e.g. http://10.0.6.21:7125) answered just now."""
-    if printer_id is not None:
-        _answered[(kind, printer_id)] = (base, time.monotonic())
+def remember(kind: str, printer_id, base: str, *, fell_back: bool = False) -> None:
+    """
+    `base` (one of the printer's addresses, e.g. http://10.0.6.21:7125) answered just now; `fell_back`: after an address
+    before it (its cable) couldn't be reached. The time kept is when it last fell back, not this answer's: a printer
+    asked every minute over Wi-Fi would otherwise never get to try its cable again, and one whose cable is still out
+    when it's tried again stays on Wi-Fi another RECHECK_WIRED rather than waiting on the cable at every request.
+    """
+    if printer_id is None:
+        return
+    key = (kind, printer_id)
+    if fell_back or key not in _answered or _answered[key][0] != base:
+        _answered[key] = (base, time.monotonic())
 
 
 def answered(kind: str, printer_id, bases: list[str]) -> str | None:
