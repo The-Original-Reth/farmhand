@@ -441,9 +441,12 @@ function FarmhandApp() {
             rel="noreferrer"
             data-testid="elves-logo"
             title="3D Printing Elves (opens their website in a new tab)"
-            style={{ display: "block", padding: "14px 14px 0" }}
+            style={{ display: "block", padding: "14px 14px 0", textDecoration: "none" }}
           >
             <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
+            <span data-testid="elves-thanks" style={{ display: "block", width: 150, marginTop: 6, textAlign: "center", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
+              Your support is appreciated
+            </span>
           </a>
         </div>
         {MOCKUP && <MockupBadge />}
