@@ -8,9 +8,9 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    DefaultSubPrinterIn, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
+    DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
 )
-from ..services import bundle_service, printer_service, sub_printer_service
+from ..services import bundle_service, printer_discovery, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -31,6 +31,14 @@ def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
     if link.get("connection_type") == "moonraker" and len(link) == 1:
         return printer  # the default: nothing more to set
     return printer_service.update_printer(db, printer.id, link)
+
+
+# Before /{printer_id}, or "discover" would be taken for a printer id. A GET, since it changes nothing.
+@router.get("/discover", response_model=list[DiscoveredPrinterOut])
+def discover_printers(cidr: str = Query(..., description="The range to scan, e.g. 192.168.1.0/24"), db: Session = Depends(get_db)):
+    """Klipper printers (Moonraker on port 7125) in the range that aren't in Farmhand yet. Nothing is added."""
+    with answer_errors():
+        return printer_discovery.scan(db, cidr)
 
 
 @router.get("/{printer_id}", response_model=PrinterOut)

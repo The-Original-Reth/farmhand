@@ -182,6 +182,18 @@ class PrinterOut(BaseModel):
     default_sub_printer_id: int | None = None  # the one its uploads start on (none: Farmhand guesses from the preset)
 
 
+class DiscoveredPrinterOut(BaseModel):
+    """A Moonraker found by a network scan that isn't in Farmhand yet. Nothing is added until the user picks it."""
+
+    ip: str
+    moonraker_url: str
+    mainsail_url: str
+    moonraker_version: str | None = None
+    klippy_state: str | None = None  # ready | startup | shutdown | error | disconnected
+    hostname: str | None = None  # the machine's own name, a suggestion for the printer's
+    needs_api_key: bool = False  # it answered but refused: it wants a Moonraker API key
+
+
 class PrinterDecommission(BaseModel):
     decommissioned: bool
 

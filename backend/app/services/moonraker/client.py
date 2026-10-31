@@ -58,6 +58,36 @@ def server_info(printer: Printer) -> dict:
     return {"klippy_state": info.get("klippy_state"), "moonraker_version": info.get("moonraker_version")}
 
 
+PROBE_TIMEOUT = httpx.Timeout(1.5, connect=0.5)  # a network scan asks hundreds of addresses; most aren't there
+
+
+def probe(base: str) -> dict | None:
+    """
+    Is there a Moonraker at `base` (e.g. http://10.0.6.21:7125)? Its version, Klipper's state and the machine's
+    hostname when there is; None when nothing there answers like Moonraker. One that wants an API key still counts:
+    the printer is there, it just needs the key (needs_api_key).
+    """
+    try:
+        r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/server/info",
+                                 transport=transport, timeout=PROBE_TIMEOUT)
+    except MoonrakerError:
+        return None
+    if r.status_code in (401, 403):
+        return {"needs_api_key": True}
+    try:
+        info = r.json()["result"]
+        found = {"moonraker_version": info["moonraker_version"], "klippy_state": info.get("klippy_state")}
+    except (ValueError, KeyError, TypeError):
+        return None
+    try:
+        r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/printer/info",
+                                 transport=transport, timeout=PROBE_TIMEOUT)
+        found["hostname"] = r.json()["result"].get("hostname")
+    except (MoonrakerError, ValueError, KeyError, TypeError, AttributeError):
+        pass  # Klipper isn't up yet: found all the same, just without a name to suggest
+    return found
+
+
 def history_totals(printer: Printer) -> tuple[dict, list]:
     """(job_totals, auxiliary_totals): the second holds e.g. a power meter's energy summed over all prints."""
     result = _call(printer, "GET", "/server/history/totals")
