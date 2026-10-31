@@ -5,6 +5,7 @@ import datetime as dt
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .. import printer_links
 from ..database import Base
 from ..notes import HasNotes
 from ..timeutil import utc_iso
@@ -124,10 +125,11 @@ class Printer(HasNotes, Base):
 
     @property
     def prusalink_url(self) -> str | None:
-        """Where its PrusaLink is: the address set for it, else port 80 of its IP (wired preferred). None = no IP."""
-        if self.prusalink_url_override:
-            return self.prusalink_url_override.rstrip("/")
-        return f"http://{_host(self.preferred_ip)}" if self.preferred_ip else None
+        """
+        Where its PrusaLink is: the address set for it, else port 80 of its IP, the wired one unless it answered at its
+        Wi-Fi one last (printer_links). None = no IP.
+        """
+        return printer_links.current("prusalink", self.id, self.prusalink_urls)
 
     @property
     def prusalink_urls(self) -> list[str]:
@@ -153,10 +155,11 @@ class Printer(HasNotes, Base):
 
     @property
     def moonraker_url(self) -> str | None:
-        """Where its Moonraker is: the address set for it, else port 7125 of its IP (wired preferred). None = no IP."""
-        if self.moonraker_url_override:
-            return self.moonraker_url_override.rstrip("/")
-        return f"http://{_host(self.preferred_ip)}:7125" if self.preferred_ip else None
+        """
+        Where its Moonraker is: the address set for it, else port 7125 of its IP, the wired one unless it answered at its
+        Wi-Fi one last (printer_links). None = no IP.
+        """
+        return printer_links.current("moonraker", self.id, self.moonraker_urls)
 
     @property
     def moonraker_urls(self) -> list[str]:
@@ -170,7 +173,7 @@ class Printer(HasNotes, Base):
 
     @property
     def mainsail_url(self) -> str | None:
-        """Mainsail is served on port 80 of the same machine as Moonraker."""
+        """Mainsail is served on port 80 of the same machine as Moonraker (at the IP Moonraker answers at)."""
         return mainsail_for(self.moonraker_url)
 
     @property

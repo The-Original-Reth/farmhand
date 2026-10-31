@@ -608,3 +608,42 @@ def test_the_connection_and_cameras_follow_the_address_that_answered(api, fake, 
     assert (status["moonraker_url"], status["mainsail_url"]) == ("http://10.0.6.121:7125", "http://10.0.6.121/")
     cams = api.get(f"/printers/{pid}/webcams").json()["webcams"]
     assert cams[0]["stream_url"] == "http://10.0.6.121/webcam/?action=stream"  # the camera on the Wi-Fi side too
+
+
+def test_back_on_the_cable_once_it_works_again(db_session, fake, monkeypatch):
+    from app import printer_links
+
+    p = _on_both(db_session)
+    _two_ips(monkeypatch, fake)  # the cable's out
+    mr.server_info(p)
+    assert mr.answered_at(p) == "http://10.0.6.121:7125"
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(fake.handle))  # plugged back in
+    mr.server_info(p)
+    assert mr.answered_at(p) == "http://10.0.6.121:7125"  # still on Wi-Fi for a while: no need to check every time
+    monkeypatch.setattr(printer_links, "RECHECK_WIRED", 0.0)  # that while is over
+    mr.server_info(p)
+    assert mr.answered_at(p) == "http://10.0.6.21:7125"  # wired again
+
+
+def test_the_mainsail_button_follows_the_address_that_answered(api, fake, monkeypatch):
+    pid = api.post("/printers", json={"name": "V2 BOG", "wired_ip": "10.0.6.21", "wireless_ip": "10.0.6.121"}).json()["id"]
+    printer = lambda: next(p for p in api.get("/printers").json() if p["id"] == pid)  # noqa: E731
+    assert printer()["mainsail_url"] == "http://10.0.6.21/"  # wired, to begin with
+    _two_ips(monkeypatch, fake)
+    api.get(f"/printers/{pid}/moonraker")
+    assert (printer()["moonraker_url"], printer()["mainsail_url"]) == ("http://10.0.6.121:7125", "http://10.0.6.121/")
+
+
+def test_a_camera_written_out_with_the_printers_wired_ip_follows_it_to_wifi(api, fake, monkeypatch):
+    pid = api.post("/printers", json={"name": "V2 BOG", "wired_ip": "10.0.6.21", "wireless_ip": "10.0.6.121"}).json()["id"]
+    fake.webcams = [
+        {"name": "Bed", "enabled": True, "service": "webrtc-camerastreamer", "stream_url": "http://10.0.6.21:8080/webrtc",
+         "snapshot_url": "http://10.0.6.21/webcam/?action=snapshot"},
+        {"name": "Room", "enabled": True, "service": "mjpegstreamer", "stream_url": "http://10.0.6.99/stream"},  # its own
+    ]
+    _two_ips(monkeypatch, fake)
+    cams = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert [(c["stream_url"], c["snapshot_url"]) for c in cams] == [
+        ("http://10.0.6.121:8080/webrtc", "http://10.0.6.121/webcam/?action=snapshot"),
+        ("http://10.0.6.99/stream", None),
+    ]

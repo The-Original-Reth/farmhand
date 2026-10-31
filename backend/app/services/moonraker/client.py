@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from typing import BinaryIO
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
 from ...models import Printer
-from ...models.printer import mainsail_for
+from ... import printer_links
 from .. import printer_http
 from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
 
@@ -19,15 +19,9 @@ class MoonrakerError(printer_http.PrinterLinkError):
     """kind: no_address | unreachable | unauthorized | not_found | bad_response"""
 
 
-# Where each printer's Moonraker last answered (printer id -> address), asked first next time: a Klipper machine on
-# cable and Wi-Fi answers at both its IPs, and with one of them down the other is used without waiting on the dead one
-_answered_at: dict[int, str] = {}
-
-
 def answered_at(printer: Printer) -> str | None:
-    """The address the printer's Moonraker answered at last (None until it has, or when it's no longer one of its)."""
-    last = _answered_at.get(printer.id)
-    return last if last in printer.moonraker_urls else None
+    """The address the printer's Moonraker answered at last, while that counts (see printer_links)."""
+    return printer_links.answered("moonraker", printer.id, printer.moonraker_urls)
 
 
 def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None,
@@ -43,7 +37,7 @@ def _call(printer: Printer, method: str, path: str, *, params: dict | None = Non
     if printer.connection_row and printer.connection_row.api_key:
         headers["X-Api-Key"] = printer.connection_row.api_key
     r, base = printer_http.request_first_answering(
-        MoonrakerError, "Moonraker", bases, _answered_at, printer.id, method, path,
+        MoonrakerError, "Moonraker", "moonraker", printer.id, bases, method, path,
         transport=transport, timeout=timeout, params=params, json=json, files=files, data=data, headers=headers,
     )
     if r.status_code in (401, 403):
@@ -154,6 +148,20 @@ def live_print(printer: Printer) -> dict | None:
 MJPEG_SERVICES = {"mjpegstreamer", "uv4l-mjpeg", "ipstream"}
 
 
+def _on_answering_ip(printer: Printer, url: str) -> str:
+    """
+    A camera address written out whole in Mainsail with one of the printer's own IPs in it, moved to the IP the printer
+    answers at now (its Wi-Fi one when its cable is out). One at any other address (a camera of its own) is left alone.
+    """
+    parts = urlsplit(url)
+    now = urlsplit(printer.moonraker_url or "").hostname
+    own = {ip for ip in (printer.wired_ip, printer.wireless_ip) if ip}
+    if not now or parts.hostname not in own or parts.hostname == now:
+        return url
+    host = f"[{now}]" if ":" in now else now
+    return urlunsplit(parts._replace(netloc=host + (f":{parts.port}" if parts.port else "")))
+
+
 def webcams(printer: Printer) -> list[dict]:
     """
     The cameras set up in the printer's Mainsail / Moonraker (enabled ones only), with their stream and snapshot
@@ -161,13 +169,13 @@ def webcams(printer: Printer) -> list[dict]:
     (on whichever of its IPs it answered at).
     """
     listed = _call(printer, "GET", "/server/webcams/list").get("webcams") or []
-    base = mainsail_for(answered_at(printer) or printer.moonraker_url) or ""
+    base = printer.mainsail_url or ""  # at the IP Moonraker just answered at
     out = []
     for cam in listed:
         if cam.get("enabled") is False:
             continue
-        stream = urljoin(base, cam["stream_url"]) if cam.get("stream_url") else None
-        snapshot = urljoin(base, cam["snapshot_url"]) if cam.get("snapshot_url") else None
+        stream = _on_answering_ip(printer, urljoin(base, cam["stream_url"])) if cam.get("stream_url") else None
+        snapshot = _on_answering_ip(printer, urljoin(base, cam["snapshot_url"])) if cam.get("snapshot_url") else None
         if not stream and not snapshot:
             continue
         service = cam.get("service") or "mjpegstreamer"

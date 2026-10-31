@@ -71,7 +71,7 @@ def live_status(printer_id: int, db: Session = Depends(get_db)):
             pass  # only for show
     except pl.PrusaLinkError as e:
         out.update(error=str(e), error_kind=e.kind)
-    out["prusalink_url"] = pl.answered_at(printer) or out["prusalink_url"]  # the one of its IPs it answered at
+    out["prusalink_url"] = printer.prusalink_url  # the one of its IPs it answered at just now
     out.update(sync_state(printer))
     return out
 
