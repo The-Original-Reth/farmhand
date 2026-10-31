@@ -130,6 +130,16 @@ class Printer(HasNotes, Base):
         return f"http://{_host(self.preferred_ip)}" if self.preferred_ip else None
 
     @property
+    def prusalink_urls(self) -> list[str]:
+        """
+        Every address its PrusaLink may answer at, in the order to try. A Prusa answers on its cable and its Wi-Fi
+        both, each at its own IP: so its wired IP, then its wireless one. An address set for it is the only one tried.
+        """
+        if self.prusalink_url_override:
+            return [self.prusalink_url_override.rstrip("/")]
+        return list(dict.fromkeys(f"http://{_host(ip)}" for ip in (self.wired_ip, self.wireless_ip) if ip))
+
+    @property
     def prusalink_username(self) -> str | None:
         return self.prusalink_row.username if self.prusalink_row else None
 

@@ -344,8 +344,10 @@ sub printer by the old name again. Parts are kept in the settings copy on the NA
 (Prusa Core One, MK4, XL…)**:
 - Moonraker: the address defaults to port 7125 of the printer's IP (wired preferred); an API key is only needed
   if Moonraker asks for one.
-- PrusaLink: the address defaults to the printer's IP; the username is usually `maker`, and the password is
-  shown on the printer (Settings › Network › PrusaLink). A **Buddy3D camera IP** can be given too (see "Monitor").
+- PrusaLink: the address defaults to the printer's IP. A Prusa on both a cable and Wi-Fi answers at both its IPs:
+  give its **Wired IP** and **Wireless IP** and leave the PrusaLink address blank, and Farmhand uses the wired one,
+  or the Wi-Fi one when the wired one can't be reached (it remembers which answered). An address typed in is the only
+  one used. The username is usually `maker`, and the password is shown on the printer (Settings › Network › PrusaLink). A **Buddy3D camera IP** can be given too (see "Monitor").
 API keys and passwords are stored as-is (they're needed for every call) but never sent back to the browser or
 written to the copy on the NAS.
 

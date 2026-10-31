@@ -18,17 +18,41 @@ class PrusaLinkError(printer_http.PrinterLinkError):
     """kind: no_address | unreachable | unauthorized | not_found | busy | bad_response"""
 
 
+# Where each printer's PrusaLink last answered (printer id -> address), asked first next time: a Prusa on cable and
+# Wi-Fi answers at both its IPs, and with one of them down the other is used without trying the dead one each time
+_answered_at: dict[int, str] = {}
+
+
+def answered_at(printer: Printer) -> str | None:
+    """The address the printer's PrusaLink answered at last (None until it has, or when it's no longer one of its)."""
+    last = _answered_at.get(printer.id)
+    return last if last in printer.prusalink_urls else None
+
+
 def _call(printer: Printer, method: str, path: str, *, content: bytes | FileChunks | None = None, headers: dict | None = None,
           timeout: httpx.Timeout = TIMEOUT) -> httpx.Response:
-    base = printer.prusalink_url
-    if not base:
+    bases = printer.prusalink_urls
+    if not bases:
         raise PrusaLinkError("no_address", "This printer has no IP address or PrusaLink address set.")
+    last = answered_at(printer)
+    if last:
+        bases = [last, *(b for b in bases if b != last)]
     link = printer.prusalink_row
     auth = httpx.DigestAuth(link.username or "maker", link.password or "") if link and link.password else None
-    r = printer_http.request(
-        PrusaLinkError, "PrusaLink", base, method, path, transport=transport, timeout=timeout, auth=auth,
-        content=content, headers=headers,
-    )
+    for i, base in enumerate(bases):
+        try:
+            r = printer_http.request(
+                PrusaLinkError, "PrusaLink", base, method, path, transport=transport, timeout=timeout, auth=auth,
+                content=content, headers=headers,
+            )
+        except PrusaLinkError as e:
+            # its other IP, but only when this one couldn't be reached at all: a request that got there and then went
+            # quiet may have been carried out (a print started), and mustn't happen twice
+            if e.never_sent and i < len(bases) - 1:
+                continue
+            raise
+        _answered_at[printer.id] = base
+        break
     if r.status_code == 401:
         raise PrusaLinkError(
             "unauthorized",

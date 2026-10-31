@@ -10,7 +10,8 @@ import { FieldSelect, TextField } from "../components/common/fields.jsx";
 
 // How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink", moonrakerUrl,
 // apiKey, removeKey, prusalinkUrl, prusalinkUsername, prusalinkPassword, cameraAddress }. saved: the printer as it is (Edit), for
-// saying a key or password is already saved; null when adding. ip: the IP typed above, for the default addresses.
+// saying a key or password is already saved; null when adding. ips: the wired and wireless IPs typed above (either may be
+// blank), for the default addresses: Moonraker's is the first, and PrusaLink is tried at both, wired first.
 const CONNECTIONS = [
   { value: "moonraker", label: "Mainsail (Moonraker / Klipper: Voron...)" },
   { value: "prusalink", label: "PrusaLink (Prusa Core One, MK4, XL...)" },
@@ -37,8 +38,10 @@ const connectionFields = (conn) =>
       }
     : { connectionType: "moonraker", moonrakerUrl: conn.moonrakerUrl.trim(), moonrakerApiKey: conn.removeKey ? "" : conn.apiKey.trim() || undefined };
 
-function ConnectionFields({ conn, setConn, ip, saved = null }) {
+function ConnectionFields({ conn, setConn, ips, saved = null }) {
   const set = (key) => (value) => setConn((c) => ({ ...c, [key]: value }));
+  const [ip, otherIp] = ips.filter(Boolean);
+  const both = otherIp && otherIp !== ip;
   return (
     <>
       <FieldSelect label="Connection" value={conn.type} onChange={set("type")} options={CONNECTIONS} />
@@ -48,7 +51,11 @@ function ConnectionFields({ conn, setConn, ip, saved = null }) {
             label="PrusaLink address (optional)"
             value={conn.prusalinkUrl}
             onChange={set("prusalinkUrl")}
-            placeholder={ip ? `Leave blank to use http://${ip}` : "Add an IP above, or give the address here"}
+            placeholder={
+              !ip ? "Add an IP above, or give the address here"
+                : both ? `Leave blank to use http://${ip}, or http://${otherIp} when that doesn't answer`
+                  : `Leave blank to use http://${ip}`
+            }
           />
           <TextField label="PrusaLink username" value={conn.prusalinkUsername} onChange={set("prusalinkUsername")} placeholder="maker" />
           <TextField
@@ -117,7 +124,7 @@ export function AddPrinterForm({ onClose }) {
       <TextField label="Type (optional)" value={kind} onChange={setKind} placeholder="e.g. Prusa Core One" />
       <TextField label="Wired IP (optional)" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP (optional)" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
-      <ConnectionFields conn={conn} setConn={setConn} ip={wiredIp.trim() || wirelessIp.trim()} />
+      <ConnectionFields conn={conn} setConn={setConn} ips={[wiredIp.trim(), wirelessIp.trim()]} />
       <div style={uiText(11, c.textFaint, { marginBottom: 14, lineHeight: 1.5 })}>
         The name is the printer's unique key, and it's what a 3MF upload is matched against — it has to be spelled exactly like the printer profile your slicer put in the file (including capitalization and spaces).
       </div>
@@ -159,7 +166,7 @@ export function EditPrinterForm({ printer, onClose }) {
       <TextField label="Type" value={kind} onChange={setKind} placeholder="e.g. Prusa Core One" />
       <TextField label="Wired IP" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
-      <ConnectionFields conn={conn} setConn={setConn} ip={wiredIp.trim() || wirelessIp.trim()} saved={printer} />
+      <ConnectionFields conn={conn} setConn={setConn} ips={[wiredIp.trim(), wirelessIp.trim()]} saved={printer} />
       <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginBottom: 14, cursor: "pointer" }}>
         <input
           type="checkbox"
