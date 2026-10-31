@@ -434,6 +434,17 @@ function FarmhandApp() {
           <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
             An archive: nothing here re-slices, and a print only goes to a printer when you send it.
           </div>
+          {/* the 3D Printing Elves logo (frontend/public), their website in a new tab when clicked */}
+          <a
+            href="https://www.3dprintingelves.org"
+            target="_blank"
+            rel="noreferrer"
+            data-testid="elves-logo"
+            title="3D Printing Elves (opens their website in a new tab)"
+            style={{ display: "block", padding: "14px 14px 0" }}
+          >
+            <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
+          </a>
         </div>
         {MOCKUP && <MockupBadge />}
       </div>
