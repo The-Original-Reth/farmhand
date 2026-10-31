@@ -43,8 +43,10 @@ def _links(ip: str, network: dict) -> dict:
     ips: dict[str, str] = {}
     link = None
     for name, iface in network.items():
+        if not isinstance(name, str) or not isinstance(iface, dict):
+            continue  # not an interface as Moonraker lists one
         kind = _kind(name)
-        addresses = [a.get("address") for a in (iface or {}).get("ip_addresses") or []
+        addresses = [a.get("address") for a in iface.get("ip_addresses") or []
                      if isinstance(a, dict) and a.get("family") == "ipv4" and not a.get("is_link_local")]
         if ip in addresses:
             link = kind

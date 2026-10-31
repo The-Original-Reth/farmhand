@@ -118,7 +118,30 @@ def test_a_printer_known_by_its_other_ip_is_skipped(api, network):
     assert api.get("/printers/discover", params={"cidr": "10.0.0.0/29"}).json() == []
 
 
-@pytest.mark.parametrize("cidr", ["not-a-range", "10.0.0.0/21", "fd00::/120"])
+@pytest.mark.parametrize("cidr", ["not-a-range", "10.0.0.0/21", "fd00::/120", "8.8.8.0/24", "1.1.1.1/32"])
 def test_ranges_that_cant_be_scanned_are_refused(api, network, cidr):
     r = api.get("/printers/discover", params={"cidr": cidr})
     assert r.status_code == 422 and isinstance(r.json()["detail"], str)
+
+
+def test_only_the_farms_own_network_can_be_scanned(api, network):
+    r = api.get("/printers/discover", params={"cidr": "8.8.8.0/24"})
+    assert r.status_code == 422 and "your own network" in r.json()["detail"]
+    for cidr in ("10.0.0.0/30", "172.16.0.0/30", "192.168.1.0/30"):
+        assert api.get("/printers/discover", params={"cidr": cidr}).status_code == 200
+
+
+def test_an_odd_answer_is_skipped_not_the_whole_scan(api, network, monkeypatch):
+    hosts, _ = network
+    hosts["10.0.0.2"] = FakeMoonraker()
+    hosts["10.0.0.2"].network_as_said = {"eth0": ["not", "an", "interface"], "wlan0": "nor this"}  # read past
+    hosts["10.0.0.3"] = FakeMoonraker()
+    hosts["10.0.0.4"] = FakeMoonraker()
+
+    from app.services.printer_discovery import moonraker as scanner
+    real = scanner.probe
+    monkeypatch.setattr(scanner, "probe", lambda ip: (_ for _ in ()).throw(RuntimeError("odd")) if ip == "10.0.0.4" else real(ip))
+
+    r = api.get("/printers/discover", params={"cidr": "10.0.0.0/29"})
+    assert r.status_code == 200
+    assert [f["ip"] for f in r.json()] == ["10.0.0.2", "10.0.0.3"]  # .2's odd interfaces read past; .4 skipped

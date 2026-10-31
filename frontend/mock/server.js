@@ -126,6 +126,9 @@ export function mockApi() {
     if (cidr.includes(":")) throw new HttpError(422, "Only IPv4 ranges can be scanned, like 192.168.1.0/24.");
     if (!m || m.slice(1, 5).some((o) => Number(o) > 255) || Number(m[5] ?? 32) > 32) throw new HttpError(422, `'${cidr}' isn't a network range. Write it like 192.168.1.0/24.`);
     const bits = Number(m[5] ?? 32);
+    const [a, b] = m.slice(1, 3).map(Number); // the farm's own network only, as the real API (is_private)
+    const own = a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+    if (!own || bits < 8) throw new HttpError(422, "Only your own network can be scanned: a range starting 10., 172.16 to 172.31, or 192.168.");
     if (2 ** (32 - bits) > 1024) throw new HttpError(422, `That range has ${2 ** (32 - bits)} addresses. Scan 1024 or fewer at a time (a /22 or smaller).`);
     await new Promise((done) => setTimeout(done, 2000)); // a real scan of a /24 takes a few seconds
     const start = (m.slice(1, 5).reduce((n, o) => n * 256 + Number(o), 0) >>> (32 - bits)) * 2 ** (32 - bits);

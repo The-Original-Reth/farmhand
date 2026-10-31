@@ -53,14 +53,15 @@ export function ScanPrintersDialog({ onClose }) {
   const stopped = useRef(false); // Cancel was pressed while adding
 
   // Leaving (Cancel, ✕) stops waiting for a scan, whose answer the server still finishes and is dropped, and stops
-  // adding after the printer being added now
-  useEffect(
-    () => () => {
+  // adding after the printer being added now. Opening clears that again: React may open a dialog, close it and open
+  // it once more (it does so on purpose while developing), and a stop left over from that would stop every add.
+  useEffect(() => {
+    stopped.current = false;
+    return () => {
       scanning.current?.abort();
       stopped.current = true;
-    },
-    [],
-  );
+    };
+  }, []);
   const cancel = onClose;
 
   const startScan = async () => {

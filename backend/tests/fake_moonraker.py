@@ -25,6 +25,7 @@ class FakeMoonraker:
         self.app = "Klipper"  # ...and what it says it is (a Kalico printer says "Kalico")
         # Its network interfaces, as /machine/system_info lists them: {name: [ipv4 address, ...]}; None = won't say
         self.interfaces: dict[str, list[str]] | None = {}
+        self.network_as_said: object | None = None  # when set, /machine/system_info lists this as its network, as is
         self.requests: list[tuple[str, str]] = []
         # A power meter like a smart plug over MQTT: None = the printer has none (and no [sensor] at all)
         self.meter_kwh: float | None = None
@@ -72,6 +73,8 @@ class FakeMoonraker:
         if path == "/printer/info":
             return self._ok({"state": "ready", "hostname": self.hostname, "app": self.app, "software_version": "v0.12.0-fake"})
         if path == "/machine/system_info":
+            if self.network_as_said is not None:
+                return self._ok({"system_info": {"network": self.network_as_said}})
             if self.interfaces is None:
                 return self._error(404, "Not Found")
             network = {name: {"mac_address": f"02:00:00:00:00:{i:02x}", "ip_addresses": [

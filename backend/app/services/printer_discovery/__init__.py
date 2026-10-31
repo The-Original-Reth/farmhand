@@ -13,6 +13,7 @@ answers what it found there, or None. Adding a kind is a new module and a line i
 from __future__ import annotations
 
 import ipaddress
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from ...models import Printer
 from . import moonraker
+
+log = logging.getLogger("farmhand.discovery")
 
 MAX_ADDRESSES = 1024  # a /22; a bigger range would take minutes and is more likely a typo
 WORKERS = 32
@@ -37,6 +40,9 @@ def scan(db: Session, cidr: str) -> list[dict]:
         raise ValueError(f"'{cidr}' isn't a network range. Write it like 192.168.1.0/24.") from None
     if net.version != 4:
         raise ValueError("Only IPv4 ranges can be scanned, like 192.168.1.0/24.")
+    if not net.is_private:
+        # the farm's own network only: a public range would have Farmhand knocking on strangers' machines
+        raise ValueError("Only your own network can be scanned: a range starting 10., 172.16 to 172.31, or 192.168.")
     if net.num_addresses > MAX_ADDRESSES:
         raise ValueError(f"That range has {net.num_addresses} addresses. Scan {MAX_ADDRESSES} or fewer at a time (a /22 or smaller).")
 
@@ -50,7 +56,11 @@ def scan(db: Session, cidr: str) -> list[dict]:
 
 def _probe(ip: str) -> dict | None:
     for scanner in SCANNERS:
-        found = scanner.probe(ip)
+        try:
+            found = scanner.probe(ip)
+        except Exception:  # noqa: BLE001 — one device answering oddly mustn't sink the whole scan: it's skipped
+            log.warning("Skipped %s: it answered %s's questions in a way that couldn't be read", ip, scanner.__name__, exc_info=True)
+            continue
         if found:
             return {"ip": ip, "hostname": None, "firmware": None, "version": None, "state": None, "web_url": None,
                     "needs_api_key": False, "link": None, "wired_ip": None, "wireless_ip": None, **found}
