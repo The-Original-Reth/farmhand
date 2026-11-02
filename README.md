@@ -236,6 +236,14 @@ sudo docker compose down -v
 
 **Power** — the whole farm's energy use (see "Power")
 
+**Tools** — a list of websites you use around the farm, each opening in a new tab. **Add** puts a new one at the end
+(an address without `https://` gets it added); each line has **Edit** and **Delete** at its end, and its handle on
+the left drags it to another place. Each change is saved at once. The list is kept on the server
+with the other settings, so every browser sees the same one. It starts out with Klipper guides and tools (the
+Esoterical CANBus and USB guides, A better print_start macro, TMC Autotune, Shake&Tune, Klippy Detective,
+energy usage monitoring, KIAUH, Moonraker Timelapse, and the Kalico, Klipper, KlipperScreen and Mainsail
+documentation); change them like any other.
+
 **Settings** — connecting a NAS (SMB or NFS) and choosing where STL and 3MF files go (see "Network storage"),
 and where a copy of Farmhand's settings and records is kept
 

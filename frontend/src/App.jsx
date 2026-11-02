@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Archive, Cctv, Layers, Palette, Printer, Settings, Zap } from "lucide-react";
+import { Archive, Cctv, Hammer, Layers, Palette, Printer, Settings, Zap } from "lucide-react";
 import { c, fs, ui } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance.js";
@@ -17,6 +17,7 @@ import { PrintersSection } from "./printers/PrintersSection.jsx";
 import { PowerSection } from "./power/PowerSection.jsx";
 import { MonitorSection } from "./monitor/MonitorSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
+import { ToolsSection } from "./tools/ToolsSection.jsx";
 
 function Crumb({ items, onJump }) {
   return (
@@ -54,6 +55,7 @@ const SECTIONS = [
   { key: "printers", label: "Printers", Icon: Printer },
   { key: "power", label: "Power", Icon: Zap },
   { key: "monitor", label: "Monitor", Icon: Cctv },
+  { key: "tools", label: "Tools", Icon: Hammer },
   { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
   { key: "appearance", label: "Appearance", Icon: Palette },
 ];
@@ -171,6 +173,7 @@ function FarmhandApp() {
   const [modelSort, setModelSort] = useState(loadModelSort);
   const [monitorOrder, setMonitorOrder] = useState([]); // the Monitor page's cameras as dragged into order (kept on the server)
   const [monitorMaxZoom, setMonitorMaxZoom] = useState(4); // how far in a Monitor camera can be zoomed
+  const [toolLinks, setToolLinks] = useState([]); // the Tools page's websites (kept on the server)
   const [saveState, setSaveState] = useState({ phase: "idle" }); // idle | saving | saved | error
   const pendingSave = useRef({});
   const saveTimer = useRef(null);
@@ -189,6 +192,7 @@ function FarmhandApp() {
     saveModelSort(sort);
     setMonitorOrder(Array.isArray(config.preferences?.monitor_order) ? config.preferences.monitor_order : []);
     setMonitorMaxZoom(config.preferences?.monitor_max_zoom || 4);
+    setToolLinks(Array.isArray(config.preferences?.tool_links) ? config.preferences.tool_links : []);
   };
   const loadServerConfig = () =>
     getConfig()
@@ -265,6 +269,11 @@ function FarmhandApp() {
   const saveMonitorOrder = async (next) => {
     const r = await saveConfig({ preferences: { monitor_order: next } });
     setMonitorOrder(r.config.preferences.monitor_order);
+  };
+  // The Tools page's Save, the same way: an error is shown there
+  const saveToolLinks = async (next) => {
+    const r = await saveConfig({ preferences: { tool_links: next } });
+    setToolLinks(r.config.preferences.tool_links);
   };
   const changeMonitorMaxZoom = (next) => {
     setMonitorMaxZoom(next);
@@ -507,6 +516,8 @@ function FarmhandApp() {
             <MonitorSection
               order={monitorOrder} onSave={saveMonitorOrder} maxZoom={monitorMaxZoom} onMaxZoom={changeMonitorMaxZoom}
             />
+          ) : section === "tools" ? (
+            <ToolsSection links={toolLinks} onSave={saveToolLinks} />
           ) : section === "appearance" ? (
             <AppearancePage
               appearance={preview || appearance}

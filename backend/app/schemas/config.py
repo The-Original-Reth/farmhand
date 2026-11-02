@@ -18,10 +18,16 @@ class SortData(BaseModel):
     dir: str
 
 
+class ToolLinkData(BaseModel):
+    name: str  # blank: the page shows the address
+    url: str
+
+
 class PreferencesData(BaseModel):
     model_sort: SortData
     monitor_order: list[str] = []
     monitor_max_zoom: int = 4
+    tool_links: list[ToolLinkData] = []  # the Tools page's websites, in order
 
 
 class ConfigData(BaseModel):

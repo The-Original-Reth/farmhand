@@ -30,9 +30,29 @@ MAX_FILE_BYTES = 1_000_000
 DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "auto"}
 # monitor_order: the Monitor page's cameras in the order they were dragged into, as "printer id:camera name"
 # monitor_max_zoom: how far in a camera can be zoomed on the Monitor page, one of MONITOR_ZOOMS
-DEFAULT_PREFERENCES = {"model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4}
+# tool_links: the websites listed on the Tools page, in the order given, each {"name", "url"} (url http or https).
+# Until a list is saved, the Klipper ones below are shown; a list saved empty stays empty.
+DEFAULT_TOOL_LINKS = [
+    {"name": "CANBus guide (Esoterical)", "url": "https://canbus.esoterical.online/"},
+    {"name": "USB guide (Esoterical)", "url": "https://usb.esoterical.online/"},
+    {"name": "A better print_start macro", "url": "https://abetterprintstartmacro.com/"},
+    {"name": "Klipper TMC Autotune", "url": "https://github.com/andrewmcgr/klipper_tmc_autotune"},
+    {"name": "Klippain Shake&Tune", "url": "https://github.com/Frix-x/klippain-shaketune"},
+    {"name": "Klippy Detective", "url": "https://klippydetective.com/"},
+    {"name": "Energy usage monitoring (Voron mods)", "url": "https://mjonuschat.github.io/voron-mods/docs/guides/energy-usage-monitoring-tracking/"},
+    {"name": "Kalico documentation", "url": "https://docs.kalico.gg/"},
+    {"name": "KIAUH (Klipper Installation And Update Helper)", "url": "https://github.com/dw-0/kiauh"},
+    {"name": "Klipper documentation", "url": "https://www.klipper3d.org/"},
+    {"name": "KlipperScreen documentation", "url": "https://klipperscreen.readthedocs.io/en/latest/"},
+    {"name": "Mainsail documentation", "url": "https://docs.mainsail.xyz/"},
+    {"name": "Moonraker Timelapse", "url": "https://github.com/mainsail-crew/moonraker-timelapse"},
+]
+DEFAULT_PREFERENCES = {
+    "model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4, "tool_links": DEFAULT_TOOL_LINKS,
+}
 MAX_MONITOR_CAMERAS = 500
 MONITOR_ZOOMS = (2, 3, 4, 6, 8)
+MAX_TOOL_LINKS = 200
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -76,7 +96,27 @@ def normalize_preferences(raw) -> dict:
         "monitor_order": _camera_keys(p.get("monitor_order")),
         "monitor_max_zoom": p["monitor_max_zoom"] if type(p.get("monitor_max_zoom")) is int and p["monitor_max_zoom"] in MONITOR_ZOOMS
         else DEFAULT_PREFERENCES["monitor_max_zoom"],
+        "tool_links": _tool_links(p.get("tool_links")),
     }
+
+
+def _tool_links(raw) -> list[dict]:
+    """The Tools page's websites: web addresses only (http or https), so a link can never run script; a blank name
+    is kept blank (the page shows the address instead). No list saved yet: the defaults."""
+    if not isinstance(raw, list):
+        return [dict(link) for link in DEFAULT_TOOL_LINKS]
+    links = raw
+    out: list[dict] = []
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        url = link.get("url").strip() if isinstance(link.get("url"), str) else ""
+        name = link.get("name").strip() if isinstance(link.get("name"), str) else ""
+        if re.match(r"^https?://[^\s/]+", url, re.IGNORECASE) and len(url) <= 2000 and len(name) <= 100:
+            out.append({"name": name, "url": url})
+        if len(out) >= MAX_TOOL_LINKS:
+            break
+    return out
 
 
 def _camera_keys(raw) -> list[str]:
