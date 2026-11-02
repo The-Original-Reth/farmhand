@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ExternalLink, GripVertical, Pencil, Plus } from "lucide-react";
 import { c } from "../theme.js";
 import { errorText } from "../api.js";
@@ -33,24 +33,42 @@ export function ToolsSection({ links = [], onSave }) {
   const [error, setError] = useState(null); // the last change the server didn't take
   const [dragging, setDragging] = useState(null); // the place of the line being dragged
   const [over, setOver] = useState(null); // the place it would be dropped into
-  const [shown, setShown] = useState(null); // a moved order while the server is saving it (null = as saved)
+  const [shown, setShown] = useState(null); // the list as changed here while the server is still saving it (null = as saved)
+  const queue = useRef(Promise.resolve()); // the saves not answered yet, one after another
+  const waiting = useRef(0); // how many of them
+  const current = shown || links; // every change starts from what's on the screen, saved or not
 
-  const send = async (next) => {
-    setBusy(true);
+  // A change shows at once and is sent after any still on their way, so the next one can be made straight away (the
+  // server answers only once it has also written the settings copy, which can take a while on a small computer or a
+  // NAS). Resolves true once the server has it; when it doesn't take one, the list goes back to what it last took.
+  const send = (next) => {
+    setShown(next);
     setError(null);
-    try {
-      await onSave(next);
-      return true;
-    } catch (e) {
-      setError(errorText(e));
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    waiting.current += 1;
+    const saved = queue.current.then(() => onSave(next)).then(
+      () => true,
+      (e) => {
+        setError(errorText(e));
+        return false;
+      },
+    );
+    queue.current = saved;
+    saved.then(() => {
+      waiting.current -= 1;
+      if (waiting.current === 0) setShown(null);
+    });
+    return saved;
+  };
+  // the Add, Save and Delete buttons wait for their own answer, to close the form or keep it open with the message
+  const sendAndWait = async (next) => {
+    setBusy(true);
+    const ok = await send(next);
+    setBusy(false);
+    return ok;
   };
   const open = (which) => {
     setEditing(which);
-    setForm(which === "new" ? { name: "", url: "" } : { ...links[which] });
+    setForm(which === "new" ? { name: "", url: "" } : { ...current[which] });
     setTried(false);
     setRemoving(null);
     setError(null);
@@ -59,11 +77,11 @@ export function ToolsSection({ links = [], onSave }) {
     setTried(true);
     if (linkProblem(form)) return;
     const link = { name: form.name.trim(), url: fullAddress(form.url) };
-    const next = editing === "new" ? [...links, link] : links.map((l, i) => (i === editing ? link : l));
-    if (await send(next)) setEditing(null);
+    const next = editing === "new" ? [...current, link] : current.map((l, i) => (i === editing ? link : l));
+    if (await sendAndWait(next)) setEditing(null);
   };
   const remove = async (i) => {
-    if (await send(links.filter((_, j) => j !== i))) setRemoving(null);
+    if (await sendAndWait(current.filter((_, j) => j !== i))) setRemoving(null);
   };
   // Dragging follows the pointer itself (mouse, pen or finger) rather than the browser's drag-and-drop, which
   // touch screens don't do: the line under the pointer is where the dragged one goes when it's let go.
@@ -72,7 +90,7 @@ export function ToolsSection({ links = [], onSave }) {
     return el ? Number(el.dataset.linkLine) : null;
   };
   const startDrag = (e, i) => {
-    if (busy || e.button > 0) return;
+    if (e.button > 0) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragging(i);
@@ -89,10 +107,9 @@ export function ToolsSection({ links = [], onSave }) {
     setDragging(null);
     setOver(null);
     if (from === null || to === null || from === to) return;
-    const next = [...links];
+    const next = [...current];
     next.splice(to, 0, next.splice(from, 1)[0]);
-    setShown(next); // shown in its new place straight away; back where it was if the server doesn't take it
-    send(next).finally(() => setShown(null));
+    send(next);
   };
 
   const problem = tried ? linkProblem(form) : null;
@@ -135,13 +152,13 @@ export function ToolsSection({ links = [], onSave }) {
       </div>
       {error && <div style={uiText(12, c.danger)}>Not saved: {error}</div>}
 
-      {links.length === 0 && editing !== "new" ? (
+      {current.length === 0 && editing !== "new" ? (
         <div style={panelBox({ padding: 20 })}>
           <div style={uiText(13, c.textFaint)}>No websites yet. Press Add to put in the ones you use around the farm.</div>
         </div>
       ) : (
         <div style={panelBox()}>
-          {(shown || links).map((link, i) => {
+          {current.map((link, i) => {
             const line = { borderTop: i ? `1px solid ${c.border}` : "none" };
             if (editing === i) return <div key={i} style={line}>{formRow}</div>;
             const dropHere = over === i && dragging !== null && dragging !== i;
@@ -166,7 +183,7 @@ export function ToolsSection({ links = [], onSave }) {
                   aria-label="Drag to move"
                   style={{
                     display: "flex", alignItems: "center", alignSelf: "stretch", padding: "0 4px", color: dragging === i ? c.amber : c.textFaint,
-                    cursor: busy ? "default" : dragging === i ? "grabbing" : "grab", flexShrink: 0, touchAction: "none", userSelect: "none",
+                    cursor: dragging === i ? "grabbing" : "grab", flexShrink: 0, touchAction: "none", userSelect: "none",
                   }}
                 >
                   <GripVertical size={16} />
@@ -202,7 +219,7 @@ export function ToolsSection({ links = [], onSave }) {
               </div>
             );
           })}
-          {editing === "new" && <div style={{ borderTop: links.length ? `1px solid ${c.border}` : "none" }}>{formRow}</div>}
+          {editing === "new" && <div style={{ borderTop: current.length ? `1px solid ${c.border}` : "none" }}>{formRow}</div>}
         </div>
       )}
     </div>
