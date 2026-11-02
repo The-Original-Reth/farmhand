@@ -449,8 +449,10 @@ function FarmhandApp() {
           style={{ display: "block", marginTop: "auto", padding: "16px 14px 0", textDecoration: "none", flexShrink: 0 }}
         >
           <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
-          <span data-testid="elves-thanks" style={{ display: "block", width: 150, marginTop: 6, textAlign: "center", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
+          <span data-testid="elves-thanks" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, width: 150, marginTop: 6, whiteSpace: "nowrap", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
             Your support is appreciated
+            {/* the Voron heart (frontend/public, from VoronDesign/Voron-Extras Images/Logo/SVG/Heart_Logo.svg) */}
+            <img data-testid="voron-heart" src="/voron-heart.svg" alt="Voron heart" width={14} height={12} style={{ display: "block", width: 14, height: "auto", flexShrink: 0 }} />
           </span>
         </a>
       </div>
