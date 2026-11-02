@@ -74,7 +74,9 @@ export const normalizePrinter = (p) => ({
   prusalinkUsername: p.prusalink_username || "maker",
   hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself never comes back
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
-  subPrinters: p.sub_printers || [], // its printer presets in the slicer: [{ id, name }], A to Z
+  // its printer presets in the slicer, A to Z: [{ id, name, aliases, settingsCopiedFrom }]; settingsCopiedFrom: a copy's
+  // original, whose printer settings it was copied with (null for one that isn't a copy, or got none)
+  subPrinters: (p.sub_printers || []).map((s) => ({ ...s, settingsCopiedFrom: s.settings_copied_from || null })),
   defaultSubPrinterId: p.default_sub_printer_id ?? null, // the one its uploads start on (null: Farmhand guesses)
   // The 1500-hour service reminder Farmhand keeps: { state: waiting | off | ok | due, enabled, interval_hours,
   // hours_since, started_at, last_done: { done_at, hours, note } | null }
@@ -303,6 +305,11 @@ const partBody = ({ part, make, model, installedOn, note, inName }) => ({
 const partsPath = (printerId, subPrinterId) => `/printers/${printerId}/sub-printers/${subPrinterId}/parts`;
 const partsList = async (call) => (await call).map(normalizePart);
 export const getSubPrinterParts = (printerId, subPrinterId) => partsList(request(partsPath(printerId, subPrinterId)));
+// A copied sub printer's printer settings, as its original had them: { copiedFrom, fromFile, copiedAt, settings }
+export const getSubPrinterSettingsCopy = async (printerId, subPrinterId) => {
+  const r = await request(`/printers/${printerId}/sub-printers/${subPrinterId}/settings-copy`);
+  return { copiedFrom: r.copied_from, fromFile: r.from_file || null, copiedAt: r.copied_at || null, settings: r.settings || {} };
+};
 // The whole list at once, as the page was edited: a part with an id is changed, one without is added, and one left out
 // is removed (`removes`: the list leaves some out, which the API wants confirmed). All of it, or nothing.
 export const saveSubPrinterParts = (printerId, subPrinterId, parts, removes) =>

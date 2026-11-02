@@ -168,7 +168,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
           <span style={uiText(12, c.textMuted)}>Copy as</span>
           <NameForm value={copyAs} onChange={setCopyAs} onSave={makeCopy} onCancel={closeCopy} busy={busy} label="Copy" busyLabel="Copying…" placeholder="The copy’s name" testId="sub-printer-copy">
             <div style={uiText(11, c.textFaint, { flexBasis: "100%", lineHeight: 1.5 })}>
-              A new sub printer with the same parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
+              A new sub printer with the same printer settings and parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
             </div>
           </NameForm>
         </div>

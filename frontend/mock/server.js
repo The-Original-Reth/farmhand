@@ -79,7 +79,7 @@ export function mockApi() {
     connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
     has_prusalink_password: !!p.prusalink?.hasPassword, camera_address: p.cameraAddress || null,
-    sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, aliases }) => ({ id, name, aliases: aliases || [] })),
+    sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, aliases, settings_copy }) => ({ id, name, aliases: aliases || [], settings_copied_from: settings_copy?.copied_from || null })),
     default_sub_printer_id: p.defaultSubPrinterId ?? null,
   });
   const modelOut = (m) => ({
@@ -219,7 +219,24 @@ export function mockApi() {
     nameTaken(p, name);
     const copy = newSubPrinter(p, name);
     copy.parts = s.parts.map((part) => ({ ...part, id: farm.nextIds.part++ }));
+    // its printer settings, as the original's newest 3MF has them (or the ones it was copied with itself)
+    const newest = farm.bundles.flatMap((b) => b.versions.map((v) => ({ b, v })))
+      .filter(({ v }) => v.sub_printer_id === s.id)
+      .sort((x, y) => Date.parse(y.v.uploaded_at) - Date.parse(x.v.uploaded_at))[0];
+    if (newest) {
+      copy.settings_copy = {
+        copied_from: s.name, from_file: `${newest.v.filename || newest.b.name} · v${newest.v.version}`,
+        copied_at: new Date().toISOString(), settings: { ...(farm.versionSettings[newest.v.id] || {}) },
+      };
+    } else if (s.settings_copy) {
+      copy.settings_copy = { ...s.settings_copy, copied_from: s.name, copied_at: new Date().toISOString() };
+    }
     return [201, printerOut(p)];
+  });
+  on("GET", "/printers/:id/sub-printers/:subId/settings-copy", ({ id, subId }) => {
+    const s = subPrinterOf(printer(id), subId);
+    if (!s.settings_copy) throw new HttpError(404, "This sub printer has no copied printer settings");
+    return s.settings_copy;
   });
   on("PATCH", "/printers/:id/sub-printers/:subId", ({ id, subId }, body) => {
     const p = printer(id);

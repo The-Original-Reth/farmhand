@@ -9,6 +9,7 @@ from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
     DefaultSubPrinterIn, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
+    SubPrinterSettingsCopyOut,
 )
 from ..services import bundle_service, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
@@ -81,6 +82,16 @@ def copy_sub_printer(
     """
     with answer_errors(409):
         return sub_printer_service.copy(db, printer_id, sub_printer_id, payload.name if payload else None)
+
+
+@router.get("/{printer_id}/sub-printers/{sub_printer_id}/settings-copy", response_model=SubPrinterSettingsCopyOut)
+def get_sub_printer_settings_copy(printer_id: int, sub_printer_id: int, db: Session = Depends(get_db)):
+    """
+    A copied sub printer's printer settings, as the one it was copied from had them: shown as its own until a 3MF
+    sliced with it is uploaded. 404 when it has none (it isn't a copy, or no 3MF had been sliced with the original).
+    """
+    with answer_errors():
+        return sub_printer_service.settings_copy(db, printer_id, sub_printer_id)
 
 
 @router.delete("/{printer_id}/sub-printers/{sub_printer_id}", response_model=PrinterOut)
