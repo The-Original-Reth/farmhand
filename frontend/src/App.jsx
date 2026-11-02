@@ -439,22 +439,36 @@ function FarmhandApp() {
           </div>
         </div>
         {MOCKUP && <MockupBadge />}
-        {/* at the foot of the menu: the 3D Printing Elves logo (frontend/public), their donation page in a new tab when clicked */}
-        <a
-          href="https://www.3dprintingelves.org/donate-now"
-          target="_blank"
-          rel="noreferrer"
-          data-testid="elves-logo"
-          title="Donate to 3D Printing Elves (opens their donation page in a new tab)"
-          style={{ display: "block", marginTop: "auto", padding: "16px 14px 0", textDecoration: "none", flexShrink: 0 }}
-        >
-          <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
-          <span data-testid="elves-thanks" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, width: 150, marginTop: 6, whiteSpace: "nowrap", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
-            Your support is appreciated
+        {/* at the foot of the menu: the 3D Printing Elves logo (frontend/public), their donation page in a new tab when
+            clicked, and after the thanks the Voron heart, Voron Design's site in a new tab */}
+        <div style={{ marginTop: "auto", padding: "16px 14px 0", flexShrink: 0 }}>
+          <a
+            href="https://www.3dprintingelves.org/donate-now"
+            target="_blank"
+            rel="noreferrer"
+            data-testid="elves-logo"
+            title="Donate to 3D Printing Elves (opens their donation page in a new tab)"
+            style={{ display: "block", width: 150, textDecoration: "none" }}
+          >
+            <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
+          </a>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, width: 150, marginTop: 6, whiteSpace: "nowrap" }}>
+            <a
+              href="https://www.3dprintingelves.org/donate-now"
+              target="_blank"
+              rel="noreferrer"
+              data-testid="elves-thanks"
+              title="Donate to 3D Printing Elves (opens their donation page in a new tab)"
+              style={{ fontSize: fs(11), color: c.textMuted, lineHeight: 1.5, textDecoration: "none" }}
+            >
+              Your support is appreciated
+            </a>
             {/* the Voron heart (frontend/public, from VoronDesign/Voron-Extras Images/Logo/SVG/Heart_Logo.svg) */}
-            <img data-testid="voron-heart" src="/voron-heart.svg" alt="Voron heart" width={14} height={12} style={{ display: "block", width: 14, height: "auto", flexShrink: 0 }} />
-          </span>
-        </a>
+            <a href="https://vorondesign.com/" target="_blank" rel="noreferrer" data-testid="voron-heart" title="Voron Design (opens in a new tab)" style={{ display: "block", flexShrink: 0 }}>
+              <img src="/voron-heart.svg" alt="Voron Design" width={14} height={12} style={{ display: "block", width: 14, height: "auto" }} />
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Main */}
