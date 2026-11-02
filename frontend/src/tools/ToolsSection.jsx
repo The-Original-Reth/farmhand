@@ -33,6 +33,7 @@ export function ToolsSection({ links = [], onSave }) {
   const [error, setError] = useState(null); // the last change the server didn't take
   const [dragging, setDragging] = useState(null); // the place of the line being dragged
   const [over, setOver] = useState(null); // the place it would be dropped into
+  const [shown, setShown] = useState(null); // a moved order while the server is saving it (null = as saved)
 
   const send = async (next) => {
     setBusy(true);
@@ -64,14 +65,34 @@ export function ToolsSection({ links = [], onSave }) {
   const remove = async (i) => {
     if (await send(links.filter((_, j) => j !== i))) setRemoving(null);
   };
-  const drop = (to) => {
+  // Dragging follows the pointer itself (mouse, pen or finger) rather than the browser's drag-and-drop, which
+  // touch screens don't do: the line under the pointer is where the dragged one goes when it's let go.
+  const lineAt = (x, y) => {
+    const el = document.elementFromPoint(x, y)?.closest("[data-link-line]");
+    return el ? Number(el.dataset.linkLine) : null;
+  };
+  const startDrag = (e, i) => {
+    if (busy || e.button > 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(i);
+    setOver(i);
+  };
+  const followDrag = (e) => {
+    if (dragging === null) return;
+    const at = lineAt(e.clientX, e.clientY);
+    if (at !== null) setOver(at);
+  };
+  const endDrag = () => {
     const from = dragging;
+    const to = over;
     setDragging(null);
     setOver(null);
-    if (from === null || from === to) return;
+    if (from === null || to === null || from === to) return;
     const next = [...links];
     next.splice(to, 0, next.splice(from, 1)[0]);
-    send(next);
+    setShown(next); // shown in its new place straight away; back where it was if the server doesn't take it
+    send(next).finally(() => setShown(null));
   };
 
   const problem = tried ? linkProblem(form) : null;
@@ -120,42 +141,33 @@ export function ToolsSection({ links = [], onSave }) {
         </div>
       ) : (
         <div style={panelBox()}>
-          {links.map((link, i) => {
+          {(shown || links).map((link, i) => {
             const line = { borderTop: i ? `1px solid ${c.border}` : "none" };
             if (editing === i) return <div key={i} style={line}>{formRow}</div>;
             const dropHere = over === i && dragging !== null && dragging !== i;
             return (
               <div
                 key={i}
-                onDragOver={(e) => {
-                  if (dragging === null) return;
-                  e.preventDefault();
-                  setOver(i);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  drop(i);
-                }}
+                data-link-line={i}
                 style={{
                   ...line, display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 8px 8px",
                   opacity: dragging === i ? 0.4 : 1, boxShadow: dropHere ? `inset 0 0 0 2px ${c.amber}` : "none",
                 }}
               >
                 <span
-                  draggable={!busy}
-                  onDragStart={(e) => {
-                    e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("text/plain", String(i)); // some browsers only drag with something set
-                    e.dataTransfer.setDragImage(e.currentTarget.parentElement, 12, 12);
-                    setDragging(i);
-                  }}
-                  onDragEnd={() => {
+                  onPointerDown={(e) => startDrag(e, i)}
+                  onPointerMove={followDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={() => {
                     setDragging(null);
                     setOver(null);
                   }}
                   title="Drag to move"
                   aria-label="Drag to move"
-                  style={{ display: "flex", alignItems: "center", color: c.textFaint, cursor: busy ? "default" : "grab", flexShrink: 0 }}
+                  style={{
+                    display: "flex", alignItems: "center", alignSelf: "stretch", padding: "0 4px", color: dragging === i ? c.amber : c.textFaint,
+                    cursor: busy ? "default" : dragging === i ? "grabbing" : "grab", flexShrink: 0, touchAction: "none", userSelect: "none",
+                  }}
                 >
                   <GripVertical size={16} />
                 </span>
