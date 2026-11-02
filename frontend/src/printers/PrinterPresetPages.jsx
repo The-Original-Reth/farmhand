@@ -20,10 +20,12 @@ function PresetPages({ settings, extraPages = [] }) {
 }
 
 // Loads the version's settings, then shows them as the Printer Settings tab, with `extraPages` after them. `name` is the
-// preset, shown at the top the way PrusaSlicer's preset drop-down shows it. With no version (no 3MF was sliced with
-// it yet) only the extra pages are shown, under `empty`, which says why.
-export function PrinterPresetPages({ ver, name, from, extraPages, empty }) {
-  const { settings, error } = useVersionSettings(ver?.id);
+// preset, shown at the top the way PrusaSlicer's preset drop-down shows it. `copied`: settings that come from elsewhere
+// when there's no version, as { settings, error } (a copy's, copied from its original). With neither (no 3MF was sliced
+// with it yet) only the extra pages are shown, under `empty`, which says why.
+export function PrinterPresetPages({ ver, copied = null, name, from, extraPages, empty }) {
+  const fromVersion = useVersionSettings(ver?.id);
+  const { settings, error } = ver ? fromVersion : copied || { settings: null, error: null };
   const p = slicerColors("prusa");
   return (
     <SlicerColors.Provider value={p}>
@@ -36,7 +38,7 @@ export function PrinterPresetPages({ ver, name, from, extraPages, empty }) {
         </span>
         {from}
       </div>
-      {!ver ? (
+      {!ver && !copied ? (
         <>
           {empty}
           <PresetPages settings={null} extraPages={extraPages} />
@@ -46,7 +48,7 @@ export function PrinterPresetPages({ ver, name, from, extraPages, empty }) {
       ) : !settings ? (
         <div style={uiText(13, p.textFaint)}>Loading settings…</div>
       ) : (
-        <PresetPages key={ver.id} settings={settings} extraPages={extraPages} />
+        <PresetPages key={ver?.id ?? "copied"} settings={settings} extraPages={extraPages} />
       )}
     </div>
     </SlicerColors.Provider>

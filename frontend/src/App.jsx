@@ -423,6 +423,9 @@ function FarmhandApp() {
           background: c.panel,
           padding: 16,
           flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflowY: "auto", // a window too short for all of it scrolls the menu, rather than covering anything
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, padding: "0 4px" }}>
@@ -436,6 +439,20 @@ function FarmhandApp() {
           </div>
         </div>
         {MOCKUP && <MockupBadge />}
+        {/* at the foot of the menu: the 3D Printing Elves logo (frontend/public), their donation page in a new tab when clicked */}
+        <a
+          href="https://www.3dprintingelves.org/donate-now"
+          target="_blank"
+          rel="noreferrer"
+          data-testid="elves-logo"
+          title="Donate to 3D Printing Elves (opens their donation page in a new tab)"
+          style={{ display: "block", marginTop: "auto", padding: "16px 14px 0", textDecoration: "none", flexShrink: 0 }}
+        >
+          <img src="/3d-printing-elves.webp" alt="3D Printing Elves" width={150} height={110} style={{ display: "block", width: 150, height: "auto" }} />
+          <span data-testid="elves-thanks" style={{ display: "block", width: 150, marginTop: 6, textAlign: "center", fontSize: fs(11), color: c.textMuted, lineHeight: 1.5 }}>
+            Your support is appreciated
+          </span>
+        </a>
       </div>
 
       {/* Main */}

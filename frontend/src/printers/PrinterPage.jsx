@@ -18,6 +18,7 @@ import { EnergyPanel } from "./EnergyPanel.jsx";
 import { MaintenanceSection } from "./Maintenance.jsx";
 import { MoonrakerCard, useMoonraker } from "./Moonraker.jsx";
 import { PrintHistory } from "./PrintHistory.jsx";
+import { WebUiButton } from "./PrinterList.jsx";
 import { EditPrinterForm } from "./PrinterForms.jsx";
 import { PrusaLinkCard, usePrusaLink } from "./PrusaLink.jsx";
 import { SubPrinters, usesSubPrinter } from "./SubPrinters.jsx";
@@ -237,13 +238,13 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end", flexShrink: 0 }}>
-            <button
-              onClick={() => setEditPrinterOpen(true)}
-              style={toolButton(12, { marginBottom: 3 })}
-            >
-              <Pencil size={12} />
-              Edit
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+              <WebUiButton printer={printer} orDash={false} style={toolButton(12)} />
+              <button onClick={() => setEditPrinterOpen(true)} style={toolButton(12)}>
+                <Pencil size={12} />
+                Edit
+              </button>
+            </div>
             {printer.decommissioned && (
               <button
                 data-testid="delete-printer"

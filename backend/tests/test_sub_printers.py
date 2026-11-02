@@ -354,3 +354,53 @@ def test_the_default_sub_printer_is_kept_in_the_settings_copy(db_session, tmp_pa
     records_service.restore_all(db, tmp_path)
     restored = db.query(Printer).one()
     assert next(s.name for s in restored.sub_printers if s.id == restored.default_sub_printer_id) == "V2_BOG_Rapido"
+
+
+def test_a_copy_has_the_printer_settings_of_the_one_it_was_copied_from(api, sample_3mf_paths):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    bundle = _upload(api, sample_3mf_paths["frog_vt1190"], pid)
+    original = _subs(api, pid)[FROG_PRESET]
+    version = api.get(f"/bundles/versions/{bundle['versions'][0]['id']}").json()
+    assert original["settings_copied_from"] is None
+    assert api.get(f"/printers/{pid}/sub-printers/{original['id']}/settings-copy").status_code == 404  # not a copy
+
+    api.post(f"/printers/{pid}/sub-printers/{original['id']}/copy")
+    copy = _subs(api, pid)[f"{FROG_PRESET} - copy"]
+    assert copy["settings_copied_from"] == FROG_PRESET
+    got = api.get(f"/printers/{pid}/sub-printers/{copy['id']}/settings-copy").json()
+    assert got["copied_from"] == FROG_PRESET and got["from_file"].endswith("· v1")
+    assert got["settings"] == version["settings"]  # every setting, as the 3MF had it
+    assert FROG_PRESET in got["settings"]["printer_settings_id"]  # the original's preset, as its window shows it
+
+    # a copy of the copy (no 3MF of its own) carries them on; removing the original leaves the copies as they were
+    api.post(f"/printers/{pid}/sub-printers/{copy['id']}/copy", json={"name": "Second copy"})
+    assert api.delete(f"/printers/{pid}/sub-printers/{original['id']}?confirm=true").status_code == 200
+    second = _subs(api, pid)["Second copy"]
+    assert second["settings_copied_from"] == f"{FROG_PRESET} - copy"
+    assert api.get(f"/printers/{pid}/sub-printers/{second['id']}/settings-copy").json()["settings"] == version["settings"]
+
+
+def test_a_copy_of_a_sub_printer_nothing_was_sliced_with_has_no_settings(api):
+    pid = api.post("/printers", json={"name": "VT 1190"}).json()["id"]
+    sid = api.post(f"/printers/{pid}/sub-printers", json={"name": "By hand"}).json()["sub_printers"][0]["id"]
+    api.post(f"/printers/{pid}/sub-printers/{sid}/copy")
+    copy = _subs(api, pid)["By hand - copy"]
+    assert copy["settings_copied_from"] is None  # nothing to copy: its window says no 3MF was sliced with it
+    assert api.get(f"/printers/{pid}/sub-printers/{copy['id']}/settings-copy").status_code == 404
+
+
+def test_a_copys_printer_settings_are_kept_in_the_settings_copy_and_restored(db_session, tmp_path):
+    from app.models import SubPrinterSettingsCopy
+
+    printer = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    sub = sub_printer_service.add(db_session, printer.id, "V2_BOG copy").sub_printers[0]
+    sub.settings_copy = SubPrinterSettingsCopy(copied_from="V2_BOG", from_file="Frog.3mf · v3", settings={"nozzle_diameter": "0.5"})
+    db_session.commit()
+    records_service.write_all(db_session, tmp_path)
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine, future=True)()
+    records_service.restore_all(db, tmp_path)
+    restored = db.query(Printer).one().sub_printers[0].settings_copy
+    assert (restored.copied_from, restored.from_file, restored.settings) == ("V2_BOG", "Frog.3mf · v3", {"nozzle_diameter": "0.5"})

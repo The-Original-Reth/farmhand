@@ -1,13 +1,31 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Wrench } from "lucide-react";
 import { c, mono } from "../theme.js";
-import { renameSubPrinter } from "../api.js";
+import { errorText, getSubPrinterSettingsCopy, renameSubPrinter } from "../api.js";
 import { useData } from "../data.jsx";
 import { cancelButton, fieldBox, monoText, primaryButton, uiText } from "../styles.js";
 
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { nameFromParts, PrinterParts, useSubPrinterParts } from "./PrinterParts.jsx";
 import { PrinterPresetPages } from "./PrinterPresetPages.jsx";
+
+// A copy's printer settings, as its original had them, while no 3MF has been sliced with the copy itself (`wanted`):
+// { settings, error, copiedFrom, fromFile }, or null when not wanted
+function useSettingsCopy(printer, sub, wanted) {
+  const [copy, setCopy] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setCopy(wanted ? { settings: null, error: null } : null);
+    if (!wanted) return undefined;
+    getSubPrinterSettingsCopy(printer.id, sub.id)
+      .then((r) => !cancelled && setCopy({ ...r, error: null }))
+      .catch((e) => !cancelled && setCopy({ settings: null, error: errorText(e) }));
+    return () => {
+      cancelled = true;
+    };
+  }, [printer.id, sub.id, wanted]);
+  return copy;
+}
 
 // Closing the window with changes to its parts not saved: save them, close without them, or go back to them.
 // Clicking outside or the close button goes back, so nothing typed is lost by a stray click.
@@ -36,8 +54,8 @@ function SaveChanges({ sub, parts, onKeepEditing, onDiscard, onSave }) {
 
 // A sub printer's printer settings, laid out as PrusaSlicer BOSS edition's Printer Settings tab (see
 // PrinterPresetPages). Farmhand only knows them from the 3MFs sliced with it, so they're read from one of
-// those: the newest, or another picked from the list (the preset may have been changed between them). Read-only,
-// like every setting in Farmhand.
+// those: the newest, or another picked from the list (the preset may have been changed between them). A copy with
+// no 3MF of its own yet shows the settings it was copied with. Read-only, like every setting in Farmhand.
 export function SubPrinterSettings({ printer, sub, bundles, onClose }) {
   // every 3MF version sliced with it, newest first
   const sliced = useMemo(
@@ -49,6 +67,7 @@ export function SubPrinterSettings({ printer, sub, bundles, onClose }) {
   );
   const [pickedId, setPickedId] = useState(null);
   const picked = sliced.find((s) => s.ver.id === pickedId) || sliced[0];
+  const copied = useSettingsCopy(printer, sub, !picked && !!sub.settingsCopiedFrom);
   const { putPrinter } = useData();
   const parts = useSubPrinterParts(printer, sub);
   // after PrusaSlicer's own pages: the parts fitted to it, written down in Farmhand
@@ -88,6 +107,7 @@ export function SubPrinterSettings({ printer, sub, bundles, onClose }) {
     <Modal title={`Printer Settings · ${printer.name}`} onClose={requestClose} width={960}>
       <PrinterPresetPages
         ver={picked?.ver ?? null}
+        copied={copied}
         name={sub.name}
         extraPages={extraPages}
         empty={
@@ -97,7 +117,12 @@ export function SubPrinterSettings({ printer, sub, bundles, onClose }) {
           </div>
         }
         from={
-          picked && (
+          copied ? (
+            <span data-testid="sub-printer-settings-copied" style={uiText(12, c.textFaint, { lineHeight: 1.5, minWidth: 0 })}>
+              Copied from <span style={monoText(12, c.textMuted, { overflowWrap: "anywhere" })}>{sub.settingsCopiedFrom}</span>
+              {copied.fromFile && <> (its {copied.fromFile})</>}, until a 3MF sliced with this preset is uploaded
+            </span>
+          ) : picked && (
             <label style={uiText(12, c.textFaint, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 })}>
               Settings from
               {sliced.length > 1 ? (

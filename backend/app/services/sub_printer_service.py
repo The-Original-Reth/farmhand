@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ..errors import NotFound
 from ..models import (
     Bundle, BundleVersion, BundleVersionSubPrinter, DefaultSubPrinter, Printer, SubPrinter, SubPrinterAlias, SubPrinterPart,
+    SubPrinterSettingsCopy,
 )
 from . import printer_service
 
@@ -133,10 +134,31 @@ def copy_name(printer: Printer, name: str) -> str:
         n += 1
 
 
+def _settings_of(db: Session, sub: SubPrinter) -> tuple[dict, str | None] | None:
+    """
+    A sub printer's printer settings as its Printer Settings window shows them: from the newest 3MF sliced with it,
+    else, for a copy with none of its own yet, the ones it was copied with. (settings, where they're from); None for one
+    no 3MF has been sliced with.
+    """
+    newest = db.scalar(
+        select(BundleVersion)
+        .join(BundleVersionSubPrinter, BundleVersionSubPrinter.bundle_version_id == BundleVersion.id)
+        .where(BundleVersionSubPrinter.sub_printer_id == sub.id)
+        .order_by(BundleVersion.uploaded_at.desc(), BundleVersion.id.desc())
+        .limit(1)
+    )
+    if newest is not None:
+        return dict(newest.settings), f"{newest.filename or newest.bundle.name} · v{newest.version}"[:255]
+    if sub.settings_copy is not None:
+        return dict(sub.settings_copy.settings), sub.settings_copy.from_file
+    return None
+
+
 def copy(db: Session, printer_id: int, sub_printer_id: int, name: str | None = None) -> Printer:
     """
-    A new sub printer on the same printer, with a copy of its parts. Its 3MFs, the names it was known by and being
-    the default stay with the original. `name` defaults to copy_name; ValueError if the printer already has one by it.
+    A new sub printer on the same printer, with a copy of its parts and of its printer settings (from its newest 3MF;
+    see SubPrinterSettingsCopy). Its 3MFs, the names it was known by and being the default stay with the original.
+    `name` defaults to copy_name; ValueError if the printer already has one by it.
     """
     printer = _printer(db, printer_id)
     sub = _sub_printer(db, printer_id, sub_printer_id)
@@ -145,9 +167,22 @@ def copy(db: Session, printer_id: int, sub_printer_id: int, name: str | None = N
         raise _taken(printer, name)
     new = _new(printer, name, default_parts=False)
     new.parts = [SubPrinterPart(**_fields_of(p)) for p in sub.parts]
+    found = _settings_of(db, sub)
+    if found is not None:
+        settings, from_file = found
+        new.settings_copy = SubPrinterSettingsCopy(copied_from=sub.name, from_file=from_file, settings=settings)
     db.commit()
     db.refresh(printer)
     return printer
+
+
+def settings_copy(db: Session, printer_id: int, sub_printer_id: int) -> SubPrinterSettingsCopy:
+    """A copied sub printer's printer settings. NotFound when it has none (it isn't a copy, or the original had none)."""
+    _printer(db, printer_id)
+    sub = _sub_printer(db, printer_id, sub_printer_id)
+    if sub.settings_copy is None:
+        raise NotFound("This sub printer has no copied printer settings")
+    return sub.settings_copy
 
 
 def rename(db: Session, printer_id: int, sub_printer_id: int, name: str) -> Printer:
@@ -358,6 +393,12 @@ def record(printer: Printer) -> list[dict]:
                 }
                 for p in s.parts
             ],
+            # a copy's printer settings, until a 3MF sliced with it comes in (read from a 3MF: no logins in them)
+            **({"settings_copy": {
+                "copied_from": s.settings_copy.copied_from, "from_file": s.settings_copy.from_file,
+                "copied_at": s.settings_copy.copied_at.isoformat() if s.settings_copy.copied_at else None,
+                "settings": s.settings_copy.settings,
+            }} if s.settings_copy else {}),
         }
         for s in printer.sub_printers
     ]
@@ -405,6 +446,18 @@ def restore(db: Session, printer: Printer, saved) -> bool:
                     before = len(sub.alias_rows)
                     _remember(db, sub, alias.strip()[:MAX_NAME])
                     added |= len(sub.alias_rows) != before
+        copied = rec.get("settings_copy") if isinstance(rec, dict) else None
+        if sub.settings_copy is None and isinstance(copied, dict) and isinstance(copied.get("settings"), dict):
+            text = lambda v, n: (v.strip()[:n] or None) if isinstance(v, str) else None  # noqa: E731
+            try:
+                when = dt.datetime.fromisoformat(copied["copied_at"]) if isinstance(copied.get("copied_at"), str) else None
+            except ValueError:
+                when = None
+            sub.settings_copy = SubPrinterSettingsCopy(
+                copied_from=text(copied.get("copied_from"), 120) or name, from_file=text(copied.get("from_file"), 255),
+                settings=copied["settings"], **({"copied_at": when} if when else {}),
+            )
+            added = True
         if saved_parts is not None and (not sub.parts or _only_defaults(sub)):
             restored = list(filter(None, map(_restored_part, saved_parts[:500])))
             if [_fields_of(p) for p in restored] != [_fields_of(p) for p in sub.parts]:

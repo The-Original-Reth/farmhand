@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -36,10 +36,19 @@ class SubPrinter(Base):
     alias_rows: Mapped[list["SubPrinterAlias"]] = relationship(
         back_populates="sub_printer", cascade="all, delete-orphan", order_by="SubPrinterAlias.name"
     )
+    # A copy's printer settings, copied from the sub printer it's a copy of (see SubPrinterSettingsCopy). They go with it.
+    settings_copy: Mapped["SubPrinterSettingsCopy | None"] = relationship(
+        back_populates="sub_printer", cascade="all, delete-orphan", uselist=False
+    )
 
     @property
     def aliases(self) -> list[str]:
         return [a.name for a in self.alias_rows]
+
+    @property
+    def settings_copied_from(self) -> str | None:
+        """The sub printer its printer settings were copied from, when it's a copy that has them."""
+        return self.settings_copy.copied_from if self.settings_copy else None
 
 
 class SubPrinterAlias(Base):
@@ -94,6 +103,25 @@ class SubPrinterPart(Base):
     in_name: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     sub_printer: Mapped[SubPrinter] = relationship(back_populates="parts")
+
+
+class SubPrinterSettingsCopy(Base):
+    """
+    A copied sub printer's printer settings. A sub printer's settings are read from the 3MFs sliced with it, and a
+    copy has none yet: so a copy keeps the settings of the one it was copied from, as they were (from its newest 3MF),
+    and they're shown as its own until a 3MF sliced with it comes in. Kept whole, so a change to the original (or its
+    removal) leaves the copy as it was.
+    """
+
+    __tablename__ = "sub_printer_settings_copy"
+
+    sub_printer_id: Mapped[int] = mapped_column(ForeignKey("sub_printer.id"), primary_key=True)
+    copied_from: Mapped[str] = mapped_column(String(120), nullable=False)  # the sub printer's name then
+    from_file: Mapped[str | None] = mapped_column(String(255))  # the 3MF they were read from: "Frog.3mf · v3"
+    copied_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False)  # every setting, as a 3MF version's `settings`
+
+    sub_printer: Mapped[SubPrinter] = relationship(back_populates="settings_copy")
 
 
 class BundleVersionSubPrinter(Base):

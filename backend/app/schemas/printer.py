@@ -76,6 +76,18 @@ class SubPrinterOut(BaseModel):
     id: int
     name: str
     aliases: list[str] = []  # other preset names that mean it (its old names, presets given to it by hand)
+    settings_copied_from: str | None = None  # a copy: the sub printer its printer settings were copied from
+
+
+class SubPrinterSettingsCopyOut(BaseModel):
+    """A copied sub printer's printer settings, as the one it was copied from had them (see SubPrinterSettingsCopy)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    copied_from: str
+    from_file: str | None = None  # the 3MF version they were read from
+    copied_at: dt.datetime | None = None
+    settings: dict
 
 
 class SubPrinterIn(BaseModel):
