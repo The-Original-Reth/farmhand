@@ -198,6 +198,9 @@ class DiscoveredPrinterOut(BaseModel):
     link: str | None = None
     wired_ip: str | None = None  # its addresses on each, from the interfaces it lists; a machine on both is
     wireless_ip: str | None = None  # listed once, at its wired IP
+    # The decommissioned printer in Farmhand at one of its addresses, if any: picking it brings that one back
+    decommissioned_id: int | None = None
+    decommissioned_name: str | None = None
 
 
 class PrinterDecommission(BaseModel):

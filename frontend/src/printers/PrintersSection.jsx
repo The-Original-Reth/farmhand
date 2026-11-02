@@ -5,7 +5,12 @@ import { PrinterPage } from "./PrinterPage.jsx";
 export function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect }) {
   const view = path[1]; // {printerId}
   return view ? (
-    <PrinterPage printerId={view.printerId} compareSelection={compareSelection} toggleCompareSelect={toggleCompareSelect} />
+    <PrinterPage
+      printerId={view.printerId}
+      compareSelection={compareSelection}
+      toggleCompareSelect={toggleCompareSelect}
+      onDeleted={() => setPath([path[0]])} // back to the list
+    />
   ) : (
     <PrinterList setPath={setPath} />
   );

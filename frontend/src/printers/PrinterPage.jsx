@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Cable, FileBox, Lock, Pencil, Printer, Wifi } from "lucide-react";
+import { Cable, FileBox, Lock, Pencil, Printer, Trash2, Wifi } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { linkButton, monoText, toolButton, uiText } from "../styles.js";
-import { renameBundle } from "../api.js";
+import { deletePrinter, renameBundle } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { EditableName } from "../bundles/EditableName.jsx";
 import { BundleCard } from "../bundles/BundleCard.jsx";
 import { newestFirst, useBundleExpansion, VersionsToggleAll } from "../bundles/versions.jsx";
-import { Modal } from "../components/common/dialogs.jsx";
+import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { SearchBox } from "../components/common/fields.jsx";
 import { Badge, SectionLabel, SectionToggle } from "../components/common/ui.jsx";
 import { Highlighted, searchWords } from "../lib/search.jsx";
@@ -118,10 +118,11 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
 }
 
 // One printer: its 3MF search, details and notes, Moonraker or PrusaLink with maintenance, its 3MF files and history
-export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }) {
+export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, onDeleted }) {
   const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle, refreshPrinters, putBundle } = useData();
   const expansion = useBundleExpansion();
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
   const [subFilter, setSubFilter] = useState(null); // only the 3MFs sliced with this sub printer (its id); null = all
 
@@ -152,6 +153,21 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
         <Modal title="Edit printer" onClose={() => setEditPrinterOpen(false)}>
           <EditPrinterForm printer={printer} onClose={() => setEditPrinterOpen(false)} />
         </Modal>
+      )}
+      {deleteOpen && (
+        <ConfirmDialog
+          title="Delete printer"
+          confirmLabel="Delete printer"
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={async () => {
+            await deletePrinter(printer.id);
+            onDeleted(); // off its page before it's gone from the list
+            await refreshPrinters();
+          }}
+        >
+          Delete <b style={{ color: c.heading }}>{printer.name}</b> from Farmhand for good? Its print history, notes, sub
+          printers, parts and maintenance go with it. This can't be undone.
+        </ConfirmDialog>
       )}
       {/* searches this printer's 3MF files (listed further down); at the top so it's the first thing to hand */}
       {allBundles.length > 0 && (
@@ -228,6 +244,22 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect }
               <Pencil size={12} />
               Edit
             </button>
+            {printer.decommissioned && (
+              <button
+                data-testid="delete-printer"
+                onClick={() => setDeleteOpen(true)}
+                disabled={allBundles.length > 0}
+                title={
+                  allBundles.length > 0
+                    ? `It still has ${allBundles.length} 3MF file${allBundles.length === 1 ? "" : "s"}. Delete ${allBundles.length === 1 ? "it" : "them"} first, then the printer can be deleted.`
+                    : "Delete this decommissioned printer from Farmhand"
+                }
+                style={toolButton(12, { marginBottom: 3, color: c.danger, opacity: allBundles.length > 0 ? 0.5 : 1, cursor: allBundles.length > 0 ? "default" : "pointer" })}
+              >
+                <Trash2 size={12} />
+                Delete
+              </button>
+            )}
             {printer.decommissioned ? <Badge>decommissioned</Badge> : <Badge tone="green">active</Badge>}
             <Badge tone="teal">{allBundles.length} 3MF</Badge>
             <Badge tone="teal">{modelCount} Models</Badge>

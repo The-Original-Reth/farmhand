@@ -192,6 +192,9 @@ const fileTypeFor = ({ name, file }) => {
   return typeFromExt(ext(name)) || "STL";
 };
 
+// The range a scan starts with: the /24 of the network the server is on ("192.168.10.0/24"), or "" when it can't tell
+export const getDiscoverRange = async () => (await request("/printers/discover/range")).cidr || "";
+
 // The printers in a network range (e.g. "192.168.1.0/24") that aren't in Farmhand yet. Nothing is added; `signal`
 // lets the dialog stop waiting (the scan itself runs to its end on the server).
 export const discoverPrinters = async (cidr, { signal } = {}) =>
@@ -208,6 +211,9 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
     link: f.link || null, // how `ip` reached it: "wired" | "wireless"; null when it couldn't tell
     wiredIp: f.wired_ip || null, // a printer on both is found once, at its wired IP, with both of these
     wirelessIp: f.wireless_ip || null,
+    // the decommissioned printer in Farmhand at one of its addresses: picking it brings that one back
+    decommissionedId: f.decommissioned_id ?? null,
+    decommissionedName: f.decommissioned_name || null,
   }));
 
 // The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter
@@ -307,7 +313,9 @@ export const renameSubPrinter = (printerId, subPrinterId, name) =>
 export const setDefaultSubPrinter = (printerId, subPrinterId) =>
   request(`/printers/${printerId}/default-sub-printer`, jsonBody("PUT", { sub_printer_id: subPrinterId }));
 // its 3MFs stay, with no sub printer; its parts go
-export const deleteSubPrinter = (printerId, subPrinterId) => del(`/printers/${printerId}/sub-printers/${subPrinterId}`);
+// Only a decommissioned printer with no 3MF files kept for it (409 otherwise, saying why)
+export const deletePrinter = (id) => del(`/printers/${id}`);
+export const deleteSubPrinter =(printerId, subPrinterId) => del(`/printers/${printerId}/sub-printers/${subPrinterId}`);
 
 // A sub printer's parts (its Printer parts page): [{ id, part, make, model, installedOn: "2026-08-14" | null, note }].
 // Saving resolves to the whole list as it now stands.

@@ -63,6 +63,24 @@ def set_decommissioned(db: Session, printer_id: int, decommissioned: bool) -> Pr
     return printer
 
 
+def delete_printer(db: Session, printer_id: int) -> None:
+    """
+    Remove a decommissioned printer for good, with its print history, notes, connection, sub printers and maintenance.
+    Refused while 3MF files are kept for it: they'd be left without a printer.
+    """
+    printer = require_printer(db, printer_id)
+    if not printer.decommissioned:
+        raise ValueError(f"{printer.name} is still in use. Decommission it first (Edit), then it can be deleted.")
+    if printer.bundles:
+        n = len(printer.bundles)
+        raise ValueError(
+            f"{printer.name} still has {n} 3MF file{'s' if n != 1 else ''}. Delete {'them' if n != 1 else 'it'} from its page "
+            "first, then the printer can be deleted."
+        )
+    db.delete(printer)
+    db.commit()
+
+
 def find_by_profile_name(db: Session, profile_name: str) -> Printer | None:
     """
     Which printer does a 3MF's embedded profile name refer to? Exact printer

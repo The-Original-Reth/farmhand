@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { HelpCircle, Loader2 } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { cancelButton, monoText, primaryButton, uiText } from "../styles.js";
-import { createPrinter, discoverPrinters, errorText } from "../api.js";
+import { createPrinter, discoverPrinters, errorText, getDiscoverRange, updatePrinter } from "../api.js";
 import { useData } from "../data.jsx";
 
 import { Badge, ProgressBar } from "../components/common/ui.jsx";
@@ -13,7 +13,8 @@ const CIDR_HELP =
   "192.168.1.0/24 means 192.168.1.1 to 192.168.1.254, the usual home or shop network. " +
   "Up to a /22 (1024 addresses) can be scanned at once.";
 
-// The range to start with: the /24 that Farmhand itself is on, when the browser reached it by an IPv4 address
+// The range to start with until the server says its own: the /24 of the address the browser reached Farmhand by,
+// when that's an IPv4 one
 export function guessRange(host = window.location.hostname) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(host);
   return m && m[1] !== "127" ? `${m[1]}.${m[2]}.${m[3]}.0/24` : "";
@@ -62,6 +63,15 @@ export function ScanPrintersDialog({ onClose }) {
       stopped.current = true;
     };
   }, []);
+
+  // The range starts as the network the server is on, once it says (until then, and when it can't tell, the guess
+  // from the browser's address). A range already typed in is left alone.
+  const typed = useRef(false);
+  useEffect(() => {
+    getDiscoverRange()
+      .then((range) => range && !typed.current && setCidr(range))
+      .catch(() => {}); // only a starting value: the guess stays
+  }, []);
   const cancel = onClose;
 
   const startScan = async () => {
@@ -86,9 +96,11 @@ export function ScanPrintersDialog({ onClose }) {
 
   const chosen = found.filter((f) => selected[f.ip]);
   const allChosen = found.length > 0 && chosen.length === found.length;
+  const chosenNew = chosen.filter((f) => f.decommissionedId == null).length; // the rest are brought back
   // A name that's blank, already a printer's, or given to two of the chosen ones can't be added
   const existing = new Set(printers.map((p) => p.name));
   const nameProblem = (f) => {
+    if (f.decommissionedId != null) return null; // brought back under its own name
     const name = (names[f.ip] || "").trim();
     if (!name) return "needs a name";
     if (existing.has(name)) return "a printer has this name";
@@ -101,21 +113,31 @@ export function ScanPrintersDialog({ onClose }) {
     setProgress(0);
     setPhase("adding");
     let added = 0;
+    let back = 0;
     const failed = [];
     for (const [i, f] of chosen.entries()) {
       if (stopped.current) return;
-      const name = names[f.ip].trim();
+      const old = f.decommissionedId != null ? printers.find((p) => p.id === f.decommissionedId) : null;
+      const name = old ? old.name : names[f.ip].trim();
       try {
-        // Its own IPs when it said which is which; otherwise the address it answered on, as its wired IP
-        const ips = f.wiredIp || f.wirelessIp ? { wiredIp: f.wiredIp, wirelessIp: f.wirelessIp } : { wiredIp: f.ip };
-        putPrinter(await createPrinter({ name, kind: f.firmware || "", ...ips, connectionType: f.connectionType }));
-        added += 1;
+        // Its own IPs when it said which is which; otherwise the address it answered on, as its wired IP (a printer
+        // brought back keeps the IPs it had, one of which it was found at)
+        const ips = f.wiredIp || f.wirelessIp ? { wiredIp: f.wiredIp, wirelessIp: f.wirelessIp }
+          : old ? { wiredIp: old.wired, wirelessIp: old.wireless } : { wiredIp: f.ip };
+        if (old) {
+          // the same printer again, with its history, notes and 3MF files
+          putPrinter(await updatePrinter(old.id, { name, kind: old.kind, ...ips, decommissioned: false, connectionType: f.connectionType }));
+          back += 1;
+        } else {
+          putPrinter(await createPrinter({ name, kind: f.firmware || "", ...ips, connectionType: f.connectionType }));
+          added += 1;
+        }
       } catch (e) {
         failed.push({ name, error: errorText(e) });
       }
       setProgress(i + 1);
     }
-    setSummary({ added, failed });
+    setSummary({ added, back, failed });
     setPhase("done");
   };
 
@@ -144,14 +166,17 @@ export function ScanPrintersDialog({ onClose }) {
           data-testid="scan-range"
           autoFocus
           value={cidr}
-          onChange={(e) => setCidr(e.target.value)}
+          onChange={(e) => {
+            typed.current = true;
+            setCidr(e.target.value);
+          }}
           placeholder="e.g. 192.168.1.0/24"
           autoComplete="off"
           style={{ width: "100%", background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, color: c.textPrimary, padding: "8px 10px", fontSize: fs(13), ...ui }}
         />
         <div style={uiText(11, c.textFaint, { marginTop: 8, lineHeight: 1.5 })}>
           Farmhand asks every address in the range whether a Klipper or Kalico printer (Mainsail, Fluidd) or a Prusa (PrusaLink) answers there.
-          Printers already in Farmhand are skipped. Nothing is added until you pick from what's found.
+          Printers in use in Farmhand are skipped; a decommissioned one found again can be brought back. Nothing is added until you pick from what's found.
         </div>
         <Actions>
           {cancelBtn()}
@@ -202,7 +227,12 @@ export function ScanPrintersDialog({ onClose }) {
   if (phase === "done") {
     return (
       <div data-testid="scan-summary">
-        <div style={uiText(14, c.heading, { marginBottom: 8 })}>Added {plural(summary.added, "printer", "printers")}.</div>
+        <div style={uiText(14, c.heading, { marginBottom: 8 })}>
+          {[
+            (summary.added > 0 || !summary.back) && `Added ${plural(summary.added, "printer", "printers")}.`,
+            summary.back > 0 && `Brought back ${plural(summary.back, "decommissioned printer", "decommissioned printers")}.`,
+          ].filter(Boolean).join(" ")}
+        </div>
         {summary.added > 0 && (
           <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 8 })}>
             Each one's wired and Wi-Fi IPs went in as it reported them (the address it answered on counts as wired when it didn't say). Rename them to match your slicer's printer profiles, and on the printer's own page (Edit) add the API key or PrusaLink password to any marked as needing one.
@@ -245,8 +275,9 @@ export function ScanPrintersDialog({ onClose }) {
   return (
     <div data-testid="scan-results">
       <div style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 10 })}>
-        Found <b style={{ color: c.heading }}>{plural(found.length, "new printer", "new printers")}</b> in{" "}
-        <span style={monoText(13, c.heading)}>{scannedRange}</span>. Each is added under the name shown, which you can change here or later.
+        Found <b style={{ color: c.heading }}>{plural(found.length, "printer", "printers")}</b> not in use in Farmhand in{" "}
+        <span style={monoText(13, c.heading)}>{scannedRange}</span>. Each new one is added under the name shown, which you can change here or later.
+        {found.some((f) => f.decommissionedId != null) && " A decommissioned one is brought back as it was, with its history and 3MF files."}
       </div>
       <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, maxHeight: 340, overflow: "auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: cols, alignItems: "center", gap: 8, padding: "8px 12px", background: c.panelAlt, borderBottom: `1px solid ${c.border}`, position: "sticky", top: 0 }}>
@@ -271,11 +302,19 @@ export function ScanPrintersDialog({ onClose }) {
             >
               <input
                 type="checkbox"
-                aria-label={`Add ${names[f.ip]}`}
+                aria-label={`Add ${f.decommissionedName ?? names[f.ip]}`}
                 checked={!!selected[f.ip]}
                 onChange={(e) => setSelected((prev) => ({ ...prev, [f.ip]: e.target.checked }))}
                 style={{ accentColor: c.amber }}
               />
+              {f.decommissionedId != null ? (
+                <div style={{ minWidth: 0 }} data-testid="scan-row-decommissioned">
+                  <div style={uiText(13, c.textPrimary, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={f.decommissionedName}>
+                    {f.decommissionedName}
+                  </div>
+                  <div style={uiText(11, c.textFaint, { marginTop: 2 })}>Decommissioned: brings it back</div>
+                </div>
+              ) : (
               <div style={{ minWidth: 0 }}>
                 <input
                   value={names[f.ip] || ""}
@@ -286,6 +325,7 @@ export function ScanPrintersDialog({ onClose }) {
                 />
                 {problem && <div style={uiText(11, c.danger, { marginTop: 2 })}>{problem}</div>}
               </div>
+              )}
               <div style={{ minWidth: 0 }}>
                 <div style={monoText(12, c.textMuted)}>{f.ip}</div>
                 {f.link && (
@@ -307,7 +347,10 @@ export function ScanPrintersDialog({ onClose }) {
       <Actions>
         {cancelBtn()}
         <button data-testid="scan-add" onClick={addChosen} disabled={blocked} style={primaryButton(blocked)}>
-          Add {plural(chosen.length, "printer", "printers")}
+          {[
+            chosenNew > 0 && `Add ${plural(chosenNew, "printer", "printers")}`,
+            chosen.length > chosenNew && `bring back ${chosen.length - chosenNew}`,
+          ].filter(Boolean).join(", ").replace(/^b/, "B") || "Add printers"}
         </button>
       </Actions>
     </div>

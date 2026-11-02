@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -41,6 +41,12 @@ def discover_printers(cidr: str = Query(..., description="The range to scan, e.g
         return printer_discovery.scan(db, cidr)
 
 
+@router.get("/discover/range")
+def discover_range(db: Session = Depends(get_db)):
+    """The range Scan network starts with: the /24 of the network the server is on (null when it can't tell)."""
+    return {"cidr": printer_discovery.default_range(db)}
+
+
 @router.get("/{printer_id}", response_model=PrinterOut)
 def get_printer(printer_id: int, db: Session = Depends(get_db)):
     return require_printer(db, printer_id)
@@ -51,6 +57,19 @@ def update_printer(printer_id: int, payload: PrinterUpdate, db: Session = Depend
     require_printer(db, printer_id)
     with answer_errors(409):
         return printer_service.update_printer(db, printer_id, payload.model_dump(exclude_unset=True))
+
+
+@router.delete("/{printer_id}", status_code=204)
+def delete_printer(printer_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    """
+    Delete a decommissioned printer and everything Farmhand kept about it. 409 while it's active or still has 3MF
+    files, so nothing is left without its printer.
+    """
+    require_confirm(confirm)
+    require_printer(db, printer_id)
+    with answer_errors(409):
+        printer_service.delete_printer(db, printer_id)
+    return Response(status_code=204)
 
 
 @router.patch("/{printer_id}/decommission", response_model=PrinterOut)

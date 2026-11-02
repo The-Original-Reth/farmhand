@@ -117,6 +117,15 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ the farm
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
+  // The range a scan starts with: as the real API in Docker, the /24 most of the farm's printers are on
+  on("GET", "/printers/discover/range", () => {
+    const count = {};
+    for (const ip of farm.printers.flatMap((p) => [p.wired_ip, p.wireless_ip])) {
+      const m = /^(10|172|192)\.(\d+)\.(\d+)\.\d+$/.exec(ip || "");
+      if (m) count[`${m[1]}.${m[2]}.${m[3]}.0/24`] = (count[`${m[1]}.${m[2]}.${m[3]}.0/24`] || 0) + 1;
+    }
+    return { cidr: Object.keys(count).sort((a, b) => count[b] - count[a])[0] || null };
+  });
   // A network scan (before /printers/:id, which would take "discover" for an id): a few made-up printers at fixed
   // places in the range, skipping addresses the farm's printers have. Two share MainsailOS's default hostname; the
   // Trident is on both cable and Wi-Fi, so it's listed once, at its wired IP.
@@ -133,7 +142,10 @@ export function mockApi() {
     await new Promise((done) => setTimeout(done, 2000)); // a real scan of a /24 takes a few seconds
     const start = (m.slice(1, 5).reduce((n, o) => n * 256 + Number(o), 0) >>> (32 - bits)) * 2 ** (32 - bits);
     const ipAt = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join(".");
-    const known = new Set(farm.printers.flatMap((p) => [p.wired_ip, p.wireless_ip]).filter(Boolean));
+    // active printers' addresses are skipped; one found at a decommissioned printer's is listed with that printer
+    const known = new Set(farm.printers.filter((p) => !p.decommissioned).flatMap((p) => [p.wired_ip, p.wireless_ip]).filter(Boolean));
+    const retired = new Map(farm.printers.filter((p) => p.decommissioned).flatMap((p) => [p.wired_ip, p.wireless_ip].filter(Boolean).map((h) => [h, p])));
+    const was = (f) => [f.ip, f.wired_ip, f.wireless_ip].map((h) => h && retired.get(h)).find(Boolean);
     const sample = [ // [offset, hostname, firmware, needs a key, link, the other link's offset]
       [31, "mainsailos", "Klipper", false, "wired", null],
       [32, "mainsailos", "Klipper", false, "wireless", null],
@@ -159,7 +171,8 @@ export function mockApi() {
           wired_ip: link === "wired" ? ip : null, wireless_ip: link === "wireless" ? ip : otherIp,
         };
       })
-      .filter((f) => ![f.ip, f.wired_ip, f.wireless_ip].some((h) => h && known.has(h)));
+      .filter((f) => ![f.ip, f.wired_ip, f.wireless_ip].some((h) => h && known.has(h)))
+      .map((f) => ({ ...f, decommissioned_id: was(f)?.id ?? null, decommissioned_name: was(f)?.name ?? null }));
   });
   on("GET", "/printers/:id", ({ id }) => printerOut(printer(id)));
   on("POST", "/printers", (_, body) => {
@@ -175,6 +188,16 @@ export function mockApi() {
     p.cameraAddress = body.camera_address || null;
     farm.printers.push(p);
     return [201, printerOut(p)];
+  });
+  // As the real API: only a decommissioned printer, and only once no 3MF files are kept for it
+  on("DELETE", "/printers/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
+    const p = printer(id);
+    if (!p.decommissioned) throw new HttpError(409, `${p.name} is still in use. Decommission it first (Edit), then it can be deleted.`);
+    const n = farm.bundles.filter((b) => b.printer_id === p.id).length;
+    if (n) throw new HttpError(409, `${p.name} still has ${n} 3MF file${n !== 1 ? "s" : ""}. Delete ${n !== 1 ? "them" : "it"} from its page first, then the printer can be deleted.`);
+    farm.printers = farm.printers.filter((x) => x !== p);
+    return [204, null];
   });
   on("PATCH", "/printers/:id", ({ id }, body) => {
     const p = printer(id);
