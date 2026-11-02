@@ -11,6 +11,7 @@ from .. import printer_links
 
 TIMEOUT = httpx.Timeout(6.0, connect=3.0)
 UPLOAD_TIMEOUT = httpx.Timeout(600.0, connect=5.0)  # a big G-code over the printer's network takes a while
+PROBE_TIMEOUT = httpx.Timeout(1.5, connect=0.5)  # a network scan asks hundreds of addresses; most aren't there
 
 
 class PrinterLinkError(Exception):

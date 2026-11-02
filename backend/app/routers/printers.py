@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -8,10 +8,10 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    DefaultSubPrinterIn, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
+    DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
     SubPrinterSettingsCopyOut,
 )
-from ..services import bundle_service, printer_service, sub_printer_service
+from ..services import bundle_service, printer_discovery, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -34,6 +34,20 @@ def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
     return printer_service.update_printer(db, printer.id, link)
 
 
+# Before /{printer_id}, or "discover" would be taken for a printer id. A GET, since it changes nothing.
+@router.get("/discover", response_model=list[DiscoveredPrinterOut])
+def discover_printers(cidr: str = Query(..., description="The range to scan, e.g. 192.168.1.0/24"), db: Session = Depends(get_db)):
+    """Printers in the range that aren't in Farmhand yet (Klipper / Kalico, by their Moonraker). Nothing is added."""
+    with answer_errors():
+        return printer_discovery.scan(db, cidr)
+
+
+@router.get("/discover/range")
+def discover_range(db: Session = Depends(get_db)):
+    """The range Scan network starts with: the /24 of the network the server is on (null when it can't tell)."""
+    return {"cidr": printer_discovery.default_range(db)}
+
+
 @router.get("/{printer_id}", response_model=PrinterOut)
 def get_printer(printer_id: int, db: Session = Depends(get_db)):
     return require_printer(db, printer_id)
@@ -44,6 +58,19 @@ def update_printer(printer_id: int, payload: PrinterUpdate, db: Session = Depend
     require_printer(db, printer_id)
     with answer_errors(409):
         return printer_service.update_printer(db, printer_id, payload.model_dump(exclude_unset=True))
+
+
+@router.delete("/{printer_id}", status_code=204)
+def delete_printer(printer_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    """
+    Delete a decommissioned printer and everything Farmhand kept about it. 409 while it's active or still has 3MF
+    files, so nothing is left without its printer.
+    """
+    require_confirm(confirm)
+    require_printer(db, printer_id)
+    with answer_errors(409):
+        printer_service.delete_printer(db, printer_id)
+    return Response(status_code=204)
 
 
 @router.patch("/{printer_id}/decommission", response_model=PrinterOut)

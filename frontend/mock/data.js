@@ -82,7 +82,7 @@ export function buildFarm() {
       serviceHoursSince: 610, serviceHistory: [], serviceNotes: "",
     },
     {
-      id: 4, name: "Ender 3 (retired)", kind: "Creality Ender 3", wired_ip: null, wireless_ip: null,
+      id: 4, name: "Ender 3 (retired)", kind: "Creality Ender 3", wired_ip: "10.0.6.77", wireless_ip: null, // found again by a scan
       decommissioned: true, created_at: iso(NOW - 900 * DAY),
       moonraker: null,
       notes: "Retired 2025. Kept for its 3MF history.", serviceHoursSince: null, serviceHistory: [], serviceNotes: "",

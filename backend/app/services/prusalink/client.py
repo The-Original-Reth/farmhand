@@ -9,7 +9,7 @@ import httpx
 from ... import printer_links
 from ...models import Printer
 from .. import printer_http
-from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
+from ..printer_http import PROBE_TIMEOUT, TIMEOUT, UPLOAD_TIMEOUT
 
 # Tests swap this for an httpx.MockTransport that plays a fake PrusaLink
 transport: httpx.BaseTransport | None = None
@@ -63,6 +63,32 @@ def _json(r: httpx.Response) -> dict:
 def version(printer: Printer) -> dict:
     """{api, server, text, firmware, printer}: what the printer says it is (e.g. text "PrusaLink", printer "COREONE")."""
     return _json(_call(printer, "GET", "/api/version"))
+
+
+def probe(base: str) -> dict | None:
+    """
+    Is there a PrusaLink at `base` (e.g. http://192.168.10.129)? Asked without logging in, it turns the question down
+    with its digest login, whose realm "Printer API" is Prusa's own, so it's known all the same: {needs_password: True}.
+    One that needs no login says what it is: {needs_password: False, hostname, version}. None when nothing there
+    answers like PrusaLink (most addresses, and other machines' web pages on port 80).
+    """
+    try:
+        r = printer_http.request(PrusaLinkError, "PrusaLink", base, "GET", "/api/version",
+                                 transport=transport, timeout=PROBE_TIMEOUT)
+    except PrusaLinkError:
+        return None
+    if r.status_code == 401:
+        said = r.headers.get("www-authenticate", "").lower()
+        return {"needs_password": True} if said.startswith("digest") and 'realm="printer api"' in said else None
+    if r.status_code != 200:
+        return None
+    try:
+        info = r.json()
+    except ValueError:
+        return None
+    if not isinstance(info, dict) or "prusalink" not in str(info.get("text") or "").lower():
+        return None
+    return {"needs_password": False, "hostname": info.get("hostname") or None, "version": info.get("server") or None}
 
 
 def status(printer: Printer) -> dict:

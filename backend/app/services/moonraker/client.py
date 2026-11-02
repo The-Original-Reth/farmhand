@@ -9,7 +9,7 @@ import httpx
 from ...models import Printer
 from ... import printer_links
 from .. import printer_http
-from ..printer_http import TIMEOUT, UPLOAD_TIMEOUT
+from ..printer_http import PROBE_TIMEOUT, TIMEOUT, UPLOAD_TIMEOUT
 
 # Tests swap this for an httpx.MockTransport that plays a fake Moonraker
 transport: httpx.BaseTransport | None = None
@@ -65,6 +65,42 @@ def server_info(printer: Printer) -> dict:
     """Is it reachable, and what state is Klipper in (ready, startup, shutdown, error, disconnected)?"""
     info = _call(printer, "GET", "/server/info")
     return {"klippy_state": info.get("klippy_state"), "moonraker_version": info.get("moonraker_version")}
+
+
+def probe(base: str) -> dict | None:
+    """
+    Is there a Moonraker at `base` (e.g. http://10.0.6.21:7125)? Its version, Klipper's state, and what Klipper says
+    of itself (hostname, app, software_version) and its network interfaces (network, from /machine/system_info) when
+    there is; None when nothing there answers like Moonraker. One
+    that wants an API key still counts: the printer is there, it just needs the key (needs_api_key).
+    """
+    try:
+        r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/server/info",
+                                 transport=transport, timeout=PROBE_TIMEOUT)
+    except MoonrakerError:
+        return None
+    if r.status_code in (401, 403):
+        return {"needs_api_key": True}
+    try:
+        info = r.json()["result"]
+        found = {"moonraker_version": info["moonraker_version"], "klippy_state": info.get("klippy_state")}
+    except (ValueError, KeyError, TypeError):
+        return None
+    try:
+        r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/printer/info",
+                                 transport=transport, timeout=PROBE_TIMEOUT)
+        klipper = r.json()["result"]
+        found.update({k: klipper.get(k) for k in ("hostname", "app", "software_version")})
+    except (MoonrakerError, ValueError, KeyError, TypeError, AttributeError):
+        pass  # Klipper isn't up yet: found all the same, just without a name to suggest
+    try:
+        r = printer_http.request(MoonrakerError, "Moonraker", base, "GET", "/machine/system_info",
+                                 transport=transport, timeout=PROBE_TIMEOUT)
+        network = r.json()["result"]["system_info"]["network"]
+        found["network"] = network if isinstance(network, dict) else {}
+    except (MoonrakerError, ValueError, KeyError, TypeError):
+        pass  # an older Moonraker, or one that won't say: found, just without knowing wired from wireless
+    return found
 
 
 def history_totals(printer: Printer) -> tuple[dict, list]:

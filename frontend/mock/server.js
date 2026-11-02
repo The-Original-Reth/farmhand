@@ -117,6 +117,63 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ the farm
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
+  // The range a scan starts with: as the real API in Docker, the /24 most of the farm's printers are on
+  on("GET", "/printers/discover/range", () => {
+    const count = {};
+    for (const ip of farm.printers.flatMap((p) => [p.wired_ip, p.wireless_ip])) {
+      const m = /^(10|172|192)\.(\d+)\.(\d+)\.\d+$/.exec(ip || "");
+      if (m) count[`${m[1]}.${m[2]}.${m[3]}.0/24`] = (count[`${m[1]}.${m[2]}.${m[3]}.0/24`] || 0) + 1;
+    }
+    return { cidr: Object.keys(count).sort((a, b) => count[b] - count[a])[0] || null };
+  });
+  // A network scan (before /printers/:id, which would take "discover" for an id): a few made-up printers at fixed
+  // places in the range, skipping addresses the farm's printers have. Two share MainsailOS's default hostname; the
+  // Trident is on both cable and Wi-Fi, so it's listed once, at its wired IP.
+  on("GET", "/printers/discover", async (_, __, q) => {
+    const cidr = (q.get("cidr") || "").trim();
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(cidr);
+    if (cidr.includes(":")) throw new HttpError(422, "Only IPv4 ranges can be scanned, like 192.168.1.0/24.");
+    if (!m || m.slice(1, 5).some((o) => Number(o) > 255) || Number(m[5] ?? 32) > 32) throw new HttpError(422, `'${cidr}' isn't a network range. Write it like 192.168.1.0/24.`);
+    const bits = Number(m[5] ?? 32);
+    const [a, b] = m.slice(1, 3).map(Number); // the farm's own network only, as the real API (is_private)
+    const own = a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+    if (!own || bits < 8) throw new HttpError(422, "Only your own network can be scanned: a range starting 10., 172.16 to 172.31, or 192.168.");
+    if (2 ** (32 - bits) > 1024) throw new HttpError(422, `That range has ${2 ** (32 - bits)} addresses. Scan 1024 or fewer at a time (a /22 or smaller).`);
+    await new Promise((done) => setTimeout(done, 2000)); // a real scan of a /24 takes a few seconds
+    const start = (m.slice(1, 5).reduce((n, o) => n * 256 + Number(o), 0) >>> (32 - bits)) * 2 ** (32 - bits);
+    const ipAt = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join(".");
+    // active printers' addresses are skipped; one found at a decommissioned printer's is listed with that printer
+    const known = new Set(farm.printers.filter((p) => !p.decommissioned).flatMap((p) => [p.wired_ip, p.wireless_ip]).filter(Boolean));
+    const retired = new Map(farm.printers.filter((p) => p.decommissioned).flatMap((p) => [p.wired_ip, p.wireless_ip].filter(Boolean).map((h) => [h, p])));
+    const was = (f) => [f.ip, f.wired_ip, f.wireless_ip].map((h) => h && retired.get(h)).find(Boolean);
+    const sample = [ // [offset, hostname, firmware, needs a key, link, the other link's offset]
+      [31, "mainsailos", "Klipper", false, "wired", null],
+      [32, "mainsailos", "Klipper", false, "wireless", null],
+      [40, "trident-300", "Kalico", false, "wired", 41],
+      [77, null, null, true, null, null],
+      [129, null, "Prusa", true, null, null], // a Core One: PrusaLink wants its password, so it gives no name
+    ];
+    const inRange = (offset) => offset < 2 ** (32 - bits) - (bits < 31 ? 1 : 0);
+    return sample
+      .filter(([offset]) => inRange(offset))
+      .map(([offset, hostname, firmware, needsKey, link, other]) => {
+        const ip = ipAt(start + offset);
+        const otherIp = other != null && inRange(other) ? ipAt(start + other) : null;
+        if (firmware === "Prusa") {
+          return {
+            ip, connection_type: "prusalink", address: `http://${ip}`, web_url: `http://${ip}/`, hostname, firmware,
+            version: null, state: null, needs_api_key: needsKey, link: null, wired_ip: null, wireless_ip: null,
+          };
+        }
+        return {
+          ip, connection_type: "moonraker", address: `http://${ip}:7125`, web_url: `http://${ip}/`, hostname, firmware,
+          version: needsKey ? null : "v0.9.3", state: needsKey ? null : "ready", needs_api_key: needsKey, link,
+          wired_ip: link === "wired" ? ip : null, wireless_ip: link === "wireless" ? ip : otherIp,
+        };
+      })
+      .filter((f) => ![f.ip, f.wired_ip, f.wireless_ip].some((h) => h && known.has(h)))
+      .map((f) => ({ ...f, decommissioned_id: was(f)?.id ?? null, decommissioned_name: was(f)?.name ?? null }));
+  });
   on("GET", "/printers/:id", ({ id }) => printerOut(printer(id)));
   on("POST", "/printers", (_, body) => {
     if (!body.name?.trim()) throw new HttpError(422, "A printer needs a name");
@@ -131,6 +188,16 @@ export function mockApi() {
     p.cameraAddress = body.camera_address || null;
     farm.printers.push(p);
     return [201, printerOut(p)];
+  });
+  // As the real API: only a decommissioned printer, and only once no 3MF files are kept for it
+  on("DELETE", "/printers/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
+    const p = printer(id);
+    if (!p.decommissioned) throw new HttpError(409, `${p.name} is still in use. Decommission it first (Edit), then it can be deleted.`);
+    const n = farm.bundles.filter((b) => b.printer_id === p.id).length;
+    if (n) throw new HttpError(409, `${p.name} still has ${n} 3MF file${n !== 1 ? "s" : ""}. Delete ${n !== 1 ? "them" : "it"} from its page first, then the printer can be deleted.`);
+    farm.printers = farm.printers.filter((x) => x !== p);
+    return [204, null];
   });
   on("PATCH", "/printers/:id", ({ id }, body) => {
     const p = printer(id);
