@@ -94,6 +94,34 @@ def test_the_monitor_order_is_kept_on_its_own(client):
     assert c.get("/settings/config").json()["config"]["preferences"]["monitor_order"] == ["8:Chamber", "3:rear"]
 
 
+def test_the_tools_page_links_are_kept_in_order_and_only_web_addresses(client):
+    c, _ = client
+    first = c.get("/settings/config").json()["config"]["preferences"]["tool_links"]
+    assert [l["url"] for l in first][:2] == ["https://canbus.esoterical.online/", "https://usb.esoterical.online/"]
+    assert len(first) == 13  # the Klipper defaults, until a list is saved
+    sent = [
+        {"name": " Klipper docs ", "url": " https://www.klipper3d.org/ "},
+        {"name": "", "url": "http://192.168.10.50:7125"},
+        {"name": "Bad", "url": "javascript:alert(1)"},
+        {"name": "No scheme", "url": "example.com"},
+        {"name": "x" * 101, "url": "https://example.com"},
+        "https://loose.example.com",
+        {"url": "https://nameless.example.com"},
+    ]
+    r = c.put("/settings/config", json={"preferences": {"tool_links": sent}})
+    assert r.status_code == 200
+    expected = [
+        {"name": "Klipper docs", "url": "https://www.klipper3d.org/"},
+        {"name": "", "url": "http://192.168.10.50:7125"},
+        {"name": "", "url": "https://nameless.example.com"},
+    ]
+    assert r.json()["config"]["preferences"]["tool_links"] == expected
+    c.put("/settings/config", json={"preferences": {"monitor_max_zoom": 6}})  # another preference leaves them alone
+    assert c.get("/settings/config").json()["config"]["preferences"]["tool_links"] == expected
+    c.put("/settings/config", json={"preferences": {"tool_links": []}})  # emptied on purpose: the defaults don't come back
+    assert c.get("/settings/config").json()["config"]["preferences"]["tool_links"] == []
+
+
 def test_the_monitor_max_zoom_is_one_of_the_choices(client):
     c, _ = client
     assert c.get("/settings/config").json()["config"]["preferences"]["monitor_max_zoom"] == 4

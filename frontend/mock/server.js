@@ -867,6 +867,14 @@ export function mockApi() {
   on("PUT", "/settings/config", (_, body) => {
     if (body.appearance) farm.config.appearance = { ...farm.config.appearance, ...body.appearance };
     if (body.preferences) farm.config.preferences = { ...farm.config.preferences, ...body.preferences };
+    if (body.preferences?.tool_links) {
+      // as the server does: trimmed, and web addresses only
+      farm.config.preferences.tool_links = (Array.isArray(body.preferences.tool_links) ? body.preferences.tool_links : [])
+        .filter((l) => l && typeof l === "object")
+        .map((l) => ({ name: typeof l.name === "string" ? l.name.trim() : "", url: typeof l.url === "string" ? l.url.trim() : "" }))
+        .filter((l) => /^https?:\/\/[^\s/]+/i.test(l.url) && l.url.length <= 2000 && l.name.length <= 100)
+        .slice(0, 200);
+    }
     return { config: farm.config, mirror: { ok: true, skipped: !farm.settingsFolder, path: farm.settingsFolder, error: null } };
   });
   on("GET", "/settings/config/location/inspect", (_, _b, q) => ({ path: q.get("path"), file_exists: false, file_valid: null, modified_at: null, summary: null, error: null }));

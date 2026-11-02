@@ -286,7 +286,24 @@ export function buildFarm() {
   // ------------------------------------------------------------------ settings, storage, shares
   const config = {
     appearance: { scheme: "farmhand", contrast: 0, font: "archivo", size: "default", file_name_color: "auto" },
-    preferences: { model_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4 },
+    preferences: {
+      model_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4,
+      tool_links: [ // the server's defaults (config_store.DEFAULT_TOOL_LINKS)
+        { name: "CANBus guide (Esoterical)", url: "https://canbus.esoterical.online/" },
+        { name: "USB guide (Esoterical)", url: "https://usb.esoterical.online/" },
+        { name: "A better print_start macro", url: "https://abetterprintstartmacro.com/" },
+        { name: "Klipper TMC Autotune", url: "https://github.com/andrewmcgr/klipper_tmc_autotune" },
+        { name: "Klippain Shake&Tune", url: "https://github.com/Frix-x/klippain-shaketune" },
+        { name: "Klippy Detective", url: "https://klippydetective.com/" },
+        { name: "Energy usage monitoring (Voron mods)", url: "https://mjonuschat.github.io/voron-mods/docs/guides/energy-usage-monitoring-tracking/" },
+        { name: "Kalico documentation", url: "https://docs.kalico.gg/" },
+        { name: "KIAUH (Klipper Installation And Update Helper)", url: "https://github.com/dw-0/kiauh" },
+        { name: "Klipper documentation", url: "https://www.klipper3d.org/" },
+        { name: "KlipperScreen documentation", url: "https://klipperscreen.readthedocs.io/en/latest/" },
+        { name: "Mainsail documentation", url: "https://docs.mainsail.xyz/" },
+        { name: "Moonraker Timelapse", url: "https://github.com/mainsail-crew/moonraker-timelapse" },
+      ],
+    },
   };
   const shares = [
     {
