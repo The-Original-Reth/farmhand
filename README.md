@@ -433,7 +433,7 @@ for a printer.
 - **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
   changing a camera in Mainsail.
 - **Board:** the top right corner names the computer a Klipper printer runs on, as the printer itself reports it:
-  *Pi 4*, *CM4*, *Pi 5*... Point at it for the full model and its memory.
+  *Pi 4*, *CM4*, *Pi 5*... Point at it for the full model and its memory. A Prusa's camera says *Prusa*.
 - **Fast start:** each printer's cameras show as soon as that printer answers, so one that's switched off doesn't
   hold up the rest. Your browser also remembers each printer's cameras from last time, so they start connecting the
   moment Monitor opens, and change only if a printer now has different ones.

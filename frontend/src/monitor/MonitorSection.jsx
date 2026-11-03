@@ -99,7 +99,8 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
     const prusa = p.connectionType === "prusalink";
     const url = prusa ? p.prusalinkUrl : p.mainsailUrl;
     const link = url ? { url, name: prusa ? "PrusaLink" : "Mainsail", printer: p.name } : null;
-    const board = cams[p.id]?.board || null; // the computer it runs on, named in the tiles' top right corner
+    // the computer it runs on, named in the tiles' top right corner; a Prusa says nothing of its own, so it's "Prusa"
+    const board = prusa ? { name: "Prusa", model: "A Prusa printer, reached through PrusaLink" } : cams[p.id]?.board || null;
     return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link, board }));
   });
   // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each
