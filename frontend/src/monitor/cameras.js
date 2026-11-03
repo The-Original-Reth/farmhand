@@ -1,0 +1,60 @@
+import { useEffect, useState } from "react";
+import { errorText, getWebcams } from "../api.js";
+import { readStoredObject, writeStored } from "../lib/storage.js";
+
+// Finding every printer's cameras for Monitor. Each printer's cameras show as soon as it answers, so one that's off
+// doesn't hold up the rest. This browser remembers the cameras each printer had last time, and those start connecting
+// straight away while the printers are asked again.
+const CAMERAS_KEY = "farmhand.monitorCameras"; // each printer's cameras as it last gave them: { printer id: webcams }
+
+// The cameras remembered from last time, as printer id -> { webcams, error, kept: true } (kept: not asked yet this time)
+function rememberedCameras() {
+  const kept = Object.entries(readStoredObject(CAMERAS_KEY)).filter(([, webcams]) => Array.isArray(webcams));
+  return Object.fromEntries(kept.map(([id, webcams]) => [id, { webcams, error: null, kept: true }]));
+}
+
+// Keep a printer's cameras for next time, or forget them (null) when it couldn't be asked
+function rememberCameras(printerId, webcams) {
+  const { [printerId]: _, ...others } = readStoredObject(CAMERAS_KEY);
+  writeStored(CAMERAS_KEY, webcams ? { ...others, [printerId]: webcams } : others);
+}
+
+// The cameras of `printers`: { cams, round, resyncing, resync }. cams: printer id -> { webcams, error, board, kept? }.
+// resync asks every printer again; round counts the resyncs, so the tiles can start over and connect anew.
+export function usePrinterCameras(printers) {
+  const [cams, setCams] = useState(rememberedCameras);
+  const [round, setRound] = useState(0);
+  const [resyncing, setResyncing] = useState(false);
+  const ids = printers.map((p) => p.id).join(",");
+
+  // every printer is asked at once, and each one's cameras show as soon as it answers
+  useEffect(() => {
+    let live = true;
+    let left = printers.length;
+    if (!left) setResyncing(false);
+    for (const p of printers) {
+      getWebcams(p.id)
+        .catch((e) => ({ webcams: [], error: errorText(e) }))
+        .then((d) => {
+          if (!live) return;
+          setCams((now) => {
+            // the same cameras as before keep their old objects, so none of them starts over
+            const before = now[p.id]?.webcams;
+            const same = before && JSON.stringify(before) === JSON.stringify(d.webcams);
+            return { ...now, [p.id]: { webcams: same ? before : d.webcams, error: d.error, board: d.board || null } };
+          });
+          rememberCameras(p.id, d.error ? null : d.webcams);
+          if (--left === 0) setResyncing(false);
+        });
+    }
+    return () => {
+      live = false;
+    };
+  }, [ids, round]);
+
+  const resync = () => {
+    setResyncing(true);
+    setRound((r) => r + 1);
+  };
+  return { cams, round, resyncing, resync };
+}

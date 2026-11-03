@@ -10,6 +10,7 @@ import { writeStored } from "../lib/storage.js";
 import { nameCollator } from "../models/modelSort.js";
 import { AddPrinterForm } from "./PrinterForms.jsx";
 import { ScanPrintersDialog } from "./ScanPrintersDialog.jsx";
+import { webUiOf } from "./webUi.js";
 import { notesHint } from "../lib/format.js";
 
 const PRINTER_SORT_KEY = "farmhand.printerSort";
@@ -169,13 +170,12 @@ export function PrinterList({ setPath }) {
 // Opens the printer's own web page in a new tab: PrusaLink for a Prusa reached that way, Mainsail for a Klipper one.
 // With no address it shows "—" in the list (`orDash`), or nothing; `style` dresses it like the buttons beside it.
 export function WebUiButton({ printer, orDash = true, style = headerButton() }) {
-  const prusa = printer.connectionType === "prusalink";
-  const url = prusa ? printer.prusalinkUrl : printer.mainsailUrl;
-  const name = prusa ? "PrusaLink" : "Mainsail";
-  if (!url) return orDash ? <span style={monoText(12, c.textFaint)}>—</span> : null;
+  const web = webUiOf(printer);
+  if (!web) return orDash ? <span style={monoText(12, c.textFaint)}>—</span> : null;
+  const { url, name } = web;
   return (
     <a
-      data-testid={prusa ? "printer-open-prusalink" : "printer-open-mainsail"} href={url} target="_blank" rel="noreferrer"
+      data-testid={`printer-open-${name.toLowerCase()}`} href={url} target="_blank" rel="noreferrer"
       onClick={(e) => e.stopPropagation()} // not also opening the printer's page here
       title={`Open ${printer.name}'s ${name} in a new tab (${url})`} style={{ ...style, display: "inline-flex", textDecoration: "none" }}
     >

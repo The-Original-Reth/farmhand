@@ -9,6 +9,19 @@ import { NO_ZOOM, panned, TILE, zoomed } from "./wall.js";
 // Picture-in-Picture), so it works for every kind of camera, not just the ones that are video
 const canFloat = typeof window !== "undefined" && "documentPictureInPicture" in window;
 
+// The labels and buttons over a camera's corners: light on a dark see-through backing, readable over any picture
+const badge = (more) => ({
+  padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)", color: "#e6e8ea", border: "none", ...ui, fontSize: fs(11), ...more,
+});
+const corner = (where) => ({ position: "absolute", [where.x]: 6, [where.y]: 6 });
+
+// A press on a corner button isn't also a click on the camera (enlarging it) or the start of a drag
+const keepToItself = (e) => e.stopPropagation();
+const pressed = (act) => (e) => {
+  e.stopPropagation();
+  act();
+};
+
 // The camera in its own picture-in-picture window while it's open (null until then). The tile shows a note instead,
 // so the camera isn't streamed twice. `refused`: the browser wouldn't open one just now (another is open from a
 // different tab, or it can't open windows at all).
@@ -145,35 +158,23 @@ export function CameraTile({ label, cam, link, board, big, hidden, place, moving
           data-testid="monitor-pip"
           aria-pressed={!!floating.win}
           title={floating.win ? "Bring it back from picture-in-picture" : "Picture-in-picture: float it in a small window on top of everything"}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            floating.open();
-          }}
-          style={{
-            position: "absolute", left: 6, top: 6, padding: "3px 6px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
-            color: "#e6e8ea", border: "none", cursor: "pointer", display: "flex", alignItems: "center",
-          }}
+          onPointerDown={keepToItself}
+          onClick={pressed(floating.open)}
+          style={badge({ ...corner({ x: "left", y: "top" }), padding: "3px 6px", cursor: "pointer", display: "flex", alignItems: "center" })}
         >
           <PictureInPicture2 size={14} />
         </button>
       )}
       {(z.s > 1 || board) && (
-        <div style={{ position: "absolute", right: 6, top: 6, display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ ...corner({ x: "right", y: "top" }), display: "flex", gap: 6, alignItems: "center" }}>
           {z.s > 1 && (
             <button
               type="button"
               data-testid="monitor-zoom-reset"
               title="Back to the whole picture"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setZoom(NO_ZOOM);
-              }}
-              style={{
-                padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
-                color: "#e6e8ea", border: "none", ...ui, fontSize: fs(11), cursor: "pointer",
-              }}
+              onPointerDown={keepToItself}
+              onClick={pressed(() => setZoom(NO_ZOOM))}
+              style={badge({ cursor: "pointer" })}
             >
               {z.s.toFixed(1)}× ✕
             </button>
@@ -182,21 +183,14 @@ export function CameraTile({ label, cam, link, board, big, hidden, place, moving
             <div
               data-testid="monitor-board"
               title={[board.model || board.name, board.memory_gb && `${board.memory_gb} GB`].filter(Boolean).join(", ")}
-              style={{ padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)", color: "#e6e8ea", ...ui, fontSize: fs(11) }}
+              style={badge()}
             >
               {board.name}
             </div>
           )}
         </div>
       )}
-      <div
-        style={{
-          position: "absolute", left: 6, bottom: 6, padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
-          color: "#e6e8ea", ...ui, fontSize: fs(11), pointerEvents: "none",
-        }}
-      >
-        {label}
-      </div>
+      <div style={badge({ ...corner({ x: "left", y: "bottom" }), pointerEvents: "none" })}>{label}</div>
       {link && (
         <a
           data-testid="monitor-web-ui"
@@ -205,12 +199,9 @@ export function CameraTile({ label, cam, link, board, big, hidden, place, moving
           rel="noreferrer"
           draggable={false}
           title={`Open ${link.printer}'s ${link.name} in a new tab (${link.url})`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()} // not also enlarging the camera
-          style={{
-            position: "absolute", right: 6, bottom: 6, padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
-            color: "#e6e8ea", ...ui, fontSize: fs(11), textDecoration: "none", display: "flex", alignItems: "center", gap: 4,
-          }}
+          onPointerDown={keepToItself}
+          onClick={keepToItself}
+          style={badge({ ...corner({ x: "right", y: "bottom" }), textDecoration: "none", display: "flex", alignItems: "center", gap: 4 })}
         >
           <ExternalLink size={11} />
           {link.name}

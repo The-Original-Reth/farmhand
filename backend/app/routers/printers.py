@@ -8,8 +8,8 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, SubPrinterCopyIn, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow,
-    SubPrinterSettingsCopyOut,
+    DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterCopyIn,
+    SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow, SubPrinterSettingsCopyOut,
 )
 from ..services import bundle_service, printer_discovery, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
@@ -104,7 +104,7 @@ def copy_sub_printer(
     printer_id: int, sub_printer_id: int, payload: SubPrinterCopyIn | None = None, db: Session = Depends(get_db)
 ):
     """
-    A copy of a printer profile, with its parts, named `name` or "<its name> - copy". Its 3MFs and being the default stay
+    A copy of a printer profile, with its parts and printer settings, named `name` or "<its name> - copy". Its 3MFs and being the default stay
     with the original. 409 if the printer already has one by that name. Answers the printer as it now stands.
     """
     with answer_errors(409):

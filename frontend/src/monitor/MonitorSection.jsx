@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { c } from "../theme.js";
 import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js";
-import { errorText, getWebcams } from "../api.js";
+import { errorText } from "../api.js";
 import { useData } from "../data.jsx";
-import { readStoredObject, writeStored } from "../lib/storage.js";
+import { webUiOf } from "../printers/webUi.js";
+import { usePrinterCameras } from "./cameras.js";
 import { CameraTile } from "./CameraTile.jsx";
 import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 
@@ -15,67 +16,22 @@ import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 // id:camera name" keys; onSave sends one and resolves once the server has it). A camera not in the order yet goes after
 // the ones that are. Scroll over a camera to zoom into it, up to maxZoom (chosen beside Save layout; onMaxZoom keeps
 // it), and drag a zoomed one to look around. Resync asks every printer for its cameras again and connects to each anew.
-// Each printer's cameras show as soon as it answers, so one that's off doesn't hold up the rest. This browser remembers
-// the cameras each printer had last time, and those start connecting straight away while the printers are asked again.
+// The cameras are found as cameras.js says: each printer's as soon as it answers, starting from the ones remembered.
 const TOOLBAR = 46; // the Save layout line above the grid, with the gap below it
 const ZOOMS = [2, 3, 4, 6, 8]; // the max zoom choices; the server takes only these
-const CAMERAS_KEY = "farmhand.monitorCameras"; // each printer's cameras as it last gave them: { printer id: webcams }
-
-// The cameras remembered from last time, as printer id -> { webcams, error, kept: true } (kept: not asked yet this time)
-function rememberedCameras() {
-  const kept = Object.entries(readStoredObject(CAMERAS_KEY)).filter(([, webcams]) => Array.isArray(webcams));
-  return Object.fromEntries(kept.map(([id, webcams]) => [id, { webcams, error: null, kept: true }]));
-}
-
-// Keep a printer's cameras for next time, or forget them (null) when it couldn't be asked
-function rememberCameras(printerId, webcams) {
-  const { [printerId]: _, ...others } = readStoredObject(CAMERAS_KEY);
-  writeStored(CAMERAS_KEY, webcams ? { ...others, [printerId]: webcams } : others);
-}
+const PRUSA_BOARD = { name: "Prusa", model: "A Prusa printer, reached through PrusaLink" };
 
 export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const { printers } = useData();
-  const [cams, setCams] = useState(rememberedCameras); // printer id -> { webcams, error, kept? }
+  const active = printers.filter((p) => !p.decommissioned);
+  const { cams, round, resyncing, resync } = usePrinterCameras(active);
   const [big, setBig] = useState(null); // the camera shown on its own: its key
   const [dragging, setDragging] = useState(null); // the key of the camera being dragged
   const [over, setOver] = useState(null); // the key of the camera it would go to
   const [draft, setDraft] = useState(null); // the order as rearranged here, not saved yet (null = as saved)
   const [saving, setSaving] = useState({ phase: "idle" }); // idle | saving | saved | error
-  const [round, setRound] = useState(0); // one more for each Resync: the tiles start over, connecting again
-  const [resyncing, setResyncing] = useState(false);
-  const active = printers.filter((p) => !p.decommissioned);
-  const ids = active.map((p) => p.id).join(",");
   const [wall, setWall] = useState(null); // the wall itself, once it's on the page
   const room = useRoom(wall);
-
-  // every printer is asked at once, and each one's cameras show as soon as it answers
-  useEffect(() => {
-    let live = true;
-    let left = active.length;
-    if (!left) setResyncing(false);
-    for (const p of active) {
-      getWebcams(p.id)
-        .catch((e) => ({ webcams: [], error: errorText(e) }))
-        .then((d) => {
-          if (!live) return;
-          setCams((now) => {
-            // the same cameras as before keep their old objects, so none of them starts over
-            const before = now[p.id]?.webcams;
-            const same = before && JSON.stringify(before) === JSON.stringify(d.webcams);
-            return { ...now, [p.id]: { webcams: same ? before : d.webcams, error: d.error, board: d.board || null } };
-          });
-          rememberCameras(p.id, d.error ? null : d.webcams);
-          if (--left === 0) setResyncing(false);
-        });
-    }
-    return () => {
-      live = false;
-    };
-  }, [ids, round]);
-  const resync = () => {
-    setResyncing(true);
-    setRound((r) => r + 1);
-  };
 
   useEffect(() => {
     if (!big) return;
@@ -95,12 +51,11 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   // one tile per camera; a printer with two cameras gets two, named "VT 1190 · Nozzle"
   const tiles = active.flatMap((p) => {
     const list = cams[p.id]?.webcams || [];
-    // the printer's own web page (Mainsail, or PrusaLink for a Prusa reached that way), linked from the corner of its tiles
-    const prusa = p.connectionType === "prusalink";
-    const url = prusa ? p.prusalinkUrl : p.mainsailUrl;
-    const link = url ? { url, name: prusa ? "PrusaLink" : "Mainsail", printer: p.name } : null;
+    // the printer's own web page (Mainsail, or PrusaLink), linked from the corner of its tiles
+    const web = webUiOf(p);
+    const link = web && { ...web, printer: p.name };
     // the computer it runs on, named in the tiles' top right corner; a Prusa says nothing of its own, so it's "Prusa"
-    const board = prusa ? { name: "Prusa", model: "A Prusa printer, reached through PrusaLink" } : cams[p.id]?.board || null;
+    const board = p.connectionType === "prusalink" ? PRUSA_BOARD : cams[p.id]?.board || null;
     return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link, board }));
   });
   // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each

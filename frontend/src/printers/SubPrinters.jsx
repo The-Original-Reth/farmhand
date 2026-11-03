@@ -78,7 +78,7 @@ function NameForm({ value, onChange, onSave, onCancel, busy, label, busyLabel, p
 
 // One printer profile: its name (click for its printer settings; renamed in place), how many 3MFs were sliced with it (click
 // to show only those), a star to make it the default (the one the printer's uploads start on), Copy (a new one with its
-// parts, named "<name> - copy" unless that's changed), Remove
+// printer settings and parts, named "<name> - copy" unless that's changed), Remove
 function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   const { putPrinter } = useData();
   const { busy, error, setError, run } = useChange();

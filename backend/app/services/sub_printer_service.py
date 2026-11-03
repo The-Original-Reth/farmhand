@@ -1,7 +1,7 @@
 """
 A printer's printer profiles: its printer presets in PrusaSlicer (BOSS edition), the entries listed under a physical
-printer in the Printers tab. Each 3MF version is linked to the one it was sliced with (printer_settings_id); a sub
-printer it names that isn't known yet is added. They can be added, renamed and removed by hand too.
+printer in the Printers tab. Each 3MF version is linked to the one it was sliced with (printer_settings_id); a
+printer profile it names that isn't known yet is added. They can be added, renamed and removed by hand too.
 """
 from __future__ import annotations
 
@@ -34,6 +34,17 @@ PART_FIELDS = ("part", "make", "model", "installed_on", "note", "in_name")
 
 def _fields_of(part: SubPrinterPart) -> dict:
     return {name: getattr(part, name) for name in PART_FIELDS}
+
+
+def _apply(part: SubPrinterPart, fields: dict) -> None:
+    """Every field given replaces the part's own (a blank one clears it)."""
+    for name, value in fields.items():
+        setattr(part, name, value)
+
+
+def _text(value, limit: int) -> str | None:
+    """A saved record's text field, trimmed and cut to fit; None when it's blank or not text."""
+    return (value.strip()[:limit] or None) if isinstance(value, str) else None
 
 
 def _keep_default_name(part: SubPrinterPart, new_name: str) -> None:
@@ -77,6 +88,25 @@ def _sub_printer(db: Session, printer_id: int, sub_printer_id: int) -> SubPrinte
     return sub
 
 
+def _printer_and_sub(db: Session, printer_id: int, sub_printer_id: int) -> tuple[Printer, SubPrinter]:
+    """The printer, then its printer profile: NotFound for either (the printer is checked first)."""
+    return _printer(db, printer_id), _sub_printer(db, printer_id, sub_printer_id)
+
+
+def _saved(db: Session, printer: Printer) -> Printer:
+    """Commit, and answer the printer as it now is."""
+    db.commit()
+    db.refresh(printer)
+    return printer
+
+
+def _saved_parts(db: Session, sub: SubPrinter) -> list[SubPrinterPart]:
+    """Commit, and answer the printer profile's parts as they now are."""
+    db.commit()
+    db.refresh(sub)
+    return list(sub.parts)
+
+
 def _named(db: Session, printer_id: int, name: str) -> SubPrinter | None:
     return db.scalar(select(SubPrinter).where(SubPrinter.printer_id == printer_id, SubPrinter.name == name))
 
@@ -117,9 +147,7 @@ def add(db: Session, printer_id: int, name: str) -> Printer:
     if _named(db, printer_id, name) is not None:
         raise _taken(printer, name)
     _new(printer, name)
-    db.commit()
-    db.refresh(printer)
-    return printer
+    return _saved(db, printer)
 
 
 def copy_name(printer: Printer, name: str) -> str:
@@ -160,8 +188,7 @@ def copy(db: Session, printer_id: int, sub_printer_id: int, name: str | None = N
     see SubPrinterSettingsCopy). Its 3MFs, the names it was known by and being the default stay with the original.
     `name` defaults to copy_name; ValueError if the printer already has one by it.
     """
-    printer = _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    printer, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     name = _clean(name) if name is not None else copy_name(printer, sub.name)
     if _named(db, printer_id, name) is not None:
         raise _taken(printer, name)
@@ -171,15 +198,12 @@ def copy(db: Session, printer_id: int, sub_printer_id: int, name: str | None = N
     if found is not None:
         settings, from_file = found
         new.settings_copy = SubPrinterSettingsCopy(copied_from=sub.name, from_file=from_file, settings=settings)
-    db.commit()
-    db.refresh(printer)
-    return printer
+    return _saved(db, printer)
 
 
 def settings_copy(db: Session, printer_id: int, sub_printer_id: int) -> SubPrinterSettingsCopy:
     """A copied printer profile's printer settings. NotFound when it has none (it isn't a copy, or the original had none)."""
-    _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    _, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     if sub.settings_copy is None:
         raise NotFound("This printer profile has no copied printer settings")
     return sub.settings_copy
@@ -190,8 +214,7 @@ def rename(db: Session, printer_id: int, sub_printer_id: int, name: str) -> Prin
     Rename one: its 3MFs stay linked to it, and 3MFs sliced with either name go to it from now on (the old one is
     remembered as a name it was known by).
     """
-    printer = _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    printer, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     name = _clean(name)
     other = _named(db, printer_id, name)
     if other is not None and other.id != sub.id:
@@ -200,9 +223,7 @@ def rename(db: Session, printer_id: int, sub_printer_id: int, name: str) -> Prin
     sub.name = name
     sub.alias_rows = [a for a in sub.alias_rows if a.name != name]  # its name now, not a name it was known by
     _remember(db, sub, old)
-    db.commit()
-    db.refresh(printer)
-    return printer
+    return _saved(db, printer)
 
 
 def remove(db: Session, printer_id: int, sub_printer_id: int) -> Printer:
@@ -210,8 +231,7 @@ def remove(db: Session, printer_id: int, sub_printer_id: int) -> Printer:
     Remove one, and the parts written down for it. Its 3MFs stay, with no printer profile; one uploaded later that names it
     adds it again.
     """
-    printer = _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    printer, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     db.execute(
         update(BundleVersionSubPrinter)
         .where(BundleVersionSubPrinter.sub_printer_id == sub.id)
@@ -239,30 +259,24 @@ def set_default(db: Session, printer_id: int, sub_printer_id: int | None) -> Pri
             printer.default_sub_printer_row = DefaultSubPrinter(printer_id=printer.id, sub_printer_id=sub.id)
         else:
             printer.default_sub_printer_row.sub_printer_id = sub.id
-    db.commit()
-    db.refresh(printer)
-    return printer
+    return _saved(db, printer)
 
 
 def parts(db: Session, printer_id: int, sub_printer_id: int) -> list[SubPrinterPart]:
     """The parts fitted to a printer profile, in the order they were added."""
-    _printer(db, printer_id)
-    return list(_sub_printer(db, printer_id, sub_printer_id).parts)
+    _, sub = _printer_and_sub(db, printer_id, sub_printer_id)
+    return list(sub.parts)
 
 
 def add_part(db: Session, printer_id: int, sub_printer_id: int, fields: dict) -> list[SubPrinterPart]:
     """Write down a part fitted to a printer profile. `fields` are already checked (SubPrinterPartIn)."""
-    _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    _, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     sub.parts.append(SubPrinterPart(**fields))
-    db.commit()
-    db.refresh(sub)
-    return list(sub.parts)
+    return _saved_parts(db, sub)
 
 
 def _part(db: Session, printer_id: int, sub_printer_id: int, part_id: int) -> tuple[SubPrinter, SubPrinterPart]:
-    _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    _, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     part = db.get(SubPrinterPart, part_id)
     if part is None or part.sub_printer_id != sub.id:
         raise NotFound(f"No part with id {part_id} on this printer profile")
@@ -276,11 +290,8 @@ def update_part(db: Session, printer_id: int, sub_printer_id: int, part_id: int,
     """
     sub, part = _part(db, printer_id, sub_printer_id, part_id)
     _keep_default_name(part, fields.get("part", part.part))
-    for name, value in fields.items():
-        setattr(part, name, value)
-    db.commit()
-    db.refresh(sub)
-    return list(sub.parts)
+    _apply(part, fields)
+    return _saved_parts(db, sub)
 
 
 def parts_left_out(db: Session, printer_id: int, sub_printer_id: int, rows: list[dict]) -> list[SubPrinterPart]:
@@ -295,39 +306,36 @@ def save_parts(db: Session, printer_id: int, sub_printer_id: int, rows: list[dic
     part, one without is added (after the rest), and a part the rows leave out is removed. All of it, or nothing:
     ValueError for a default part renamed or a part listed twice, NotFound for an id that isn't one of its parts.
     """
-    _printer(db, printer_id)
-    sub = _sub_printer(db, printer_id, sub_printer_id)
+    _, sub = _printer_and_sub(db, printer_id, sub_printer_id)
     now = {p.id: p for p in sub.parts}
     ids = [row["id"] for row in rows if row.get("id") is not None]
-    if len(ids) != len(set(ids)):
+    kept = set(ids)
+    if len(ids) != len(kept):
         raise ValueError("The same part is in the list twice")
     for row in rows:
-        part = now.get(row["id"]) if row.get("id") is not None else None
-        if row.get("id") is not None and part is None:
-            raise NotFound(f"No part with id {row['id']} on this printer profile")
-        if part is not None:
-            _keep_default_name(part, row["part"])
+        rid = row.get("id")
+        if rid is None:
+            continue
+        if rid not in now:
+            raise NotFound(f"No part with id {rid} on this printer profile")
+        _keep_default_name(now[rid], row["part"])
 
-    for part in [p for p in sub.parts if p.id not in set(ids)]:
+    for part in [p for p in sub.parts if p.id not in kept]:
         sub.parts.remove(part)
     for row in rows:
         fields = {k: v for k, v in row.items() if k != "id"}
-        if row.get("id") is None:
+        rid = row.get("id")
+        if rid is None:
             sub.parts.append(SubPrinterPart(**fields))
         else:
-            for name, value in fields.items():
-                setattr(now[row["id"]], name, value)
-    db.commit()
-    db.refresh(sub)
-    return list(sub.parts)
+            _apply(now[rid], fields)
+    return _saved_parts(db, sub)
 
 
 def delete_part(db: Session, printer_id: int, sub_printer_id: int, part_id: int) -> list[SubPrinterPart]:
     sub, part = _part(db, printer_id, sub_printer_id, part_id)
     sub.parts.remove(part)
-    db.commit()
-    db.refresh(sub)
-    return list(sub.parts)
+    return _saved_parts(db, sub)
 
 
 def link(
@@ -386,12 +394,7 @@ def record(printer: Printer) -> list[dict]:
             "default": s.id == printer.default_sub_printer_id,  # the one its uploads start on
             "aliases": s.aliases,  # preset names that also mean it
             "parts": [
-                {
-                    "part": p.part, "make": p.make, "model": p.model,
-                    "installed_on": p.installed_on.isoformat() if p.installed_on else None, "note": p.note,
-                    "in_name": p.in_name,
-                }
-                for p in s.parts
+                {**_fields_of(p), "installed_on": p.installed_on.isoformat() if p.installed_on else None} for p in s.parts
             ],
             # a copy's printer settings, until a 3MF sliced with it comes in (read from a 3MF: no logins in them)
             **({"settings_copy": {
@@ -407,23 +410,22 @@ def record(printer: Printer) -> list[dict]:
 def _restored_part(rec) -> SubPrinterPart | None:
     if not isinstance(rec, dict) or not isinstance(rec.get("part"), str) or not rec["part"].strip():
         return None
-    text = lambda v, n: (v.strip()[:n] or None) if isinstance(v, str) else None  # noqa: E731
     try:
         installed = dt.date.fromisoformat(rec["installed_on"]) if isinstance(rec.get("installed_on"), str) else None
     except ValueError:
         installed = None
     return SubPrinterPart(
-        part=rec["part"].strip()[:120], make=text(rec.get("make"), 120), model=text(rec.get("model"), 200),
-        installed_on=installed, note=text(rec.get("note"), 2000), in_name=rec.get("in_name") is True,
+        part=rec["part"].strip()[:MAX_NAME], make=_text(rec.get("make"), 120), model=_text(rec.get("model"), 200),
+        installed_on=installed, note=_text(rec.get("note"), 2000), in_name=rec.get("in_name") is True,
     )
 
 
 def restore(db: Session, printer: Printer, saved) -> bool:
     """
-    Printer profiles from a saved printer record that this printer doesn't have yet, its default if it has none, and the parts of any that have nothing
-    written down (no parts, or only the untouched defaults; never mixed into a list someone filled in). Each is a
-    name, or {name, parts} (records from before parts were names, and come back with the default parts). True if
-    anything was added.
+    Printer profiles from a saved printer record that this printer doesn't have yet, its default if it has none, and
+    the parts of any that have nothing written down (no parts, or only the untouched defaults; never mixed into a list
+    someone filled in). Each is {name, parts, ...}, or a bare name: a record from before parts were kept, which comes
+    back with the default parts. True if anything was added.
     """
     by_name = {s.name: s for s in printer.sub_printers}
     added = False
@@ -448,13 +450,12 @@ def restore(db: Session, printer: Printer, saved) -> bool:
                     added |= len(sub.alias_rows) != before
         copied = rec.get("settings_copy") if isinstance(rec, dict) else None
         if sub.settings_copy is None and isinstance(copied, dict) and isinstance(copied.get("settings"), dict):
-            text = lambda v, n: (v.strip()[:n] or None) if isinstance(v, str) else None  # noqa: E731
             try:
                 when = dt.datetime.fromisoformat(copied["copied_at"]) if isinstance(copied.get("copied_at"), str) else None
             except ValueError:
                 when = None
             sub.settings_copy = SubPrinterSettingsCopy(
-                copied_from=text(copied.get("copied_from"), 120) or name, from_file=text(copied.get("from_file"), 255),
+                copied_from=_text(copied.get("copied_from"), MAX_NAME) or name, from_file=_text(copied.get("from_file"), 255),
                 settings=copied["settings"], **({"copied_at": when} if when else {}),
             )
             added = True

@@ -242,7 +242,7 @@ export const createSourceModel = ({ name, file }) =>
 
 // Which printer profile a new 3MF version goes to: { subPrinterId } (one of the printer's) or { newSubPrinterName } (a new
 // one); neither = the one its printer preset goes to.
-const subPrinterFields = ({ subPrinterId, newSubPrinterName }) => ({
+const subPrinterFormFields = ({ subPrinterId, newSubPrinterName }) => ({
   sub_printer_id: subPrinterId != null ? String(subPrinterId) : undefined,
   new_sub_printer_name: newSubPrinterName || undefined,
 });
@@ -254,7 +254,7 @@ export const createBundle = ({ sourceModelIds, threemf, gcode, printerId, subPri
     gcode: gcode || undefined, // optional
     // When omitted, the backend reads the printer from the 3MF's own profile.
     printer_id: printerId != null ? String(printerId) : undefined,
-    ...subPrinterFields(subPrinter),
+    ...subPrinterFormFields(subPrinter),
   }));
 
 // Ask the backend what a 3MF says about itself (which printer it was sliced
@@ -275,7 +275,7 @@ export const uploadGcode = (versionId, gcode) => request(`/bundles/versions/${ve
 export const sendGcode = (versionId) => post(`/bundles/versions/${versionId}/print`);
 
 export const addBundleVersion = ({ bundleId, threemf, gcode, subPrinter = {} }) =>
-  request(`/bundles/${bundleId}/versions`, formBody("POST", { threemf, gcode: gcode || undefined, ...subPrinterFields(subPrinter) })); // the G-code is optional
+  request(`/bundles/${bundleId}/versions`, formBody("POST", { threemf, gcode: gcode || undefined, ...subPrinterFormFields(subPrinter) })); // the G-code is optional
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
 // connectionType: "moonraker" | "prusalink". prusalinkUrl: blank = http://<IP>. prusalinkPassword works like the API key.
@@ -303,23 +303,27 @@ export const updatePrinter = (
     ...(cameraAddress !== undefined ? { camera_address: cameraAddress || null } : {}),
   }));
 
+// Only a decommissioned printer with no 3MF files kept for it (409 otherwise, saying why)
+export const deletePrinter = (id) => del(`/printers/${id}`);
+
 // ---- a printer's printer profiles: its printer presets in the slicer (found from its 3MFs, or added here). Each
 // resolves to the whole printer as it now stands. 409 when the printer already has one by that name. ----
+const subPrinterPath = (printerId, subPrinterId) => `/printers/${printerId}/sub-printers/${subPrinterId}`;
 export const addSubPrinter = (printerId, name) => request(`/printers/${printerId}/sub-printers`, jsonBody("POST", { name }));
-// a new printer profile with a copy of its parts, called `name` (its 3MFs and being the default stay with the original)
+// a new printer profile with a copy of its parts and printer settings, called `name` (its 3MFs and being the default
+// stay with the original)
 export const copySubPrinter = (printerId, subPrinterId, name) =>
-  request(`/printers/${printerId}/sub-printers/${subPrinterId}/copy`, jsonBody("POST", { name }));
+  request(`${subPrinterPath(printerId, subPrinterId)}/copy`, jsonBody("POST", { name }));
 export const renameSubPrinter = (printerId, subPrinterId, name) =>
-  request(`/printers/${printerId}/sub-printers/${subPrinterId}`, jsonBody("PATCH", { name }));
+  request(subPrinterPath(printerId, subPrinterId), jsonBody("PATCH", { name }));
 // the one its uploads start on, whatever preset a 3MF was sliced with; null: none (Farmhand guesses from the preset)
 export const setDefaultSubPrinter = (printerId, subPrinterId) =>
   request(`/printers/${printerId}/default-sub-printer`, jsonBody("PUT", { sub_printer_id: subPrinterId }));
 // its 3MFs stay, with no printer profile; its parts go
-// Only a decommissioned printer with no 3MF files kept for it (409 otherwise, saying why)
-export const deletePrinter = (id) => del(`/printers/${id}`);
-export const deleteSubPrinter =(printerId, subPrinterId) => del(`/printers/${printerId}/sub-printers/${subPrinterId}`);
+export const deleteSubPrinter = (printerId, subPrinterId) => del(subPrinterPath(printerId, subPrinterId));
 
-// A printer profile's parts (its Printer parts page): [{ id, part, make, model, installedOn: "2026-08-14" | null, note }].
+// A printer profile's parts (its Printer parts page): [{ id, part, make, model, installedOn: "2026-08-14" | null, note,
+// inName }].
 // Saving resolves to the whole list as it now stands.
 const normalizePart = (p) => ({
   id: p.id, part: p.part, make: p.make || "", model: p.model || "", installedOn: p.installed_on || null, note: p.note || "",
@@ -328,12 +332,12 @@ const normalizePart = (p) => ({
 const partBody = ({ part, make, model, installedOn, note, inName }) => ({
   part, make: make || null, model: model || null, installed_on: installedOn || null, note: note || null, in_name: !!inName,
 });
-const partsPath = (printerId, subPrinterId) => `/printers/${printerId}/sub-printers/${subPrinterId}/parts`;
+const partsPath = (printerId, subPrinterId) => `${subPrinterPath(printerId, subPrinterId)}/parts`;
 const partsList = async (call) => (await call).map(normalizePart);
 export const getSubPrinterParts = (printerId, subPrinterId) => partsList(request(partsPath(printerId, subPrinterId)));
 // A copied printer profile's printer settings, as its original had them: { copiedFrom, fromFile, copiedAt, settings }
 export const getSubPrinterSettingsCopy = async (printerId, subPrinterId) => {
-  const r = await request(`/printers/${printerId}/sub-printers/${subPrinterId}/settings-copy`);
+  const r = await request(`${subPrinterPath(printerId, subPrinterId)}/settings-copy`);
   return { copiedFrom: r.copied_from, fromFile: r.from_file || null, copiedAt: r.copied_at || null, settings: r.settings || {} };
 };
 // The whole list at once, as the page was edited: a part with an id is changed, one without is added, and one left out
