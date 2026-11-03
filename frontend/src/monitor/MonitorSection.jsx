@@ -69,7 +69,11 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   // one tile per camera; a printer with two cameras gets two, named "VT 1190 · Nozzle"
   const tiles = active.flatMap((p) => {
     const list = cams[p.id]?.webcams || [];
-    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam }));
+    // the printer's own web page (Mainsail, or PrusaLink for a Prusa reached that way), linked from the corner of its tiles
+    const prusa = p.connectionType === "prusalink";
+    const url = prusa ? p.prusalinkUrl : p.mainsailUrl;
+    const link = url ? { url, name: prusa ? "PrusaLink" : "Mainsail", printer: p.name } : null;
+    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link }));
   });
   // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each
   // one shows is set with CSS order instead
@@ -126,7 +130,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
           {/* all stay mounted while one is enlarged, so no camera has to connect again on the way back */}
           {tiles.map((t) => (
             <CameraTile
-              key={`${t.key}#${round}`} label={t.label} cam={t.cam} big={big === t.key} hidden={!!big && big !== t.key}
+              key={`${t.key}#${round}`} label={t.label} cam={t.cam} link={t.link} big={big === t.key} hidden={!!big && big !== t.key}
               place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key} maxZoom={maxZoom}
               onClick={() => setBig(big ? null : t.key)}
               drag={big ? null : {

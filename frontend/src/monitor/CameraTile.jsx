@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { PictureInPicture2 } from "lucide-react";
+import { ExternalLink, PictureInPicture2 } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { CameraPicture } from "./players.jsx";
 import { NO_ZOOM, panned, TILE, zoomed } from "./wall.js";
@@ -39,8 +39,9 @@ function useFloating(label) {
 
 // A camera's own picture, turned and flipped as Mainsail is set to show it. Scroll over it to zoom in (up to maxZoom)
 // or out; drag a zoomed one to look around; the badge in the corner goes back to the whole picture. The button in the
-// top left corner floats it in a picture-in-picture window (where the browser can).
-export function CameraTile({ label, cam, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
+// top left corner floats it in a picture-in-picture window (where the browser can). `link`: the printer's own web page,
+// { url, name, printer } (Mainsail or PrusaLink), opened in a new tab from the bottom right corner.
+export function CameraTile({ label, cam, link, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const [el, setEl] = useState(null);
   const [zoom, setZoom] = useState(NO_ZOOM);
@@ -182,6 +183,25 @@ export function CameraTile({ label, cam, big, hidden, place, moving, target, dra
       >
         {label}
       </div>
+      {link && (
+        <a
+          data-testid="monitor-web-ui"
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          draggable={false}
+          title={`Open ${link.printer}'s ${link.name} in a new tab (${link.url})`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()} // not also enlarging the camera
+          style={{
+            position: "absolute", right: 6, bottom: 6, padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
+            color: "#e6e8ea", ...ui, fontSize: fs(11), textDecoration: "none", display: "flex", alignItems: "center", gap: 4,
+          }}
+        >
+          <ExternalLink size={11} />
+          {link.name}
+        </a>
+      )}
     </div>
   );
 }

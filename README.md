@@ -427,6 +427,9 @@ for a printer.
 - **Picture-in-picture:** the button in a camera's top left corner floats it in a small window that stays on top
   of every other window, for any kind of camera; its tile says so while it's out there. Click the button again,
   or close the small window, to bring it back. Chrome and Edge only (Firefox and Safari don't show the button).
+- **Mainsail / PrusaLink:** the link in a camera's bottom right corner opens its printer's own web page in a new
+  tab: Mainsail, or PrusaLink for a Prusa reached that way. The bottom left corner names the printer as it's named
+  in Printers.
 - **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
   changing a camera in Mainsail.
 
