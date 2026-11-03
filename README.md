@@ -432,6 +432,9 @@ for a printer.
   in Printers.
 - **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
   changing a camera in Mainsail.
+- **Fast start:** each printer's cameras show as soon as that printer answers, so one that's switched off doesn't
+  hold up the rest. Your browser also remembers each printer's cameras from last time, so they start connecting the
+  moment Monitor opens, and change only if a printer now has different ones.
 
 ### A Prusa's Buddy3D camera
 

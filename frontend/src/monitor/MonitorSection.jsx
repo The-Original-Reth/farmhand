@@ -4,6 +4,7 @@ import { c } from "../theme.js";
 import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js";
 import { errorText, getWebcams } from "../api.js";
 import { useData } from "../data.jsx";
+import { readStoredObject, writeStored } from "../lib/storage.js";
 import { CameraTile } from "./CameraTile.jsx";
 import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 
@@ -14,12 +15,27 @@ import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 // id:camera name" keys; onSave sends one and resolves once the server has it). A camera not in the order yet goes after
 // the ones that are. Scroll over a camera to zoom into it, up to maxZoom (chosen beside Save layout; onMaxZoom keeps
 // it), and drag a zoomed one to look around. Resync asks every printer for its cameras again and connects to each anew.
+// Each printer's cameras show as soon as it answers, so one that's off doesn't hold up the rest. This browser remembers
+// the cameras each printer had last time, and those start connecting straight away while the printers are asked again.
 const TOOLBAR = 46; // the Save layout line above the grid, with the gap below it
 const ZOOMS = [2, 3, 4, 6, 8]; // the max zoom choices; the server takes only these
+const CAMERAS_KEY = "farmhand.monitorCameras"; // each printer's cameras as it last gave them: { printer id: webcams }
+
+// The cameras remembered from last time, as printer id -> { webcams, error, kept: true } (kept: not asked yet this time)
+function rememberedCameras() {
+  const kept = Object.entries(readStoredObject(CAMERAS_KEY)).filter(([, webcams]) => Array.isArray(webcams));
+  return Object.fromEntries(kept.map(([id, webcams]) => [id, { webcams, error: null, kept: true }]));
+}
+
+// Keep a printer's cameras for next time, or forget them (null) when it couldn't be asked
+function rememberCameras(printerId, webcams) {
+  const { [printerId]: _, ...others } = readStoredObject(CAMERAS_KEY);
+  writeStored(CAMERAS_KEY, webcams ? { ...others, [printerId]: webcams } : others);
+}
 
 export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const { printers } = useData();
-  const [cams, setCams] = useState(null); // printer id -> { webcams, error }
+  const [cams, setCams] = useState(rememberedCameras); // printer id -> { webcams, error, kept? }
   const [big, setBig] = useState(null); // the camera shown on its own: its key
   const [dragging, setDragging] = useState(null); // the key of the camera being dragged
   const [over, setOver] = useState(null); // the key of the camera it would go to
@@ -32,14 +48,26 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const [wall, setWall] = useState(null); // the wall itself, once it's on the page
   const room = useRoom(wall);
 
+  // every printer is asked at once, and each one's cameras show as soon as it answers
   useEffect(() => {
     let live = true;
-    Promise.all(active.map((p) => getWebcams(p.id).then((d) => [p.id, d], (e) => [p.id, { webcams: [], error: errorText(e) }])))
-      .then((pairs) => {
-        if (!live) return;
-        setCams(Object.fromEntries(pairs));
-        setResyncing(false);
-      });
+    let left = active.length;
+    if (!left) setResyncing(false);
+    for (const p of active) {
+      getWebcams(p.id)
+        .catch((e) => ({ webcams: [], error: errorText(e) }))
+        .then((d) => {
+          if (!live) return;
+          setCams((now) => {
+            // the same cameras as before keep their old objects, so none of them starts over
+            const before = now[p.id]?.webcams;
+            const same = before && JSON.stringify(before) === JSON.stringify(d.webcams);
+            return { ...now, [p.id]: { webcams: same ? before : d.webcams, error: d.error } };
+          });
+          rememberCameras(p.id, d.error ? null : d.webcams);
+          if (--left === 0) setResyncing(false);
+        });
+    }
     return () => {
       live = false;
     };
@@ -63,8 +91,6 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
     window.addEventListener("beforeunload", ask);
     return () => window.removeEventListener("beforeunload", ask);
   }, [draft]);
-
-  if (!cams) return <div style={uiText(13, c.textFaint)}>Finding the printers' cameras…</div>;
 
   // one tile per camera; a printer with two cameras gets two, named "VT 1190 · Nozzle"
   const tiles = active.flatMap((p) => {
@@ -90,7 +116,8 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
     }
     endDrag();
   };
-  const without = active.filter((p) => !(cams[p.id]?.webcams || []).length);
+  const asking = active.some((p) => !cams[p.id] || cams[p.id].kept); // printers that haven't answered yet
+  const without = active.filter((p) => cams[p.id] && !cams[p.id].kept && !cams[p.id].webcams.length);
   const below = (without.length && !big ? 34 : 0) + (tiles.length && !big ? TOOLBAR : 0); // the lines around the grid
   const { cols, width } = fit(big ? 1 : tiles.length, room.width, room.height - below);
   const save = async () => {
@@ -110,7 +137,9 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
 
   return (
     <div ref={setWall} data-testid="monitor-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {tiles.length === 0 ? (
+      {tiles.length === 0 && asking ? (
+        <div style={uiText(13, c.textFaint)}>Finding the printers' cameras…</div>
+      ) : tiles.length === 0 ? (
         <div style={uiText(13, c.textMuted, { lineHeight: 1.6 })}>
           No cameras yet. A printer's camera shows here once it's set up in Mainsail (Settings → Webcams).
         </div>
