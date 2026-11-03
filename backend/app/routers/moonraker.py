@@ -57,13 +57,15 @@ def connection_status(printer_id: int, db: Session = Depends(get_db)):
 def webcams(printer_id: int, db: Session = Depends(get_db)):
     """
     The printer's cameras for the Monitor page: as set up in Mainsail, plus one Farmhand plays itself through go2rtc
-    (a Buddy3D's). Never fails: says why there are none.
+    (a Buddy3D's). Never fails: says why there are none. board: the computer a Klipper printer runs on, shown in the
+    corner of its cameras ({name: "Pi 4", model, memory_gb}, see moonraker.board), or null.
     """
     printer = require_printer(db, printer_id)
-    cams, errors = [], []
+    cams, errors, board = [], [], None
     if printer.connection_type == "moonraker":
         try:
             cams += mr.webcams(printer)
+            board = mr.board(printer)  # only once it has answered: an unreachable one isn't waited for twice
         except mr.MoonrakerError as e:
             errors.append(str(e))
     if printer.camera_address:
@@ -73,7 +75,7 @@ def webcams(printer_id: int, db: Session = Depends(get_db)):
             errors.append(str(e))
     elif printer.connection_type == "prusalink":
         errors.append("No camera address set. Add the Buddy3D camera's IP on the printer's Edit page")
-    return {"webcams": cams, "error": "; ".join(errors) or None}
+    return {"webcams": cams, "error": "; ".join(errors) or None, "board": board}
 
 
 def _relayed_camera(printer: Printer) -> dict:

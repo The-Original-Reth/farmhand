@@ -361,6 +361,7 @@ export const syncPrinterHistory = (printerId) => post(`/printers/${printerId}/mo
 export const getPrintStats = (printerId) => request(`/printers/${printerId}/print-stats`);
 // A printer's cameras as set up in Mainsail, for the Monitor page: { webcams: [{ name, service, mjpeg, stream_url,
 // snapshot_url, flip_horizontal, flip_vertical, rotation, aspect_ratio }], error }. Never fails: error says why there are none.
+// ...and board: the computer a Klipper printer runs on, { name: "Pi 4" | "CM4" | ..., model, memory_gb }, or null
 export const getWebcams = (printerId) => request(`/printers/${printerId}/webcams`);
 
 // this browser's time zone ("Europe/Amsterdam"), or "" if it can't say

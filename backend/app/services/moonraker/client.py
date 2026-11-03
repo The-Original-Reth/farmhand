@@ -1,6 +1,7 @@
 """The HTTP side: one request to a printer's Moonraker, and the few plain questions asked of it."""
 from __future__ import annotations
 
+import re
 from typing import BinaryIO
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -196,6 +197,38 @@ def _on_answering_ip(printer: Printer, url: str) -> str:
         return url
     host = f"[{now}]" if ":" in now else now
     return urlunsplit(parts._replace(netloc=host + (f":{parts.port}" if parts.port else "")))
+
+
+def board(printer: Printer) -> dict | None:
+    """
+    The computer Klipper runs on, as /machine/system_info describes it: {name, model, memory_gb}. name is short, the
+    way it's spoken of ("Pi 4", "CM4"); model is the board's own words ("Raspberry Pi Compute Module 4 Rev 1.1").
+    None when it won't say (an older Moonraker, or one that can't be reached).
+    """
+    try:
+        cpu = _call(printer, "GET", "/machine/system_info")["system_info"]["cpu_info"]
+        model = str(cpu.get("model") or "").strip()
+    except (MoonrakerError, KeyError, TypeError, AttributeError):
+        return None
+    name = board_name(model) or cpu.get("hardware_desc") or cpu.get("cpu_desc") or cpu.get("processor") or None
+    if not name:
+        return None
+    kb = cpu.get("total_memory")
+    units = str(cpu.get("memory_units") or "kB").lower()
+    memory_gb = None
+    if isinstance(kb, (int, float)) and kb > 0 and units == "kb":
+        memory_gb = max(1, round(kb / 1024 / 1024))  # 927824 kB is a 1 GB board
+    return {"name": str(name)[:40], "model": model[:120] or None, "memory_gb": memory_gb}
+
+
+def board_name(model: str) -> str | None:
+    """A Raspberry Pi's short name: "Raspberry Pi 4 Model B Rev 1.5" is "Pi 4", a Compute Module 4 is "CM4"; any
+    other board goes by its model without the revision. None for no model."""
+    if m := re.search(r"Compute Module (\d+)", model):
+        return f"CM{m[1]}"
+    if m := re.search(r"Raspberry Pi (Zero(?: \d)?(?: W)?|\d+)", model):
+        return f"Pi {m[1]}"
+    return re.sub(r"\s+Rev\s+\S+$", "", model).strip() or None
 
 
 def webcams(printer: Printer) -> list[dict]:

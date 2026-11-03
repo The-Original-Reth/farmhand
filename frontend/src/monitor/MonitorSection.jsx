@@ -62,7 +62,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
             // the same cameras as before keep their old objects, so none of them starts over
             const before = now[p.id]?.webcams;
             const same = before && JSON.stringify(before) === JSON.stringify(d.webcams);
-            return { ...now, [p.id]: { webcams: same ? before : d.webcams, error: d.error } };
+            return { ...now, [p.id]: { webcams: same ? before : d.webcams, error: d.error, board: d.board || null } };
           });
           rememberCameras(p.id, d.error ? null : d.webcams);
           if (--left === 0) setResyncing(false);
@@ -99,7 +99,8 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
     const prusa = p.connectionType === "prusalink";
     const url = prusa ? p.prusalinkUrl : p.mainsailUrl;
     const link = url ? { url, name: prusa ? "PrusaLink" : "Mainsail", printer: p.name } : null;
-    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link }));
+    const board = cams[p.id]?.board || null; // the computer it runs on, named in the tiles' top right corner
+    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link, board }));
   });
   // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each
   // one shows is set with CSS order instead
@@ -159,7 +160,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
           {/* all stay mounted while one is enlarged, so no camera has to connect again on the way back */}
           {tiles.map((t) => (
             <CameraTile
-              key={`${t.key}#${round}`} label={t.label} cam={t.cam} link={t.link} big={big === t.key} hidden={!!big && big !== t.key}
+              key={`${t.key}#${round}`} label={t.label} cam={t.cam} link={t.link} board={t.board} big={big === t.key} hidden={!!big && big !== t.key}
               place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key} maxZoom={maxZoom}
               onClick={() => setBig(big ? null : t.key)}
               drag={big ? null : {

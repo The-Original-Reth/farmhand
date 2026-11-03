@@ -40,8 +40,9 @@ function useFloating(label) {
 // A camera's own picture, turned and flipped as Mainsail is set to show it. Scroll over it to zoom in (up to maxZoom)
 // or out; drag a zoomed one to look around; the badge in the corner goes back to the whole picture. The button in the
 // top left corner floats it in a picture-in-picture window (where the browser can). `link`: the printer's own web page,
-// { url, name, printer } (Mainsail or PrusaLink), opened in a new tab from the bottom right corner.
-export function CameraTile({ label, cam, link, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
+// { url, name, printer } (Mainsail or PrusaLink), opened in a new tab from the bottom right corner. `board`: the
+// computer the printer runs on ({ name: "Pi 4", model, memory_gb }), named in the top right corner.
+export function CameraTile({ label, cam, link, board, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const [el, setEl] = useState(null);
   const [zoom, setZoom] = useState(NO_ZOOM);
@@ -157,23 +158,36 @@ export function CameraTile({ label, cam, link, big, hidden, place, moving, targe
           <PictureInPicture2 size={14} />
         </button>
       )}
-      {z.s > 1 && (
-        <button
-          type="button"
-          data-testid="monitor-zoom-reset"
-          title="Back to the whole picture"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setZoom(NO_ZOOM);
-          }}
-          style={{
-            position: "absolute", right: 6, top: 6, padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
-            color: "#e6e8ea", border: "none", ...ui, fontSize: fs(11), cursor: "pointer",
-          }}
-        >
-          {z.s.toFixed(1)}× ✕
-        </button>
+      {(z.s > 1 || board) && (
+        <div style={{ position: "absolute", right: 6, top: 6, display: "flex", gap: 6, alignItems: "center" }}>
+          {z.s > 1 && (
+            <button
+              type="button"
+              data-testid="monitor-zoom-reset"
+              title="Back to the whole picture"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setZoom(NO_ZOOM);
+              }}
+              style={{
+                padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)",
+                color: "#e6e8ea", border: "none", ...ui, fontSize: fs(11), cursor: "pointer",
+              }}
+            >
+              {z.s.toFixed(1)}× ✕
+            </button>
+          )}
+          {board && (
+            <div
+              data-testid="monitor-board"
+              title={[board.model || board.name, board.memory_gb && `${board.memory_gb} GB`].filter(Boolean).join(", ")}
+              style={{ padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)", color: "#e6e8ea", ...ui, fontSize: fs(11) }}
+            >
+              {board.name}
+            </div>
+          )}
+        </div>
       )}
       <div
         style={{

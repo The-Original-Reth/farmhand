@@ -45,7 +45,7 @@ def test_a_printers_cameras_with_whole_addresses(api, moonraker):
 
 def test_no_cameras_says_why(api, moonraker):
     pid = api.post("/printers", json={"name": "VT 1190", "wired_ip": "10.0.6.21"}).json()["id"]
-    assert api.get(f"/printers/{pid}/webcams").json() == {"webcams": [], "error": None}
+    assert api.get(f"/printers/{pid}/webcams").json() == {"webcams": [], "error": None, "board": {"name": "Pi 4", "model": "Raspberry Pi 4 Model B Rev 1.5", "memory_gb": 4}}
     moonraker.down = True
     r = api.get(f"/printers/{pid}/webcams").json()
     assert r["webcams"] == [] and "Moonraker" in r["error"]
@@ -55,6 +55,30 @@ def test_no_cameras_says_why(api, moonraker):
     r = api.get(f"/printers/{core}/webcams").json()
     assert r["webcams"] == [] and "camera address" in r["error"]
     assert api.get("/printers/999/webcams").status_code == 404
+
+
+def test_the_board_a_printer_runs_on(api, moonraker):
+    pid = api.post("/printers", json={"name": "V2Blue", "wired_ip": "10.0.6.21"}).json()["id"]
+    moonraker.cpu_info = {"model": "Raspberry Pi Compute Module 4 Rev 1.1", "total_memory": 927824, "memory_units": "kB"}
+    assert api.get(f"/printers/{pid}/webcams").json()["board"] == {"name": "CM4", "model": "Raspberry Pi Compute Module 4 Rev 1.1", "memory_gb": 1}
+    moonraker.cpu_info = {"model": "", "processor": "x86_64", "total_memory": 8000000, "memory_units": "kB"}  # a PC
+    assert api.get(f"/printers/{pid}/webcams").json()["board"]["name"] == "x86_64"
+    moonraker.cpu_info = None  # won't say: no board, and the cameras all the same
+    assert api.get(f"/printers/{pid}/webcams").json() == {"webcams": [], "error": None, "board": None}
+    moonraker.down = True  # not reached: no board, and it isn't asked a second time
+    asked = len(moonraker.requests)
+    assert api.get(f"/printers/{pid}/webcams").json()["board"] is None
+    assert len(moonraker.requests) == asked
+
+
+@pytest.mark.parametrize("model, name", [
+    ("Raspberry Pi 4 Model B Rev 1.5", "Pi 4"), ("Raspberry Pi 5 Model B Rev 1.0", "Pi 5"),
+    ("Raspberry Pi Compute Module 4 Rev 1.1", "CM4"), ("Raspberry Pi Compute Module 5 Rev 1.0", "CM5"),
+    ("Raspberry Pi 3 Model B Plus Rev 1.3", "Pi 3"), ("Raspberry Pi Zero 2 W Rev 1.0", "Pi Zero 2 W"),
+    ("BigTreeTech CB1 Rev 1.0", "BigTreeTech CB1"), ("", None),
+])
+def test_board_names(model, name):
+    assert mr_client.board_name(model) == name
 
 
 class FakeGo2rtc:

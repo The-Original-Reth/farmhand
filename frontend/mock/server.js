@@ -615,11 +615,13 @@ export function mockApi() {
   on("GET", "/printers/:id/webcams", ({ id }) => {
     const p = printer(id);
     // a Buddy3D's camera plays through go2rtc on the real server; the mockup has none, so it shows the sample picture
-    if (p.prusalink && p.cameraAddress) return { webcams: [{ name: "Camera", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null };
-    if (p.prusalink) return { webcams: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page" };
-    if (!p.moonraker) return { webcams: [], error: "This printer has no IP address or Moonraker address set." };
-    if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error };
-    return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null };
+    if (p.prusalink && p.cameraAddress) return { webcams: [{ name: "Camera", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board: null };
+    if (p.prusalink) return { webcams: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page", board: null };
+    if (!p.moonraker) return { webcams: [], error: "This printer has no IP address or Moonraker address set.", board: null };
+    if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error, board: null };
+    // the computer Klipper runs on: every other sample printer is a CM4
+    const board = p.id % 2 ? { name: "Pi 4", model: "Raspberry Pi 4 Model B Rev 1.5", memory_gb: 4 } : { name: "CM4", model: "Raspberry Pi Compute Module 4 Rev 1.1", memory_gb: 2 };
+    return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board };
   });
   on("POST", "/printers/:id/moonraker/sync", ({ id }) => {
     const p = printer(id);

@@ -35,6 +35,8 @@ class FakeMoonraker:
         self.temps = {"extruder": (24.0, 0.0), "heater_bed": (23.0, 0.0)}  # (temperature, target)
         self.uploads: list[dict] = []  # {filename, size, root, print}
         self.webcams: list[dict] = []  # as Mainsail's camera settings save them
+        # The computer it runs on, as /machine/system_info's cpu_info gives it; None = won't say
+        self.cpu_info: dict | None = {"model": "Raspberry Pi 4 Model B Rev 1.5", "processor": "aarch64", "total_memory": 3886824, "memory_units": "kB"}
 
     def add_job(self, job_id: str, filename: str, *, status="completed", start=1_700_000_000.0, print_s=3600.0,
                 filament_mm=5000.0, energy_kwh: float | None = None):
@@ -74,13 +76,13 @@ class FakeMoonraker:
             return self._ok({"state": "ready", "hostname": self.hostname, "app": self.app, "software_version": "v0.12.0-fake"})
         if path == "/machine/system_info":
             if self.network_as_said is not None:
-                return self._ok({"system_info": {"network": self.network_as_said}})
+                return self._ok({"system_info": {"network": self.network_as_said, "cpu_info": self.cpu_info}})
             if self.interfaces is None:
                 return self._error(404, "Not Found")
             network = {name: {"mac_address": f"02:00:00:00:00:{i:02x}", "ip_addresses": [
                 {"family": "ipv4", "address": a, "is_link_local": False} for a in addresses
             ]} for i, (name, addresses) in enumerate(self.interfaces.items())}
-            return self._ok({"system_info": {"network": network}})
+            return self._ok({"system_info": {"network": network, "cpu_info": self.cpu_info}})
         if path == "/server/history/totals":
             aux = []
             if hasattr(self, "energy_total"):
