@@ -59,28 +59,37 @@ export function usePrinterCameras(printers) {
   return { cams, round, resyncing, resync };
 }
 
-const PROGRESS_EVERY_MS = 15000; // how often the prints' progress is asked again (only while the page is in view)
+const PROGRESS_EVERY_MS = 5000; // how often the prints' progress is asked again (only while the page is in view)
 
 // How far along each of `printerIds`' prints is: printer id -> { state: "printing" | "paused", progress, file } for
-// the ones printing now. Asked straight away and then every 15 seconds; one that can't be asked just shows nothing.
+// the ones printing now. Asked straight away, every 5 seconds after that, and again as soon as the page comes back
+// into view. A printer still answering the last ask isn't asked again; one that can't be asked just shows nothing.
 export function usePrintProgress(printerIds) {
   const [progress, setProgress] = useState({});
   const ids = printerIds.join(",");
   useEffect(() => {
     let live = true;
+    const asking = new Set(); // printers whose last ask hasn't been answered yet
     const ask = () => {
       if (document.hidden) return;
       for (const id of printerIds) {
+        if (asking.has(id)) continue;
+        asking.add(id);
         getPrintProgress(id)
           .catch(() => null)
-          .then((p) => live && setProgress((now) => ({ ...now, [id]: p?.state ? p : null })));
+          .then((p) => {
+            asking.delete(id);
+            if (live) setProgress((now) => ({ ...now, [id]: p?.state ? p : null }));
+          });
       }
     };
     ask();
     const timer = setInterval(ask, PROGRESS_EVERY_MS);
+    document.addEventListener("visibilitychange", ask);
     return () => {
       live = false;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", ask);
     };
   }, [ids]);
   return progress;
