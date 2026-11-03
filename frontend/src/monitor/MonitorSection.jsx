@@ -5,7 +5,7 @@ import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js"
 import { errorText } from "../api.js";
 import { useData } from "../data.jsx";
 import { webUiOf } from "../printers/webUi.js";
-import { usePrinterCameras } from "./cameras.js";
+import { usePrintProgress, usePrinterCameras } from "./cameras.js";
 import { CameraTile } from "./CameraTile.jsx";
 import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
 
@@ -25,6 +25,8 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const { printers } = useData();
   const active = printers.filter((p) => !p.decommissioned);
   const { cams, round, resyncing, resync } = usePrinterCameras(active);
+  // the prints' progress, for the printers with a camera to show it on
+  const progress = usePrintProgress(active.filter((p) => cams[p.id]?.webcams?.length).map((p) => p.id));
   const [big, setBig] = useState(null); // the camera shown on its own: its key
   const [dragging, setDragging] = useState(null); // the key of the camera being dragged
   const [over, setOver] = useState(null); // the key of the camera it would go to
@@ -56,7 +58,8 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
     const link = web && { ...web, printer: p.name };
     // the computer it runs on, named in the tiles' top right corner; a Prusa says nothing of its own, so it's "Prusa"
     const board = p.connectionType === "prusalink" ? PRUSA_BOARD : cams[p.id]?.board || null;
-    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link, board }));
+    const print = progress[p.id] || null; // the print under way, shown beside the board
+    return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link, board, print }));
   });
   // the tiles stay in this one order on the page (moving a playing camera on the page would restart it); where each
   // one shows is set with CSS order instead
@@ -116,7 +119,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
           {/* all stay mounted while one is enlarged, so no camera has to connect again on the way back */}
           {tiles.map((t) => (
             <CameraTile
-              key={`${t.key}#${round}`} label={t.label} cam={t.cam} link={t.link} board={t.board} big={big === t.key} hidden={!!big && big !== t.key}
+              key={`${t.key}#${round}`} label={t.label} cam={t.cam} link={t.link} board={t.board} print={t.print} big={big === t.key} hidden={!!big && big !== t.key}
               place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key} maxZoom={maxZoom}
               onClick={() => setBig(big ? null : t.key)}
               drag={big ? null : {

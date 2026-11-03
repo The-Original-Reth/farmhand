@@ -623,6 +623,20 @@ export function mockApi() {
     const board = p.id % 2 ? { name: "Pi 4", model: "Raspberry Pi 4 Model B Rev 1.5", memory_gb: 4 } : { name: "CM4", model: "Raspberry Pi Compute Module 4 Rev 1.1", memory_gb: 2 };
     return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board };
   });
+  // How far along the print running now is, for Monitor's cameras
+  on("GET", "/printers/:id/progress", ({ id }) => {
+    const p = printer(id);
+    const nothing = { state: null, progress: null, file: null, error: null };
+    if (p.prusalink) {
+      const job = p.prusalink.reachable && p.prusalink.hasPassword ? liveJob(p) : null;
+      return job ? { ...nothing, state: "printing", progress: Math.round((job.printS / job.estimated) * 1000) / 10, file: job.filename } : nothing;
+    }
+    if (!p.moonraker?.reachable) return { ...nothing, error: p.moonraker?.error || "This printer has no IP address or Moonraker address set." };
+    const job = (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
+    if (!job) return nothing;
+    const printed = Math.min(job.estimated - 60, job.printS + (nowUnix() - (job.seenFrom ??= nowUnix())));
+    return { ...nothing, state: "printing", progress: Math.round((printed / job.estimated) * 1000) / 10, file: job.filename };
+  });
   on("POST", "/printers/:id/moonraker/sync", ({ id }) => {
     const p = printer(id);
     try {

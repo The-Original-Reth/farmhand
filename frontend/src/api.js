@@ -367,6 +367,8 @@ export const getPrintStats = (printerId) => request(`/printers/${printerId}/prin
 // snapshot_url, flip_horizontal, flip_vertical, rotation, aspect_ratio }], error }. Never fails: error says why there are none.
 // ...and board: the computer a Klipper printer runs on, { name: "Pi 4" | "CM4" | ..., model, memory_gb }, or null
 export const getWebcams = (printerId) => request(`/printers/${printerId}/webcams`);
+// How far along the print running now is: { state: "printing" | "paused" | null, progress: 0-100 | null, file, error }
+export const getPrintProgress = (printerId) => request(`/printers/${printerId}/progress`);
 
 // this browser's time zone ("Europe/Amsterdam"), or "" if it can't say
 const timeZone = (() => {

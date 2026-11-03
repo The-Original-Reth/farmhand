@@ -11,7 +11,7 @@ from ..schemas.printer import (
     DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterCopyIn,
     SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow, SubPrinterSettingsCopyOut,
 )
-from ..services import bundle_service, printer_discovery, printer_service, sub_printer_service
+from ..services import bundle_service, print_progress, printer_discovery, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -51,6 +51,15 @@ def discover_range(db: Session = Depends(get_db)):
 @router.get("/{printer_id}", response_model=PrinterOut)
 def get_printer(printer_id: int, db: Session = Depends(get_db)):
     return require_printer(db, printer_id)
+
+
+@router.get("/{printer_id}/progress")
+def get_print_progress(printer_id: int, db: Session = Depends(get_db)):
+    """
+    How far along the print running now is, for Monitor's cameras: {state: "printing" | "paused" | null, progress: 0-100
+    | null, file, error}. Klipper's or PrusaLink's, whichever the printer talks. Never fails: says why it couldn't ask.
+    """
+    return print_progress.progress(db, require_printer(db, printer_id))
 
 
 @router.patch("/{printer_id}", response_model=PrinterOut)

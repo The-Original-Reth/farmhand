@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { errorText, getWebcams } from "../api.js";
+import { errorText, getPrintProgress, getWebcams } from "../api.js";
 import { readStoredObject, writeStored } from "../lib/storage.js";
 
 // Finding every printer's cameras for Monitor. Each printer's cameras show as soon as it answers, so one that's off
@@ -57,4 +57,31 @@ export function usePrinterCameras(printers) {
     setRound((r) => r + 1);
   };
   return { cams, round, resyncing, resync };
+}
+
+const PROGRESS_EVERY_MS = 15000; // how often the prints' progress is asked again (only while the page is in view)
+
+// How far along each of `printerIds`' prints is: printer id -> { state: "printing" | "paused", progress, file } for
+// the ones printing now. Asked straight away and then every 15 seconds; one that can't be asked just shows nothing.
+export function usePrintProgress(printerIds) {
+  const [progress, setProgress] = useState({});
+  const ids = printerIds.join(",");
+  useEffect(() => {
+    let live = true;
+    const ask = () => {
+      if (document.hidden) return;
+      for (const id of printerIds) {
+        getPrintProgress(id)
+          .catch(() => null)
+          .then((p) => live && setProgress((now) => ({ ...now, [id]: p?.state ? p : null })));
+      }
+    };
+    ask();
+    const timer = setInterval(ask, PROGRESS_EVERY_MS);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [ids]);
+  return progress;
 }

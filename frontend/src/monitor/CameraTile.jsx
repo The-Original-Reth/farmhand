@@ -54,8 +54,9 @@ function useFloating(label) {
 // or out; drag a zoomed one to look around; the badge in the corner goes back to the whole picture. The button in the
 // top left corner floats it in a picture-in-picture window (where the browser can). `link`: the printer's own web page,
 // { url, name, printer } (Mainsail or PrusaLink), opened in a new tab from the bottom right corner. `board`: the
-// computer the printer runs on ({ name: "Pi 4", model, memory_gb }), named in the top right corner.
-export function CameraTile({ label, cam, link, board, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
+// computer the printer runs on ({ name: "Pi 4", model, memory_gb }), named in the top right corner. `print`: the print
+// under way ({ state: "printing" | "paused", progress, file }), its percentage shown left of the board.
+export function CameraTile({ label, cam, link, board, print, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const [el, setEl] = useState(null);
   const [zoom, setZoom] = useState(NO_ZOOM);
@@ -165,7 +166,7 @@ export function CameraTile({ label, cam, link, board, big, hidden, place, moving
           <PictureInPicture2 size={14} />
         </button>
       )}
-      {(z.s > 1 || board) && (
+      {(z.s > 1 || board || print) && (
         <div style={{ ...corner({ x: "right", y: "top" }), display: "flex", gap: 6, alignItems: "center" }}>
           {z.s > 1 && (
             <button
@@ -178,6 +179,16 @@ export function CameraTile({ label, cam, link, board, big, hidden, place, moving
             >
               {z.s.toFixed(1)}× ✕
             </button>
+          )}
+          {print && (
+            <div
+              data-testid="monitor-progress"
+              title={`${print.state === "paused" ? "Paused" : "Printing"}${print.file ? ` ${print.file}` : ""}`}
+              style={badge()}
+            >
+              {print.state === "paused" ? "Paused " : ""}
+              {Math.floor(print.progress || 0)}%
+            </div>
           )}
           {board && (
             <div

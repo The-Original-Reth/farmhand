@@ -434,6 +434,8 @@ for a printer.
   changing a camera in Mainsail.
 - **Board:** the top right corner names the computer a Klipper printer runs on, as the printer itself reports it:
   *Pi 4*, *CM4*, *Pi 5*... Point at it for the full model and its memory. A Prusa's camera says *Prusa*.
+- **Progress:** while a printer is printing, left of the board shows how far along the print is (*42%*, or
+  *Paused 42%*), as Mainsail or the Prusa itself shows it. It's checked every 15 seconds; point at it for the file.
 - **Fast start:** each printer's cameras show as soon as that printer answers, so one that's switched off doesn't
   hold up the rest. Your browser also remembers each printer's cameras from last time, so they start connecting the
   moment Monitor opens, and change only if a printer now has different ones.
