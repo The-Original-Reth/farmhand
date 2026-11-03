@@ -55,6 +55,10 @@ class Printer(HasNotes, Base):
     energy_readings: Mapped[list["PrinterEnergyReading"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
+    # The filament price, density and diameter read from each G-code in its history (see GcodeFilament)
+    gcode_filaments: Mapped[list["GcodeFilament"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan"
+    )
     # Reached through PrusaLink instead of Moonraker (see PrusaLinkConnection), and the maintenance Farmhand keeps
     # for it (a Moonraker printer's maintenance lives in Moonraker)
     prusalink_row: Mapped["PrusaLinkConnection | None"] = relationship(  # noqa: F821

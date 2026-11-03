@@ -377,7 +377,9 @@ const timeZone = (() => {
 export const getEnergy = (printerId) =>
   request(`/printers/${printerId}/energy${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
 
-// status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name
+// status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name.
+// Each job has filament_cost (null when there's no price for it) and filament_cost_detail: { cost, grams, cost_per_kg,
+// density, diameter, source: "gcode" | "3mf", filename, bundle_id, version_id, version } | null
 export const getPrintJobs = (printerId, { limit = 25, offset = 0, status = "", q = "" } = {}) => {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) params.set("status", status);

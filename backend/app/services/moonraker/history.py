@@ -6,10 +6,11 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Printer, PrinterEnergyReading, PrintJob
+from ...models import GcodeFilament, Printer, PrinterEnergyReading, PrintJob
 from ...timeutil import as_utc
+from .. import filament_cost
 from ..printer_service import ensure_connection, record_sync_error, record_sync_ok
-from .client import MoonrakerError, _call, history_totals, meter_reading
+from .client import MoonrakerError, _call, gcode_tail, history_totals, meter_reading
 
 PAGE = 100  # history entries asked for per request
 
@@ -66,7 +67,65 @@ def sync_history(db: Session, printer: Printer) -> dict:
         _record_reading(db, printer, *reading)
     record_sync_ok(printer, totals, dt.datetime.now(dt.timezone.utc))  # the totals are the printer's own
     db.commit()
+    read_gcode_filaments(db, printer, list(known.values()))
     return {"added": added, "updated": updated}
+
+
+GCODE_READS_PER_SYNC = 10  # G-codes read for their filament price per sync; a long history is caught up over a few
+
+
+def read_gcode_filaments(db: Session, printer: Printer, synced: list[PrintJob]) -> int:
+    """
+    Read the filament price, density and diameter from the end of G-codes in the history (see GcodeFilament): a file
+    whose name hasn't been read yet, or one uploaded again since it was (a newer "modified" in a print's metadata:
+    PrusaSlicer sends a fresh copy each time). The jobs just synced first, then the rest of the history, one read per
+    name. At most GCODE_READS_PER_SYNC files; stops quietly if the printer stops answering (the next sync carries on).
+    Returns how many were read.
+    """
+    latest: dict[str, float] = {}  # file name -> the newest copy of it read so far
+    for f, m in db.execute(
+        select(GcodeFilament.filename, GcodeFilament.modified).where(GcodeFilament.printer_id == printer.id)
+    ):
+        latest[f] = max(m, latest.get(f, m))
+    todo: dict[str, dict] = {}  # file name -> the metadata of its newest copy not read yet
+    for j in synced:
+        meta = j.job_metadata or {}
+        modified = filament_cost.file_modified(meta)
+        if j.filament_used and modified > latest.get(j.filename, -1):
+            if j.filename not in todo or modified > filament_cost.file_modified(todo[j.filename]):
+                todo[j.filename] = meta
+    names = db.scalars(
+        select(PrintJob.filename).where(PrintJob.printer_id == printer.id, PrintJob.filament_used > 0).distinct()
+    ).all()
+    for name in names:
+        if len(todo) >= GCODE_READS_PER_SYNC:
+            break
+        if name in latest or name in todo:
+            continue
+        newest = db.scalar(
+            select(PrintJob).where(PrintJob.printer_id == printer.id, PrintJob.filename == name)
+            .order_by(PrintJob.start_time.desc().nullslast()).limit(1)
+        )
+        todo[name] = newest.job_metadata or {}
+
+    read = 0
+    for name, meta in list(todo.items())[:GCODE_READS_PER_SYNC]:
+        row = GcodeFilament(printer_id=printer.id, filename=name, modified=filament_cost.file_modified(meta))
+        try:
+            tail = gcode_tail(printer, name, meta.get("gcode_end_byte"), meta.get("size"))
+        except MoonrakerError as e:
+            if e.kind != "not_found":
+                break  # can't ask right now: tried again next sync
+            row.problem = "This G-code isn't on the printer any more."
+        else:
+            found = filament_cost.from_gcode(tail)
+            row.cost_per_kg, row.density, row.diameter = found["cost_per_kg"], found["density"], found["diameter"]
+            if row.cost_per_kg is None or row.density is None:
+                row.problem = "This G-code has no filament price or density in its settings."
+        db.add(row)
+        db.commit()
+        read += 1
+    return read
 
 def _same(stored, new) -> bool:
     """Equal, treating times as instants: SQLite hands back times without a timezone, Postgres with one."""

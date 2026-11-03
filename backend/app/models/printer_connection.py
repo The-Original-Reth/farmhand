@@ -136,3 +136,30 @@ class PrintJob(Base):
     )
 
     printer: Mapped["Printer"] = relationship(back_populates="print_jobs")  # noqa: F821
+
+
+class GcodeFilament(Base):
+    """
+    The filament settings read from a G-code on a printer, for costing its prints (services/filament_cost.py): the
+    price per kg, density and diameter PrusaSlicer / OrcaSlicer write in the settings block at the end of the file.
+    Read once per file (a file is its name and the time it was written, as Moonraker's metadata gives it: one
+    sliced again under the same name is a new file). `problem` says why nothing could be read (the file is gone from
+    the printer, or holds no price), so it isn't asked for again.
+    """
+
+    __tablename__ = "gcode_filaments"
+    __table_args__ = (UniqueConstraint("printer_id", "filename", "modified", name="uq_gcode_filament"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)  # as the print history names it
+    modified: Mapped[float] = mapped_column(Float, nullable=False, default=0)  # Moonraker's metadata "modified"; 0 = not given
+    cost_per_kg: Mapped[float | None] = mapped_column(Float)  # filament_cost, the first filament's
+    density: Mapped[float | None] = mapped_column(Float)  # g/cm³
+    diameter: Mapped[float | None] = mapped_column(Float)  # mm
+    problem: Mapped[str | None] = mapped_column(Text)
+    read_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+
+    printer: Mapped["Printer"] = relationship(back_populates="gcode_filaments")  # noqa: F821

@@ -632,15 +632,59 @@ export function mockApi() {
     farm.connections[p.id] = { last_sync_at: iso(nowUnix()), last_sync_error: null };
     return { added: 0, updated: 0, ...syncState(p) };
   });
-  const jobOut = (j, i) => ({
-    id: i + 1, job_id: j.job_id, filename: j.filename, status: j.status, start_time: iso(j.start),
-    end_time: j.status === "in_progress" ? null : iso(j.start + j.totalS), print_duration: j.printS, total_duration: j.totalS,
-    filament_used: j.filamentMm, slicer: "PrusaSlicer", estimated_time: j.estimated, layer_height: 0.2, filament_type: "PLA",
-    energy_kwh: j.kwh, avg_power_w: j.avgW, max_power_w: j.maxW,
-  });
+  // A print's filament cost, worked out as the real API does (services/filament_cost.py): the price read from its
+  // G-code (farm.gcodeFilament), else its 3MF on the same printer
+  // by name (exactly, else without "ver N", else the slicer's "<3MF name>-printer-filament", the longest that fits;
+  // spaces and underscores alike), the newest version uploaded before it started, and that version's filament
+  // diameter, density and price per kg
+  const stemOf = (name) => (name || "").replace(/\\/g, "/").split("/").pop().replace(/\.[^.]*$/, "").trim().toLowerCase();
+  const keyOf = (stem) => stem.replace(/[\s_]+/g, "_");
+  const baseOf = (stem) => keyOf(stem.replace(/\s*\bver\s*\d+$/i, "").replace(/[ ._-]+$/, "") || stem);
+  const firstNumber = (v) => {
+    const n = parseFloat(String(v ?? "").replace(/;/g, ",").split(",")[0]);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const priced = (mm, price, density, diameter, source) => {
+    const grams = (mm * Math.PI * (diameter / 2) ** 2 * density) / 1000;
+    return { cost: Math.round((grams / 1000) * price * 100) / 100, grams: Math.round(grams * 10) / 10, cost_per_kg: price, density, diameter, ...source };
+  };
+  const filamentCost = (printerId, j) => {
+    if (!(j.filamentMm > 0)) return null;
+    // the price read from the printed G-code first
+    const read = (farm.gcodeFilament[printerId] || {})[j.filename];
+    if (read) return priced(j.filamentMm, read[0], read[1], read[2], { source: "gcode", filename: j.filename, bundle_id: null, version_id: null, version: null });
+    const stem = stemOf(j.filename);
+    const all = farm.bundles.filter((b) => b.printer_id === printerId).flatMap((b) => b.versions.map((v) => ({ b, v })));
+    let found = all.filter(({ v }) => keyOf(stemOf(v.filename)) === keyOf(stem));
+    if (!found.length) found = all.filter(({ v }) => baseOf(stemOf(v.filename)) === baseOf(stem));
+    if (!found.length) {
+      const fits = all.map(({ v }) => baseOf(stemOf(v.filename))).filter((b) => baseOf(stem).startsWith(`${b}-`));
+      const longest = fits.sort((x, y) => y.length - x.length)[0];
+      found = longest ? all.filter(({ v }) => baseOf(stemOf(v.filename)) === longest) : [];
+    }
+    if (!found.length) return null;
+    found.sort((x, y) => Date.parse(x.v.uploaded_at) - Date.parse(y.v.uploaded_at));
+    const before = found.filter(({ v }) => Date.parse(v.uploaded_at) <= j.start * 1000);
+    const { b, v } = before.length ? before[before.length - 1] : found[0];
+    const s = farm.versionSettings[v.id] || {};
+    const price = firstNumber(s.filament_cost), density = firstNumber(s.filament_density);
+    if (price == null || density == null) return null;
+    return priced(j.filamentMm, price, density, firstNumber(s.filament_diameter) ?? 1.75,
+      { source: "3mf", filename: v.filename, bundle_id: b.id, version_id: v.id, version: v.version });
+  };
+  const jobOut = (p) => (j, i) => {
+    const cost = filamentCost(p.id, j);
+    return {
+      id: i + 1, job_id: j.job_id, filename: j.filename, status: j.status, start_time: iso(j.start),
+      end_time: j.status === "in_progress" ? null : iso(j.start + j.totalS), print_duration: j.printS, total_duration: j.totalS,
+      filament_used: j.filamentMm, slicer: "PrusaSlicer", estimated_time: j.estimated, layer_height: 0.2, filament_type: "PLA",
+      energy_kwh: j.kwh, avg_power_w: j.avgW, max_power_w: j.maxW,
+      filament_cost: cost ? cost.cost : null, filament_cost_detail: cost,
+    };
+  };
   on("GET", "/printers/:id/print-jobs", ({ id }, _b, q) => {
     const p = printer(id);
-    let list = (farm.jobs[p.id] || []).map(jobOut).reverse(); // newest first
+    let list = (farm.jobs[p.id] || []).map(jobOut(p)).reverse(); // newest first
     const status = q.get("status");
     if (status === "failed") list = list.filter((j) => j.status !== "completed" && j.status !== "in_progress");
     else if (status) list = list.filter((j) => j.status === status);

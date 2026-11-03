@@ -12,7 +12,7 @@ from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
 from ..services import moonraker as mr
 from ..services import energy as energy_service
-from ..services import go2rtc, printer_service
+from ..services import filament_cost, go2rtc, printer_service
 from ..timeutil import utc_iso
 from .common import require_confirm, require_printer, sync_state
 
@@ -96,7 +96,7 @@ def sync(printer_id: int, db: Session = Depends(get_db)):
     return {**counts, **sync_state(printer)}
 
 
-def _job_out(j: PrintJob) -> dict:
+def _job_out(j: PrintJob, cost: dict | None = None) -> dict:
     meta = j.job_metadata or {}
     return {
         "id": j.id,
@@ -115,6 +115,9 @@ def _job_out(j: PrintJob) -> dict:
         "energy_kwh": j.energy_kwh,  # null when the printer has no power meter set up in Moonraker
         "avg_power_w": j.avg_power_w,
         "max_power_w": j.max_power_w,
+        # From filament_used and the 3MF it was sliced from (services/filament_cost.py); null when there's no match
+        "filament_cost": cost["cost"] if cost else None,
+        "filament_cost_detail": cost,
     }
 
 
@@ -137,10 +140,11 @@ def print_jobs(
     for word in (q or "").lower().split():
         where.append(func.lower(PrintJob.filename).contains(word, autoescape=True))
     total = db.scalar(select(func.count()).select_from(PrintJob).where(*where))
-    jobs = db.scalars(
+    jobs = list(db.scalars(
         select(PrintJob).where(*where).order_by(PrintJob.start_time.desc().nullslast(), PrintJob.id.desc()).limit(limit).offset(offset)
-    )
-    return {"total": total, "jobs": [_job_out(j) for j in jobs]}
+    ))
+    costs = filament_cost.costs(db, jobs)
+    return {"total": total, "jobs": [_job_out(j, costs[j.id]) for j in jobs]}
 
 
 @router.get("/{printer_id}/print-stats")

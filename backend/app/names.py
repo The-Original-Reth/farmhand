@@ -46,6 +46,11 @@ def with_version(filename: str, version: int) -> str:
     return stem[: MAX_LENGTH - len(suffix) - len(ext)] + suffix + ext
 
 
+def without_version(stem: str) -> str:
+    """ "Goldfish ver 2" -> "Goldfish": a name with the "ver N" with_version adds taken off """
+    return _VERSION_SUFFIX.sub("", stem).rstrip(" ._-") or stem
+
+
 def extension_of(name: str, fallback: str) -> str:
     """The extension a file's current name has (".stl"), or `fallback` if it has none."""
     ext = os.path.splitext(name)[1]

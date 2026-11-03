@@ -14,6 +14,8 @@ export const fmtUnix = (s) => (s ? new Date(s * 1000).toLocaleString() : "—");
 // ---- energy: per print (from the history) and the whole printer (from the power meter's readings) ----
 // always to the watt-hour (3 decimals), so the figures are exact rather than rounded
 export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kWh`);
+// ---- filament cost: in whatever currency the slicer's price per kg was typed in, so no symbol ----
+export const fmtMoney = (v) => (v == null ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 // "1 file", "3 files"
 export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // a hover hint for something with notes: its notes' first 120 characters

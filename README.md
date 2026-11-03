@@ -381,6 +381,15 @@ written to the copy on the NAS.
   page looks every 10 seconds while it's open, and syncs the history when a print starts or ends.
 - **Print history:** Farmhand's own copy (kept even if the printer forgets it), searchable and filterable by
   completed / failed / cancelled, with each print's energy if the printer has a power meter.
+  **Filament cost:** the filament the printer says it used (what Mainsail shows as "Filament used"), turned into
+  grams with the filament's diameter and density, times its price per kg (`filament_cost` in the slicer's filament
+  profile; shown without a currency, as typed there). Those come from the printed G-code itself: on each sync
+  Farmhand reads the settings block at the end of G-codes it hasn't read yet (only that part of the file, a few
+  files per sync, each file once). For a G-code that's no longer on the printer, they come from the 3MF on this
+  printer with the printed file's name (PrusaSlicer's own "name-printer-filament" G-code names count, and spaces
+  and underscores are treated as the same): the exact version for a G-code Farmhand sent ("Frog ver 2"),
+  otherwise the version there was when the print started. Hover a cost to see where it came from; "—" means no
+  price was found (yet).
 - **Energy:** from a Moonraker `[sensor]` with an energy value (e.g. a smart plug): the whole printer
   (idle included, from meter readings Farmhand takes) and each print's own energy, **by month or by year**.
 - **Maintenance:** kept in Moonraker's own database in Mainsail's format, so Mainsail shows the same list.
