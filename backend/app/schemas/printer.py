@@ -76,11 +76,11 @@ class SubPrinterOut(BaseModel):
     id: int
     name: str
     aliases: list[str] = []  # other preset names that mean it (its old names, presets given to it by hand)
-    settings_copied_from: str | None = None  # a copy: the sub printer its printer settings were copied from
+    settings_copied_from: str | None = None  # a copy: the printer profile its printer settings were copied from
 
 
 class SubPrinterSettingsCopyOut(BaseModel):
-    """A copied sub printer's printer settings, as the one it was copied from had them (see SubPrinterSettingsCopy)."""
+    """A copied printer profile's printer settings, as the one it was copied from had them (see SubPrinterSettingsCopy)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -98,9 +98,9 @@ class SubPrinterIn(BaseModel):
     def _name(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError("A sub printer needs a name")
+            raise ValueError("A printer profile needs a name")
         if len(v) > 120:
-            raise ValueError("A sub printer's name can be at most 120 characters")
+            raise ValueError("A printer profile's name can be at most 120 characters")
         return v
 
 
@@ -109,11 +109,11 @@ class SubPrinterCopyIn(BaseModel):
 
 
 class DefaultSubPrinterIn(BaseModel):
-    sub_printer_id: int | None = None  # one of the printer's sub printers; null: no default
+    sub_printer_id: int | None = None  # one of the printer's printer profiles; null: no default
 
 
 class SubPrinterPartOut(BaseModel):
-    """A part fitted to a sub printer, written down on its Printer parts page."""
+    """A part fitted to a printer profile, written down on its Printer parts page."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -132,7 +132,7 @@ class SubPrinterPartIn(BaseModel):
     model: str | None = None  # which one ("Rapido UHF"); blank = none
     installed_on: dt.date | None = None
     note: str | None = None
-    in_name: bool = False  # ticked "Add to name": its model goes into the name the sub printer can be renamed to
+    in_name: bool = False  # ticked "Add to name": its model goes into the name the printer profile can be renamed to
 
     @field_validator("part")
     @classmethod

@@ -28,9 +28,9 @@ def _parse_source_model_ids(raw: str) -> list[int]:
         raise HTTPException(status_code=422, detail="source_model_ids must be a JSON array of ints")
 
 
-# Which sub printer (printer preset) the new 3MF version goes to. Omit both for the one its preset goes to
-SUB_PRINTER_ID = "One of the printer's sub printers to put it with"
-NEW_SUB_PRINTER = "Put it with a new sub printer by this name (or the printer's one by that name)"
+# Which printer profile (printer preset) the new 3MF version goes to. Omit both for the one its preset goes to
+SUB_PRINTER_ID = "One of the printer's printer profiles to put it with"
+NEW_SUB_PRINTER = "Put it with a new printer profile by this name (or the printer's one by that name)"
 
 
 @router.get("", response_model=list[BundleOut])

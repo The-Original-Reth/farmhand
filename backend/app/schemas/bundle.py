@@ -23,7 +23,7 @@ class BundleVersionOut(BaseModel):
     full_files_retained: bool
     thumbnail_path: str | None
     gcode_name: str | None = None  # its G-code ("Goldfish ver 2.gcode"); null when it has none
-    # the sub printer (the printer's preset in the slicer) it was sliced with; null when it names none
+    # the printer profile (the printer's preset in the slicer) it was sliced with; null when it names none
     sub_printer_id: int | None = None
     sub_printer_name: str | None = None
     # settings intentionally omitted from the list view (can be large) —
@@ -62,6 +62,6 @@ class ThreeMFInspection(BaseModel):
     """What a 3MF says about itself, before anything is stored."""
 
     printer_profile_name: str | None
-    printer_preset_name: str | None = None  # the printer preset (sub printer) it was sliced with
+    printer_preset_name: str | None = None  # the printer preset (printer profile) it was sliced with
     slicer_display_name: str
     matched_printer: PrinterOut | None  # the registered printer with that exact name, if any

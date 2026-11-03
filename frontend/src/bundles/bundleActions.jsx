@@ -27,7 +27,7 @@ function NewBundleVersionDialog({ bundle, onClose }) {
   const current = bundle.versions[0]?.v || 0;
   const printer = printers.find((p) => p.id === bundle.printerId);
   const printerName = printer?.name;
-  // which of the printer's sub printers it goes to: guessed from the file's preset once it has been read
+  // which of the printer's printer profiles it goes to: guessed from the file's preset once it has been read
   const [preset, setPreset] = useState({ file: null, name: null, read: false });
   const sub = useSubPrinterPick(printer, preset.name, `${threemf?.name}|${preset.name}`);
 
@@ -56,7 +56,7 @@ function NewBundleVersionDialog({ bundle, onClose }) {
     setErrorMsg(null);
     if (!threemf) return setErrorMsg("Drop the newer .3mf file first.");
     if (wrong) return setErrorMsg(wrong);
-    if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new sub printer a name.");
+    if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new printer profile a name.");
     await run(async () => {
       // until the file has been read, Farmhand's own guess on the server (nothing sent)
       await addBundleVersion({ bundleId: bundle.id, threemf, gcode, subPrinter: preset.read ? subPrinterFields(sub.pick) : {} });

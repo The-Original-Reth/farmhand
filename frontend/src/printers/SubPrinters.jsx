@@ -10,10 +10,10 @@ import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { SectionLabel, TrashButton } from "../components/common/ui.jsx";
 import { SubPrinterSettings } from "./SubPrinterSettings.jsx";
 
-// The 3MFs on a printer sliced with one of its sub printers (any of their versions)
+// The 3MFs on a printer sliced with one of its printer profiles (any of their versions)
 export const usesSubPrinter = (bundle, subPrinterId) => bundle.versions.some((v) => v.subPrinterId === subPrinterId);
 
-// A sub printer's name, for a version that names one (null when it names none, or it was removed)
+// A printer profile's name, for a version that names one (null when it names none, or it was removed)
 export const subPrinterName = (printers, bundle, ver) =>
   ver.subPrinterId == null
     ? null
@@ -29,7 +29,7 @@ const copyName = (printer, name) => {
   }
 };
 
-// A change to the printer's sub printers: `run(call, then)` sends `call()` (which answers the printer), puts the printer
+// A change to the printer's printer profiles: `run(call, then)` sends `call()` (which answers the printer), puts the printer
 // it answers, then does `then`; `busy` while it's on its way, and `error` says why it didn't go through
 function useChange() {
   const { putPrinter } = useData();
@@ -62,7 +62,7 @@ function NameInput({ value, onChange, onEnter, onEscape, placeholder, testId, di
   );
 }
 
-// A name typed in for a new sub printer, with its button (`label`, or `busyLabel` while it's on its way) and Cancel
+// A name typed in for a new printer profile, with its button (`label`, or `busyLabel` while it's on its way) and Cancel
 function NameForm({ value, onChange, onSave, onCancel, busy, label, busyLabel, placeholder, testId, children }) {
   return (
     <>
@@ -76,7 +76,7 @@ function NameForm({ value, onChange, onSave, onCancel, busy, label, busyLabel, p
   );
 }
 
-// One sub printer: its name (click for its printer settings; renamed in place), how many 3MFs were sliced with it (click
+// One printer profile: its name (click for its printer settings; renamed in place), how many 3MFs were sliced with it (click
 // to show only those), a star to make it the default (the one the printer's uploads start on), Copy (a new one with its
 // parts, named "<name> - copy" unless that's changed), Remove
 function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
@@ -104,7 +104,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
         <Layers3 size={13} color={c.textFaint} />
         {editing ? (
           <>
-            <NameInput value={text} onChange={setText} onEnter={save} onEscape={() => setEditing(false)} placeholder="Sub printer name" testId="sub-printer-name-input" disabled={busy} />
+            <NameInput value={text} onChange={setText} onEnter={save} onEscape={() => setEditing(false)} placeholder="Printer profile name" testId="sub-printer-name-input" disabled={busy} />
             <button onClick={save} disabled={busy} title="Save the name" style={iconButton}><Check size={13} /></button>
             <button onClick={() => { setEditing(false); setError(null); }} disabled={busy} title="Cancel" style={iconButton}><X size={13} /></button>
           </>
@@ -159,7 +159,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
             >
               <Copy size={12} />
             </button>
-            <TrashButton title="Remove this sub printer" onClick={() => setRemoveOpen(true)} />
+            <TrashButton title="Remove this printer profile" onClick={() => setRemoveOpen(true)} />
           </>
         )}
       </div>
@@ -168,7 +168,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
           <span style={uiText(12, c.textMuted)}>Copy as</span>
           <NameForm value={copyAs} onChange={setCopyAs} onSave={makeCopy} onCancel={closeCopy} busy={busy} label="Copy" busyLabel="Copying…" placeholder="The copy’s name" testId="sub-printer-copy">
             <div style={uiText(11, c.textFaint, { flexBasis: "100%", lineHeight: 1.5 })}>
-              A new sub printer with the same printer settings and parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
+              A new printer profile with the same printer settings and parts. Its 3MF files{isDefault ? " and being the default" : ""} stay with {sub.name}.
             </div>
           </NameForm>
         </div>
@@ -177,7 +177,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
       {settingsOpen && <SubPrinterSettings printer={printer} sub={sub} bundles={bundles} onClose={() => setSettingsOpen(false)} />}
       {removeOpen && (
         <ConfirmDialog
-          title="Remove sub printer"
+          title="Remove printer profile"
           confirmLabel="Remove"
           onClose={() => setRemoveOpen(false)}
           onConfirm={async () => {
@@ -187,7 +187,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
         >
           Remove <span style={mono}>{sub.name}</span> from <b style={{ color: c.heading }}>{printer.name}</b>?{" "}
           {count > 0
-            ? `Its ${count} 3MF file${count === 1 ? " stays" : "s stay"}, with no sub printer.`
+            ? `Its ${count} 3MF file${count === 1 ? " stays" : "s stay"}, with no printer profile.`
             : "No 3MF files were sliced with it."}{" "}
           The parts written down for it on its Printer parts page are removed too.{isDefault && " It’s the default, so there will be no default."} A 3MF uploaded later that was sliced
           with it adds it again.
@@ -197,7 +197,7 @@ function SubPrinterRow({ printer, sub, bundles, count, active, onFilter }) {
   );
 }
 
-// A printer's sub printers: its printer presets in PrusaSlicer (the ones listed under it in the Printers tab). They're
+// A printer's printer profiles: its printer presets in PrusaSlicer (the ones listed under it in the Printers tab). They're
 // added when a 3MF sliced with one is uploaded, and can be added, renamed and removed here. `filter` is the one whose
 // 3MFs are the only ones shown below (null: all of them).
 export function SubPrinters({ printer, bundles, filter, onFilter }) {
@@ -219,7 +219,7 @@ export function SubPrinters({ printer, bundles, filter, onFilter }) {
 
   return (
     <div data-testid="sub-printers">
-      <SectionLabel>Sub printers: its printer presets in PrusaSlicer</SectionLabel>
+      <SectionLabel>Printer profiles: its printer presets in PrusaSlicer</SectionLabel>
       <div style={panelBox()}>
         {printer.subPrinters.length === 0 && (
           <div style={uiText(13, c.textFaint, { padding: "10px 12px", lineHeight: 1.6 })}>
@@ -246,7 +246,7 @@ export function SubPrinters({ printer, bundles, filter, onFilter }) {
             </div>
           ) : (
             <button onClick={() => setAdding(true)} data-testid="sub-printer-add" style={headerButton()}>
-              <Plus size={12} /> Add sub printer
+              <Plus size={12} /> Add printer profile
             </button>
           )}
           {error && <div style={uiText(12, c.danger, { marginTop: 6 })}>{error}</div>}

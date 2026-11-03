@@ -6,16 +6,16 @@ import { fieldBox, headerButton, monoText, primaryButton, uiText } from "../styl
 
 import { TrashButton } from "../components/common/ui.jsx";
 
-// A sub printer's Printer parts page, in its Printer Settings window: the parts fitted to it, written down by hand
+// A printer profile's Printer parts page, in its Printer Settings window: the parts fitted to it, written down by hand
 // (what it is, who makes it, its model, when it was fitted, a note). Kept in Farmhand, not in the 3MFs. Each part
-// can be ticked "Add to name": the ticked parts' models make the name the sub printer can be renamed to when the
+// can be ticked "Add to name": the ticked parts' models make the name the printer profile can be renamed to when the
 // window closes (nameFromParts). Every part can be changed, added or removed on the page, and nothing is kept until
 // Save, which saves the whole list at once; closing the window with changes not saved asks whether to save them.
 
 const EMPTY = { part: "", make: "", model: "", installedOn: "", note: "", inName: false };
 const COLUMNS = "56px minmax(90px, 1fr) minmax(90px, 1fr) minmax(110px, 1.3fr) 130px minmax(130px, 1.7fr) 30px";
 
-// The parts every sub printer starts with (the API's DEFAULT_PARTS): their names can't be changed
+// The parts every printer profile starts with (the API's DEFAULT_PARTS): their names can't be changed
 const DEFAULT_PART_NAMES = new Set(["Toolhead", "Hotend", "Nozzle", "Extruder", "Gantry", "XY motor"]);
 
 // A gantry only goes into the name when it's an AWD / 4WD / quad motor one
@@ -37,7 +37,7 @@ const asSaved = (p) => ({ part: p.part.trim(), make: p.make.trim(), model: p.mod
 const blank = (p) => p.id == null && !p.part.trim() && !p.make.trim() && !p.model.trim() && !p.installedOn && !p.note.trim();
 const same = (a, b) => JSON.stringify(a.map(asSaved)) === JSON.stringify(b.map(asSaved));
 
-// The window's hold on a sub printer's parts, loaded once when it opens (so they survive moving between its pages):
+// The window's hold on a printer profile's parts, loaded once when it opens (so they survive moving between its pages):
 // `parts` as saved, `draft` as edited on the page, `unsaved` while they differ, and `changed` once a save went
 // through (for the rename question). `save()` saves the draft: it resolves to the list as saved, or null with
 // `saveError` set.
@@ -118,7 +118,7 @@ export function PrinterParts({ printer, sub, state }) {
       <div style={uiText(12, c.textFaint, { marginBottom: 10, lineHeight: 1.5 })}>
         The parts fitted to <span style={mono}>{sub.name}</span>. Written down here and kept in Farmhand (and its settings
         copy); the 3MF files don’t carry them. Change any of them, then <b>Save</b>. Tick <b>Add to name</b> to put a
-        part’s model in the sub printer’s name: when you close this window after saving its parts, you’re asked whether
+        part’s model in the printer profile’s name: when you close this window after saving its parts, you’re asked whether
         to rename it.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: COLUMNS, gap: 8, padding: "0 0 6px", alignItems: "end" }}>

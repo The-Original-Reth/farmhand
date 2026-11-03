@@ -316,33 +316,33 @@ has a note icon, and one whose 1500-hour service is due says so. Each printer pa
 and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink** section
 (whose own parts, **Connection and statistics**, **Energy** and **Maintenance**, fold away too: they start open, and a
 folded Maintenance still shows how many are due), its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
-notes, or a sub printer), and its **print history**.
+notes, or a printer profile), and its **print history**.
 
-**Sub printers.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its
+**Printer profiles.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its
 printer presets under it, for example a 0.4 and a 0.6 nozzle. Farmhand calls those presets the printer's **sub
 printers**. Each 3MF says which one it was sliced with. When you upload one (a new 3MF or a new version), the
-**Sub printer** box shows Farmhand's guess: the sub printer that preset's 3MFs went to before, else the one called
-that, else a new one named after it. Change it to another of the printer's sub printers, or **Create a new sub
+**Printer profile** box shows Farmhand's guess: the printer profile that preset's 3MFs went to before, else the one called
+that, else a new one named after it. Change it to another of the printer's printer profiles, or **Create a new sub
 printer…** with any name; Farmhand remembers the choice, so the next 3MF with that preset is guessed to go there
-too (renaming a sub printer does the same for its old name). Each 3MF version shows its sub printer under its note. 3MFs uploaded before this are linked once when Farmhand starts.
-On the printer page, **Sub printers** lists them with how many 3MF files use each: click that count to show only
-those 3MF files. **Add sub printer** adds one by hand, the pencil renames one (its 3MF files stay linked), the copy
+too (renaming a printer profile does the same for its old name). Each 3MF version shows its printer profile under its note. 3MFs uploaded before this are linked once when Farmhand starts.
+On the printer page, **Printer profiles** lists them with how many 3MF files use each: click that count to show only
+those 3MF files. **Add printer profile** adds one by hand, the pencil renames one (its 3MF files stay linked), the copy
 button makes a new one with the same printer settings and parts, named "<its name> - copy" to start with (change it
 before you press **Copy**; "- copy 2" and so on when that name's taken; its 3MF files and the default stay with the
 original). The copy's **Printer Settings** show the original's, as its newest 3MF had them, "copied from" it, until a 3MF
 sliced with the copy itself is uploaded; changing or removing the original later leaves the copy's as they were. The
-bin removes one (its 3MF files stay, with no sub printer). The star makes one the printer's **default** (marked "default"
+bin removes one (its 3MF files stay, with no printer profile). The star makes one the printer's **default** (marked "default"
 in orange; click the star again for none): every 3MF uploaded to that printer then starts on it instead of Farmhand's
 guess, and can still be changed on the upload. They're kept in the settings copy on the NAS too.
 
-Click a sub printer's **name** to open its **Printer Settings**, laid out like PrusaSlicer BOSS edition's Printer
+Click a printer profile's **name** to open its **Printer Settings**, laid out like PrusaSlicer BOSS edition's Printer
 Settings tab (General, Custom G-code, Machine limits, Extruder 1…, Notes, Dependencies). They're read from the newest
 3MF sliced with it, or another picked under **Settings from**, and can't be changed here. The last page, **Printer
-parts**, is Farmhand's own: write down the parts fitted to that sub printer (the part, its make, its model, when it was
+parts**, is Farmhand's own: write down the parts fitted to that printer profile (the part, its make, its model, when it was
 installed, a note). Every part on the page can be typed into at once: change any of them, add others with **Add
 part**, remove some with the bin, then **Save**, next to Add part, to keep the whole list in one go (nothing is
 kept until then, and a part added and left empty is dropped). Close the window with changes not saved and Farmhand
-asks whether to **Save** them, close and lose them (**Don't save**), or **Keep editing**. Every new sub printer starts
+asks whether to **Save** them, close and lose them (**Don't save**), or **Keep editing**. Every new printer profile starts
 with **Toolhead, Hotend, Nozzle, Extruder, Gantry** and **XY motor** listed, ready to fill in. The default parts'
 names can't be changed (their make, model, date and note can, and they can be removed); a part you added can be
 renamed.
@@ -351,9 +351,9 @@ Each part has an **Add to name** tick box (all the default parts but the XY moto
 models make a name: the printer's name without spaces, then each model in list order, with spaces turned into
 underscores, for example `VT1190_Stealthburner_Rapido_UHF_0.5_WC_Galileo_2`. A part with no model yet is left out,
 and the Gantry is only added when its make or model says AWD, 4WD or quad. The page shows the name as it stands. When
-you close the Printer Settings window after saving changes to its parts, Farmhand asks whether to rename the sub printer to
+you close the Printer Settings window after saving changes to its parts, Farmhand asks whether to rename the printer profile to
 it (only if it's different). Rename the preset in PrusaSlicer to match, or 3MFs sliced with the old name will add a
-sub printer by the old name again. Parts are kept in the settings copy on the NAS as well.
+printer profile by the old name again. Parts are kept in the settings copy on the NAS as well.
 
 **Connection.** In **Add printer** or **Edit**, choose **Mainsail (Moonraker / Klipper)** or **PrusaLink
 (Prusa Core One, MK4, XL…)**. A printer on both a cable and Wi-Fi answers at both its IPs: give its **Wired IP**

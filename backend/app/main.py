@@ -154,7 +154,7 @@ def on_startup() -> None:
             config_service.enable_background_mirror()
             config_service.request_mirror()
             threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
-            # 3MF versions from before sub printers: linked to the printer preset each was sliced with, once
+            # 3MF versions from before printer profiles: linked to the printer preset each was sliced with, once
             threading.Thread(
                 target=sub_printer_service.run_link_missing, args=(SessionLocal,), name="sub-printers", daemon=True
             ).start()

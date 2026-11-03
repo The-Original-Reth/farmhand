@@ -47,9 +47,9 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         <div style={uiText(13, ver.note ? c.textMuted : c.textFaint)}>
           {ver.note || "—"}
         </div>
-        {/* the sub printer (printer preset) it was sliced with */}
+        {/* the printer profile (printer preset) it was sliced with */}
         {subPrinter && (
-          <div data-testid="version-sub-printer" title="Sub printer: the printer preset it was sliced with" style={monoText(11, c.textFaint, { marginTop: 2, overflowWrap: "anywhere" })}>
+          <div data-testid="version-sub-printer" title="Printer profile: the printer preset it was sliced with" style={monoText(11, c.textFaint, { marginTop: 2, overflowWrap: "anywhere" })}>
             {subPrinter}
           </div>
         )}

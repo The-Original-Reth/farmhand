@@ -52,7 +52,7 @@ function SaveChanges({ sub, parts, onKeepEditing, onDiscard, onSave }) {
   );
 }
 
-// A sub printer's printer settings, laid out as PrusaSlicer BOSS edition's Printer Settings tab (see
+// A printer profile's printer settings, laid out as PrusaSlicer BOSS edition's Printer Settings tab (see
 // PrinterPresetPages). Farmhand only knows them from the 3MFs sliced with it, so they're read from one of
 // those: the newest, or another picked from the list (the preset may have been changed between them). A copy with
 // no 3MF of its own yet shows the settings it was copied with. Read-only, like every setting in Farmhand.
@@ -89,7 +89,7 @@ export function SubPrinterSettings({ printer, sub, bundles, onClose }) {
   if (renameTo) {
     return (
       <ConfirmDialog
-        title="Rename sub printer?"
+        title="Rename printer profile?"
         confirmLabel="Rename"
         cancelLabel="Keep the name"
         tone="amber"

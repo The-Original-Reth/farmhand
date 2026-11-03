@@ -63,8 +63,8 @@ export function Upload3mfForm({ presetModel, onClose }) {
   // Decommissioned printers shouldn't be offered as a home for new files
   const selectablePrinters = printers.filter((p) => !p.decommissioned);
 
-  // The printer the file goes to, as far as it's known yet (one about to be created has no sub printers), and which
-  // of its sub printers: Farmhand's guess from the file's preset, until it's changed
+  // The printer the file goes to, as far as it's known yet (one about to be created has no printer profiles), and which
+  // of its printer profiles: Farmhand's guess from the file's preset, until it's changed
   const targetPrinter = !inspection
     ? null
     : inspection.matchedPrinter
@@ -106,7 +106,7 @@ export function Upload3mfForm({ presetModel, onClose }) {
     if (!threemfFile) return setErrorMsg("Drop a .3mf file first.");
     if (inspecting) return setErrorMsg("Still reading the 3MF — one moment.");
     if (inspectError) return setErrorMsg("This 3MF couldn't be read, so it can't be uploaded.");
-    if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new sub printer a name.");
+    if (sub.pick.kind === "new" && !sub.pick.name.trim()) return setErrorMsg("Give the new printer profile a name.");
     if (versionTarget) {
       // A newer version of an existing entry: nothing new to create, the printer is already matched
       await run(async () => {

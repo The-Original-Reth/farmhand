@@ -32,7 +32,7 @@ class ParsedBundle:
     filament_settings_id: str | None
     settings: dict = field(default_factory=dict)
     thumbnail_bytes: bytes | None = None
-    printer_preset_name: str | None = None  # printer_settings_id: the preset under the physical printer (a sub printer)
+    printer_preset_name: str | None = None  # printer_settings_id: the preset under the physical printer (a printer profile)
 
 
 def parse(raw: RawThreeMF) -> ParsedBundle:

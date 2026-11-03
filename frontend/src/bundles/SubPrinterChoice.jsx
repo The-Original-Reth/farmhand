@@ -2,10 +2,10 @@ import { useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
 import { fieldBox, uiText } from "../styles.js";
 
-// Which sub printer (printer preset) a 3MF being uploaded goes to. The printer's default sub printer (starred on the
-// printer page), if it has one. Else Farmhand guesses from the preset the file was sliced with: a sub printer known by
+// Which printer profile (printer preset) a 3MF being uploaded goes to. The printer's default printer profile (starred on the
+// printer page), if it has one. Else Farmhand guesses from the preset the file was sliced with: a printer profile known by
 // that name (it was renamed from it, or given 3MFs with it by hand), else the one called that, else a new one named
-// after it. Either can be changed to another of the printer's sub printers, or to a new one with any name.
+// after it. Either can be changed to another of the printer's printer profiles, or to a new one with any name.
 //   pick: { kind: "existing", id } | { kind: "new", name } | { kind: "none" }
 
 function guessSubPrinter(printer, presetName) {
@@ -41,14 +41,14 @@ export function SubPrinterChoice({ printer, presetName, pick, guess, onChange })
   let why = null;
   const isDefault = pick.kind === "existing" && pick.id === printer?.defaultSubPrinterId;
   if (guessed && isDefault) {
-    why = <>{printer.name}’s default sub printer{presetName && <>; the file was sliced with <span style={mono}>{presetName}</span></>}.</>;
+    why = <>{printer.name}’s default printer profile{presetName && <>; the file was sliced with <span style={mono}>{presetName}</span></>}.</>;
   } else if (guessed && presetName) {
     const sub = subs.find((s) => s.id === pick.id);
     why =
       pick.kind === "new" ? (
         <>Sliced with <span style={mono}>{presetName}</span>, which {printer?.name || "this printer"} doesn’t have yet.</>
       ) : sub && sub.name !== presetName ? (
-        <>Sliced with <span style={mono}>{presetName}</span>, whose 3MFs go to this sub printer.</>
+        <>Sliced with <span style={mono}>{presetName}</span>, whose 3MFs go to this printer profile.</>
       ) : (
         <>Sliced with this preset.</>
       );
@@ -59,7 +59,7 @@ export function SubPrinterChoice({ printer, presetName, pick, guess, onChange })
   return (
     <div data-testid="sub-printer-choice" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 12, marginBottom: 14, background: c.panelAlt }}>
       <div style={uiText(12, c.textFaint, { marginBottom: 6 })}>
-        Sub printer{guessed && (isDefault ? " (the default)" : " (Farmhand’s guess)")}
+        Printer profile{guessed && (isDefault ? " (the default)" : " (Farmhand’s guess)")}
       </div>
       <select
         data-testid="sub-printer-pick"
@@ -75,7 +75,7 @@ export function SubPrinterChoice({ printer, presetName, pick, guess, onChange })
         {subs.map((s) => (
           <option key={s.id} value={String(s.id)}>{s.name}{s.id === printer?.defaultSubPrinterId ? " (default)" : ""}</option>
         ))}
-        <option value="new">Create a new sub printer…</option>
+        <option value="new">Create a new printer profile…</option>
         {!presetName && <option value="none">None</option>}
       </select>
       {pick.kind === "new" && (
@@ -83,8 +83,8 @@ export function SubPrinterChoice({ printer, presetName, pick, guess, onChange })
           data-testid="sub-printer-new-name"
           value={pick.name}
           onChange={(e) => onChange({ kind: "new", name: e.target.value })}
-          placeholder="Name of the new sub printer"
-          aria-label="Name of the new sub printer"
+          placeholder="Name of the new printer profile"
+          aria-label="Name of the new printer profile"
           style={{ ...box, ...mono, fontSize: fs(12), marginTop: 8 }}
         />
       )}

@@ -65,7 +65,7 @@ def set_decommissioned(db: Session, printer_id: int, decommissioned: bool) -> Pr
 
 def delete_printer(db: Session, printer_id: int) -> None:
     """
-    Remove a decommissioned printer for good, with its print history, notes, connection, sub printers and maintenance.
+    Remove a decommissioned printer for good, with its print history, notes, connection, printer profiles and maintenance.
     Refused while 3MF files are kept for it: they'd be left without a printer.
     """
     printer = require_printer(db, printer_id)

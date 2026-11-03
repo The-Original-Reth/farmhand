@@ -273,7 +273,7 @@ def _store_version(
         )
         db.add(version)
         db.flush()
-        # its sub printer: the one picked on upload (or a new one), else the one its printer preset goes to
+        # its printer profile: the one picked on upload (or a new one), else the one its printer preset goes to
         sub_printer_service.link(
             db, version, bundle.printer, parsed.printer_preset_name,
             sub_printer_id=sub_printer_id, new_name=new_sub_printer_name,

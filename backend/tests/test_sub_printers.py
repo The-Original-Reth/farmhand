@@ -1,5 +1,5 @@
 """
-Sub printers: a printer's printer presets in PrusaSlicer (BOSS edition), found from the 3MFs uploaded (their
+Printer profiles: a printer's printer presets in PrusaSlicer (BOSS edition), found from the 3MFs uploaded (their
 printer_settings_id) or added by hand, renamed and removed, with each 3MF version linked to the one it was sliced with.
 """
 from __future__ import annotations
@@ -45,7 +45,7 @@ def test_a_3mf_can_be_put_with_another_sub_printer_and_the_next_one_goes_there_t
     b = _upload(api, sample_3mf_paths["frog_vt1190"], pid, sub_printer_id=brass)
     assert b["versions"][0]["sub_printer_name"] == "Trident 0.4 brass"
     subs = _subs(api, pid)
-    assert list(subs) == ["Trident 0.4 brass"]  # the file's preset wasn't added as a sub printer of its own
+    assert list(subs) == ["Trident 0.4 brass"]  # the file's preset wasn't added as a printer profile of its own
     assert subs["Trident 0.4 brass"]["aliases"] == [FROG_PRESET]  # remembered for next time
 
     b = _upload(api, sample_3mf_paths["shark_vt1190"], pid)  # same preset, nothing picked: goes where the last went
@@ -57,7 +57,7 @@ def test_a_3mf_can_go_to_a_new_sub_printer_named_on_upload(api, sample_3mf_paths
     b = _upload(api, sample_3mf_paths["frog_vt1190"], pid, new_sub_printer_name=" Trident Rapido 0.5 ")
     assert b["versions"][0]["sub_printer_name"] == "Trident Rapido 0.5"
     assert _subs(api, pid)["Trident Rapido 0.5"]["aliases"] == [FROG_PRESET]
-    # a name the printer already has is that sub printer, not a second one
+    # a name the printer already has is that printer profile, not a second one
     b = _upload(api, sample_3mf_paths["shark_vt1190"], pid, new_sub_printer_name="Trident Rapido 0.5")
     assert b["versions"][0]["sub_printer_name"] == "Trident Rapido 0.5" and len(_subs(api, pid)) == 1
 
@@ -92,7 +92,7 @@ def test_an_uploaded_3mf_adds_its_preset_as_a_sub_printer_and_is_linked_to_it(ap
     v = bundle["versions"][0]
     assert v["sub_printer_name"] == FROG_PRESET and v["sub_printer_id"] == printer["sub_printers"][0]["id"]
 
-    # a second 3MF with the same preset uses the same sub printer, and lists show it too
+    # a second 3MF with the same preset uses the same printer profile, and lists show it too
     _upload(api, sample_3mf_paths["shark_vt1190"], pid)
     assert len(api.get(f"/printers/{pid}").json()["sub_printers"]) == 1
     listed = api.get(f"/printers/{pid}/bundles").json()
@@ -121,7 +121,7 @@ def test_sub_printers_can_be_added_renamed_and_removed_by_hand(api, sample_3mf_p
     assert api.delete(f"/printers/{pid}/sub-printers/{frog['id']}").status_code == 409  # not confirmed
     r = api.delete(f"/printers/{pid}/sub-printers/{frog['id']}?confirm=true")
     assert r.status_code == 200 and [s["name"] for s in r.json()["sub_printers"]] == ["Trident 0.4 brass"]
-    v = api.get(f"/bundles/{bundle['id']}").json()["versions"][0]  # the 3MF stays, with no sub printer
+    v = api.get(f"/bundles/{bundle['id']}").json()["versions"][0]  # the 3MF stays, with no printer profile
     assert v["sub_printer_id"] is None and v["sub_printer_name"] is None
 
 
@@ -130,7 +130,7 @@ def test_3mfs_from_before_sub_printers_are_linked_once(db_session, sample_3mf_pa
     model = make.model(db_session, "Frog.stl")
     bundle = make.bundle(db_session, sample_3mf_paths["frog_vt1190"], [model], "Frog.3mf", gcode=None, printer_id=printer.id)
     make.add_version(db_session, bundle, sample_3mf_paths["shark_vt1190"], "Shark.3mf", gcode=None)
-    # as they were before: no links, no sub printers
+    # as they were before: no links, no printer profiles
     db_session.query(BundleVersionSubPrinter).delete()
     for s in list(printer.sub_printers):
         printer.sub_printers.remove(s)
@@ -200,7 +200,7 @@ def test_a_sub_printers_parts_can_be_written_down_changed_and_removed(api):
     assert api.delete(f"{base}/{hotend}").status_code == 409  # not confirmed
     assert [p["part"] for p in api.delete(f"{base}/{hotend}?confirm=true").json()] == ["Nozzle"]
 
-    # removing the sub printer takes its parts with it
+    # removing the printer profile takes its parts with it
     assert api.delete(f"/printers/{pid}/sub-printers/{sid}?confirm=true").status_code == 200
     assert api.get(base).status_code == 404
 

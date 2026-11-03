@@ -219,16 +219,16 @@ export function mockApi() {
     saveNotes(p, body, { text: "notes", rev: "notesRevision", at: "notesUpdatedAt" });
     return printerOut(p);
   });
-  // Sub printers (a printer's presets in the slicer): added, renamed and removed by hand, with the real API's rules
+  // Printer profiles (a printer's presets in the slicer): added, renamed and removed by hand, with the real API's rules
   const subPrinterName = (body) => {
     const name = String(body.name ?? "").trim();
-    if (!name) throw new HttpError(422, "A sub printer needs a name");
-    if (name.length > 120) throw new HttpError(422, "A sub printer's name can be at most 120 characters");
+    if (!name) throw new HttpError(422, "A printer profile needs a name");
+    if (name.length > 120) throw new HttpError(422, "A printer profile's name can be at most 120 characters");
     return name;
   };
   const subPrinterOf = (p, subId) => {
     const s = farm.subPrinters.find((x) => x.id === Number(subId) && x.printer_id === p.id);
-    if (!s) throw new HttpError(404, `No sub printer with id ${subId} on this printer`);
+    if (!s) throw new HttpError(404, `No printer profile with id ${subId} on this printer`);
     return s;
   };
   const newSubPrinter = (p, name) => {
@@ -242,16 +242,16 @@ export function mockApi() {
     for (const o of farm.subPrinters) if (o.printer_id === s.printer_id) o.aliases = (o.aliases || []).filter((a) => a !== preset);
     s.aliases = [...(s.aliases || []), preset];
   };
-  // the sub printer a preset goes to: one known by that name, else the one called that
+  // the printer profile a preset goes to: one known by that name, else the one called that
   const knownAs = (p, preset) =>
     farm.subPrinters.find((s) => s.printer_id === p.id && (s.aliases || []).includes(preset)) ||
     farm.subPrinters.find((s) => s.printer_id === p.id && s.name === preset);
-  // which sub printer a new 3MF version goes to: picked on upload, else the one its preset goes to (as the real API)
+  // which printer profile a new 3MF version goes to: picked on upload, else the one its preset goes to (as the real API)
   const subPrinterFor = (p, preset, fields = {}) => {
     let s = null;
     if (fields.sub_printer_id) {
       s = farm.subPrinters.find((x) => x.id === Number(fields.sub_printer_id) && x.printer_id === p.id);
-      if (!s) throw new HttpError(422, `That sub printer isn't one of ${p.name}'s`);
+      if (!s) throw new HttpError(422, `That printer profile isn't one of ${p.name}'s`);
     } else if (fields.new_sub_printer_name?.trim()) {
       const name = fields.new_sub_printer_name.trim().slice(0, 120);
       s = farm.subPrinters.find((x) => x.printer_id === p.id && x.name === name) || newSubPrinter(p, name);
@@ -263,7 +263,7 @@ export function mockApi() {
   };
   const nameTaken = (p, name, except) => {
     if (farm.subPrinters.some((s) => s.printer_id === p.id && s.name === name && s !== except)) {
-      throw new HttpError(409, `${p.name} already has a sub printer named '${name}'`);
+      throw new HttpError(409, `${p.name} already has a printer profile named '${name}'`);
     }
   };
   on("POST", "/printers/:id/sub-printers", ({ id }, body) => {
@@ -302,7 +302,7 @@ export function mockApi() {
   });
   on("GET", "/printers/:id/sub-printers/:subId/settings-copy", ({ id, subId }) => {
     const s = subPrinterOf(printer(id), subId);
-    if (!s.settings_copy) throw new HttpError(404, "This sub printer has no copied printer settings");
+    if (!s.settings_copy) throw new HttpError(404, "This printer profile has no copied printer settings");
     return s.settings_copy;
   });
   on("PATCH", "/printers/:id/sub-printers/:subId", ({ id, subId }, body) => {
@@ -330,7 +330,7 @@ export function mockApi() {
     p.defaultSubPrinterId = body.sub_printer_id == null ? null : subPrinterOf(p, body.sub_printer_id).id;
     return printerOut(p);
   });
-  // A sub printer's parts (its Printer parts page), with the real API's checks; each change answers the whole list
+  // A printer profile's parts (its Printer parts page), with the real API's checks; each change answers the whole list
   const partFields = (body) => {
     const part = String(body.part ?? "").trim();
     if (!part) throw new HttpError(422, "Say what the part is (e.g. Hotend)");
@@ -346,7 +346,7 @@ export function mockApi() {
   };
   const partOf = (s, partId) => {
     const found = s.parts.find((x) => x.id === Number(partId));
-    if (!found) throw new HttpError(404, `No part with id ${partId} on this sub printer`);
+    if (!found) throw new HttpError(404, `No part with id ${partId} on this printer profile`);
     return found;
   };
   on("GET", "/printers/:id/sub-printers/:subId/parts", ({ id, subId }) => subPrinterOf(printer(id), subId).parts);

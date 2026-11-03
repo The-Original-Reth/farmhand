@@ -6,13 +6,13 @@ import { hasValue, pagesWithContent } from "../settings/pages.js";
 import { BOSS_CHOICES, bossPrinterPages, bossValue } from "../settings/boss.js";
 import { useVersionSettings } from "../settings/useVersionSettings.js";
 
-// A printer preset (a sub printer) laid out as PrusaSlicer's (and BOSS edition's) Printer Settings tab: the same
+// A printer preset (a printer profile) laid out as PrusaSlicer's (and BOSS edition's) Printer Settings tab: the same
 // pages down the left, the same titled groups on each page, the same labels and units, and one Extruder page per
 // extruder (the layout is in settings/boss.js), in PrusaSlicer's colours. Read from a 3MF sliced with it, so it's
 // read-only: the fields are drawn, never typed in.
 
 // The Printer Settings pages for one 3MF version's settings (null: there's no 3MF to read them from), followed by
-// `extraPages`: pages of Farmhand's own ({ id, title, Icon, render }), such as the sub printer's Printer parts
+// `extraPages`: pages of Farmhand's own ({ id, title, Icon, render }), such as the printer profile's Printer parts
 function PresetPages({ settings, extraPages = [] }) {
   const value = useMemo(() => bossValue(settings), [settings]);
   const pages = useMemo(() => pagesWithContent(bossPrinterPages(settings, extraPages), hasValue(value)), [settings, extraPages, value]);

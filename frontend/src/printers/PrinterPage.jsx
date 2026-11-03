@@ -24,7 +24,7 @@ import { PrusaLinkCard, usePrusaLink } from "./PrusaLink.jsx";
 import { SubPrinters, usesSubPrinter } from "./SubPrinters.jsx";
 
 // Searching the 3MF files on one printer: like the Models search, every word has to be found, in any of the file's
-// names (every version), the sub printers they were sliced with, the models it was sliced from, its slicer, or its notes.
+// names (every version), the printer profiles they were sliced with, the models it was sliced from, its slicer, or its notes.
 function bundleMatches(bundle, models, words, subPrinters) {
   if (words.length === 0) return true;
   const haystack = [
@@ -125,7 +125,7 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
-  const [subFilter, setSubFilter] = useState(null); // only the 3MFs sliced with this sub printer (its id); null = all
+  const [subFilter, setSubFilter] = useState(null); // only the 3MFs sliced with this printer profile (its id); null = all
 
   useEffect(() => {
     setQuery(""); // a fresh search, and every 3MF, for each printer

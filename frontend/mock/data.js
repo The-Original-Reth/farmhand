@@ -27,7 +27,7 @@ export const DAY = 86400;
 export const iso = (unix) => (unix == null ? null : new Date(unix * 1000).toISOString().replace("Z", "+00:00"));
 const NOW = Math.floor(Date.now() / 1000);
 
-// The parts a new sub printer starts with on its Printer parts page (the real API's DEFAULT_PARTS), none filled in,
+// The parts a new printer profile starts with on its Printer parts page (the real API's DEFAULT_PARTS), none filled in,
 // and whether each starts ticked "Add to name"
 export const DEFAULT_PARTS = [["Toolhead", true], ["Hotend", true], ["Nozzle", true], ["Extruder", true], ["Gantry", true], ["XY motor", false]];
 export const defaultParts = (nextId) =>
@@ -162,7 +162,7 @@ export function buildFarm() {
   bundles.push(bundle(4, 2, [6], "starfish-orca", 18, [{ name: "V2_BOG_-_Orca_Slicer_-_Flexi-Starfish.3mf", slicer: "OrcaSlicer 2.4.2", family: "orcaslicer" }]));
   bundles[2].starred_version_id = bundles[2].versions.find((v) => v.version === 2).id; // v2 is the keeper
 
-  // Sub printers: each printer's printer presets in PrusaSlicer, found from its 3MFs' printer_settings_id as the real
+  // Printer profiles: each printer's printer presets in PrusaSlicer, found from its 3MFs' printer_settings_id as the real
   // API does, plus one more on the VT 1190 (a 0.4 brass nozzle) that the Frog's v3 was sliced with
   const subPrinters = [];
   const subPrinterFor = (printerId, name) => {
@@ -175,7 +175,7 @@ export function buildFarm() {
   const brass = subPrinterFor(1, "Trident_Allyson_DragonBurner_0.4_brass");
   frogV3.sub_printer_id = brass.id;
   versionSettings[frogV3.id] = { ...versionSettings[frogV3.id], printer_settings_id: brass.name, nozzle_diameter: "0.4" };
-  // Their Printer parts pages: every sub printer starts with the default parts (as the real API does), and a few of
+  // Their Printer parts pages: every printer profile starts with the default parts (as the real API does), and a few of
   // the VT 1190's are filled in
   let partId = 0;
   for (const s of subPrinters) s.parts = defaultParts(() => ++partId);

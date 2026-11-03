@@ -59,7 +59,7 @@ class BundleVersion(Base):
     settings: Mapped[dict] = mapped_column(JSON, nullable=False, deferred=True)
 
     bundle: Mapped["Bundle"] = relationship(back_populates="versions")
-    # The sub printer (printer preset) it was sliced with, see BundleVersionSubPrinter. Goes with the version.
+    # The printer profile (printer preset) it was sliced with, see BundleVersionSubPrinter. Goes with the version.
     sub_printer_link: Mapped["BundleVersionSubPrinter | None"] = relationship(  # noqa: F821
         back_populates="version", cascade="all, delete-orphan", uselist=False
     )

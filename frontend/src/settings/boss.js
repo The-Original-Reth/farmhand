@@ -422,7 +422,7 @@ const FILAMENT_GCODE = [
   { title: "End G-code", rows: [["end_filament_gcode", "", "gcode"]] },
 ];
 
-// ------------------------------------------------------------------ Printer Settings (also the sub printer window)
+// ------------------------------------------------------------------ Printer Settings (also the printer profile window)
 const GENERAL = [
   {
     title: "Size and coordinates",
