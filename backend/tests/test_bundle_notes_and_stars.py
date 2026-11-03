@@ -78,9 +78,45 @@ def test_deleting_the_starred_version_clears_the_star(db_session, sample_3mf_pat
     svc.set_starred_version(db_session, b.id, v2.id)
     svc.delete_bundle_version(db_session, v3.id)  # another version: the star stays
     assert svc.get_bundle(db_session, b.id).starred_version_id == v2.id
-    svc.delete_bundle_version(db_session, v2.id)
+    svc.delete_bundle_version(db_session, v2.id)  # only the initial version is left, and it's never starred
     assert svc.get_bundle(db_session, b.id).starred_version_id is None
     assert db_session.query(BundleStar).count() == 0
+
+
+def test_a_new_version_is_starred_when_none_is(db_session, sample_3mf_paths):
+    b = _bundle(db_session, sample_3mf_paths)
+    v2 = _add_version(db_session, sample_3mf_paths, b)
+    assert svc.get_bundle(db_session, b.id).starred_version_id == v2.id  # nothing was starred: the newest is
+    _add_version(db_session, sample_3mf_paths, b)
+    assert svc.get_bundle(db_session, b.id).starred_version_id == v2.id  # one is starred: it stays
+    svc.set_starred_version(db_session, b.id, None)  # un-starred by hand: stays un-starred...
+    assert svc.get_bundle(db_session, b.id).starred_version_id is None
+    v4 = _add_version(db_session, sample_3mf_paths, b)
+    assert svc.get_bundle(db_session, b.id).starred_version_id == v4.id  # ...until the next version comes in
+
+
+def test_deleting_the_starred_version_stars_the_newest_left(db_session, sample_3mf_paths):
+    b = _bundle(db_session, sample_3mf_paths)
+    v2 = _add_version(db_session, sample_3mf_paths, b)
+    v3 = _add_version(db_session, sample_3mf_paths, b)
+    svc.set_starred_version(db_session, b.id, v3.id)
+    svc.delete_bundle_version(db_session, v3.id)
+    assert svc.get_bundle(db_session, b.id).starred_version_id == v2.id
+    assert db_session.query(BundleStar).count() == 1
+
+
+def test_existing_3mfs_get_their_newest_version_starred_once(db_session, sample_3mf_paths):
+    b = _bundle(db_session, sample_3mf_paths)
+    _add_version(db_session, sample_3mf_paths, b)
+    v3 = _add_version(db_session, sample_3mf_paths, b)
+    svc.set_starred_version(db_session, b.id, None)  # as if it was uploaded before auto-starring
+    only_v1 = _bundle(db_session, sample_3mf_paths, "shark_vt1190")
+    assert svc.star_existing(db_session) == 1
+    assert svc.get_bundle(db_session, b.id).starred_version_id == v3.id
+    assert svc.get_bundle(db_session, only_v1.id).starred_version_id is None  # the initial version is never starred
+    svc.set_starred_version(db_session, b.id, None)
+    assert svc.star_existing(db_session) == 0  # only ever once: a star cleared since stays cleared
+    assert svc.get_bundle(db_session, b.id).starred_version_id is None
 
 
 # ------------------------------------------------------------------ notes
@@ -152,7 +188,8 @@ def test_star_over_the_api(client, sample_3mf_paths):
     with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
         versions = c.post(f"/bundles/{bid}/versions", files={"threemf": ("frog_v2.3mf", f.read())}).json()["versions"]
     v2 = next(v["id"] for v in versions if v["version"] == 2)
-    assert c.get(f"/bundles/{bid}").json()["starred_version_id"] is None
+    assert c.get(f"/bundles/{bid}").json()["starred_version_id"] == v2  # none was starred: the newest is
+    assert c.put(f"/bundles/{bid}/star", json={"version_id": None}).json()["starred_version_id"] is None
 
     r = c.put(f"/bundles/{bid}/star", json={"version_id": v2})
     assert r.status_code == 200 and r.json()["starred_version_id"] == v2 and r.json()["versions"]

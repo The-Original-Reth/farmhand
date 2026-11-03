@@ -14,6 +14,7 @@ from ...config import settings
 from ...models import Bundle, BundleVersion
 from ...names import clean_file_name
 from ...parsers.gcode import printer_profile
+from .marks import star_newest_if_none
 from .queries import require_bundle, require_version
 
 
@@ -166,7 +167,9 @@ def delete_bundle_version(db: Session, version_id: int) -> bool:
         return True
     paths = _files_of(version)
     if bundle.star_row is not None and bundle.star_row.version_id == version.id:
-        bundle.star_row = None  # the starred version is going: so is its star
+        bundle.star_row = None  # the starred version is going: its star moves to the newest one left
+        db.flush()
+        star_newest_if_none(bundle, [v for v in bundle.versions if v.id != version.id])
     db.delete(version)
     db.commit()
     storage.delete_files(paths)

@@ -509,9 +509,15 @@ export function mockApi() {
     farm.bundles.push(b);
     return [201, bundleOut(b)];
   });
+  // When none of a 3MF's versions is starred, its newest is (never version 1, the initial upload)
+  const starNewestIfNone = (b) => {
+    const newest = b.versions.reduce((a, v) => (!a || v.version > a.version ? v : a), null);
+    if (b.starred_version_id == null && newest && newest.version > 1) b.starred_version_id = newest.id;
+  };
   on("POST", "/bundles/:id/versions", ({ id }, body) => {
     const b = bundle(id);
     addVersion(b, readThreemf(body), body, (b.versions[0]?.version || 0) + 1);
+    starNewestIfNone(b);
     return [201, bundleOut(b)];
   });
   on("PUT", "/bundles/:id/notes", ({ id }, body) => {
@@ -575,7 +581,10 @@ export function mockApi() {
     requireConfirm(q);
     const { b, v } = version(id);
     b.versions = b.versions.filter((x) => x.id !== v.id);
-    if (b.starred_version_id === v.id) b.starred_version_id = null;
+    if (b.starred_version_id === v.id) {
+      b.starred_version_id = null; // its star moves to the newest one left
+      starNewestIfNone(b);
+    }
     if (!b.versions.length) farm.bundles = farm.bundles.filter((x) => x.id !== b.id);
     return [204, null];
   });

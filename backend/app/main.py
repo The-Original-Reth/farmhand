@@ -15,7 +15,7 @@ from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
-from .services import config_service, previews, storage_settings_service, sub_printer_service
+from .services import bundle_service, config_service, previews, storage_settings_service, sub_printer_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
 
@@ -157,6 +157,10 @@ def on_startup() -> None:
             # 3MF versions from before printer profiles: linked to the printer preset each was sliced with, once
             threading.Thread(
                 target=sub_printer_service.run_link_missing, args=(SessionLocal,), name="sub-printers", daemon=True
+            ).start()
+            # 3MFs from before auto-starring: each one's newest version starred, once
+            threading.Thread(
+                target=bundle_service.run_star_existing, args=(SessionLocal,), name="stars", daemon=True
             ).start()
             return
         except OperationalError as e:

@@ -16,6 +16,7 @@ from .. import printer_service, sub_printer_service
 from ...names import with_version
 from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceModel
 from ...parsers import parse_3mf
+from .marks import star_newest_if_none
 from .queries import require_bundle
 from .versions import _enforce_rolling_window, check_gcode_name, check_gcode_printer, known_profiles, wrong_printer
 
@@ -209,6 +210,7 @@ def add_bundle_version(
         )
 
         _enforce_rolling_window(db, bundle)
+        star_newest_if_none(bundle, [version])  # nothing starred yet: this newest version is
 
         db.commit()
         db.refresh(version)

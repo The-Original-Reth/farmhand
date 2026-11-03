@@ -197,7 +197,10 @@ sudo docker compose down -v
 - **Renaming** a model or a 3MF with the pencil beside its name. The extension can't change (an STL stays
   `.stl`, a 3MF stays `.3mf`); downloads use the new name. The stored file keeps its own name.
 - **Stars.** A 3MF's first version has a silver star. Any later version can be starred gold — one per 3MF,
-  clicking another moves it, clicking the gold one clears it.
+  clicking another moves it, clicking the gold one clears it. When no version is starred, a new version is
+  starred gold as it's uploaded, and deleting the gold one moves its star to the newest version left. A star you
+  cleared stays cleared until the next version comes in. (3MFs from before this got their newest version starred
+  once.)
 - **G-code** (see "G-code" below): uploaded for a 3MF, shown under it, downloaded, or sent to the printer
 - The 3MF settings viewer, laid out the way the slicer that made the 3MF shows its settings: PrusaSlicer BOSS
   edition's Print / Filament / Printer Settings tabs (pages down the left), or OrcaSlicer's (and Bambu Studio's)

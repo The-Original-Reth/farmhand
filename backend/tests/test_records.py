@@ -226,10 +226,11 @@ def test_notes_and_stars_go_back_onto_matching_models_and_3mf_files(db_session, 
             b = bundle_service.create_bundle(db, printer_id=p.id, source_model_ids=[m.id], threemf_file_obj=f, threemf_filename="frog.3mf")
         with open(sample_3mf_paths["frog_vt1190"], "rb") as f:
             v2 = bundle_service.add_bundle_version(db, bundle_id=b.id, threemf_file_obj=f, threemf_filename="frog-v2.3mf")
+        # v2 is starred on its own (none was); the copy here clears it, so the restore has a star to bring back
+        bundle_service.set_starred_version(db, b.id, v2.id if with_notes else None)
         if with_notes:
             models_svc.set_notes(db, m.id, "Print at 0.2", 0)
             bundle_service.set_notes(db, b.id, "Textured sheet", 0)
-            bundle_service.set_starred_version(db, b.id, v2.id)
         return m, b
 
     build(db_session, True)
