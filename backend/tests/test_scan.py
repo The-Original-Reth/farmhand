@@ -104,7 +104,7 @@ def test_importing_files_the_model_in_farmhands_own_layout_like_an_upload(db_ses
     assert not original.exists()  # moved, not copied: one copy only
     assert (stl_root / "Animals" / "Frogs").is_dir()  # ...and the folders it was in are left alone
     assert storage.is_managed_layout(version.file_path, model.id, 1)
-    assert storage.is_inside(version.thumbnail_path, storage.thumbnails_root()) and os.path.exists(version.thumbnail_path)
+    assert version.thumbnail_path == str(expected) + ".png" and os.path.exists(version.thumbnail_path)  # beside it
 
 
 def test_the_note_remembers_where_the_file_came_from(db_session, stl_root):

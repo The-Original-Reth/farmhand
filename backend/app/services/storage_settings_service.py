@@ -131,9 +131,10 @@ def migrate(db: Session) -> dict:
 
     Each file is copied, its size verified, the database updated and committed,
     and only then is the original deleted — so a failure at any point leaves the
-    file readable at its recorded path. Thumbnails are brought onto local disk too.
+    file readable at its recorded path. Each preview moves with its file (it's kept next to it); a pruned 3MF's,
+    which stays where the 3MF was, moves into the 3MF folder.
     """
-    thumbs_root = storage.thumbnails_root()
+    thumbs_root = storage.thumbnails_root()  # copies from when the app kept its own: moved out by services/previews.py
     stl_root = storage.effective_root("stl")
     threemf_root = storage.effective_root("threemf")
     result: dict = {"moved_stl": 0, "moved_threemf": 0, "missing": [], "failed": []}
@@ -169,14 +170,11 @@ def migrate(db: Session) -> dict:
                 stale.append((old_file, managed_before))
                 old_preview = storage.preview_beside(old_file)
                 if os.path.isfile(old_preview):  # the preview kept with the file moves with it
-                    copies.append(storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png"))
+                    new_preview = storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png")
+                    copies.append(new_preview)
                     stale.append((old_preview, managed_before))
-            new_thumb, old_thumb = relocate(
-                v.thumbnail_path, thumbs_root, lambda: storage.source_model_thumbnail_dir(sid, ver), copies
-            )
-            if new_thumb:
-                v.thumbnail_path = new_thumb
-                stale.append((old_thumb, True))
+                    if v.thumbnail_path == old_preview:
+                        v.thumbnail_path = new_preview
             if stale:
                 db.commit()
                 for stale_path, prune in stale:
@@ -211,8 +209,11 @@ def migrate(db: Session) -> dict:
                     moved_any = True
                     old_preview = storage.preview_beside(old_3mf)
                     if os.path.isfile(old_preview):  # the preview kept with the 3MF moves with it
-                        copies.append(storage.copy_verified(old_preview, Path(new_3mf).parent, name=Path(new_3mf).name + ".png"))
+                        new_preview = storage.copy_verified(old_preview, Path(new_3mf).parent, name=Path(new_3mf).name + ".png")
+                        copies.append(new_preview)
                         stale.append(old_preview)
+                        if v.thumbnail_path == old_preview:
+                            v.thumbnail_path = new_preview
                 new_gcode, old_gcode = relocate(
                     v.gcode_path, threemf_root, lambda: storage.bundle_version_dir(bid, ver), copies
                 )
@@ -220,12 +221,14 @@ def migrate(db: Session) -> dict:
                     v.gcode_path = new_gcode
                     stale.append(old_gcode)
                     moved_any = True
-            new_thumb, old_thumb = relocate(
-                v.thumbnail_path, thumbs_root, lambda: storage.bundle_thumbnail_dir(bid, ver), copies
-            )
-            if new_thumb:
-                v.thumbnail_path = new_thumb
-                stale.append(old_thumb)
+            elif v.thumbnail_path and not storage.is_inside(v.thumbnail_path, thumbs_root):
+                # pruned: its preview stayed where the 3MF was, and moves into the 3MF folder
+                new_thumb, old_thumb = relocate(
+                    v.thumbnail_path, threemf_root, lambda: storage.bundle_version_dir(bid, ver), copies
+                )
+                if new_thumb:
+                    v.thumbnail_path = new_thumb
+                    stale.append(old_thumb)
             if stale:
                 db.commit()
                 storage.delete_files(stale)

@@ -230,3 +230,37 @@ def test_a_file_sent_for_every_print_is_read_once_per_new_price(synced_printer):
     assert len(fake.ranges) == 2
     prices = [j["filament_cost_detail"]["cost_per_kg"] for j in c.get(f"/printers/{pid}/print-jobs").json()["jobs"]]
     assert prices == [30, 16.99, 16.99, 16.99]  # the older prints keep the price they were printed at
+
+
+def test_the_total_cost_is_filament_plus_energy(synced_printer):
+    c, fake, pid = synced_printer
+    c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.2}})
+    priced = fake.add_gcode("Frog.gcode", cost="25", density="1.25")
+    fake.add_job("000001", "Frog.gcode", filament_mm=10_000, energy_kwh=1.5, metadata=priced)
+    fake.add_job("000002", "Frog.gcode", filament_mm=10_000, start=1_700_100_000, metadata=priced)  # no energy figure
+    fake.add_job("000003", "cube.gcode", energy_kwh=1.0, start=1_700_200_000, metadata=fake.add_gcode("cube.gcode", cost=None))
+    free = fake.add_gcode("free.gcode", cost="0")  # a price of 0 isn't a price: no filament cost
+    fake.add_job("000004", "free.gcode", energy_kwh=1.0, start=1_700_300_000, metadata=free)
+    c.post(f"/printers/{pid}/moonraker/sync")
+
+    free_job, cube, no_energy, both = c.get(f"/printers/{pid}/print-jobs").json()["jobs"]
+    assert both["total_cost"] == round(both["filament_cost"] + 0.3, 2) and both["energy_cost"] == 0.3
+    assert no_energy["energy_cost"] is None and no_energy["total_cost"] == no_energy["filament_cost"]
+    assert cube["filament_cost"] is None and cube["energy_cost"] == 0.2 and cube["total_cost"] is None
+    assert free_job["total_cost"] is None
+
+
+def test_the_filament_used_is_also_given_in_grams(synced_printer):
+    c, fake, pid = synced_printer
+    priced = fake.add_gcode("Frog.gcode", cost="25", density="1.25")
+    fake.add_job("000001", "Frog.gcode", filament_mm=10_000, metadata=priced)
+    # no price anywhere, but the slicer's estimate says 30 g for 10 m: 3 g a metre
+    fake.add_job("000002", "cube.gcode", filament_mm=4_000, start=1_700_100_000,
+                 metadata={**fake.add_gcode("cube.gcode", cost=None), "filament_total": 10_000, "filament_weight_total": 30})
+    fake.add_job("000003", "mystery.gcode", start=1_700_200_000)  # nothing to go on
+    c.post(f"/printers/{pid}/moonraker/sync")
+
+    mystery, cube, frog = c.get(f"/printers/{pid}/print-jobs").json()["jobs"]
+    assert frog["filament_grams"] == frog["filament_cost_detail"]["grams"] == round(filament_cost.grams(10_000, 1.75, 1.25), 1)
+    assert cube["filament_grams"] == 12.0
+    assert mystery["filament_grams"] is None

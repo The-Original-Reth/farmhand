@@ -86,6 +86,8 @@ def effective_root(kind: str) -> Path:
 
 
 def thumbnails_root() -> Path:
+    """Where the app kept its own copy of each preview before previews were kept only next to their files. Nothing is
+    written here any more: services/previews.py moves what's left out to the files."""
     return local_root() / "thumbnails"
 
 
@@ -137,14 +139,6 @@ def source_model_version_dir(source_model_id: int, version: int) -> Path:
 
 def bundle_version_dir(bundle_id: int, version: int) -> Path:
     return _version_dir(ready_root("threemf"), bundle_id, version)
-
-
-def source_model_thumbnail_dir(source_model_id: int, version: int) -> Path:
-    return _version_dir(thumbnails_root() / "source_models", source_model_id, version)
-
-
-def bundle_thumbnail_dir(bundle_id: int, version: int) -> Path:
-    return _version_dir(thumbnails_root() / "bundles", bundle_id, version)
 
 
 # ------------------------------------------------------------------ writing
@@ -203,6 +197,12 @@ def write_text_atomically(target: str | os.PathLike, text: str) -> None:
         part.write_text(text, encoding="utf-8")
 
 
+def write_bytes_atomically(target: str | os.PathLike, data: bytes) -> None:
+    """write_text_atomically for bytes: written exactly as given (a CSV's \\r\\n line ends stay as they are)."""
+    with _written_whole(Path(target)) as part:
+        part.write_bytes(data)
+
+
 def preview_beside(model_file: str | None) -> str | None:
     """Where a model file's preview is kept next to it: "Frog.stl" -> "Frog.stl.png" (on the NAS if that's where it is)."""
     return f"{model_file}.png" if model_file else None
@@ -210,8 +210,9 @@ def preview_beside(model_file: str | None) -> str | None:
 
 def save_preview_beside(model_file: str, png: bytes) -> str | None:
     """
-    Keep a copy of a model's preview next to its file. The local copy is the one the page shows (so browsing keeps
-    working when a share is offline), so this fails soft: a folder that can't be written to just goes without.
+    Save a model's or 3MF's preview next to its file (on the NAS if that's where the file is): the only copy there is,
+    and the one the page shows. Returns where it went. Fails soft (None, logged): a folder that can't be written to
+    just goes without a preview, which never stops an upload.
     """
     target = Path(preview_beside(model_file))
     try:

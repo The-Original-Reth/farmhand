@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AppearanceData(BaseModel):
@@ -23,11 +23,22 @@ class ToolLinkData(BaseModel):
     url: str
 
 
+class EnergyPriceData(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    from_: str = Field(alias="from", serialization_alias="from")  # "2026-11": the month it counts from
+    price: float | None
+
+
 class PreferencesData(BaseModel):
     model_sort: SortData
     monitor_order: list[str] = []
     monitor_max_zoom: int = 4
     tool_links: list[ToolLinkData] = []  # the Tools page's websites, in order
+    energy_price_per_kwh: float | None = None  # $ per kWh, typed on the Power page; null = not set
+    energy_price_history: list[EnergyPriceData] = []  # each time it was set: counts from that month on
+    energy_price_months: dict[str, float] = {}  # {"2026-03": 0.14}: months given a price of their own
+    time_zone: str | None = None  # the farm's, as its browser last said: when a month ends for the Farm cost record
 
 
 class ConfigData(BaseModel):

@@ -72,6 +72,22 @@ def grams(filament_mm: float, diameter_mm: float, density_g_cm3: float) -> float
     return filament_mm * math.pi * (diameter_mm / 2) ** 2 * density_g_cm3 / 1000
 
 
+def grams_used(j: PrintJob, cost: dict | None) -> float | None:
+    """
+    The filament a print used, in grams: as its filament cost worked it out (the G-code's or 3MF's diameter and
+    density), or else from the slicer's own estimate in the G-code's metadata (its grams per mm of filament). None
+    when neither is known.
+    """
+    if cost:
+        return cost["grams"]
+    meta = j.job_metadata or {}
+    try:
+        per_mm = float(meta.get("filament_weight_total")) / float(meta.get("filament_total"))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return round((j.filament_used or 0) * per_mm, 1) if per_mm > 0 else None
+
+
 def _pick(versions: list[BundleVersion], started: dt.datetime | None) -> BundleVersion:
     """The newest version uploaded before the print started; the oldest one if they all came later."""
     by_age = sorted(versions, key=lambda v: as_utc(v.uploaded_at))

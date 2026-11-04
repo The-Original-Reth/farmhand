@@ -14,7 +14,8 @@ from .database import SessionLocal, create_schema, engine
 from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
-from .routers import bundles, config_settings, moonraker, printers, prusalink, source_models, storage_settings
+from .farm_cost_recorder import recorder as farm_cost_recorder
+from .routers import bundles, config_settings, farm_cost, moonraker, printers, prusalink, source_models, storage_settings
 from .services import config_service, previews, storage_settings_service, sub_printer_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
@@ -81,6 +82,7 @@ app.include_router(storage_settings.router)
 app.include_router(config_settings.router)
 app.include_router(moonraker.router)
 app.include_router(prusalink.router)
+app.include_router(farm_cost.router)
 
 
 @app.exception_handler(NotesConflict)
@@ -104,9 +106,9 @@ async def storage_unavailable_handler(request: Request, exc: storage.StorageUnav
 
 def _keep_previews_beside_models() -> None:
     """
-    Models and 3MF files from before previews were kept next to their files get a copy there: a minute after starting
-    (once the saved network shares are mounted), then every hour for shares that come back later. Only missing ones
-    are written.
+    Previews are kept only next to their files. Copies the app kept itself (from before) are moved out to their files:
+    a minute after starting (once the saved network shares are mounted), then every hour for shares that come back
+    later.
     """
     wait = 60
     while True:
@@ -114,11 +116,11 @@ def _keep_previews_beside_models() -> None:
         wait = 3600
         try:
             with SessionLocal() as db:
-                saved = previews.save_missing_beside(db)
-            if saved:
-                logger.info("Saved %d preview(s) next to their files", saved)
+                moved = previews.move_app_copies_out(db)
+            if moved:
+                logger.info("Moved %d preview(s) out of the app to their files", moved)
         except Exception:  # noqa: BLE001 - this must never stop; it tries again in an hour
-            logger.exception("Saving previews next to their files failed")
+            logger.exception("Moving previews out to their files failed")
 
 
 @app.on_event("startup")
@@ -150,6 +152,8 @@ def on_startup() -> None:
             supervisor.start()
             # Sync every printer's history and power meter now and then, so energy figures build up on their own
             poller.start()
+            # Once a month is over, its Farm cost table is saved as a record in the "farm cost" folder
+            farm_cost_recorder.start()
             # Changes to printers and models get copied to the settings folder in the background, and once now
             config_service.enable_background_mirror()
             config_service.request_mirror()

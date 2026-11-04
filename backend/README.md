@@ -181,6 +181,9 @@ Postgres instance running.
 | PATCH | `/bundles/versions/{id}/monument` | Flag/unflag a version as a monument |
 | GET | `/bundles/versions/{id}/download/3mf` | Download the original 3MF (404s if pruned) |
 | GET | `/bundles/versions/{id}/download/gcode` | Download the gcode (404s if none was uploaded, or if pruned) |
+| GET | `/farm-cost?tz=` | The filament each printer used, by month in the viewer's time zone: `{printers: [{printer_id, months: [{key, prints, grams, filament_cost, unweighed, uncosted}]}], records: {folder, problem, saved}}` (the Farm cost page; `records`: the farm cost folder, where each month's CSV is saved once it's over) |
+| GET | `/farm-cost/location` | Where each month's Farm cost record is saved: `{path, is_default, default_path, status}` (default: "farm cost" in the folder above the STL folder) |
+| PUT | `/farm-cost/location` | `{path}` chooses that folder (it gets Farmhand's marker; 422 says why one can't be used); `{path: null}` goes back to the default |
 
 ## Project layout
 
@@ -224,8 +227,11 @@ Two independently chosen roots (Storage page, saved in the `app_settings` table)
 ```
 {stl_root}/{source_model_id}/v{n}/{file}        STL / OBJ / STEP
 {threemf_root}/{bundle_id}/v{n}/{file}          3MF and gcode
-{storage_root}/thumbnails/{source_models|bundles}/{id}/v{n}/thumbnail.png   always local
+{file}.png                                      its preview, next to it (and nowhere else)
 ```
+
+A pruned 3MF version's preview stays where the 3MF was. Previews the app kept itself before
+(`{storage_root}/thumbnails/...`) are moved out next to their files by `services/previews.py`.
 
 With nothing chosen they default to `{storage_root}/source_models` and
 `{storage_root}/bundles`, the same layout as before. The database stores absolute

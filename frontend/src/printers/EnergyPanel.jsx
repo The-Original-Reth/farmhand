@@ -4,7 +4,8 @@ import { foldHeading, headerButton, monoText, panelBox, uiText } from "../styles
 import { errorText, getEnergy } from "../api.js";
 
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
-import { fmtKwh, fmtWhen } from "../lib/format.js";
+import { fmtKwh, fmtMoney, fmtWhen } from "../lib/format.js";
+import { priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
 
 export const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
 export const periodLabel = (key, by) =>
@@ -60,8 +61,10 @@ export function ShowAllPeriods({ count, by, onClick }) {
   );
 }
 
-// Folds away (open/onToggle)
+// Folds away (open/onToggle). Costs use the price per kWh set on the Power page, each month at its own price (a year
+// is its months added up).
 export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
+  const prices = useEnergyPrices();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [by, setBy] = useState("month");
@@ -84,7 +87,20 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
   const now = new Date();
   const thisPeriod = periods.find((p) => p.key === periodKey(now, by));
   const printsKwh = data?.print_total_kwh ?? data?.print_jobs_kwh ?? null;
-  const cols = "90px minmax(0, 1fr) 100px 110px 60px";
+  const cols = "90px minmax(0, 1fr) 100px 80px 110px 80px 60px";
+  // a month's or year's cost: its months' kWh (prints, or the whole printer) at each month's price; null when no month
+  // in it has both a figure and a price
+  const costOf = (key, field) =>
+    (data?.months || [])
+      .filter((m) => (by === "month" ? m.key === key : m.key.startsWith(key)))
+      .reduce((sum, m) => {
+        const price = priceForMonth(prices, m.key);
+        return m[field] == null || price == null ? sum : (sum ?? 0) + m[field] * price;
+      }, null);
+  const money = (v) => (v == null ? "—" : `$${fmtMoney(v)}`);
+  const noPrice = prices.current == null && !prices.history.length && !Object.keys(prices.months).length;
+  const costHint = noPrice ? "Fill in the average cost per kWh on the Power page" : "At each month's price per kWh (set on the Power page)";
+  const thisKey = periodKey(now, by);
 
   return (
     <div data-testid="energy-panel">
@@ -129,15 +145,19 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
                 value={thisPeriod?.whole != null ? fmtKwh(thisPeriod.whole) : "—"}
                 hint="From the meter readings Farmhand has taken"
               />
+              <StatTile label={by === "month" ? "This month, prints cost" : "This year, prints cost"} value={money(costOf(thisKey, "prints"))} hint={costHint} />
+              <StatTile label={by === "month" ? "This month, electrical cost" : "This year, electrical cost"} value={money(costOf(thisKey, "whole"))} hint={costHint} />
             </div>
 
             <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, marginTop: 12, overflowX: "auto" }}>
-              <div style={{ minWidth: 460 }}>
+              <div style={{ minWidth: 640 }}>
                 <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "7px 12px", fontSize: fs(11), color: c.textFaint, background: c.panelAlt, borderBottom: `1px solid ${c.border}`, ...ui }}>
                   <div>{by === "month" ? "Month" : "Year"}</div>
                   <div />
                   <div>Prints</div>
+                  <div title={costHint}>Prints cost</div>
                   <div>Whole printer</div>
+                  <div title={costHint}>Electrical cost</div>
                   <div>Prints #</div>
                 </div>
                 {shown.map((p, i) => (
@@ -155,8 +175,14 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
                       <div style={{ position: "absolute", top: 2, bottom: 2, left: 0, width: `${(p.prints / max) * 100}%`, background: c.amber, borderRadius: 2 }} />
                     </div>
                     <div style={monoText(12, c.textPrimary)}>{fmtKwh(p.prints)}</div>
+                    <div data-testid="energy-prints-cost" style={monoText(12, costOf(p.key, "prints") == null ? c.textFaint : c.textPrimary)}>
+                      {money(costOf(p.key, "prints"))}
+                    </div>
                     <div style={monoText(12, p.whole == null ? c.textFaint : c.teal)}>
                       {p.whole == null ? "—" : fmtKwh(p.whole)}
+                    </div>
+                    <div data-testid="energy-whole-cost" style={monoText(12, costOf(p.key, "whole") == null ? c.textFaint : c.teal)}>
+                      {money(costOf(p.key, "whole"))}
                     </div>
                     <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
                   </div>
@@ -169,7 +195,8 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
               Prints: each print's own energy, from the printer's history.{" "}
               <span style={{ display: "inline-block", width: 10, height: 6, background: c.tealDim, border: `1px solid ${c.teal}`, borderRadius: 1, margin: "0 5px 0 6px" }} />
               Whole printer, idle included: from the power meter readings Farmhand takes
-              {data.meter ? ` (since ${new Date(data.meter.first_reading_at).toLocaleDateString()}).` : ", once there are some."}
+              {data.meter ? ` (since ${new Date(data.meter.first_reading_at).toLocaleDateString()}).` : ", once there are some."}{" "}
+              Costs: each month's kWh at that month's price per kWh, set on the Power page.
             </div>
           </>
         )}

@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildFarm, DAY, DEFAULT_PARTS, defaultParts, FIXTURES, HOUR, iso, jobTotals } from "./data.js";
+import { priceForMonth, withNewAverage } from "../src/lib/energyPrice.js";
 
 const PREFIX = "/mock-api";
 const nowUnix = () => Math.floor(Date.now() / 1000);
@@ -672,14 +673,30 @@ export function mockApi() {
     return priced(j.filamentMm, price, density, firstNumber(s.filament_diameter) ?? 1.75,
       { source: "3mf", filename: v.filename, bundle_id: b.id, version_id: v.id, version: v.version });
   };
+  const kwhPrice = () => farm.config.preferences.energy_price_per_kwh ?? null; // the Power page's average cost now
+  // the price per kWh for the month a print started in, as the server works it out
+  const prices = () => ({
+    current: kwhPrice(), history: farm.config.preferences.energy_price_history || [], months: farm.config.preferences.energy_price_months || {},
+  });
+  const monthOf = (unix) => {
+    const d = new Date(unix * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
   const jobOut = (p) => (j, i) => {
     const cost = filamentCost(p.id, j);
+    const energyPrice = priceForMonth(prices(), monthOf(j.start));
+    const energyCost = j.kwh != null && energyPrice != null ? Math.round(j.kwh * energyPrice * 100) / 100 : null;
     return {
       id: i + 1, job_id: j.job_id, filename: j.filename, status: j.status, start_time: iso(j.start),
       end_time: j.status === "in_progress" ? null : iso(j.start + j.totalS), print_duration: j.printS, total_duration: j.totalS,
       filament_used: j.filamentMm, slicer: "PrusaSlicer", estimated_time: j.estimated, layer_height: 0.2, filament_type: "PLA",
       energy_kwh: j.kwh, avg_power_w: j.avgW, max_power_w: j.maxW,
+      // as the server does: from the cost's grams, else the slicer's estimate (the mock's PLA at about 2.96 g a metre)
+      filament_grams: cost ? cost.grams : j.filamentMm > 0 && !p.prusalink ? Math.round(j.filamentMm * 0.00296 * 10) / 10 : null,
       filament_cost: cost ? cost.cost : null, filament_cost_detail: cost,
+      energy_price: energyPrice, energy_cost: energyCost,
+      // as the server does: filament + energy; no filament cost (none or 0) = that; no energy cost = the filament's
+      total_cost: !cost?.cost ? (cost ? cost.cost : null) : Math.round((cost.cost + (energyCost ?? 0)) * 100) / 100,
     };
   };
   on("GET", "/printers/:id/print-jobs", ({ id }, _b, q) => {
@@ -691,7 +708,39 @@ export function mockApi() {
     for (const w of (q.get("q") || "").toLowerCase().split(/\s+/).filter(Boolean)) list = list.filter((j) => j.filename.toLowerCase().includes(w));
     const limit = Number(q.get("limit") || 25);
     const offset = Number(q.get("offset") || 0);
-    return { total: list.length, jobs: list.slice(offset, offset + limit) };
+    return { total: list.length, energy_price_per_kwh: kwhPrice(), jobs: list.slice(offset, offset + limit) };
+  });
+  // The Farm cost page's filament, as the server adds it up: every print that used filament, in the month it started
+  on("GET", "/farm-cost", () => ({
+    printers: farm.printers.map((p) => {
+      const months = {};
+      (farm.jobs[p.id] || []).map(jobOut(p)).filter((j) => j.filament_used > 0).forEach((j) => {
+        const key = monthOf(Date.parse(j.start_time) / 1000);
+        const m = (months[key] ??= { key, prints: 0, grams: 0, filament_cost: 0, unweighed: 0, uncosted: 0 });
+        m.prints += 1;
+        if (j.filament_grams == null) m.unweighed += 1;
+        else m.grams += j.filament_grams;
+        if (j.filament_cost == null) m.uncosted += 1;
+        else m.filament_cost += j.filament_cost;
+      });
+      const list = Object.values(months).map((m) => ({ ...m, grams: Math.round(m.grams * 10) / 10, filament_cost: Math.round(m.filament_cost * 100) / 100 }));
+      return { printer_id: p.id, months: list.sort((a, b) => (a.key < b.key ? 1 : -1)) };
+    }),
+    // where the server keeps each month's record: the folder chosen in Settings, else "farm cost" above the STL folder
+    records: {
+      folder: farm.farmCostFolder || FARM_COST_DEFAULT, problem: null,
+      saved: ["farmhand - farm cost - oct 2026.csv", "farmhand - farm cost - sep 2026.csv"],
+    },
+  }));
+  const FARM_COST_DEFAULT = "/data/nas/farm-nas/farm cost";
+  const farmCostLocation = () => ({
+    path: farm.farmCostFolder || FARM_COST_DEFAULT, is_default: !farm.farmCostFolder, default_path: FARM_COST_DEFAULT,
+    status: { exists: true, writable: true, marker_ok: true, ready: true },
+  });
+  on("GET", "/farm-cost/location", () => farmCostLocation());
+  on("PUT", "/farm-cost/location", (_, body) => {
+    farm.farmCostFolder = body.path && body.path.trim() ? body.path.trim() : null;
+    return farmCostLocation();
   });
   on("GET", "/printers/:id/print-stats", ({ id }) => {
     const p = printer(id);
@@ -910,6 +959,7 @@ export function mockApi() {
   on("GET", "/settings/config", () => ({ config: farm.config, location: configLocation() }));
   on("PUT", "/settings/config", (_, body) => {
     if (body.appearance) farm.config.appearance = { ...farm.config.appearance, ...body.appearance };
+    const pricesBefore = prices(); // the average cost and its history before this save
     if (body.preferences) farm.config.preferences = { ...farm.config.preferences, ...body.preferences };
     if (body.preferences?.tool_links) {
       // as the server does: trimmed, and web addresses only
@@ -918,6 +968,23 @@ export function mockApi() {
         .map((l) => ({ name: typeof l.name === "string" ? l.name.trim() : "", url: typeof l.url === "string" ? l.url.trim() : "" }))
         .filter((l) => /^https?:\/\/[^\s/]+/i.test(l.url) && l.url.length <= 2000 && l.name.length <= 100)
         .slice(0, 200);
+    }
+    if (body.preferences && "energy_price_per_kwh" in body.preferences) {
+      // as the server does: a number from 0 to 100, else not set
+      // ...and, as the server does, it counts from the month the page says it is on; earlier months keep theirs
+      const v = body.preferences.energy_price_per_kwh;
+      const price = typeof v === "number" && v >= 0 && v <= 100 ? Math.round(v * 100000) / 100000 : null;
+      const month = /^\d{4}-\d{2}$/.test(body.preferences.energy_price_from || "") ? body.preferences.energy_price_from : monthOf(nowUnix());
+      const next = withNewAverage(pricesBefore, price, month);
+      Object.assign(farm.config.preferences, { energy_price_per_kwh: price, energy_price_history: next.history });
+    }
+    delete farm.config.preferences.energy_price_from;
+    if (body.preferences && "energy_price_months" in body.preferences) {
+      const months = {};
+      for (const [k, v] of Object.entries(body.preferences.energy_price_months || {})) {
+        if (/^\d{4}-(0[1-9]|1[0-2])$/.test(k) && typeof v === "number" && v >= 0 && v <= 100) months[k] = Math.round(v * 100000) / 100000;
+      }
+      farm.config.preferences.energy_price_months = months;
     }
     return { config: farm.config, mirror: { ok: true, skipped: !farm.settingsFolder, path: farm.settingsFolder, error: null } };
   });

@@ -17,6 +17,7 @@ import datetime as dt
 import json
 import os
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 
 from .storage import write_text_atomically
@@ -47,9 +48,21 @@ DEFAULT_TOOL_LINKS = [
     {"name": "Mainsail documentation", "url": "https://docs.mainsail.xyz/"},
     {"name": "Moonraker Timelapse", "url": "https://github.com/mainsail-crew/moonraker-timelapse"},
 ]
+# The price of electricity, in $ per kWh, as set on the Power page:
+#   energy_price_per_kwh: the average cost as it is now; None = not set
+#   energy_price_history: each time it was set, [{"from": "2026-11", "price": 0.17 | None}] oldest first: a price counts
+#     from its month on (the first one for every month before it too), so changing it never changes a past month
+#   energy_price_months: {"2026-03": 0.14}: a month's own price, typed in its row; it wins over the history
 DEFAULT_PREFERENCES = {
     "model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4, "tool_links": DEFAULT_TOOL_LINKS,
+    "energy_price_per_kwh": None, "energy_price_history": [], "energy_price_months": {},
+    "time_zone": None,
 }
+# time_zone: the farm's time zone ("America/New_York"), as its browser last said: when a month ends for the monthly
+# Farm cost record; None = not known yet (UTC is used)
+_MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+MAX_PRICE_ENTRIES = 1200  # a hundred years of months
+MAX_ENERGY_PRICE = 100.0  # $ per kWh: anything above is a typo
 MAX_MONITOR_CAMERAS = 500
 MONITOR_ZOOMS = (2, 3, 4, 6, 8)
 MAX_TOOL_LINKS = 200
@@ -97,7 +110,72 @@ def normalize_preferences(raw) -> dict:
         "monitor_max_zoom": p["monitor_max_zoom"] if type(p.get("monitor_max_zoom")) is int and p["monitor_max_zoom"] in MONITOR_ZOOMS
         else DEFAULT_PREFERENCES["monitor_max_zoom"],
         "tool_links": _tool_links(p.get("tool_links")),
+        "energy_price_per_kwh": _energy_price(p.get("energy_price_per_kwh")),
+        "energy_price_history": _price_history(p.get("energy_price_history")),
+        "energy_price_months": _price_months(p.get("energy_price_months")),
+        "time_zone": _time_zone(p.get("time_zone")),
     }
+
+
+def _time_zone(raw) -> str | None:
+    """A time zone's name that this server knows ("Europe/London"); anything else = not known."""
+    if not isinstance(raw, str) or not 0 < len(raw) <= 64:
+        return None
+    try:
+        ZoneInfo(raw)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    return raw
+
+
+def is_month(value: str) -> bool:
+    """ "2026-03" """
+    return bool(_MONTH.match(value))
+
+
+def _price_history(raw) -> list[dict]:
+    """[{"from": "YYYY-MM", "price"}], oldest first, one per month (the last given wins); bad entries are dropped."""
+    by_month: dict[str, float | None] = {}
+    for entry in raw if isinstance(raw, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("from"), str) and _MONTH.match(entry["from"]):
+            by_month[entry["from"]] = _energy_price(entry.get("price"))
+    return [{"from": m, "price": by_month[m]} for m in sorted(by_month)][-MAX_PRICE_ENTRIES:]
+
+
+def _price_months(raw) -> dict[str, float]:
+    """{"YYYY-MM": price}: months with a price of their own; a bad month or price is dropped."""
+    out: dict[str, float] = {}
+    for month, price in (raw.items() if isinstance(raw, dict) else []):
+        price = _energy_price(price)
+        if isinstance(month, str) and _MONTH.match(month) and price is not None:
+            out[month] = price
+    return dict(sorted(out.items())[-MAX_PRICE_ENTRIES:])
+
+
+def energy_price_for(preferences: dict, month: str) -> float | None:
+    """
+    The price per kWh for a month ("2026-03"): its own, if one was typed for it; else the average cost that counted
+    then (the first one set also counts for every month before it); else, with no history, the average cost as it is.
+    """
+    if month in preferences.get("energy_price_months", {}):
+        return preferences["energy_price_months"][month]
+    history = preferences.get("energy_price_history") or []
+    if not history:
+        return preferences.get("energy_price_per_kwh")
+    price = history[0]["price"]
+    for entry in history:
+        if entry["from"] > month:
+            break
+        price = entry["price"]
+    return price
+
+
+def _energy_price(raw) -> float | None:
+    """A price per kWh: a number from 0 to MAX_ENERGY_PRICE, rounded to 5 decimal places; anything else = not set."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    return round(value, 5) if 0 <= value <= MAX_ENERGY_PRICE else None
 
 
 def _tool_links(raw) -> list[dict]:

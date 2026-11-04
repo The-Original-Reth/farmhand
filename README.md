@@ -236,6 +236,8 @@ sudo docker compose down -v
 
 **Power** — the whole farm's energy use (see "Power")
 
+**Farm cost** — what the farm costs to run: filament and electricity, in total and per printer (see "Farm cost")
+
 **Tools** — a list of websites you use around the farm, each opening in a new tab. **Add** puts a new one at the end
 (an address without `https://` gets it added); each line has **Edit** and **Delete** at its end, and its handle on
 the left drags it to another place. Each change is saved at once. The list is kept on the server
@@ -381,17 +383,25 @@ written to the copy on the NAS.
   page looks every 10 seconds while it's open, and syncs the history when a print starts or ends.
 - **Print history:** Farmhand's own copy (kept even if the printer forgets it), searchable and filterable by
   completed / failed / cancelled, with each print's energy if the printer has a power meter.
+  **Filament** is shown in grams: the length the printer used, turned into grams with the filament's diameter and
+  density (below), or else with the slicer's own grams-per-metre estimate from the G-code. Hover it for the length;
+  a print with neither shows its length in metres.
   **Filament cost:** the filament the printer says it used (what Mainsail shows as "Filament used"), turned into
   grams with the filament's diameter and density, times its price per kg (`filament_cost` in the slicer's filament
-  profile; shown without a currency, as typed there). Those come from the printed G-code itself: on each sync
+  profile, taken to be in $). Those come from the printed G-code itself: on each sync
   Farmhand reads the settings block at the end of G-codes it hasn't read yet (only that part of the file, a few
   files per sync, each file once). For a G-code that's no longer on the printer, they come from the 3MF on this
   printer with the printed file's name (PrusaSlicer's own "name-printer-filament" G-code names count, and spaces
   and underscores are treated as the same): the exact version for a G-code Farmhand sent ("Frog ver 2"),
   otherwise the version there was when the print started. Hover a cost to see where it came from; "—" means no
   price was found (yet).
+  **Energy cost:** the print's energy at the average cost per kWh filled in on the **Power** page ("—" when the
+  printer has no power meter, or no price is filled in). **Total cost:** filament cost + energy cost; the
+  filament cost alone when there's no energy cost, and "—" when there's no filament cost.
 - **Energy:** from a Moonraker `[sensor]` with an energy value (e.g. a smart plug): the whole printer
-  (idle included, from meter readings Farmhand takes) and each print's own energy, **by month or by year**.
+  (idle included, from meter readings Farmhand takes) and each print's own energy, **by month or by year**,
+  each with its cost: **Prints cost** and **Electrical cost** (whole printer), each month at its price per kWh from
+  the **Power** page, a year being its months added up.
 - **Maintenance:** kept in Moonraker's own database in Mainsail's format, so Mainsail shows the same list.
   Reminders by print time, filament and/or days, once or repeating; **Done** closes one (a repeating one starts
   its next round).
@@ -465,6 +475,41 @@ energy (the same figures as each printer's Energy section), added up.
   printer its meter reading, its use, its share of the farm's, and its print energy.
 - "≥" marks a period in which a meter's readings began part-way through. Printers with no figures say why
   (e.g. PrusaLink doesn't report energy). Retired printers aren't counted.
+- **Average cost** beside the heading: what a kWh of electricity costs you on average, in $. It's saved as you
+  type (a number from 0 to 100, up to 5 decimal places, more are rounded; empty clears it) and kept with the other
+  settings, so the settings copy on the network folder has it too. "Saving…" / "Saved" beside the box says when a
+  typed price has been stored. The first price set counts for every month, past ones included. A price set later
+  counts from the month it's set in on: earlier months keep the price they had, so changing it never changes a
+  past month's cost.
+- **$ / kWh** in each month's row (By month): the price that month is costed at. Empty, it shows the average cost
+  that counted then; type a price to give that month its own (its box turns teal), empty it to go back. A year's
+  row shows its months' price, or "varies"; a year is its months added up, so it's changed month by month.
+- The **electrical cost** tile and the **Electrical cost** columns are each month's use at that month's price: the
+  whole farm's, and in **By printer** each printer's own; a year adds up its months ("—" until a price is filled
+  in). In each printer's **Print history**, a print's **Energy cost** uses the price of the month it started in.
+
+## Farm cost
+
+**Farm cost** (in the sidebar, after Power) adds up what the farm costs to run, **by month**, **by year** or for
+**all time** (pick a month or year with the **‹ ›** arrows or the list):
+- Tiles for the whole farm: **filament used** (grams), **filament cost**, **electricity used** (kWh),
+  **electricity cost** and **total cost** (filament + electricity).
+- **By printer**: each printer's prints, filament, filament cost, electricity, electricity cost and total, with a
+  **Whole farm** row at the bottom. **Download CSV** saves that table (for the month, year or all time shown) as a
+  file to open in Excel, named after it: `farmhand - farm cost - nov 2026.csv`, `farmhand - farm cost - year 2026.csv`
+  or `farmhand - farm cost - all time.csv`. Plain numbers in grams, kWh and $, blank where the page shows "—".
+- Filament: every print in the printers' histories that used filament, in the month it started, weighed and costed
+  as in its print history row. Prints with no known weight or price are left out of those figures (hover to see
+  how many).
+- Electricity: each printer's power meter, idle time included, at each month's price per kWh from the **Power**
+  page. Retired printers aren't counted.
+- **Monthly records:** when a month ends, its table is saved on the server as a CSV (the same as **Download CSV**
+  for that month, e.g. `farmhand - farm cost - oct 2026.csv`) in the farm cost folder: by default a **farm cost**
+  folder in the folder above the STL / OBJ / STEP folder, or one chosen in **Settings** (**Farm cost records** →
+  **Change…**, **Use default** to go back; records already saved stay where they are). Each month is saved once and never replaced. Farmhand looks every hour, so a month that
+  ended while it was off is saved once it's back; and only while the model folder is available, so nothing is
+  written to the local disk under a network share that isn't mounted (the page says so, and it's tried again the
+  next hour). Months end in the farm's time zone, which the browser tells the server.
 
 ## Appearance and settings
 
@@ -684,16 +729,15 @@ one thing it won't keep retrying by itself, so it can't lock the NAS account.)
 
 ### Previews live next to their files
 
-Every preview image is saved **next to its file**, so it's on the NAS with the file: `Frog.stl` has
-`Frog.stl.png`, `Goldfish ver 2.3mf` has `Goldfish ver 2.3mf.png`. A preview is written when its file arrives
-(upload, scan, Redraw previews), deleted with it, and moved with it when the folder changes. When old 3MF
-versions are pruned, the preview next to the pruned 3MF goes with it.
+Every preview image is saved **next to its file, and only there**, so it's on the NAS with the file: `Frog.stl`
+has `Frog.stl.png`, `Goldfish ver 2.3mf` has `Goldfish ver 2.3mf.png`. A preview is written when its file arrives
+(upload, scan, Redraw previews), deleted with it, and moved with it when the folder changes. When an old 3MF
+version is pruned, its preview stays where the 3MF was, so the version still shows its picture.
 
-Farmhand also keeps **its own copy of every preview on local disk** — that's what the page shows, so browsing
-keeps working while the NAS is off — and falls back to the one next to the file if its own is missing (e.g.
-after a rebuild). Files from before this get theirs copied next to them a minute after Farmhand starts, then
-hourly (for shares that come back later). A folder that can't be written to just goes without; the upload
-isn't affected.
+Farmhand keeps **no copy of its own**: the page shows the one next to the file, so while a share is offline its
+previews don't show. Previews Farmhand kept itself before are moved out next to their files a minute after it
+starts, then hourly (for shares that come back later), and deleted from Farmhand's own storage once they're
+there. A folder that can't be written to just goes without a preview; the upload isn't affected.
 
 ### What this needs, and what it costs
 
@@ -744,8 +788,8 @@ The full API, with every route, is described at **http://localhost:4545/docs**.
 - Chosen folders get a small `.farmhand-storage` marker. If a share drops and
   leaves an empty folder behind, the marker is missing and uploads are refused
   with a clear message instead of quietly filling the local disk.
-- Browsing keeps working while the NAS is off (previews are shown from Farmhand's own copy). Downloads, new
-  uploads and sending G-code need it online.
+- Browsing keeps working while the NAS is off, but without previews: they're only kept on the NAS, next to their
+  files. Previews, downloads, new uploads and sending G-code need it online.
 - Deleting only ever removes the exact files Farmhand recorded — never a folder.
 
 ### What has been verified

@@ -130,3 +130,49 @@ def test_the_monitor_max_zoom_is_one_of_the_choices(client):
     for junk in (5, 100, "8", 8.0, True, None):
         r = c.put("/settings/config", json={"preferences": {"monitor_max_zoom": junk}})
         assert r.json()["config"]["preferences"]["monitor_max_zoom"] == 4, junk
+
+
+def test_the_price_of_electricity_is_a_plain_number_or_not_set(client):
+    c, _ = client
+    assert c.get("/settings/config").json()["config"]["preferences"]["energy_price_per_kwh"] is None
+    r = c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.1534}})
+    assert r.json()["config"]["preferences"]["energy_price_per_kwh"] == 0.1534
+    c.put("/settings/config", json={"preferences": {"monitor_max_zoom": 6}})  # another preference leaves it alone
+    assert c.get("/settings/config").json()["config"]["preferences"]["energy_price_per_kwh"] == 0.1534
+    assert c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0}}).json()["config"]["preferences"]["energy_price_per_kwh"] == 0
+    r = c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.12345}})  # 5 decimal places are kept
+    assert r.json()["config"]["preferences"]["energy_price_per_kwh"] == 0.12345
+    r = c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.1234567}})  # more are rounded to 5
+    assert r.json()["config"]["preferences"]["energy_price_per_kwh"] == 0.12346
+    for junk in (-1, 1000, "0.15", True, None):
+        r = c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": junk}})
+        assert r.json()["config"]["preferences"]["energy_price_per_kwh"] is None, junk
+
+
+def _prefs(r):
+    return r.json()["config"]["preferences"]
+
+
+def test_a_new_average_cost_only_counts_from_its_month_on(client):
+    from app.config_store import energy_price_for
+
+    c, _ = client
+    put = lambda price, month: c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": price, "energy_price_from": month}})
+    put(0.15, "2026-09")
+    put(0.151, "2026-09")  # typed on, the same month: replaces it
+    p = _prefs(put(0.2, "2026-11"))
+    assert p["energy_price_per_kwh"] == 0.2 and "energy_price_from" not in p
+    assert p["energy_price_history"] == [{"from": "2026-09", "price": 0.151}, {"from": "2026-11", "price": 0.2}]
+    # the first price counts for every month before it too; each later one from its month on
+    assert [energy_price_for(p, m) for m in ("2020-01", "2026-10", "2026-11", "2027-05")] == [0.151, 0.151, 0.2, 0.2]
+
+    p = _prefs(c.put("/settings/config", json={"preferences": {"energy_price_months": {"2026-10": 0.14, "nope": 1, "2026-13": 1}}}))
+    assert p["energy_price_months"] == {"2026-10": 0.14}  # a month typed by hand wins
+    assert energy_price_for(p, "2026-10") == 0.14 and energy_price_for(p, "2026-09") == 0.151
+
+
+def test_a_price_set_before_there_was_a_history_keeps_counting_for_the_months_before(client):
+    c, _ = client
+    c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.15, "energy_price_history": []}})
+    p = _prefs(c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.2, "energy_price_from": "2026-11"}}))
+    assert p["energy_price_history"] == [{"from": "0001-01", "price": 0.15}, {"from": "2026-11", "price": 0.2}]
