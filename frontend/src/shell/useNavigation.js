@@ -1,0 +1,96 @@
+import { useEffect, useRef, useState } from "react";
+import { Cctv, CircleDollarSign, Hammer, Layers, Palette, Printer, Settings, Zap } from "lucide-react";
+
+// The menu's sections, in menu order, each at its own address (/models, /printers…); the bare address is Models
+export const SECTIONS = [
+  { key: "models", label: "Models", Icon: Layers },
+  { key: "printers", label: "Printers", Icon: Printer },
+  { key: "power", label: "Power", Icon: Zap },
+  { key: "farm-cost", label: "Farm cost", Icon: CircleDollarSign }, // filament and electricity, per printer
+  { key: "monitor", label: "Monitor", Icon: Cctv },
+  { key: "tools", label: "Tools", Icon: Hammer },
+  { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
+  { key: "appearance", label: "Appearance", Icon: Palette },
+];
+const sectionInAddress = () => {
+  let key = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  if (key === "storage") key = "settings"; // its old address, so bookmarks still open it
+  return SECTIONS.some((s) => s.key === key) ? key : "models";
+};
+
+const PRINTERS_TOP = [{ label: "Printers" }];
+const MODELS_TOP = [{ label: "Models" }];
+
+// Where the page is: which section, and for Models and Printers how far in (the breadcrumb's steps: a model, a printer,
+// a 3MF on it). Back and Forward move between sections. `onLeave(key)` is called as a menu item is clicked (key: the
+// section it opens) and on Back / Forward (no key). A step whose model, printer or 3MF has been deleted takes the section back to its list rather than
+// drawing a page for something that no longer exists.
+export function useNavigation({ printers, sourceModels, bundles, bundleTitle, onLeave }) {
+  const [section, setSection] = useState(sectionInAddress); // one of SECTIONS, as the address says (/printers…)
+  const [printerPath, setPrinterPath] = useState(PRINTERS_TOP);
+  const [modelPath, setModelPath] = useState(MODELS_TOP);
+  const leave = useRef(onLeave);
+  leave.current = onLeave;
+
+  // a section opened from the menu (or by Back / Forward) starts at its top: the list, not a model or printer
+  const openSection = (key) => {
+    setSection(key);
+    if (key === "printers") setPrinterPath(PRINTERS_TOP);
+    else if (key === "models") setModelPath(MODELS_TOP);
+  };
+  useEffect(() => {
+    const back = () => {
+      leave.current();
+      openSection(sectionInAddress());
+    };
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, []);
+
+  // A plain click on a menu item: that section here, at its own address
+  const goTo = (key) => {
+    leave.current(key);
+    openSection(key);
+    if (window.location.pathname !== `/${key}`) window.history.pushState(null, "", `/${key}`);
+  };
+
+  const modelPathSafe = modelPath.every((seg) => seg.modelId == null || sourceModels.some((m) => m.id === seg.modelId))
+    ? modelPath
+    : MODELS_TOP;
+  const printerPathSafe = printerPath.every(
+    (seg) =>
+      (seg.printerId == null || printers.some((p) => p.id === seg.printerId)) &&
+      (seg.bundleId == null || bundles.some((b) => b.id === seg.bundleId))
+  )
+    ? printerPath
+    : PRINTERS_TOP;
+  useEffect(() => {
+    if (modelPathSafe !== modelPath) setModelPath(modelPathSafe);
+  }, [modelPathSafe, modelPath]);
+  useEffect(() => {
+    if (printerPathSafe !== printerPath) setPrinterPath(printerPathSafe);
+  }, [printerPathSafe, printerPath]);
+
+  const path =
+    section === "printers" ? printerPathSafe : section === "models" ? modelPathSafe : [{ label: SECTIONS.find((s) => s.key === section).label }];
+  const setPath = section === "printers" ? setPrinterPath : section === "models" ? setModelPath : () => {};
+  // the breadcrumb: each step's name (a printer's, a 3MF's or a model's for the steps into a section)
+  const crumbs = () =>
+    path.map((seg) => {
+      if (seg.label) return seg.label;
+      if (section === "printers") {
+        if (seg.bundleId) return bundleTitle(bundles.find((b) => b.id === seg.bundleId));
+        return printers.find((p) => p.id === seg.printerId).name;
+      }
+      return sourceModels.find((m) => m.id === seg.modelId).name;
+    });
+
+  return {
+    section,
+    goTo,
+    crumbs,
+    jumpTo: (i) => setPath(path.slice(0, i + 1)), // a breadcrumb clicked: back up to that step
+    printers: { path: printerPathSafe, setPath: setPrinterPath },
+    models: { path: modelPathSafe, setPath: setModelPath },
+  };
+}
