@@ -42,7 +42,7 @@ const sameLook = (a, b) =>
   a.scheme === b.scheme && a.contrast === b.contrast && a.font === b.font && a.size === b.size && a.file_name_color === b.file_name_color;
 
 // The settings the server keeps for every browser: the look, the models' sort order, Monitor's layout and zoom, the
-// Tools page's links and the price of electricity. Each change shows at once and is sent to the server; most wait a
+// order of Farm cost's printers, the Tools page's links and the price of electricity. Each change shows at once and is sent to the server; most wait a
 // moment so a slider dragged through many values is sent once (queueSave). The server also copies them to the
 // network folder chosen in Settings.
 //
@@ -55,6 +55,7 @@ export function useSavedSettings() {
   const [modelSort, setModelSort] = useState(loadModelSort);
   const [monitorOrder, setMonitorOrder] = useState([]); // the Monitor page's cameras as dragged into order
   const [monitorMaxZoom, setMonitorMaxZoom] = useState(4); // how far in a Monitor camera can be zoomed
+  const [farmCostOrder, setFarmCostOrder] = useState([]); // the Farm cost page's printers as dragged into order (ids)
   const [toolLinks, setToolLinks] = useState([]); // the Tools page's websites
   const [energyPrices, setEnergyPrices] = useState(NO_ENERGY_PRICES); // the price of electricity set on the Power page
   const [saveState, setSaveState] = useState({ phase: "idle" }); // idle | saving | saved | error
@@ -72,6 +73,7 @@ export function useSavedSettings() {
     saveModelSort(sort);
     setMonitorOrder(listOr(prefs.monitor_order));
     setMonitorMaxZoom(prefs.monitor_max_zoom || 4);
+    setFarmCostOrder(listOr(prefs.farm_cost_order));
     setToolLinks(listOr(prefs.tool_links));
     // The server saves each month's Farm cost record when the month ends in the farm's time zone: tell it this
     // browser's, when it doesn't know it yet or it's moved
@@ -162,6 +164,11 @@ export function useSavedSettings() {
     setMonitorMaxZoom(next);
     queueSave({ preferences: { monitor_max_zoom: next } });
   };
+  // A Farm cost printer dropped in its new place: shown at once, and sent straight away
+  const changeFarmCostOrder = (next) => {
+    setFarmCostOrder(next);
+    queueSave({ preferences: { farm_cost_order: next } }, { immediate: true });
+  };
   // The average cost: counts from this month on (earlier months keep theirs; the server applies the same rule)
   const changeEnergyPrice = (next) => {
     const month = thisMonth();
@@ -183,6 +190,7 @@ export function useSavedSettings() {
     appearance: { saved: appearance, shown: preview || appearance, change: changeAppearance, save: commitAppearance, discard: discardAppearance },
     modelSort: { value: modelSort, change: changeModelSort },
     monitor: { order: monitorOrder, saveOrder: saveMonitorOrder, maxZoom: monitorMaxZoom, changeMaxZoom: changeMonitorMaxZoom },
+    farmCost: { order: farmCostOrder, changeOrder: changeFarmCostOrder },
     tools: { links: toolLinks, save: saveToolLinks },
     energy: { prices: energyPrices, changePrice: changeEnergyPrice, changeMonthPrice },
   };

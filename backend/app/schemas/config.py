@@ -34,6 +34,7 @@ class PreferencesData(BaseModel):
     model_sort: SortData
     monitor_order: list[str] = []
     monitor_max_zoom: int = 4
+    farm_cost_order: list[int] = []  # the Farm cost page's printers as dragged into order (printer ids)
     tool_links: list[ToolLinkData] = []  # the Tools page's websites, in order
     energy_price_per_kwh: float | None = None  # $ per kWh, typed on the Power page; null = not set
     energy_price_history: list[EnergyPriceData] = []  # each time it was set: counts from that month on

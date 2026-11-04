@@ -27,14 +27,17 @@ CHUNK = 500  # prints costed at a time, so a long history isn't all held at once
 
 def filament_by_month(db: Session, tz: str | None) -> dict:
     """
-    {"printers": [{printer_id, months: [{key: "2026-10", prints, grams, filament_cost, unweighed, uncosted}]}]}, months
-    newest first. grams / filament_cost add up the prints whose weight / cost is known; unweighed / uncosted count the
-    prints left out of them (no density or slicer estimate / no filament price).
+    {"printers": [{printer_id, months: [{key: "2026-10", prints, grams, filament_cost, unweighed, uncosted}], days,
+    energy_days}]}, newest first. grams / filament_cost add up the prints whose weight / cost is known; unweighed /
+    uncosted count the prints left out of them (no density or slicer estimate / no filament price). days: the same
+    per day (key "2026-10-05"), and energy_days the printer's electricity per day (as energy.by_day): what the page
+    shows when a printer is clicked while looking at a month.
     """
     where_tz = zone(tz)
     out = []
     for printer_id in db.scalars(select(Printer.id).order_by(Printer.id)).all():
         months: dict[str, dict] = {}
+        days: dict[str, dict] = {}
         ids = db.scalars(
             select(PrintJob.id).where(PrintJob.printer_id == printer_id, PrintJob.filament_used > 0, PrintJob.start_time.isnot(None))
         ).all()
@@ -42,23 +45,36 @@ def filament_by_month(db: Session, tz: str | None) -> dict:
             jobs = list(db.scalars(select(PrintJob).where(PrintJob.id.in_(ids[start:start + CHUNK]))))
             costs = filament_cost.costs(db, jobs)
             for j in jobs:
-                key = as_utc(j.start_time).astimezone(where_tz).strftime("%Y-%m")
-                m = months.setdefault(key, {"key": key, "prints": 0, "grams": 0.0, "filament_cost": 0.0, "unweighed": 0, "uncosted": 0})
-                m["prints"] += 1
+                day = as_utc(j.start_time).astimezone(where_tz).strftime("%Y-%m-%d")
                 grams = filament_cost.grams_used(j, costs[j.id])
-                if grams is None:
-                    m["unweighed"] += 1
-                else:
-                    m["grams"] += grams
-                if costs[j.id] is None:
-                    m["uncosted"] += 1
-                else:
-                    m["filament_cost"] += costs[j.id]["cost"]
+                _count(months, day[:7], grams, costs[j.id])
+                _count(days, day, grams, costs[j.id])
             db.expunge_all()  # done with these prints: don't keep them all in the session
-        for m in months.values():
+        for m in (*months.values(), *days.values()):
             m["grams"], m["filament_cost"] = round(m["grams"], 1), round(m["filament_cost"], 2)
-        out.append({"printer_id": printer_id, "months": sorted(months.values(), key=lambda m: m["key"], reverse=True)})
+        out.append({
+            "printer_id": printer_id, "months": _newest_first(months), "days": _newest_first(days),
+            "energy_days": [{"key": d["key"], "whole": d["whole"], "partial": d["partial"]} for d in energy.by_day(db, printer_id, tz)],
+        })
     return {"printers": out}
+
+
+def _count(rows: dict[str, dict], key: str, grams: float | None, cost: dict | None) -> None:
+    """One print, in the month or day `key`: its grams and cost when known, else counted as left out of them."""
+    m = rows.setdefault(key, {"key": key, "prints": 0, "grams": 0.0, "filament_cost": 0.0, "unweighed": 0, "uncosted": 0})
+    m["prints"] += 1
+    if grams is None:
+        m["unweighed"] += 1
+    else:
+        m["grams"] += grams
+    if cost is None:
+        m["uncosted"] += 1
+    else:
+        m["filament_cost"] += cost["cost"]
+
+
+def _newest_first(rows: dict[str, dict]) -> list[dict]:
+    return sorted(rows.values(), key=lambda m: m["key"], reverse=True)
 
 
 # ------------------------------------------------------------------ the record saved after each month
@@ -128,13 +144,16 @@ def record_name(month: str) -> str:
 
 def month_rows(db: Session, month: str, tz: str | None) -> list[dict]:
     """
-    One month's table as the Farm cost page shows it: a row per active printer (by name), then the whole farm, each
+    One month's table as the Farm cost page shows it: a row per active printer (in the page's order: as dragged, then
+    the rest by name), then the whole farm, each
     {name, prints, grams, filament_cost, kwh, energy_cost, total, unweighed, uncosted}; None where the page shows "—".
     """
     filament = {p["printer_id"]: p["months"] for p in filament_by_month(db, tz)["printers"]}
-    price = config_store.energy_price_for(config_service.get_config(db)["preferences"], month)
+    prefs = config_service.get_config(db)["preferences"]
+    price = config_store.energy_price_for(prefs, month)
     rows = []
-    for printer in db.scalars(select(Printer).where(Printer.decommissioned.is_(False)).order_by(Printer.name)).all():
+    for printer in in_page_order(db.scalars(select(Printer).where(Printer.decommissioned.is_(False)).order_by(Printer.name)).all(),
+                                 prefs.get("farm_cost_order") or []):
         f = next((m for m in filament.get(printer.id, []) if m["key"] == month), None)
         e = next((m for m in energy.by_month(db, printer.id, tz) if m["key"] == month), None)
         kwh = e["whole"] if e else None
@@ -154,6 +173,12 @@ def month_rows(db: Session, month: str, tz: str | None) -> list[dict]:
         known = [r[k] for r in rows if r[k] is not None]
         farm[k] = sum(known) if known else None
     return [*rows, farm]
+
+
+def in_page_order(printers: list, order: list[int]) -> list:
+    """The printers as the Farm cost page lists them: those in `order` (as dragged) first, then the rest as they come."""
+    place = {pid: i for i, pid in enumerate(order)}
+    return sorted(printers, key=lambda p: place.get(p.id, len(order)))  # sorted keeps the rest in their order
 
 
 def csv_text(period: str, rows: list[dict]) -> str:

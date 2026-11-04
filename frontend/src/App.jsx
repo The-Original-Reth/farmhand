@@ -23,7 +23,7 @@ import { useSavedSettings } from "./shell/useSavedSettings.js";
 
 // The page of the section open now
 function SectionPage({ section, nav, compare, settings }) {
-  const { appearance, energy, monitor, modelSort, saveState, tools } = settings;
+  const { appearance, energy, farmCost, monitor, modelSort, saveState, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
   switch (section) {
     case "printers":
@@ -33,7 +33,7 @@ function SectionPage({ section, nav, compare, settings }) {
         <ModelsSection path={nav.models.path} setPath={nav.models.setPath} {...comparing} sort={modelSort.value} onSortChange={modelSort.change} />
       );
     case "farm-cost":
-      return <FarmCostSection />;
+      return <FarmCostSection order={farmCost.order} onOrder={farmCost.changeOrder} />;
     case "power":
       return <PowerSection prices={energy.prices} onEnergyPrice={energy.changePrice} onMonthPrice={energy.changeMonthPrice} saveState={saveState} />;
     case "monitor":

@@ -7,7 +7,8 @@ import { useData } from "../data.jsx";
 import { webUiOf } from "../printers/webUi.js";
 import { usePrintProgress, usePrinterCameras } from "./cameras.js";
 import { CameraTile } from "./CameraTile.jsx";
-import { arranged, fit, GAP, moved, useRoom } from "./wall.js";
+import { fit, GAP, useRoom } from "./wall.js";
+import { arranged, moved } from "../lib/order.js";
 
 // Every printer's cameras, as set up in Mainsail and played the way Mainsail plays them, in one grid: the pictures
 // only, all the same size, each named in its corner. The tiles are as large as they can be while all of them fit in the

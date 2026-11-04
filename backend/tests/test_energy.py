@@ -39,6 +39,19 @@ def test_each_months_prints_and_meter_rise(db_session):
     ]
 
 
+def test_each_days_meter_rise(db_session):
+    p = _printer(db_session)
+    _reading(db_session, p, dt.datetime(2026, 10, 3, 1, tzinfo=UTC), 100.0)
+    _reading(db_session, p, dt.datetime(2026, 10, 3, 20, tzinfo=UTC), 101.0)
+    _reading(db_session, p, dt.datetime(2026, 10, 4, 6, tzinfo=UTC), 103.5)
+    _job(db_session, p, "a", dt.datetime(2026, 10, 4, 2, tzinfo=UTC), 0.5)
+    assert energy.by_day(db_session, p.id, "UTC") == [
+        {"key": "2026-10-04", "prints": 0.5, "print_count": 1, "whole": 2.5, "partial": False},
+        {"key": "2026-10-03", "prints": 0.0, "print_count": 0, "whole": 1.0, "partial": True},
+    ]
+    assert energy.by_month(db_session, p.id, "UTC")[0]["whole"] == 3.5  # kept apart from the days
+
+
 def test_months_follow_the_viewers_time_zone(db_session):
     p = _printer(db_session)
     _job(db_session, p, "late", dt.datetime(2026, 11, 1, 3, 0, tzinfo=UTC), 1.0)  # still 31 October in Chicago

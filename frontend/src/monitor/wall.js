@@ -6,13 +6,6 @@ export const TILE = 16 / 9; // every tile is this shape; a camera of another sha
 export const GAP = 8;
 const SMALLEST = 260; // narrower than this, the tiles stop shrinking to fit and the page scrolls instead
 
-// The keys in the order kept, then any not in it yet in the order they come (a new camera, a new printer)
-export function arranged(keys, order) {
-  const here = new Set(keys);
-  const kept = order.filter((k) => here.has(k));
-  return [...kept, ...keys.filter((k) => !kept.includes(k))];
-}
-
 // The space the wall has: the page's width, and the window's height below where the wall starts. Kept up to date as
 // the window changes size.
 export function useRoom(el) {
@@ -51,14 +44,6 @@ export function fit(n, width, height) {
     return { cols, width: Math.floor((width - GAP * (cols - 1)) / cols) };
   }
   return { cols: best.cols, width: Math.floor(best.width) };
-}
-
-// The order after the camera `dragged` is dropped on `target`: it takes the target's place, and the ones between move
-// along one to make room.
-export function moved(keys, dragged, target) {
-  const next = keys.filter((k) => k !== dragged);
-  next.splice(keys.indexOf(target), 0, dragged);
-  return next;
 }
 
 // Zoom on one camera: s is how far in, x and y how far the picture is moved, as shares of the tile (from 1 - s to 0,

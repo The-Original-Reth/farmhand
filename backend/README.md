@@ -182,7 +182,7 @@ Postgres instance running.
 | PATCH | `/bundles/versions/{id}/monument` | Flag/unflag a version as a monument |
 | GET | `/bundles/versions/{id}/download/3mf` | Download the original 3MF (404s if pruned) |
 | GET | `/bundles/versions/{id}/download/gcode` | Download the gcode (404s if none was uploaded, or if pruned) |
-| GET | `/farm-cost?tz=` | The filament each printer used, by month in the viewer's time zone: `{printers: [{printer_id, months: [{key, prints, grams, filament_cost, unweighed, uncosted}]}], records: {folder, problem, saved}}` (the Farm cost page; `records`: the farm cost folder, where each month's CSV is saved once it's over) |
+| GET | `/farm-cost?tz=` | The filament each printer used, by month in the viewer's time zone: `{printers: [{printer_id, months: [{key, prints, grams, filament_cost, unweighed, uncosted}], days, energy_days: [{key, whole, partial}]}], records: {folder, problem, saved}}` (the Farm cost page; `days`: the same as `months` per day, key `2026-10-05`; `energy_days`: the power meter's rise per day, for a printer clicked while looking at a month; `records`: the farm cost folder, where each month's CSV is saved once it's over) |
 | GET | `/farm-cost/location` | Where each month's Farm cost record is saved: `{path, is_default, default_path, status}` (default: "farm cost" in the folder above the STL folder) |
 | PUT | `/farm-cost/location` | `{path}` chooses that folder (it gets Farmhand's marker; 422 says why one can't be used); `{path: null}` goes back to the default |
 

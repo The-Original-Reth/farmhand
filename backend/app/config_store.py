@@ -31,6 +31,8 @@ MAX_FILE_BYTES = 1_000_000
 DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "size": "default", "file_name_color": "auto"}
 # monitor_order: the Monitor page's cameras in the order they were dragged into, as "printer id:camera name"
 # monitor_max_zoom: how far in a camera can be zoomed on the Monitor page, one of MONITOR_ZOOMS
+# farm_cost_order: the Farm cost page's printers in the order they were dragged into, as printer ids (printers not in
+# it come after, by name)
 # tool_links: the websites listed on the Tools page, in the order given, each {"name", "url"} (url http or https).
 # Until a list is saved, the Klipper ones below are shown; a list saved empty stays empty.
 DEFAULT_TOOL_LINKS = [
@@ -54,7 +56,8 @@ DEFAULT_TOOL_LINKS = [
 #     from its month on (the first one for every month before it too), so changing it never changes a past month
 #   energy_price_months: {"2026-03": 0.14}: a month's own price, typed in its row; it wins over the history
 DEFAULT_PREFERENCES = {
-    "model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4, "tool_links": DEFAULT_TOOL_LINKS,
+    "model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4, "farm_cost_order": [],
+    "tool_links": DEFAULT_TOOL_LINKS,
     "energy_price_per_kwh": None, "energy_price_history": [], "energy_price_months": {},
     "time_zone": None,
 }
@@ -64,6 +67,7 @@ _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 MAX_PRICE_ENTRIES = 1200  # a hundred years of months
 MAX_ENERGY_PRICE = 100.0  # $ per kWh: anything above is a typo
 MAX_MONITOR_CAMERAS = 500
+MAX_PRINTERS_ORDERED = 500
 MONITOR_ZOOMS = (2, 3, 4, 6, 8)
 MAX_TOOL_LINKS = 200
 
@@ -109,6 +113,7 @@ def normalize_preferences(raw) -> dict:
         "monitor_order": _camera_keys(p.get("monitor_order")),
         "monitor_max_zoom": p["monitor_max_zoom"] if type(p.get("monitor_max_zoom")) is int and p["monitor_max_zoom"] in MONITOR_ZOOMS
         else DEFAULT_PREFERENCES["monitor_max_zoom"],
+        "farm_cost_order": _printer_ids(p.get("farm_cost_order")),
         "tool_links": _tool_links(p.get("tool_links")),
         "energy_price_per_kwh": _energy_price(p.get("energy_price_per_kwh")),
         "energy_price_history": _price_history(p.get("energy_price_history")),
@@ -205,6 +210,18 @@ def _camera_keys(raw) -> list[str]:
         if isinstance(k, str) and 0 < len(k) <= 200 and k not in out:
             out.append(k)
         if len(out) >= MAX_MONITOR_CAMERAS:
+            break
+    return out
+
+
+def _printer_ids(raw) -> list[int]:
+    """The Farm cost order: printer ids (whole numbers above 0), each once, in the order given."""
+    ids = raw if isinstance(raw, list) else []
+    out: list[int] = []
+    for i in ids:
+        if type(i) is int and 0 < i < 2**31 and i not in out:
+            out.append(i)
+        if len(out) >= MAX_PRINTERS_ORDERED:
             break
     return out
 

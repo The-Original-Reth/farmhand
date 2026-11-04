@@ -500,14 +500,18 @@ energy (the same figures as each printer's Energy section), added up.
 
 ## Farm cost
 
-**Farm cost** (in the sidebar, after Power) adds up what the farm costs to run, **by month**, **by year** or for
-**all time** (pick a month or year with the **‹ ›** arrows or the list):
+**Farm cost** (in the sidebar, after Power) adds up what the farm costs to run, **by month** or **by year** (pick
+a month or year with the **‹ ›** arrows or the list):
 - Tiles for the whole farm: **filament used** (grams), **filament cost**, **electricity used** (kWh),
   **electricity cost** and **total cost** (filament + electricity).
 - **By printer**: each printer's prints, filament, filament cost, electricity, electricity cost and total, with a
-  **Whole farm** row at the bottom. **Download CSV** saves that table (for the month, year or all time shown) as a
-  file to open in Excel, named after it: `farmhand - farm cost - nov 2026.csv`, `farmhand - farm cost - year 2026.csv`
-  or `farmhand - farm cost - all time.csv`. Plain numbers in grams, kWh and $, blank where the page shows "—".
+  **Whole farm** row at the bottom. **Drag a printer** onto another to move it there (or **Alt+↑ / Alt+↓** on one);
+  the order is kept on the server for every browser, and the monthly records list the printers the same way.
+  **Click a printer** to see its figures for the month shown **day by day**, or for
+  the year shown **month by month** (click it again or **Close** to hide them; they follow the month or year you
+  pick). **Download CSV** saves the printer table (for the month or year shown) as a file to open in Excel, named
+  after it: `farmhand - farm cost - nov 2026.csv` or `farmhand - farm cost - year 2026.csv`. Plain numbers in grams,
+  kWh and $, blank where the page shows "—".
 - Filament: every print in the printers' histories that used filament, in the month it started, weighed and costed
   as in its print history row. Prints with no known weight or price are left out of those figures (hover to see
   how many).

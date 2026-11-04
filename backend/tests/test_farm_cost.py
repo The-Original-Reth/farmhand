@@ -47,6 +47,21 @@ def test_each_printers_filament_is_added_up_by_month(farm):
     assert nov == {"key": "2026-11", "prints": 2, "grams": 6.0, "filament_cost": 0.0, "unweighed": 1, "uncosted": 2}
 
 
+def test_each_printers_filament_is_also_added_up_by_day(farm):
+    c, fake, pid, other = farm
+    priced = fake.add_gcode("Frog.gcode", cost="20", density="1.25")
+    fake.add_job("000001", "Frog.gcode", start=_ts(2026, 10, 5, 9), filament_mm=10_000, metadata=priced)
+    fake.add_job("000002", "Frog.gcode", start=_ts(2026, 10, 5, 18), filament_mm=5_000, metadata=priced)
+    fake.add_job("000003", "Frog.gcode", start=_ts(2026, 10, 20), filament_mm=5_000, metadata=priced)
+    c.post(f"/printers/{pid}/moonraker/sync")
+
+    printers = {p["printer_id"]: p for p in c.get("/farm-cost").json()["printers"]}
+    assert printers[other]["days"] == [] and printers[other]["energy_days"] == []
+    days = printers[pid]["days"]
+    assert [(d["key"], d["prints"]) for d in days] == [("2026-10-20", 1), ("2026-10-05", 2)]
+    assert sum(d["filament_cost"] for d in days) == pytest.approx(printers[pid]["months"][0]["filament_cost"], abs=0.011)
+
+
 def test_months_follow_the_viewers_time_zone(farm):
     c, fake, pid, _ = farm
     fake.add_job("000001", "Frog.gcode", start=_ts(2026, 11, 1, 2), metadata=fake.add_gcode("Frog.gcode"))
@@ -87,6 +102,16 @@ def test_last_months_record_is_saved_once_beside_the_model_folder(farm, tmp_path
 
     assert farm_cost.record_last_month(_db(), now=dt.datetime(2026, 11, 20, tzinfo=dt.timezone.utc)) is None  # once
     assert c.get("/farm-cost").json()["records"]["saved"] == ["farmhand - farm cost - oct 2026.csv"]
+
+
+def test_the_record_lists_the_printers_as_dragged_on_the_page(farm):
+    from app.services import farm_cost
+
+    c, _, pid, _ = farm
+    c.post("/printers", json={"name": "Apex", "kind": "Voron", "wired_ip": None})
+    c.put("/settings/config", json={"preferences": {"farm_cost_order": [pid, 999], "time_zone": "UTC"}})
+    rows = farm_cost.month_rows(_db(), "2026-10", "UTC")
+    assert [r["name"] for r in rows] == ["VT 1190", "Apex", "Idle", "Whole farm"]  # as dragged, then the rest by name
 
 
 def test_no_record_is_written_while_the_model_folder_is_unavailable(farm, tmp_path):

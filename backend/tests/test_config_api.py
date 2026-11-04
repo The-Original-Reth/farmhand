@@ -94,6 +94,13 @@ def test_the_monitor_order_is_kept_on_its_own(client):
     assert c.get("/settings/config").json()["config"]["preferences"]["monitor_order"] == ["8:Chamber", "3:rear"]
 
 
+def test_the_farm_cost_order_is_printer_ids(client):
+    c, _ = client
+    assert c.get("/settings/config").json()["config"]["preferences"]["farm_cost_order"] == []
+    r = c.put("/settings/config", json={"preferences": {"farm_cost_order": [4, 2, 4, "3", 0, -1, True, 1.5, 7]}})
+    assert r.json()["config"]["preferences"]["farm_cost_order"] == [4, 2, 7]  # each once; junk dropped
+
+
 def test_the_tools_page_links_are_kept_in_order_and_only_web_addresses(client):
     c, _ = client
     first = c.get("/settings/config").json()["config"]["preferences"]["tool_links"]

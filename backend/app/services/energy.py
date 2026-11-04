@@ -1,7 +1,7 @@
 """
-A printer's energy use, totalled by month in the viewer's own time zone: what the page shows (a year is its months
-added up). Done here rather than in the browser, so the page gets a row per month instead of every meter reading
-ever taken (one every few minutes, for years).
+A printer's energy use, totalled by month (or by day, for the Farm cost page) in the viewer's own time zone: what the
+page shows (a year is its months added up). Done here rather than in the browser, so the page gets a row per month
+instead of every meter reading ever taken (one every few minutes, for years).
 
 Prints: each print's energy, in the month it started. Whole printer: the meter's rise between one reading and the
 next, counted in the month of the later reading (a meter that went backwards was reset, so its new value is what it
@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 from ..models import PrinterEnergyReading, PrintJob
 from ..timeutil import as_utc
 
-# {(printer id, time zone): (what the figures were made from, the months)}: a printer's readings only ever grow, so
-# while they and its prints are as they were, the months are too
-_cache: dict[tuple[int, str], tuple[tuple, list[dict]]] = {}
+# {(printer id, time zone, month or day): (what the figures were made from, the rows)}: a printer's readings only ever
+# grow, so while they and its prints are as they were, the rows are too
+_cache: dict[tuple[int, str, str], tuple[tuple, list[dict]]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -46,8 +46,17 @@ def _made_from(db: Session, printer_id: int) -> tuple:
 
 def by_month(db: Session, printer_id: int, tz_name: str | None) -> list[dict]:
     """[{key: "2026-10", prints, print_count, whole, partial}], newest first. whole is None for a month with no readings."""
+    return _by_period(db, printer_id, tz_name, "%Y-%m")
+
+
+def by_day(db: Session, printer_id: int, tz_name: str | None) -> list[dict]:
+    """As by_month, a row per day: key "2026-10-05". The day of the first reading is the partial one."""
+    return _by_period(db, printer_id, tz_name, "%Y-%m-%d")
+
+
+def _by_period(db: Session, printer_id: int, tz_name: str | None, fmt: str) -> list[dict]:
     tz = zone(tz_name)
-    key = (printer_id, str(tz))
+    key = (printer_id, str(tz), fmt)
     made_from = _made_from(db, printer_id)
     with _cache_lock:
         cached = _cache.get(key)
@@ -57,8 +66,7 @@ def by_month(db: Session, printer_id: int, tz_name: str | None) -> list[dict]:
     rows: dict[str, dict] = {}
 
     def row(at: dt.datetime) -> dict:
-        local = as_utc(at).astimezone(tz)
-        k = f"{local.year}-{local.month:02d}"
+        k = as_utc(at).astimezone(tz).strftime(fmt)
         return rows.setdefault(k, {"key": k, "prints": 0.0, "print_count": 0, "whole": None, "partial": False})
 
     for at, kwh in db.execute(
@@ -85,7 +93,7 @@ def by_month(db: Session, printer_id: int, tz_name: str | None) -> list[dict]:
             r["whole"] = (r["whole"] or 0.0) + (now - before if now >= before else now)
         before = now
 
-    months = sorted(rows.values(), key=lambda r: r["key"], reverse=True)
+    out = sorted(rows.values(), key=lambda r: r["key"], reverse=True)
     with _cache_lock:
-        _cache[key] = (made_from, months)
-    return months
+        _cache[key] = (made_from, out)
+    return out

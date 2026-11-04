@@ -1,5 +1,5 @@
 // Months and years, as the pages that add things up by period show them (Power, Farm cost, a printer's Energy).
-// A month's key is "2026-03", a year's "2026"; `by` is "month", "year" or, where offered, "all" (all time).
+// A month's key is "2026-03", a year's "2026"; `by` is "month" or "year".
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { headerButton } from "../styles.js";
@@ -7,8 +7,8 @@ import { headerButton } from "../styles.js";
 export const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
 export const periodLabel = (key, by) =>
   by === "year" ? key : new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
-// whether a month ("2026-03") falls in the period `key` (a month, a year, or anything for all time)
-export const monthIn = (month, key, by) => (by === "all" ? true : by === "year" ? month.startsWith(key) : month === key);
+// whether a month ("2026-03") falls in the period `key` (a month or a year)
+export const monthIn = (month, key, by) => (by === "year" ? month.startsWith(key) : month === key);
 
 // Totals per month or year, newest first. The server totals each month in this browser's time zone (prints by when
 // they started; the whole printer from its meter's rise; the month of the first reading marked partial), and a year
@@ -26,9 +26,8 @@ export function energyByPeriod({ months }, by) {
   return Object.values(rows).sort((a, b) => (a.key < b.key ? 1 : -1));
 }
 
-// "By month" / "By year" (and "All time" where it's offered), above a table added up by period
+// "By month" / "By year", above a table added up by period
 export const BY_MONTH_OR_YEAR = [{ value: "month", label: "By month" }, { value: "year", label: "By year" }];
-export const BY_MONTH_YEAR_OR_ALL = [...BY_MONTH_OR_YEAR, { value: "all", label: "All time" }];
 export function PeriodButtons({ testId, by, onChange, options = BY_MONTH_OR_YEAR }) {
   return (
     <div data-testid={testId} style={{ display: "flex", gap: 6 }}>
