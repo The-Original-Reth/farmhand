@@ -7,7 +7,7 @@ import { useData } from "../data.jsx";
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
 import { fmtCost, fmtKwh } from "../lib/format.js";
 import { energyCost, parsePrice, priceForMonth } from "../lib/energyPrice.js";
-import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, ShowAllPeriods, tableHead } from "../lib/periods.jsx";
+import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, tableHead } from "../lib/periods.jsx";
 
 const NO_PRICES = { current: null, history: [], months: {} };
 
@@ -110,7 +110,6 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
   const { printers } = useData();
   const [energy, setEnergy] = useState(null); // printer id -> its /energy answer, or { error }
   const [by, setBy] = useState("month");
-  const [showAll, setShowAll] = useState(false);
   const [picked, setPicked] = useState(null); // the month or year looked at (null = the current one)
   const active = printers.filter((p) => !p.decommissioned);
   const ids = active.map((p) => p.id).join(",");
@@ -153,7 +152,6 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
 
   if (!energy) return <div style={uiText(13, c.textFaint)}>Loading the farm's energy…</div>;
 
-  const shown = showAll ? periods : periods.slice(0, by === "month" ? 12 : 5);
   const max = Math.max(1e-9, ...periods.map((p) => Math.max(p.prints, p.whole ?? 0)));
   const current = periodKey(new Date(), by);
   const selected = picked ?? current;
@@ -190,7 +188,6 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
           by={by}
           onChange={(next) => {
             setBy(next);
-            setShowAll(false);
             setPicked(null);
           }}
         />
@@ -228,8 +225,8 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
             <div title={costHint}>Electrical cost</div>
             <div>Prints #</div>
           </div>
-          {shown.length === 0 && <div style={uiText(13, c.textMuted, { padding: 14 })}>No energy figures from any printer yet.</div>}
-          {shown.map((p, i) => (
+          {periods.length === 0 && <div style={uiText(13, c.textMuted, { padding: 14 })}>No energy figures from any printer yet.</div>}
+          {periods.map((p, i) => (
             <div
               key={p.key}
               data-testid="power-period"
@@ -274,7 +271,6 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
               <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
             </div>
           ))}
-          {periods.length > shown.length && <ShowAllPeriods count={periods.length} by={by} onClick={() => setShowAll(true)} />}
         </div>
       </div>
 
