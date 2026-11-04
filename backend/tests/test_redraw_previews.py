@@ -6,7 +6,6 @@ import os
 import numpy as np
 import pytest
 
-from app import storage
 from app.errors import NotFound
 from app.models import SourceFileType
 from app.services import source_model_service as svc
@@ -37,13 +36,13 @@ def test_redrawing_replaces_an_old_preview_with_a_freshly_drawn_one(db_session):
 
     with open(version.thumbnail_path, "rb") as f:
         assert f.read(8) == b"\x89PNG\r\n\x1a\n"  # a real image now
-    assert storage.is_inside(version.thumbnail_path, storage.thumbnails_root())
+    assert version.thumbnail_path == version.file_path + ".png"  # next to the model file, the only copy
 
 
-def test_a_preview_stored_beside_the_model_file_in_the_old_layout_is_moved_to_local_disk(db_session):
+def test_a_preview_kept_somewhere_else_is_replaced_by_one_next_to_the_model_file(db_session):
     model = _model(db_session)
     version = model.versions[0]
-    old = os.path.join(os.path.dirname(version.file_path), "thumbnail.png")  # where the first versions kept it
+    old = os.path.join(os.path.dirname(version.file_path), "thumbnail.png")  # where the very first versions kept it
     with open(old, "wb") as f:
         f.write(b"old")
     version.thumbnail_path = old
@@ -53,7 +52,7 @@ def test_a_preview_stored_beside_the_model_file_in_the_old_layout_is_moved_to_lo
 
     db_session.expire_all()
     new = svc.get_source_model_version(db_session, model.id, 1).thumbnail_path
-    assert new != old and storage.is_inside(new, storage.thumbnails_root()) and os.path.exists(new)
+    assert new == version.file_path + ".png" and os.path.exists(new)
     assert not os.path.exists(old)  # the stale one is tidied away...
     assert os.path.exists(version.file_path)  # ...and the model file itself is untouched
 

@@ -677,3 +677,35 @@ def test_back_on_the_cable_even_while_it_keeps_being_asked_over_wifi(db_session,
     clock[0] = 1250  # two minutes after the last fall back
     mr.server_info(p)
     assert mr.answered_at(p) == "http://10.0.6.21:7125"  # on the cable again
+
+
+def test_each_prints_energy_cost_uses_the_average_price_per_kwh(client, fake):
+    c, pid = client
+    fake.meter_kwh = 100.0
+    fake.add_job("000001", "frog.gcode", energy_kwh=1.25)
+    fake.add_job("000002", "shark.gcode", start=1_700_100_000)  # no power meter reading for this one
+    c.post(f"/printers/{pid}/moonraker/sync")
+    r = c.get(f"/printers/{pid}/print-jobs").json()
+    assert r["energy_price_per_kwh"] is None and [j["energy_cost"] for j in r["jobs"]] == [None, None]  # no price yet
+
+    c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.16321}})
+    r = c.get(f"/printers/{pid}/print-jobs").json()
+    assert r["energy_price_per_kwh"] == 0.16321
+    assert [j["energy_cost"] for j in r["jobs"]] == [None, round(1.25 * 0.16321, 2)]
+
+
+def test_a_prints_energy_is_priced_at_its_months_price(client, fake):
+    c, pid = client
+    fake.add_job("000001", "frog.gcode", start=dt.datetime(2026, 9, 10, tzinfo=dt.timezone.utc).timestamp(), energy_kwh=1.0)
+    fake.add_job("000002", "shark.gcode", start=dt.datetime(2026, 11, 2, tzinfo=dt.timezone.utc).timestamp(), energy_kwh=1.0)
+    # just after midnight on the 1st in UTC: still October in New York
+    fake.add_job("000003", "cube.gcode", start=dt.datetime(2026, 11, 1, 2, tzinfo=dt.timezone.utc).timestamp(), energy_kwh=1.0)
+    c.post(f"/printers/{pid}/moonraker/sync")
+    c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.1, "energy_price_from": "2026-09"}})
+    c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.2, "energy_price_from": "2026-11"}})
+    c.put("/settings/config", json={"preferences": {"energy_price_months": {"2026-10": 0.5}}})
+
+    jobs = {j["job_id"]: j for j in c.get(f"/printers/{pid}/print-jobs").json()["jobs"]}
+    assert {k: j["energy_cost"] for k, j in jobs.items()} == {"000001": 0.1, "000002": 0.2, "000003": 0.2}
+    jobs = {j["job_id"]: j for j in c.get(f"/printers/{pid}/print-jobs", params={"tz": "America/New_York"}).json()["jobs"]}
+    assert jobs["000003"]["energy_cost"] == 0.5 and jobs["000003"]["energy_price"] == 0.5

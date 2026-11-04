@@ -46,12 +46,16 @@ def test_chosen_locations_are_used_independently(isolated_storage):
     assert storage.bundle_version_dir(1, 1) == data / "storage" / "bundles" / "1" / "v1"
 
 
-def test_thumbnails_always_stay_on_local_disk(isolated_storage):
+def test_a_preview_is_kept_next_to_its_file_wherever_that_is(isolated_storage):
     data = isolated_storage
-    storage.configure(stl_path=str(_chosen_folder(data, "nas/stl")), threemf_path=str(_chosen_folder(data, "nas/3mf")))
-    local = data / "storage" / "thumbnails"
-    assert storage.source_model_thumbnail_dir(1, 1) == local / "source_models" / "1" / "v1"
-    assert storage.bundle_thumbnail_dir(2, 3) == local / "bundles" / "2" / "v3"
+    stl = _chosen_folder(data, "nas/stl")
+    storage.configure(stl_path=str(stl))
+    model_file = stl / "1" / "v1" / "Frog.stl"
+    model_file.parent.mkdir(parents=True)
+    model_file.write_bytes(b"solid")
+    assert storage.save_preview_beside(str(model_file), b"png") == str(model_file) + ".png"
+    assert (stl / "1" / "v1" / "Frog.stl.png").read_bytes() == b"png"  # on the NAS, with the file
+    assert not storage.thumbnails_root().exists()  # and nothing in the app
 
 
 # ---------------------------------------------------------------- the unmounted-share guard

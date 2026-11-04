@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Archive, Cctv, Hammer, Layers, Palette, Printer, Settings, Zap } from "lucide-react";
+import { Archive, Cctv, CircleDollarSign, Hammer, Layers, Palette, Printer, Settings, Zap } from "lucide-react";
 import { c, fs, ui } from "./theme.js";
 import { monoText, uiText } from "./styles.js";
 import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance.js";
@@ -15,6 +15,8 @@ import { ModelsSection } from "./models/ModelsSection.jsx";
 import { loadModelSort, normalizeModelSort, saveModelSort } from "./models/modelSort.js";
 import { PrintersSection } from "./printers/PrintersSection.jsx";
 import { PowerSection } from "./power/PowerSection.jsx";
+import { FarmCostSection } from "./farmcost/FarmCostSection.jsx";
+import { EnergyPricesContext, thisMonth, withNewAverage } from "./lib/energyPrice.js";
 import { MonitorSection } from "./monitor/MonitorSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
 import { ToolsSection } from "./tools/ToolsSection.jsx";
@@ -54,6 +56,7 @@ const SECTIONS = [
   { key: "models", label: "Models", Icon: Layers },
   { key: "printers", label: "Printers", Icon: Printer },
   { key: "power", label: "Power", Icon: Zap },
+  { key: "farm-cost", label: "Farm cost", Icon: CircleDollarSign }, // filament and electricity, per printer
   { key: "monitor", label: "Monitor", Icon: Cctv },
   { key: "tools", label: "Tools", Icon: Hammer },
   { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
@@ -174,6 +177,8 @@ function FarmhandApp() {
   const [monitorOrder, setMonitorOrder] = useState([]); // the Monitor page's cameras as dragged into order (kept on the server)
   const [monitorMaxZoom, setMonitorMaxZoom] = useState(4); // how far in a Monitor camera can be zoomed
   const [toolLinks, setToolLinks] = useState([]); // the Tools page's websites (kept on the server)
+  // The price of electricity set on the Power page: { current, history, months } (see lib/energyPrice.js)
+  const [energyPrices, setEnergyPrices] = useState({ current: null, history: [], months: {} });
   const [saveState, setSaveState] = useState({ phase: "idle" }); // idle | saving | saved | error
   const pendingSave = useRef({});
   const saveTimer = useRef(null);
@@ -193,6 +198,21 @@ function FarmhandApp() {
     setMonitorOrder(Array.isArray(config.preferences?.monitor_order) ? config.preferences.monitor_order : []);
     setMonitorMaxZoom(config.preferences?.monitor_max_zoom || 4);
     setToolLinks(Array.isArray(config.preferences?.tool_links) ? config.preferences.tool_links : []);
+    // The server saves each month's Farm cost record when the month ends in the farm's time zone: tell it this
+    // browser's, when it doesn't know it yet or it's moved
+    const zone = (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+      } catch {
+        return null;
+      }
+    })();
+    if (zone && config.preferences?.time_zone !== zone) queueSave({ preferences: { time_zone: zone } });
+    setEnergyPrices({
+      current: typeof config.preferences?.energy_price_per_kwh === "number" ? config.preferences.energy_price_per_kwh : null,
+      history: Array.isArray(config.preferences?.energy_price_history) ? config.preferences.energy_price_history : [],
+      months: config.preferences?.energy_price_months && typeof config.preferences.energy_price_months === "object" ? config.preferences.energy_price_months : {},
+    });
   };
   const loadServerConfig = () =>
     getConfig()
@@ -279,6 +299,21 @@ function FarmhandApp() {
     setMonitorMaxZoom(next);
     queueSave({ preferences: { monitor_max_zoom: next } });
   };
+  // The average cost: counts from this month on (earlier months keep theirs; the server applies the same rule)
+  const changeEnergyPrice = (next) => {
+    const month = thisMonth();
+    setEnergyPrices((now) => withNewAverage(now, next, month));
+    queueSave({ preferences: { energy_price_per_kwh: next, energy_price_from: month } });
+  };
+  // One month's own price, typed in its row on the Power page; null = back to the average cost that counted then
+  const changeMonthPrice = (month, price) => {
+    const months = { ...energyPrices.months };
+    if (price == null) delete months[month];
+    else months[month] = price;
+    setEnergyPrices((now) => ({ ...now, months }));
+    queueSave({ preferences: { energy_price_months: months } });
+  };
+
   const [compareSelection, setCompareSelection] = useState([]); // VERSION ids, in selection order
   const [diffModalOpen, setDiffModalOpen] = useState(false);
 
@@ -410,6 +445,7 @@ function FarmhandApp() {
   );
 
   return (
+    <EnergyPricesContext.Provider value={energyPrices}>
     <div
       style={{
         ...ui,
@@ -510,8 +546,10 @@ function FarmhandApp() {
               sort={modelSort}
               onSortChange={changeModelSort}
             />
+          ) : section === "farm-cost" ? (
+            <FarmCostSection />
           ) : section === "power" ? (
-            <PowerSection />
+            <PowerSection prices={energyPrices} onEnergyPrice={changeEnergyPrice} onMonthPrice={changeMonthPrice} saveState={saveState} />
           ) : section === "monitor" ? (
             <MonitorSection
               order={monitorOrder} onSave={saveMonitorOrder} maxZoom={monitorMaxZoom} onMaxZoom={changeMonitorMaxZoom}
@@ -550,6 +588,7 @@ function FarmhandApp() {
         </Modal>
       )}
     </div>
+    </EnergyPricesContext.Provider>
   );
 }
 

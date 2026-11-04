@@ -40,7 +40,9 @@ def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
 
     for v in outside_window:
         if v.full_files_retained and not v.monument:
-            storage.delete_files([v.threemf_path, v.gcode_path, storage.preview_beside(v.threemf_path)])
+            # the preview stays where it is (next to where the 3MF was): a pruned version keeps its picture
+            beside = storage.preview_beside(v.threemf_path)
+            storage.delete_files([v.threemf_path, v.gcode_path, beside if beside != v.thumbnail_path else None])
             v.threemf_path = None
             v.gcode_path = None
             v.full_files_retained = False
@@ -86,7 +88,7 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
 
 
 def _files_of(v: BundleVersion) -> list[str | None]:
-    """Every file a version has: its 3MF, G-code and preview, and the preview kept beside the 3MF."""
+    """Every file a version has: its 3MF, G-code and preview (kept beside the 3MF, or where it was if it's pruned)."""
     return [v.threemf_path, v.gcode_path, v.thumbnail_path, storage.preview_beside(v.threemf_path)]
 
 

@@ -5,7 +5,6 @@ import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
-import { SectionLabel } from "../components/common/ui.jsx";
 import { ConfigLocationCard, RestoreResult } from "./ConfigLocationCard.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
 
@@ -65,7 +64,6 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
 
   return (
     <>
-      <SectionLabel>Settings</SectionLabel>
       <ConfigLocationCard
         info={configInfo}
         error={configError}

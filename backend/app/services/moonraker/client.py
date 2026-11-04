@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from typing import BinaryIO
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 import httpx
 
@@ -34,25 +34,59 @@ def _call(printer: Printer, method: str, path: str, *, params: dict | None = Non
     bases = printer.moonraker_urls
     if not bases:
         raise MoonrakerError("no_address", "This printer has no IP address or Moonraker address set.")
-    headers = {}
-    if printer.connection_row and printer.connection_row.api_key:
-        headers["X-Api-Key"] = printer.connection_row.api_key
     r, base = printer_http.request_first_answering(
         MoonrakerError, "Moonraker", "moonraker", printer.id, bases, method, path,
-        transport=transport, timeout=timeout, params=params, json=json, files=files, data=data, headers=headers,
+        transport=transport, timeout=timeout, params=params, json=json, files=files, data=data, headers=_headers(printer),
     )
-    if r.status_code in (401, 403):
-        raise MoonrakerError(
-            "unauthorized",
-            "Moonraker refused the request. Add this printer's Moonraker API key, or add Farmhand's address to "
-            "[authorization] trusted_clients in moonraker.conf.",
-        )
+    _check_allowed(r)
     if r.status_code >= 400:
         raise MoonrakerError("bad_response", f"Moonraker answered {r.status_code}: {_error_text(r)}")
     try:
         return r.json() if unwrapped else r.json()["result"]
     except (ValueError, KeyError, TypeError):
         raise MoonrakerError("bad_response", f"{base} answered, but not like Moonraker does.") from None
+
+
+def _headers(printer: Printer, **extra: str) -> dict:
+    headers = dict(extra)
+    if printer.connection_row and printer.connection_row.api_key:
+        headers["X-Api-Key"] = printer.connection_row.api_key
+    return headers
+
+
+def _check_allowed(r: httpx.Response) -> None:
+    if r.status_code in (401, 403):
+        raise MoonrakerError(
+            "unauthorized",
+            "Moonraker refused the request. Add this printer's Moonraker API key, or add Farmhand's address to "
+            "[authorization] trusted_clients in moonraker.conf.",
+        )
+
+
+GCODE_TAIL_MAX = 512 * 1024  # the most of a G-code's end read for its settings block (PrusaSlicer's is ~100 KB)
+
+
+def gcode_tail(printer: Printer, filename: str, start: int | None = None, size: int | None = None) -> bytes:
+    """
+    The end of a G-code in the printer's gcodes folder, from byte `start` (where the G-code moves end, as Moonraker's
+    metadata says) or else its last GCODE_TAIL_MAX bytes: only that part is sent, never the whole file. A file that
+    isn't there any more raises MoonrakerError("not_found").
+    """
+    if start is not None and size is not None and 0 <= start < size and size - start <= GCODE_TAIL_MAX:
+        wanted = f"bytes={start}-"
+    else:
+        wanted = f"bytes=-{GCODE_TAIL_MAX}"
+    bases = printer.moonraker_urls
+    if not bases:
+        raise MoonrakerError("no_address", "This printer has no IP address or Moonraker address set.")
+    r, _ = printer_http.request_first_answering(
+        MoonrakerError, "Moonraker", "moonraker", printer.id, bases, "GET", f"/server/files/gcodes/{quote(filename)}",
+        transport=transport, headers=_headers(printer, Range=wanted),
+    )
+    _check_allowed(r)
+    if r.status_code >= 400:
+        raise MoonrakerError("bad_response", f"Moonraker answered {r.status_code}: {_error_text(r)}")
+    return r.content[-GCODE_TAIL_MAX:]
 
 
 def _error_text(r: httpx.Response) -> str:

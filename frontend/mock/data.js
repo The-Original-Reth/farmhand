@@ -191,9 +191,19 @@ export function buildFarm() {
   // ------------------------------------------------------------------ print history, totals and energy
   const fileNames = {
     1: ["VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.gcode", "VT_1190_-_prusa_slicer_-_MMMini_Frog_v2.gcode", "calibration_cube.gcode", "VT_1190_benchy.gcode", "spool_holder_bracket.gcode"],
-    2: ["V2_BOG_-_Prusa_Slicer_-_MMMini_GreatWhiteShark_v02.gcode", "V2 BOG - Prusa Slicer - MMMini_LeoGecko v01.gcode", "V2_BOG_bed_mesh_test.gcode", "V2_BOG_voron_cube.gcode"],
+    2: ["V2_BOG_-_Prusa_Slicer_-_MMMini_GreatWhiteShark_v02.gcode", "V2 BOG - Prusa Slicer - MMMini_GreatWhiteShark_v02-V2_BOG_Rapido_Ace_0.5_WC-Inland_PLA.gcode","V2 BOG - Prusa Slicer - MMMini_LeoGecko v01.gcode", "V2_BOG_bed_mesh_test.gcode", "V2_BOG_voron_cube.gcode"],
     3: ["MK4_shelf_keychains_x12.gcode", "MK4_cable_clips.gcode"],
     5: ["COREONE_MMMini_GreatWhiteShark_PETG.bgcode", "COREONE_Frog_keychain_x8.bgcode", "COREONE_spool_holder_bracket_ASA.bgcode"],
+  };
+  // The filament settings Farmhand has read from the end of each G-code on the Klipper printers ({printer id: {file:
+  // [price per kg, density, diameter]}}). The ones left out were gone from the printer, so their prints fall back to
+  // the 3MF (or have no cost)
+  const gcodeFilament = {
+    1: { "VT_1190_benchy.gcode": [22.5, 1.24, 1.75], "VT_1190_-_prusa_slicer_-_MMMini_Frog_v2.gcode": [16.99, 1.23, 1.75] },
+    2: {
+      "V2 BOG - Prusa Slicer - MMMini_LeoGecko v01.gcode": [16.99, 1.23, 1.75], "V2_BOG_voron_cube.gcode": [27, 1.27, 1.75],
+      "V2 BOG - Prusa Slicer - MMMini_GreatWhiteShark_v02-V2_BOG_Rapido_Ace_0.5_WC-Inland_PLA.gcode": [16.99, 1.23, 1.75],
+    },
   };
   const statusOf = () => {
     const r = rand();
@@ -287,7 +297,10 @@ export function buildFarm() {
   const config = {
     appearance: { scheme: "farmhand", contrast: 0, font: "archivo", size: "default", file_name_color: "auto" },
     preferences: {
-      model_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4,
+      model_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4, energy_price_per_kwh: 0.17,
+      // the average cost was 0.15 until September, then 0.17; March was given its own price
+      energy_price_history: [{ from: "2025-11", price: 0.15 }, { from: "2026-09", price: 0.17 }],
+      energy_price_months: { "2026-03": 0.142 },
       tool_links: [ // the server's defaults (config_store.DEFAULT_TOOL_LINKS)
         { name: "CANBus guide (Esoterical)", url: "https://canbus.esoterical.online/" },
         { name: "USB guide (Esoterical)", url: "https://usb.esoterical.online/" },
@@ -313,7 +326,7 @@ export function buildFarm() {
   ];
 
   return {
-    now: NOW, printers, models, bundles, versionSettings, subPrinters, jobs, meterReadings, maintenance, config, shares,
+    now: NOW, printers, models, bundles, versionSettings, subPrinters, jobs, meterReadings, maintenance, config, shares, gcodeFilament,
     // printer id -> { last_sync_at, last_sync_error }: the two online printers synced recently, the MK4 is off
     connections: {
       1: { last_sync_at: iso(NOW - 40 * 60), last_sync_error: null },

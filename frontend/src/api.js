@@ -384,11 +384,36 @@ const timeZone = (() => {
 export const getEnergy = (printerId) =>
   request(`/printers/${printerId}/energy${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
 
-// status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name
+// The Farm cost page's filament: { printers: [{ printer_id, months: [{ key: "2026-10", prints, grams, filament_cost,
+// unweighed, uncosted }] }] }, months newest first, totalled in this browser's time zone; records: { folder, problem,
+// saved: [file names, newest first] }, where each month's record is saved once it's over
+export const getFarmCost = () => request(`/farm-cost${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
+
+// Where each month's Farm cost record is saved (Settings): { path, isDefault, defaultPath, status: { exists,
+// writable, markerOk, ready } }. setFarmCostLocation(null) goes back to the default; a folder that can't be used is
+// refused with the reason.
+const normalizeFarmCostLocation = (l) => ({
+  path: l.path,
+  isDefault: l.is_default,
+  defaultPath: l.default_path,
+  status: { exists: l.status.exists, writable: l.status.writable, markerOk: l.status.marker_ok, ready: l.status.ready },
+});
+export const getFarmCostLocation = async () => normalizeFarmCostLocation(await request("/farm-cost/location"));
+export const setFarmCostLocation = async (path) =>
+  normalizeFarmCostLocation(await request("/farm-cost/location", jsonBody("PUT", { path })));
+
+// status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name.
+// Each job has filament_grams (the filament used in grams; null when no density or slicer estimate is known),
+// filament_cost (null when there's no price for it) and filament_cost_detail: { cost, grams, cost_per_kg,
+// density, diameter, source: "gcode" | "3mf", filename, bundle_id, version_id, version } | null; energy_cost: its
+// energy_kwh at the Power page's price per kWh (null without either); total_cost: filament_cost + energy_cost (the
+// filament cost alone without an energy cost; null or 0 when the filament cost is). The answer also has
+// energy_price_per_kwh.
 export const getPrintJobs = (printerId, { limit = 25, offset = 0, status = "", q = "" } = {}) => {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) params.set("status", status);
   if (q.trim()) params.set("q", q.trim());
+  if (timeZone) params.set("tz", timeZone); // which month a print's energy is priced in
   return request(`/printers/${printerId}/print-jobs?${params}`);
 };
 

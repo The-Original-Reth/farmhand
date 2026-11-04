@@ -37,16 +37,10 @@ def get_source_model_version(db: Session, source_model_id: int, version: int) ->
     )
 
 
-def _save_thumbnail(source_model_id: int, version: int, png: bytes) -> str:
-    """The version's preview, in the app's own thumbnails folder (the copy the page shows)."""
-    return storage.save_bytes(storage.source_model_thumbnail_dir(source_model_id, version), "thumbnail.png", png)
-
-
 def _delete_version_files(file_path: str, thumbnail_path: str | None, managed: bool) -> None:
-    """A version's file, the preview beside it, and its own preview. A scanned-in file's folders are the owner's, not
-    ours (`managed` is False then), so they're left even if that empties them."""
-    storage.delete_files([file_path, storage.preview_beside(file_path)], prune=managed)
-    storage.delete_files([thumbnail_path])
+    """A version's file and its preview (kept next to it). A scanned-in file's folders are the owner's, not ours
+    (`managed` is False then), so they're left even if that empties them."""
+    storage.delete_files([file_path, storage.preview_beside(file_path), thumbnail_path], prune=managed)
 
 
 def _require_model(db: Session, source_model_id: int) -> SourceModel:
@@ -100,8 +94,7 @@ def add_source_model_version(
         # gotten to) — fails soft rather than blocking the upload either way.
         thumb_bytes = render_stl_thumbnail(file_path)
         if thumb_bytes:
-            thumbnail_path = _save_thumbnail(source_model_id, next_version, thumb_bytes)
-            storage.save_preview_beside(file_path, thumb_bytes)  # and a copy with the STL, on the NAS if it's there
+            thumbnail_path = storage.save_preview_beside(file_path, thumb_bytes)  # with the STL, on the NAS if it's there
 
     version = SourceModelVersion(
         source_model_id=source_model_id,
@@ -188,14 +181,15 @@ def regenerate_thumbnail(db: Session, source_model_id: int, version: int) -> boo
     image = render_stl_thumbnail(v.file_path)
     if not image:
         return False  # keep whatever preview there was
-    storage.save_preview_beside(v.file_path, image)
-    new_path = _save_thumbnail(source_model_id, version, image)
+    new_path = storage.save_preview_beside(v.file_path, image)
+    if not new_path:
+        raise ValueError("The preview couldn't be saved next to the model file. Check that its folder can be written to.")
     old_path = v.thumbnail_path
     if old_path != new_path:
         v.thumbnail_path = new_path
         db.commit()
         if old_path:
-            storage.delete_files([old_path])  # an older preview that lived beside the model file
+            storage.delete_files([old_path])  # an older copy kept somewhere else
     return True
 
 
@@ -276,8 +270,6 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
     thumbnail_path = thumb_bytes = None
     if file_type == "STL":
         thumb_bytes = render_stl_thumbnail(full)  # fails soft: no preview is better than no import
-        if thumb_bytes:
-            thumbnail_path = _save_thumbnail(model.id, 1, thumb_bytes)
 
     dest_dir: Path | None = None
     moved_to: str | None = None
@@ -289,6 +281,8 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
                 f"the limit is {MAX_PATH_LENGTH})."
             )
         moved_to = storage.move_file(full, dest_dir)
+        if thumb_bytes:
+            thumbnail_path = storage.save_preview_beside(moved_to, thumb_bytes)  # with the file, its only copy
         db.add(
             SourceModelVersion(
                 source_model_id=model.id, version=1, file_path=moved_to, thumbnail_path=thumbnail_path,
@@ -296,10 +290,10 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
             )
         )
         db.commit()
-        if thumb_bytes:
-            storage.save_preview_beside(moved_to, thumb_bytes)
     except BaseException as e:
         db.rollback()
+        if thumbnail_path:
+            storage.delete_files([thumbnail_path], prune=False)
         if moved_to is not None:  # moved, but the record couldn't be saved: put the file back where it was
             try:
                 storage.move_file(moved_to, os.path.dirname(full), name)
@@ -308,8 +302,6 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
         if dest_dir is not None:
             storage._rmdir_if_empty(dest_dir)
             storage._rmdir_if_empty(dest_dir.parent)
-        if thumbnail_path:
-            storage.delete_files([thumbnail_path])
         if isinstance(e, OSError):
             reason = e.strerror or str(e)
             raise ValueError(

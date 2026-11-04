@@ -18,6 +18,7 @@ import { Badge, SectionLabel } from "../components/common/ui.jsx";
 import { formatBytes, plural } from "../lib/format.js";
 import { FolderPicker } from "./FolderPicker.jsx";
 import { SettingsCopy } from "./SettingsCopy.jsx";
+import { FarmCostFolderCard } from "./FarmCostFolderCard.jsx";
 import { ShareForm, SharesCard } from "./Shares.jsx";
 import { locationProblem } from "./ConfigLocationCard.jsx";
 
@@ -172,6 +173,8 @@ export function StorageSection({ onSettingsRestored }) {
         onReset={() => resetLocation("threemf")}
       />
       {actionError && <div style={uiText(12, c.amber)}>{actionError}</div>}
+      <FarmCostFolderCard shares={sharesInfo.shares} />
+      <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
 
       {outsideStl + outsideThreemf > 0 && (
         <div style={{ border: `1px solid ${c.borderStrong}`, borderRadius: 4, background: c.panelAlt, padding: 16 }}>
@@ -226,12 +229,10 @@ export function StorageSection({ onSettingsRestored }) {
         </div>
         <div style={{ marginTop: 6 }}>
           <b style={{ color: c.textMuted }}>Previews</b> are saved next to each STL and 3MF file (Frog.stl gets Frog.stl.png),
-          so they're on the NAS with their files. The app keeps its own copy of every preview too, so browsing keeps
-          working if a share is offline.
+          so they're on the NAS with their files, and only there: while a share is offline, its previews don't show.
         </div>
       </div>
 
-      <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
 
       {picker && (
         <FolderPicker

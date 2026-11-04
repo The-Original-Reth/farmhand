@@ -251,12 +251,10 @@ def _store_version(
 
         thumbnail_path = None
         if parsed.thumbnail_bytes:
-            thumb_dir = storage.bundle_thumbnail_dir(bundle.id, version_number)
-            thumbnail_path = storage.save_bytes(thumb_dir, "thumbnail.png", parsed.thumbnail_bytes)
-            written.append(thumbnail_path)
-            beside = storage.save_preview_beside(threemf_path, parsed.thumbnail_bytes)  # with the 3MF, on the NAS if it's there
-            if beside:
-                written.append(beside)
+            # with the 3MF, on the NAS if it's there: the only copy, kept even when the 3MF is pruned
+            thumbnail_path = storage.save_preview_beside(threemf_path, parsed.thumbnail_bytes)
+            if thumbnail_path:
+                written.append(thumbnail_path)
 
         version = BundleVersion(
             bundle_id=bundle.id,

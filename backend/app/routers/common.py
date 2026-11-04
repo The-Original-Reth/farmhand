@@ -63,8 +63,9 @@ def require_readable(path: str) -> None:
 
 def preview_response(thumbnail_path: str | None, file_path: str | None, request: Request) -> FileResponse:
     """
-    A version's preview: the app's own copy, else the one kept next to its file (e.g. after the app's disk was
-    rebuilt). thumbnail_path and file_path are both None for a version that doesn't exist.
+    A version's preview: the one kept next to its file (thumbnail_path; a pruned 3MF's stays where the 3MF was), else
+    one found next to the file. Nothing is kept in the app, so a preview on a share that's offline is a 404 until it's
+    back. thumbnail_path and file_path are both None for a version that doesn't exist.
     """
     path = thumbnail_path if thumbnail_path and os.path.isfile(thumbnail_path) else storage.preview_beside(file_path)
     if not path or not os.path.isfile(path):

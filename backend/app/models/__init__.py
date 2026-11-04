@@ -6,6 +6,7 @@ from .bundle_version import BundleVersion
 from .network_share import NetworkShare
 from .printer import Printer
 from .printer_connection import (
+    GcodeFilament,
     PrinterConnection,
     PrinterEnergyReading,
     PrinterServiceNote,
@@ -31,6 +32,7 @@ __all__ = [
     "PrinterServiceNote",
     "PrinterEnergyReading",
     "PrintJob",
+    "GcodeFilament",
     "PrusaLinkConnection",
     "MaintenanceEntry",
     "SourceModel",

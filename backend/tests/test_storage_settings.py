@@ -153,7 +153,9 @@ def test_migrate_moves_everything_into_the_chosen_locations(db_session, share, s
     assert storage.is_inside(new_stl, stl) and os.path.exists(new_stl)
     assert storage.is_inside(new_v.threemf_path, threemf) and os.path.exists(new_v.threemf_path)
     assert storage.is_inside(new_v.gcode_path, threemf) and os.path.exists(new_v.gcode_path)
-    assert storage.is_inside(new_v.thumbnail_path, storage.thumbnails_root())  # thumbnails stay on local disk
+    assert new_v.thumbnail_path == new_v.threemf_path + ".png" and os.path.exists(new_v.thumbnail_path)  # moved with it
+    new_model_v = source_model_service.get_source_model(db_session, model.id).versions[0]
+    assert new_model_v.thumbnail_path in (None, new_stl + ".png")  # (this test's model isn't a real STL: no preview)
     assert not any(os.path.exists(p) for p in (stl_file, old_3mf, old_gcode))  # originals removed after the verified copy
     assert svc.describe(db_session)["outside"] == {"stl": 0, "threemf": 0}
 
