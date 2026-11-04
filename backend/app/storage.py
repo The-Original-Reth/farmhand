@@ -81,6 +81,13 @@ def default_root(kind: str) -> Path:
     return local_root() / ("source_models" if kind == "stl" else "bundles")
 
 
+def _made_default_root(kind: str) -> Path:
+    """The default folder for this kind, made if it isn't there yet (it's the app's own, so that's always safe)."""
+    root = default_root(kind)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def effective_root(kind: str) -> Path:
     return Path(_custom[kind]) if _custom[kind] else default_root(kind)
 
@@ -98,11 +105,12 @@ def ready_root(kind: str) -> Path:
     """
     custom = _custom[kind]
     if not custom:
-        root = default_root(kind)
-        root.mkdir(parents=True, exist_ok=True)
-        return root
-
+        return _made_default_root(kind)
     return ensure_ready_folder(custom, f"{_LABELS[kind]} storage folder")
+
+
+def _has_marker(folder: Path) -> bool:
+    return (folder / MARKER_NAME).is_file()
 
 
 def ensure_ready_folder(path: str, noun: str) -> Path:
@@ -117,7 +125,7 @@ def ensure_ready_folder(path: str, noun: str) -> Path:
             f"The {noun} ({root}) isn't available. If it's on a network share, "
             "check that the share is mounted and reachable. Nothing was saved."
         )
-    if not (root / MARKER_NAME).is_file():
+    if not _has_marker(root):
         raise StorageUnavailableError(
             f"The {noun} ({root}) is missing its Farmhand marker file. That usually "
             "means a network share isn't mounted right now and this is just the empty folder "
@@ -216,18 +224,11 @@ def save_preview_beside(model_file: str, png: bytes) -> str | None:
     """
     target = Path(preview_beside(model_file))
     try:
-        with _written_whole(target) as part:
-            part.write_bytes(png)
+        write_bytes_atomically(target, png)
         return str(target)
     except OSError as e:
         log.warning("Couldn't save the preview next to %s: %s", model_file, e)
         return None
-
-
-def save_bytes(dest_dir: Path, filename: str, data: bytes) -> str:
-    dest = Path(dest_dir) / _safe_name(filename)
-    dest.write_bytes(data)
-    return str(dest)
 
 
 def copy_verified(src: str | os.PathLike, dest_dir: str | os.PathLike, name: str | None = None) -> str:
@@ -260,7 +261,7 @@ def move_file(src: str | os.PathLike, dest_dir: str | os.PathLike, name: str | N
     except OSError as e:
         if e.errno != errno.EXDEV:  # anything but "different filesystems" is a real problem: leave the file alone
             raise
-    copied = copy_verified(src, dest_dir, name)
+    copied = copy_verified(src, dest_dir, dest.name)
     try:
         src.unlink()
     except OSError:
@@ -302,25 +303,29 @@ def delete_files(paths: Iterable[str | None], prune: bool = True) -> None:
     folders we created for them. Never deletes anything else — no recursive removes —
     which matters when the folder is someone's network share.
     """
-    folders: set[Path] = set()
-    for p in paths:
-        if not p:
-            continue
-        path = Path(p)
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            pass
-        except OSError as e:
-            log.warning("Couldn't delete %s: %s", path, e)
-        folders.add(path.parent)
-    if not prune:
-        return
-    for d in folders:
-        if _VERSION_DIR.match(d.name):
-            _rmdir_if_empty(d)
-            if _ID_DIR.match(d.parent.name):
-                _rmdir_if_empty(d.parent)
+    folders = {_delete_quietly(Path(p)) for p in paths if p}
+    if prune:
+        for d in folders:
+            _prune_version_folder(d)
+
+
+def _delete_quietly(path: Path) -> Path:
+    """Delete one file (already gone is fine; anything else is logged, not raised). Returns the folder it was in."""
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        log.warning("Couldn't delete %s: %s", path, e)
+    return path.parent
+
+
+def _prune_version_folder(d: Path) -> None:
+    """Remove a `v{n}` folder if it's empty, then its `{id}` folder if that's empty too. Other folders are left alone."""
+    if _VERSION_DIR.match(d.name):
+        _rmdir_if_empty(d)
+        if _ID_DIR.match(d.parent.name):
+            _rmdir_if_empty(d.parent)
 
 
 # ------------------------------------------------------------------ choosing a location
@@ -431,50 +436,44 @@ def folder_status(folder: Path, *, needs_marker: bool = True) -> dict:
     """
     exists = folder.is_dir()
     writable = exists and _probe_writable(folder)
-    marker_ok = (exists and (folder / MARKER_NAME).is_file()) if needs_marker else True
+    marker_ok = (exists and _has_marker(folder)) if needs_marker else True
     return {"exists": exists, "writable": writable, "marker_ok": marker_ok, "ready": bool(exists and writable and marker_ok)}
 
 
 def location_status(kind: str) -> dict:
-    root, custom = effective_root(kind), bool(_custom[kind])
-    if not custom:
-        root.mkdir(parents=True, exist_ok=True)
+    custom = bool(_custom[kind])
+    root = effective_root(kind) if custom else _made_default_root(kind)
     status = folder_status(root, needs_marker=custom)  # the default folder is the app's own: no marker needed
-    exists = status["exists"]
     free = total = None
     separate = False
-    if exists:
-        try:
-            du = shutil.disk_usage(root)
-            free, total = du.free, du.total
-        except OSError:
-            pass
+    if status["exists"]:
+        free, total = _disk_space(root)
         separate = _has_mount_ancestor(_real(root)) and not is_inside(root, local_root())
     return {**status, "free_bytes": free, "total_bytes": total, "separate_volume": separate}
+
+
+def _disk_space(folder: Path) -> tuple[int | None, int | None]:
+    """(free, total) bytes on the folder's volume, or (None, None) when that can't be read."""
+    try:
+        du = shutil.disk_usage(folder)
+    except OSError:
+        return None, None
+    return du.free, du.total
+
+
+def _require_folder(path: Path) -> Path:
+    if not path.is_dir():
+        raise ValueError(f"{path} isn't a folder.")
+    return path
 
 
 def list_subdirs(raw: str | None) -> dict:
     """Sub-folders of `raw` (or of the browse root), for the folder picker. Confined to the browse root."""
     root = browse_root()
-    target = resolve_location(raw) if raw else root
-    if not target.is_dir():
-        raise ValueError(f"{target} isn't a folder.")
-    entries = []
+    target = _require_folder(resolve_location(raw) if raw else root)
     try:
         with os.scandir(target) as it:
-            for e in it:
-                if e.name.startswith("."):
-                    continue
-                try:
-                    if not e.is_dir():
-                        continue
-                    if not is_inside(e.path, root):  # a symlink leading out of the allowed area
-                        continue
-                    entries.append(
-                        {"name": e.name, "path": str(target / e.name), "is_mount": _is_mount(e.path)}
-                    )
-                except OSError:
-                    continue
+            entries = [entry for e in it if (entry := _picker_entry(e, target, root))]
     except OSError as e:
         raise ValueError(f"Couldn't read {target}: {e}")
     entries.sort(key=lambda x: x["name"].casefold())
@@ -484,6 +483,20 @@ def list_subdirs(raw: str | None) -> dict:
         "parent": None if target == root else str(target.parent),
         "entries": entries[:500],
     }
+
+
+def _picker_entry(e: os.DirEntry, target: Path, root: Path) -> dict | None:
+    """One sub-folder as the picker lists it, or None for what it skips: hidden names, files, and unreadable entries."""
+    if e.name.startswith("."):
+        return None
+    try:
+        if not e.is_dir():
+            return None
+        if not is_inside(e.path, root):  # a symlink leading out of the allowed area
+            return None
+        return {"name": e.name, "path": str(target / e.name), "is_mount": _is_mount(e.path)}
+    except OSError:
+        return None
 
 
 _FOLDER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,79}$")
@@ -496,9 +509,7 @@ def create_folder(parent_raw: str, name: str) -> Path:
     where it will persist (a connected share or Farmhand's own storage), never in the
     container's throwaway filesystem.
     """
-    parent = resolve_location(parent_raw)
-    if not parent.is_dir():
-        raise ValueError(f"{parent} isn't a folder.")
+    parent = _require_folder(resolve_location(parent_raw))
     name = (name or "").strip()
     if not _FOLDER_NAME.match(name):
         raise ValueError(

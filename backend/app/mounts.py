@@ -42,6 +42,7 @@ NFS_VERSIONS = ("4", "3")
 MOUNT_TIMEOUT_SECONDS = 30
 CAP_SYS_ADMIN_BIT = 21
 CAP_DAC_READ_SEARCH_BIT = 2  # mount.cifs refuses to run without it, on top of SYS_ADMIN
+_MOUNT_TOOLS = {"smb": "mount.cifs", "nfs": "mount.nfs"}
 
 
 class MountError(ValueError):
@@ -78,14 +79,18 @@ def slug(name: str) -> str:
     return s or "share"
 
 
+def _nas_root() -> Path:
+    return storage.browse_root() / "nas"
+
+
 def mount_point_for(name: str) -> Path:
     """Where a share is mounted inside the container — under the folder picker's reach."""
-    return storage.browse_root() / "nas" / slug(name)
+    return _nas_root() / slug(name)
 
 
 def scratch_mount_point(share_id: int) -> Path:
     """A temporary mount point (hidden from the picker) for trying new settings without touching a live mount."""
-    return storage.browse_root() / "nas" / f".test-{share_id}"
+    return _nas_root() / f".test-{share_id}"
 
 
 def validate_name(name: str | None) -> str:
@@ -124,42 +129,50 @@ def parse_location(text: str | None) -> tuple[str, str, str]:
     raw = (text or "").strip().replace("\\", "/")
     if not raw:
         raise ValueError(_LOCATION_HELP)
+    protocol, rest = _split_protocol(raw)
+    head, _, tail = rest.lstrip("/").partition("/")
+    if protocol == "nfs":
+        return _nfs_location(head, tail)
+    return _smb_location(head, tail)
 
+
+def _split_protocol(raw: str) -> tuple[str, str]:
+    """("smb" or "nfs", the address without its scheme or leading //)."""
     m = _SCHEME.match(raw)
     if m:
         scheme = m.group(1).lower()
         if scheme in ("smb", "cifs"):
-            protocol, rest = "smb", m.group(2)
-        elif scheme == "nfs":
-            protocol, rest = "nfs", m.group(2)
-        else:
-            raise ValueError(
-                "That doesn't look like a NAS address. Use //server/share (SMB) or server:/export (NFS), "
-                "or an smb:// or nfs:// address."
-            )
-    elif raw.startswith("//"):
-        protocol, rest = "smb", raw[2:]
-    elif re.match(r"^[^/]*:", raw):  # "host:/path" — a colon before any slash
-        protocol, rest = "nfs", raw
-    else:
-        protocol, rest = "smb", raw
+            return "smb", m.group(2)
+        if scheme == "nfs":
+            return "nfs", m.group(2)
+        raise ValueError(
+            "That doesn't look like a NAS address. Use //server/share (SMB) or server:/export (NFS), "
+            "or an smb:// or nfs:// address."
+        )
+    if raw.startswith("//"):
+        return "smb", raw[2:]
+    if re.match(r"^[^/]*:", raw):  # "host:/path" — a colon before any slash
+        return "nfs", raw
+    return "smb", raw
 
-    head, _, tail = rest.lstrip("/").partition("/")
-    if protocol == "nfs":
-        server = head[:-1] if head.endswith(":") else head
-        path = tail.strip("/")
-        if "@" in server:
-            raise ValueError(_NO_LOGIN_IN_ADDRESS)
-        if not server or not path:
-            raise ValueError("Add the export path after the address, like 192.168.1.50:/volume1/farmhand.")
-        return protocol, server, "/" + path
 
+def _nfs_location(head: str, tail: str) -> tuple[str, str, str]:
+    server = head[:-1] if head.endswith(":") else head
+    path = tail.strip("/")
+    if "@" in server:
+        raise ValueError(_NO_LOGIN_IN_ADDRESS)
+    if not server or not path:
+        raise ValueError("Add the export path after the address, like 192.168.1.50:/volume1/farmhand.")
+    return "nfs", server, "/" + path
+
+
+def _smb_location(head: str, tail: str) -> tuple[str, str, str]:
     share = tail.strip("/")
     if "@" in head:
         raise ValueError(_NO_LOGIN_IN_ADDRESS)
     if not head or not share:
         raise ValueError("Add the share name after the address, like //192.168.1.50/farmhand.")
-    return protocol, head, share
+    return "smb", head, share
 
 
 def validate_fields(
@@ -179,19 +192,32 @@ def validate_fields(
     if not _HOST.match(server):
         raise ValueError("Enter the NAS's address — its IP (like 192.168.1.50) or its name (like nas.local).")
 
-    raw_share = (share or "").strip()
-    if protocol == "smb":
-        raw_share = raw_share.strip("/")
-        segments = raw_share.split("/")
-        if not raw_share or any(seg in ("", ".", "..") for seg in segments) or _SMB_BAD.search(raw_share) or len(raw_share) > 200:
-            raise ValueError("Enter the share's name as the NAS lists it (like farmhand), optionally followed by a sub-folder.")
-        share_value = raw_share
-    else:
-        norm = "/" + raw_share.strip("/")
-        if not _NFS_PATH.match(norm) or ".." in norm.split("/") or len(norm) > 200:
-            raise ValueError("Enter the NFS export path as the NAS lists it (like /volume1/farmhand).")
-        share_value = norm
+    share_value = _valid_smb_share(share) if protocol == "smb" else _valid_nfs_export(share)
+    username, password, domain = _valid_login(username, password, domain)
+    version = _valid_version(protocol, version)
 
+    if protocol == "nfs":
+        username = password = domain = None  # NFS has no login of its own
+    return ShareSpec(protocol, server, share_value, username, password if username else None, domain, version or None)
+
+
+def _valid_smb_share(share: str | None) -> str:
+    raw_share = (share or "").strip().strip("/")
+    segments = raw_share.split("/")
+    if not raw_share or any(seg in ("", ".", "..") for seg in segments) or _SMB_BAD.search(raw_share) or len(raw_share) > 200:
+        raise ValueError("Enter the share's name as the NAS lists it (like farmhand), optionally followed by a sub-folder.")
+    return raw_share
+
+
+def _valid_nfs_export(share: str | None) -> str:
+    norm = "/" + (share or "").strip().strip("/")
+    if not _NFS_PATH.match(norm) or ".." in norm.split("/") or len(norm) > 200:
+        raise ValueError("Enter the NFS export path as the NAS lists it (like /volume1/farmhand).")
+    return norm
+
+
+def _valid_login(username: str | None, password: str | None, domain: str | None) -> tuple[str | None, str | None, str | None]:
+    """The SMB login fields, tidied (blank -> None) and checked."""
     username = (username or "").strip() or None
     if username is not None and (len(username) > 64 or _CONTROL.search(username)):
         raise ValueError("That username isn't valid.")
@@ -200,17 +226,18 @@ def validate_fields(
     domain = (domain or "").strip() or None
     if domain is not None and not _DOMAIN.match(domain):
         raise ValueError("That domain/workgroup isn't valid.")
+    return username, password, domain
 
+
+def _valid_version(protocol: str, version: str | None) -> str:
+    """The protocol version, or "" for SMB's "let the kernel negotiate". NFS defaults to 4."""
     version = (version or "").strip()
     allowed = SMB_VERSIONS if protocol == "smb" else NFS_VERSIONS
     if protocol == "nfs" and not version:
         version = "4"
     if version not in allowed:
         raise ValueError(f"That {protocol.upper()} version isn't supported here.")
-
-    if protocol == "nfs":
-        username = password = domain = None  # NFS has no login of its own
-    return ShareSpec(protocol, server, share_value, username, password if username else None, domain, version or None)
+    return version
 
 
 # ------------------------------------------------------------------ environment
@@ -249,7 +276,7 @@ def mount_capability(status_path: str = "/proc/self/status") -> dict:
     on keeping while it drops everything else (without it: "Unable to apply new capability set").
     NFS needs only SYS_ADMIN, so it can work while SMB doesn't.
     """
-    smb_tool, nfs_tool = bool(shutil.which("mount.cifs")), bool(shutil.which("mount.nfs"))
+    smb_tool, nfs_tool = (bool(shutil.which(_MOUNT_TOOLS[p])) for p in ("smb", "nfs"))
 
     if not _has_cap(CAP_SYS_ADMIN_BIT, status_path):
         msg = "Farmhand's container isn't allowed to mount network shares. " + COMPOSE_FIX
@@ -257,15 +284,19 @@ def mount_capability(status_path: str = "/proc/self/status") -> dict:
 
     smb_message = nfs_message = None
     if not smb_tool:
-        smb_message = "SMB support (cifs-utils) isn't installed in this image — rebuild it with `docker compose up --build`."
+        smb_message = _not_installed("SMB", "cifs-utils")
     elif not _has_cap(CAP_DAC_READ_SEARCH_BIT, status_path):
         smb_message = "Mounting SMB shares needs one more permission for the container. " + COMPOSE_FIX
     if not nfs_tool:
-        nfs_message = "NFS support (nfs-common) isn't installed in this image — rebuild it with `docker compose up --build`."
+        nfs_message = _not_installed("NFS", "nfs-common")
 
     smb, nfs = smb_message is None, nfs_message is None
     message = None if (smb or nfs) else (smb_message if smb_message == nfs_message else f"{smb_message} {nfs_message}")
     return {"ok": smb or nfs, "smb": smb, "nfs": nfs, "message": message, "smb_message": smb_message, "nfs_message": nfs_message}
+
+
+def _not_installed(protocol: str, package: str) -> str:
+    return f"{protocol} support ({package}) isn't installed in this image — rebuild it with `docker compose up --build`."
 
 
 def is_mounted(path: str | os.PathLike) -> bool:
@@ -326,46 +357,57 @@ def friendly_error(stderr: str, spec: ShareSpec) -> MountError:
     if spec.password and len(spec.password) >= 4:
         text = text.replace(spec.password, "•••")
     low = text.lower()
-    what = "share" if spec.protocol == "smb" else "export"
 
-    if "capability set" in low or "unable to apply new capability" in low:
+    def says(*phrases: str) -> bool:
+        return any(phrase in low for phrase in phrases)
+
+    what = "share" if spec.protocol == "smb" else "export"
+    proto = spec.protocol.upper()
+
+    if says("capability set", "unable to apply new capability"):
         return MountError(
             "mount.cifs couldn't adjust its own permissions inside the container — it needs more than the container "
             "was given. " + COMPOSE_FIX,
             "privilege",
         )
-    if "operation not permitted" in low or "mount error(1)" in low or "only root" in low or "must be superuser" in low:
+    if says("operation not permitted", "mount error(1)", "only root", "must be superuser"):
         return MountError("Farmhand isn't allowed to mount shares from inside its container. " + COMPOSE_FIX, "privilege")
-    if "unknown filesystem type" in low or "mount error(19)" in low:
+    if says("unknown filesystem type", "mount error(19)"):
         return MountError(
-            f"This computer's kernel can't mount {spec.protocol.upper()} shares (the {'cifs' if spec.protocol == 'smb' else 'nfs'} "
+            f"This computer's kernel can't mount {proto} shares (the {'cifs' if spec.protocol == 'smb' else 'nfs'} "
             "support is missing).",
             "unsupported",
         )
-    if "name or service not known" in low or "unable to resolve" in low or "could not resolve" in low or "unknown host" in low:
+    if says("name or service not known", "unable to resolve", "could not resolve", "unknown host"):
         return MountError(f"Couldn't find “{spec.server}” on the network. Try its IP address instead of its name.", "unreachable")
-    if any(m in low for m in ("no route to host", "network is unreachable", "connection timed out", "mount error(113)", "mount error(110)", "mount error(111)", "connection refused")):
+    if says("no route to host", "network is unreachable", "connection timed out", "mount error(113)", "mount error(110)",
+            "mount error(111)", "connection refused"):
         return MountError(
             f"Couldn't reach {spec.server}. Check the address, that the NAS is switched on, and that it's on the same network.",
             "unreachable",
         )
-    if spec.protocol == "nfs" and "access denied" in low:
+    if spec.protocol == "nfs" and says("access denied"):
         return MountError(
             f"{spec.server} refused this computer. On the NAS, allow this machine's IP address to use that export "
             "(and allow root access to it).",
             "permission",
         )
-    if "mount error(13)" in low or "permission denied" in low or "access denied" in low or "logon failure" in low:
+    if says("mount error(13)", "permission denied", "access denied", "logon failure"):
         return MountError(
             "The NAS refused the connection: wrong username or password, or that user isn't allowed on this share.", "auth"
         )
-    if "mount error(2)" in low or "no such file or directory" in low or "bad network name" in low or "mount error(6)" in low:
+    if says("mount error(2)", "no such file or directory", "bad network name", "mount error(6)"):
         return MountError(f"{spec.server} answered, but it has no {what} by that name. Check the {what} name for typos.", "not_found")
-    if "mount error(95)" in low or "protocol not supported" in low or "invalid argument" in low or "mount error(22)" in low:
+    if says("mount error(95)", "protocol not supported", "invalid argument", "mount error(22)"):
         return MountError(
-            f"The NAS didn't accept that {spec.protocol.upper()} version. Try a different version under Advanced.", "version"
+            f"The NAS didn't accept that {proto} version. Try a different version under Advanced.", "version"
         )
-    return MountError(f"Couldn't mount the {what}: {text[:300] or 'no details were given'}", "other")
+    return MountError(f"Couldn't mount the {what}: {_details(text)}", "other")
+
+
+def _details(output: str) -> str:
+    """The start of a command's own output, for the end of a message."""
+    return output[:300] or "no details were given"
 
 
 def mount(spec: ShareSpec, mount_point: str | os.PathLike) -> None:
@@ -373,33 +415,38 @@ def mount(spec: ShareSpec, mount_point: str | os.PathLike) -> None:
     mount_point = Path(mount_point)
     if is_mounted(mount_point):
         return
-    cap = mount_capability()
-    if not cap["ok"]:
-        raise MountError(cap["message"], "privilege")
-    if not cap[spec.protocol]:
-        tool_present = shutil.which("mount.cifs" if spec.protocol == "smb" else "mount.nfs")
-        raise MountError(cap[f"{spec.protocol}_message"], "privilege" if tool_present else "unsupported")
+    _require_mount_capability(spec.protocol)
 
     mount_point.mkdir(parents=True, exist_ok=True)
     credentials = _write_credentials(spec)
     try:
-        argv = build_mount_command(spec, mount_point, credentials)
-        try:
-            result = _run(argv)
-        except subprocess.TimeoutExpired:
-            raise MountError(
-                f"Timed out waiting for {spec.server}. Check the address and that the NAS is on and reachable.", "unreachable"
-            )
-        except FileNotFoundError:
-            raise MountError("The `mount` command isn't available in this image — rebuild it.", "unsupported")
-        if result.returncode != 0:
-            raise friendly_error(result.stderr or result.stdout, spec)
+        _run_mount(spec, build_mount_command(spec, mount_point, credentials))
     finally:
         if credentials:
-            try:
-                os.unlink(credentials)
-            except FileNotFoundError:
-                pass
+            Path(credentials).unlink(missing_ok=True)
+
+
+def _require_mount_capability(protocol: str) -> None:
+    """Raise MountError when this container can't mount this kind of share (privilege, or a missing client tool)."""
+    cap = mount_capability()
+    if not cap["ok"]:
+        raise MountError(cap["message"], "privilege")
+    if not cap[protocol]:
+        tool_present = shutil.which(_MOUNT_TOOLS[protocol])
+        raise MountError(cap[f"{protocol}_message"], "privilege" if tool_present else "unsupported")
+
+
+def _run_mount(spec: ShareSpec, argv: list[str]) -> None:
+    try:
+        result = _run(argv)
+    except subprocess.TimeoutExpired:
+        raise MountError(
+            f"Timed out waiting for {spec.server}. Check the address and that the NAS is on and reachable.", "unreachable"
+        )
+    except FileNotFoundError:
+        raise MountError("The `mount` command isn't available in this image — rebuild it.", "unsupported")
+    if result.returncode != 0:
+        raise friendly_error(result.stderr or result.stdout, spec)
 
 
 def unmount(mount_point: str | os.PathLike, lazy: bool = False) -> None:
@@ -416,7 +463,7 @@ def unmount(mount_point: str | os.PathLike, lazy: bool = False) -> None:
         err = (result.stderr or result.stdout or "").strip()
         if "busy" in err.lower():
             raise MountError("The share is busy right now (something is still using it). Try again in a moment.", "busy")
-        raise MountError(f"Couldn't disconnect the share: {err[:300] or 'no details were given'}", "other")
+        raise MountError(f"Couldn't disconnect the share: {_details(err)}", "other")
 
 
 # ------------------------------------------------------------------ remembering the last failure per share
