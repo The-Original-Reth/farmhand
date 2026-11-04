@@ -1,29 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { errorText, getEnergy } from "../api.js";
-import { fieldBox, headerButton, monoText, panelBox, uiText } from "../styles.js";
+import { fieldBox, monoText, panelBox, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
-import { fmtKwh, fmtMoney } from "../lib/format.js";
-import { priceForMonth } from "../lib/energyPrice.js";
-import { energyByPeriod, PeriodButtons, periodKey, periodLabel, ShowAllPeriods } from "../printers/EnergyPanel.jsx";
+import { fmtCost, fmtKwh } from "../lib/format.js";
+import { energyCost, parsePrice, priceForMonth } from "../lib/energyPrice.js";
+import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, ShowAllPeriods, tableHead } from "../lib/periods.jsx";
 
 const NO_PRICES = { current: null, history: [], months: {} };
+
+// a price as a price box shows it: empty for none
+const shown = (v) => (v == null ? "" : String(v));
 
 // A month's own price per kWh, in its row of the table: empty shows the average cost that counted that month (faint),
 // typing a price gives the month its own (saved as typed, to 5 decimal places), emptying it goes back to the average.
 function MonthPriceBox({ month, own, fallback, onChange }) {
-  const shown = (v) => (v == null ? "" : String(v));
-  const parse = (t) => {
-    if (!t.trim()) return null;
-    const n = Number(t.trim());
-    return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100000) / 100000 : undefined;
-  };
   const [text, setText] = useState(shown(own));
-  useEffect(() => setText((t) => (parse(t) === own ? t : shown(own))), [own]);
-  const bad = parse(text) === undefined;
+  useEffect(() => setText((t) => (parsePrice(t) === own ? t : shown(own))), [own]);
+  const bad = parsePrice(text) === undefined;
   return (
     <input
       data-testid="power-month-price"
@@ -37,10 +33,10 @@ function MonthPriceBox({ month, own, fallback, onChange }) {
       onKeyDown={(e) => e.stopPropagation()}
       onChange={(e) => {
         setText(e.target.value);
-        const n = parse(e.target.value);
+        const n = parsePrice(e.target.value);
         if (n !== undefined && n !== own) onChange(n);
       }}
-      onBlur={() => setText(shown(bad ? own : parse(text)))}
+      onBlur={() => setText(shown(bad ? own : parsePrice(text)))}
       style={{
         ...fieldBox(), width: "100%", boxSizing: "border-box", height: 24, padding: "0 6px", fontSize: fs(12),
         borderColor: bad ? c.amber : own != null ? c.teal : c.border,
@@ -58,25 +54,19 @@ const printerColor = (i) => [c.teal, c.amber, c.green, c.fileName, c.danger, c.t
 // price is typed the box says "Saving…", then "Saved" (or why it couldn't be).
 function EnergyPriceBox({ value, onChange, saveState }) {
   const [typed, setTyped] = useState(false); // the status only shows once a price has been typed here
-  const shown = (v) => (v == null ? "" : String(v));
-  const parse = (t) => {
-    if (!t.trim()) return null;
-    const n = Number(t.trim());
-    return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100000) / 100000 : undefined; // undefined = not a price
-  };
   const [text, setText] = useState(shown(value));
   // a price saved elsewhere (or restored) replaces the box's text; one that's the same as what's typed ("0.10", "0.")
   // leaves the typing alone
-  useEffect(() => setText((t) => (parse(t) === value ? t : shown(value))), [value]);
+  useEffect(() => setText((t) => (parsePrice(t) === value ? t : shown(value))), [value]);
   const change = (t) => {
     setText(t);
-    const n = parse(t);
+    const n = parsePrice(t);
     if (n !== undefined && n !== value) {
       setTyped(true);
       onChange(n);
     }
   };
-  const bad = parse(text) === undefined;
+  const bad = parsePrice(text) === undefined;
   const status =
     !typed || !saveState || saveState.phase === "idle" ? null
     : saveState.phase === "saving" ? { color: c.textFaint, text: "Saving…" }
@@ -96,7 +86,7 @@ function EnergyPriceBox({ value, onChange, saveState }) {
           aria-invalid={bad}
           title={bad ? "A price from 0 to 100, e.g. 0.15" : "What a kWh of electricity costs you on average, from this month on (earlier months keep their price)"}
           onChange={(e) => change(e.target.value)}
-          onBlur={() => setText(shown(bad ? value : parse(text)))}
+          onBlur={() => setText(shown(bad ? value : parsePrice(text)))}
           style={{ width: 72, background: "none", border: "none", outline: "none", color: c.textPrimary, ...ui, fontSize: fs(13), padding: 0 }}
         />
       </span>
@@ -171,16 +161,12 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
   const word = selected === current ? (by === "month" ? "This month" : "This year") : periodLabel(selected, by);
   // what can be picked: every month or year with figures, and the current one even before it has any
   const choices = periods.some((p) => p.key === current) ? periods.map((p) => p.key) : [current, ...periods.map((p) => p.key)];
-  const at = choices.indexOf(selected);
-  const step = (d) => choices[at + d] && setPicked(choices[at + d]);
   const cols = "90px minmax(0, 1fr) 100px 110px 80px 90px 60px";
   const printerCols = "minmax(140px, 1fr) 120px 110px 70px 90px 100px";
   // Costs: each month's whole use at that month's price, a year being its months added up. null when no month in it
   // has both a meter figure and a price.
   const priceFor = (month) => priceForMonth(prices, month);
-  const monthsIn = (x, key) => (x.data?.months || []).filter((m) => (by === "month" ? m.key === key : m.key.startsWith(key)));
-  const printerCost = (x, key) =>
-    monthsIn(x, key).reduce((sum, m) => (m.whole == null || priceFor(m.key) == null ? sum : (sum ?? 0) + m.whole * priceFor(m.key)), null);
+  const printerCost = (x, key) => energyCost(prices, (x.data?.months || []).filter((m) => monthIn(m.key, key, by)));
   const periodCost = (key) =>
     perPrinter.reduce((sum, x) => (x.has && printerCost(x, key) != null ? (sum ?? 0) + printerCost(x, key) : sum), null);
   // a year's price per kWh: its months' one price, or undefined when they differ
@@ -189,7 +175,6 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
     return all.size === 1 ? [...all][0] : undefined;
   };
   const costHint = energyPrice == null && !prices.history.length ? "Fill in the average cost per kWh above" : "Whole use at each month's price per kWh";
-  const head = { display: "grid", gap: 10, padding: "7px 12px", fontSize: fs(11), color: c.textFaint, background: c.panelAlt, borderBottom: `1px solid ${c.border}`, ...ui };
 
   return (
     <div data-testid="power-section" style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 900 }}>
@@ -199,27 +184,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
           {onEnergyPrice && <EnergyPriceBox value={energyPrice} onChange={onEnergyPrice} saveState={saveState} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div data-testid="power-pick" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <button onClick={() => step(1)} disabled={at >= choices.length - 1} aria-label={by === "month" ? "Month before" : "Year before"} style={{ ...headerButton(), padding: 0, width: 26, justifyContent: "center", opacity: at >= choices.length - 1 ? 0.45 : 1 }}>
-            <ChevronLeft size={14} />
-          </button>
-          <select
-            value={selected}
-            onChange={(e) => setPicked(e.target.value === current ? null : e.target.value)}
-            aria-label={by === "month" ? "Month to look at" : "Year to look at"}
-            style={{ ...headerButton(), padding: "0 6px", color: c.textPrimary, background: c.panelAlt }}
-          >
-            {choices.map((k) => (
-              <option key={k} value={k}>
-                {periodLabel(k, by)}
-                {k === current ? (by === "month" ? " (this month)" : " (this year)") : ""}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => step(-1)} disabled={at <= 0} aria-label={by === "month" ? "Month after" : "Year after"} style={{ ...headerButton(), padding: 0, width: 26, justifyContent: "center", opacity: at <= 0 ? 0.45 : 1 }}>
-            <ChevronRight size={14} />
-          </button>
-        </div>
+        <PeriodPicker testId="power-pick" by={by} current={current} choices={choices} selected={selected} onPick={setPicked} />
         <PeriodButtons
           testId="power-by"
           by={by}
@@ -240,7 +205,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
         />
         <StatTile
           label={`${word}, electrical cost`}
-          value={periodCost(selected) != null ? `$${fmtMoney(periodCost(selected))}` : "—"}
+          value={fmtCost(periodCost(selected))}
           hint={costHint}
         />
         <StatTile label={`${word}, prints`} value={fmtKwh(thisPeriod?.prints ?? 0)} hint="Each print's own energy, from the printers' histories" />
@@ -254,7 +219,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
 
       <div data-testid="power-periods" style={panelBox({ overflowX: "auto" })}>
         <div style={{ minWidth: 680 }}>
-          <div style={{ ...head, gridTemplateColumns: cols }}>
+          <div style={tableHead(cols)}>
             <div>{by === "month" ? "Month" : "Year"}</div>
             <div>Whole farm, by printer</div>
             <div>Prints</div>
@@ -304,7 +269,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
                 </div>
               )}
               <div data-testid="power-period-cost" style={monoText(12, periodCost(p.key) == null ? c.textFaint : c.heading)}>
-                {periodCost(p.key) == null ? "—" : `$${fmtMoney(periodCost(p.key))}`}
+                {fmtCost(periodCost(p.key))}
               </div>
               <div style={monoText(12, c.textMuted)}>{p.printCount || ""}</div>
             </div>
@@ -319,7 +284,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
         </div>
         <div data-testid="power-printers" style={panelBox({ overflowX: "auto" })}>
           <div style={{ minWidth: 660 }}>
-            <div style={{ ...head, gridTemplateColumns: printerCols }}>
+            <div style={tableHead(printerCols)}>
               <div>Printer</div>
               <div>Meter reading</div>
               <div>Whole printer</div>
@@ -352,7 +317,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
                       <div style={monoText(12, mine?.whole != null ? c.heading : c.textFaint)}>{mine?.whole != null ? fmtKwh(mine.whole) : "—"}</div>
                       <div style={monoText(12, c.textMuted)}>{share != null ? `${share}%` : "—"}</div>
                       <div data-testid="power-printer-cost" style={monoText(12, printerCost(x, selected) != null ? c.heading : c.textFaint)}>
-                        {printerCost(x, selected) != null ? `$${fmtMoney(printerCost(x, selected))}` : "—"}
+                        {fmtCost(printerCost(x, selected))}
                       </div>
                       <div style={monoText(12, c.textPrimary)}>{fmtKwh(mine?.prints ?? 0)}</div>
                     </>

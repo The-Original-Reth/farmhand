@@ -19,6 +19,8 @@ export const fmtUnix = (s) => (s ? new Date(s * 1000).toLocaleString() : "—");
 export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kWh`);
 // ---- money: two decimals, without a symbol (the pages put "$" in front) ----
 export const fmtMoney = (v) => (v == null ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+// a cost in dollars: "$3.73"
+export const fmtCost = (v) => (v == null ? "—" : `$${fmtMoney(v)}`);
 // "1 file", "3 files"
 export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // a hover hint for something with notes: its notes' first 120 characters

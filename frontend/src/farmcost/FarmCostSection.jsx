@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
+import { Download } from "lucide-react";
+import { c } from "../theme.js";
 import { errorText, getEnergy, getFarmCost } from "../api.js";
 import { headerButton, monoText, panelBox, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
-import { fmtGrams, fmtKwh, fmtMoney } from "../lib/format.js";
-import { priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
-import { periodKey, periodLabel } from "../printers/EnergyPanel.jsx";
+import { fmtCost as money, fmtGrams, fmtKwh } from "../lib/format.js";
+import { energyCost, priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
+import { BY_MONTH_YEAR_OR_ALL, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, tableHead } from "../lib/periods.jsx";
 
-const BY = [{ value: "month", label: "By month" }, { value: "year", label: "By year" }, { value: "all", label: "All time" }];
-const money = (v) => (v == null ? "—" : `$${fmtMoney(v)}`);
 const add = (a, b) => (b == null ? a : (a ?? 0) + b); // null + nothing stays null: "—" rather than $0.00
 
 // The period in a download's name: "nov 2026", "year 2026" or "all time" (whatever is on screen)
@@ -88,9 +86,7 @@ export function FarmCostSection() {
   const current = by === "all" ? "all" : periodKey(new Date(), by);
   const selected = by === "all" ? "all" : picked ?? current;
   const choices = by === "all" ? [] : periods.includes(current) ? periods : [current, ...periods];
-  const at = choices.indexOf(selected);
-  const step = (d) => choices[at + d] && setPicked(choices[at + d] === current ? null : choices[at + d]);
-  const inPeriod = (key) => (by === "all" ? true : by === "year" ? key.startsWith(selected) : key === selected);
+  const inPeriod = (key) => monthIn(key, selected, by);
   const word = by === "all" ? "All time" : selected === current ? (by === "month" ? "This month" : "This year") : periodLabel(selected, by);
 
   // one printer's figures for the period looked at
@@ -103,12 +99,10 @@ export function FarmCostSection() {
       if (m.prints > m.unweighed) f.grams = add(f.grams, m.grams);
       if (m.prints > m.uncosted) f.filamentCost = add(f.filamentCost, m.filament_cost);
     }
-    for (const m of (energy[p.id]?.months || []).filter((m) => inPeriod(m.key) && m.whole != null)) {
-      f.kwh = add(f.kwh, m.whole);
-      const price = priceForMonth(prices, m.key);
-      if (price == null) f.unpriced = true;
-      else f.energyCost = add(f.energyCost, m.whole * price);
-    }
+    const metered = (energy[p.id]?.months || []).filter((m) => inPeriod(m.key) && m.whole != null);
+    for (const m of metered) f.kwh = add(f.kwh, m.whole);
+    f.unpriced = metered.some((m) => priceForMonth(prices, m.key) == null);
+    f.energyCost = energyCost(prices, metered);
     f.total = f.filamentCost == null && f.energyCost == null ? null : (f.filamentCost ?? 0) + (f.energyCost ?? 0);
     return f;
   };
@@ -122,7 +116,7 @@ export function FarmCostSection() {
     { grams: null, filamentCost: null, kwh: null, energyCost: null, total: null, prints: 0, unweighed: 0, uncosted: 0, unpriced: false },
   );
   const cols = "minmax(140px, 1fr) 60px 100px 100px 110px 100px 100px";
-  const head = { display: "grid", gridTemplateColumns: cols, gap: 10, padding: "7px 12px", fontSize: fs(11), color: c.textFaint, background: c.panelAlt, borderBottom: `1px solid ${c.border}`, ...ui };
+  const head = tableHead(cols);
   const gaps = (r) => [
     r.unweighed ? `${r.unweighed} print${r.unweighed === 1 ? "" : "s"} without a known weight` : null,
     r.uncosted ? `${r.uncosted} print${r.uncosted === 1 ? "" : "s"} without a filament price` : null,
@@ -134,27 +128,7 @@ export function FarmCostSection() {
         <SectionLabel>Farm cost</SectionLabel>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           {by !== "all" && (
-            <div data-testid="farm-cost-pick" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <button onClick={() => step(1)} disabled={at >= choices.length - 1} aria-label={by === "month" ? "Month before" : "Year before"} style={{ ...headerButton(), padding: 0, width: 26, justifyContent: "center", opacity: at >= choices.length - 1 ? 0.45 : 1 }}>
-                <ChevronLeft size={14} />
-              </button>
-              <select
-                value={selected}
-                onChange={(e) => setPicked(e.target.value === current ? null : e.target.value)}
-                aria-label={by === "month" ? "Month to look at" : "Year to look at"}
-                style={{ ...headerButton(), padding: "0 6px", color: c.textPrimary, background: c.panelAlt }}
-              >
-                {choices.map((k) => (
-                  <option key={k} value={k}>
-                    {periodLabel(k, by)}
-                    {k === current ? (by === "month" ? " (this month)" : " (this year)") : ""}
-                  </option>
-                ))}
-              </select>
-              <button onClick={() => step(-1)} disabled={at <= 0} aria-label={by === "month" ? "Month after" : "Year after"} style={{ ...headerButton(), padding: 0, width: 26, justifyContent: "center", opacity: at <= 0 ? 0.45 : 1 }}>
-                <ChevronRight size={14} />
-              </button>
-            </div>
+            <PeriodPicker testId="farm-cost-pick" by={by} current={current} choices={choices} selected={selected} onPick={setPicked} />
           )}
           <button
             data-testid="farm-cost-csv"
@@ -164,24 +138,15 @@ export function FarmCostSection() {
           >
             <Download size={13} /> Download CSV
           </button>
-          <div data-testid="farm-cost-by" style={{ display: "flex", gap: 6 }}>
-            {BY.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => {
-                  setBy(o.value);
-                  setPicked(null);
-                }}
-                aria-pressed={by === o.value}
-                style={{
-                  ...headerButton(), border: `1px solid ${by === o.value ? c.amber : c.border}`,
-                  background: by === o.value ? c.amberDim : "none", color: by === o.value ? c.amber : c.textMuted,
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <PeriodButtons
+            testId="farm-cost-by"
+            by={by}
+            options={BY_MONTH_YEAR_OR_ALL}
+            onChange={(next) => {
+              setBy(next);
+              setPicked(null);
+            }}
+          />
         </div>
       </div>
 

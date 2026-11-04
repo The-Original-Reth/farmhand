@@ -4,7 +4,7 @@ import { fieldBox, foldHeading, monoText, uiText } from "../styles.js";
 import { errorText, getPrintJobs } from "../api.js";
 
 import { Badge, SectionToggle } from "../components/common/ui.jsx";
-import { fmtDuration, fmtGrams, fmtKwh, fmtMetres, fmtMoney, fmtWhen } from "../lib/format.js";
+import { fmtCost, fmtDuration, fmtGrams, fmtKwh, fmtMetres, fmtMoney, fmtWhen } from "../lib/format.js";
 
 // ---- print history: Farmhand's copy ----
 const JOB_STATUS_TONE = { completed: "green", in_progress: "teal", cancelled: "muted" };
@@ -132,7 +132,7 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
               {j.filament_grams != null ? fmtGrams(j.filament_grams) : fmtMetres(j.filament_used)}
             </div>
             <div data-testid="print-job-cost" style={monoText(12, j.filament_cost == null ? c.textFaint : c.textMuted)} title={costHint(j)}>
-              {j.filament_cost == null ? "—" : `$${fmtMoney(j.filament_cost)}`}
+              {fmtCost(j.filament_cost)}
             </div>
             <div
               style={monoText(12, j.energy_kwh == null ? c.textFaint : c.textMuted)}
@@ -145,14 +145,14 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
               style={monoText(12, j.energy_cost == null ? c.textFaint : c.textMuted)}
               title={j.energy_cost != null ? `${fmtKwh(j.energy_kwh)} at $${j.energy_price} per kWh` : j.energy_kwh == null ? "No energy figure for this print" : "No price per kWh for this month: fill in the average cost on the Power page"}
             >
-              {j.energy_cost == null ? "—" : `$${fmtMoney(j.energy_cost)}`}
+              {fmtCost(j.energy_cost)}
             </div>
             <div
               data-testid="print-job-total-cost"
               style={monoText(12, j.total_cost == null ? c.textFaint : c.heading)}
               title={j.total_cost == null ? "No filament cost for this print" : j.energy_cost == null ? "Filament cost only (no energy cost)" : `$${fmtMoney(j.filament_cost)} filament + $${fmtMoney(j.energy_cost)} energy`}
             >
-              {j.total_cost == null ? "—" : `$${fmtMoney(j.total_cost)}`}
+              {fmtCost(j.total_cost)}
             </div>
           </div>
         ))}
