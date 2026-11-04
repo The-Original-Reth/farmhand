@@ -152,6 +152,8 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
 
   if (!energy) return <div style={uiText(13, c.textFaint)}>Loading the farm's energy…</div>;
 
+  // the table: the latest 12 months (earlier ones can still be picked above), or every year
+  const rows = by === "month" ? periods.slice(0, 12) : periods;
   const max = Math.max(1e-9, ...periods.map((p) => Math.max(p.prints, p.whole ?? 0)));
   const current = periodKey(new Date(), by);
   const selected = picked ?? current;
@@ -225,8 +227,8 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
             <div title={costHint}>Electrical cost</div>
             <div>Prints #</div>
           </div>
-          {periods.length === 0 && <div style={uiText(13, c.textMuted, { padding: 14 })}>No energy figures from any printer yet.</div>}
-          {periods.map((p, i) => (
+          {rows.length === 0 && <div style={uiText(13, c.textMuted, { padding: 14 })}>No energy figures from any printer yet.</div>}
+          {rows.map((p, i) => (
             <div
               key={p.key}
               data-testid="power-period"
