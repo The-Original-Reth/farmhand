@@ -5,6 +5,9 @@ A background thread looks once an hour (and soon after start-up, so a month that
 caught up): if last month's record isn't in the "farm cost" folder yet, it's written (services/farm_cost.py). A
 folder that can't be written right now (a network share that isn't mounted) is just tried again the next hour;
 nothing here ever stops the thread.
+
+Each look also works out the page's figures in the farm's time zone, so they're ready (services/farm_cost.py keeps
+them) and the page opens without costing every print first.
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ import threading
 
 from . import storage
 from .database import SessionLocal
-from .services import farm_cost
+from .services import config_service, farm_cost
 
 log = logging.getLogger("farmhand.farm_cost")
 
@@ -40,6 +43,7 @@ class FarmCostRecorder:
 
     def run_once(self) -> None:
         with SessionLocal() as db:
+            farm_cost.filament_by_month(db, config_service.get_config(db)["preferences"].get("time_zone"))
             try:
                 written = farm_cost.record_last_month(db)
             except storage.StorageUnavailableError as e:

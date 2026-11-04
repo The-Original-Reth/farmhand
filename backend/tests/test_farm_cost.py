@@ -62,6 +62,27 @@ def test_each_printers_filament_is_also_added_up_by_day(farm):
     assert sum(d["filament_cost"] for d in days) == pytest.approx(printers[pid]["months"][0]["filament_cost"], abs=0.011)
 
 
+def test_a_printers_figures_are_kept_until_its_prints_or_prices_change(farm, monkeypatch):
+    from app.services import farm_cost
+
+    c, fake, pid, _ = farm
+    fake.add_job("000001", "Frog.gcode", start=_ts(2026, 10, 5), filament_mm=10_000, metadata=fake.add_gcode("Frog.gcode", cost="20", density="1.25"))
+    c.post(f"/printers/{pid}/moonraker/sync")
+    worked_out = []
+    real = farm_cost._printer_filament
+    monkeypatch.setattr(farm_cost, "_printer_filament", lambda *a: worked_out.append(a[1]) or real(*a))
+    months = lambda: {p["printer_id"]: p["months"] for p in c.get("/farm-cost").json()["printers"]}[pid]  # noqa: E731
+
+    first = months()
+    assert months() == first and worked_out.count(pid) == 1  # asked again with nothing changed: not worked out again
+    fake.add_job("000002", "Frog.gcode", start=_ts(2026, 10, 6), filament_mm=5_000, metadata=fake.add_gcode("Frog.gcode", cost="20", density="1.25"))
+    c.post(f"/printers/{pid}/moonraker/sync")
+    assert months()[0]["prints"] == 2 and worked_out.count(pid) == 2  # a new print: worked out afresh
+    fake.jobs[0]["filament_used"] = 20_000  # a print the printer now reports differently
+    c.post(f"/printers/{pid}/moonraker/sync")
+    assert months()[0]["grams"] > first[0]["grams"] * 2 and worked_out.count(pid) == 3
+
+
 def test_months_follow_the_viewers_time_zone(farm):
     c, fake, pid, _ = farm
     fake.add_job("000001", "Frog.gcode", start=_ts(2026, 11, 1, 2), metadata=fake.add_gcode("Frog.gcode"))

@@ -10,19 +10,25 @@ above the STL / OBJ / STEP folder. See record_last_month.
 from __future__ import annotations
 
 import datetime as dt
+import threading
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import config_store, storage
 from . import app_settings
-from ..models import Printer, PrintJob
+from ..models import Bundle, BundleVersion, GcodeFilament, Printer, PrintJob
 from ..timeutil import as_utc
 from . import config_service, energy, filament_cost
 from .energy import zone
 
 CHUNK = 500  # prints costed at a time, so a long history isn't all held at once
+
+# {(printer id, time zone): (what its figures were made from, {"months", "days"})}: costing every print takes a while,
+# so a printer's figures are kept until one of its prints, the G-codes read for it, or its 3MFs change (see _made_from)
+_cache: dict[tuple[int, str], tuple[tuple, dict]] = {}
+_cache_lock = threading.Lock()
 
 
 def filament_by_month(db: Session, tz: str | None) -> dict:
@@ -34,29 +40,68 @@ def filament_by_month(db: Session, tz: str | None) -> dict:
     shows when a printer is clicked while looking at a month.
     """
     where_tz = zone(tz)
+    made_from = _made_from(db)
     out = []
     for printer_id in db.scalars(select(Printer.id).order_by(Printer.id)).all():
-        months: dict[str, dict] = {}
-        days: dict[str, dict] = {}
-        ids = db.scalars(
-            select(PrintJob.id).where(PrintJob.printer_id == printer_id, PrintJob.filament_used > 0, PrintJob.start_time.isnot(None))
-        ).all()
-        for start in range(0, len(ids), CHUNK):
-            jobs = list(db.scalars(select(PrintJob).where(PrintJob.id.in_(ids[start:start + CHUNK]))))
-            costs = filament_cost.costs(db, jobs)
-            for j in jobs:
-                day = as_utc(j.start_time).astimezone(where_tz).strftime("%Y-%m-%d")
-                grams = filament_cost.grams_used(j, costs[j.id])
-                _count(months, day[:7], grams, costs[j.id])
-                _count(days, day, grams, costs[j.id])
-            db.expunge_all()  # done with these prints: don't keep them all in the session
-        for m in (*months.values(), *days.values()):
-            m["grams"], m["filament_cost"] = round(m["grams"], 1), round(m["filament_cost"], 2)
+        key, now = (printer_id, str(where_tz)), made_from.get(printer_id)
+        with _cache_lock:
+            cached = _cache.get(key)
+        if cached and cached[0] == now:
+            figures = cached[1]
+        else:
+            figures = _printer_filament(db, printer_id, where_tz)
+            with _cache_lock:
+                _cache[key] = (now, figures)
         out.append({
-            "printer_id": printer_id, "months": _newest_first(months), "days": _newest_first(days),
+            "printer_id": printer_id, **figures,
             "energy_days": [{"key": d["key"], "whole": d["whole"], "partial": d["partial"]} for d in energy.by_day(db, printer_id, tz)],
         })
     return {"printers": out}
+
+
+def _made_from(db: Session) -> dict[int, tuple]:
+    """
+    For each printer, what its filament figures depend on, in a few numbers that change whenever any of it does: its
+    prints (one added, removed, or changed by a sync: synced_at), the G-codes read for their price, and its 3MF versions.
+    """
+    jobs = db.execute(
+        select(PrintJob.printer_id, func.count(), func.max(PrintJob.id), func.max(PrintJob.synced_at), func.sum(PrintJob.filament_used))
+        .group_by(PrintJob.printer_id)
+    ).all()
+    gcodes = db.execute(
+        select(GcodeFilament.printer_id, func.count(), func.max(GcodeFilament.id), func.max(GcodeFilament.read_at))
+        .group_by(GcodeFilament.printer_id)
+    ).all()
+    versions = db.execute(
+        select(Bundle.printer_id, func.count(), func.max(BundleVersion.id))
+        .join(Bundle, Bundle.id == BundleVersion.bundle_id).group_by(Bundle.printer_id)
+    ).all()
+    out: dict[int, tuple] = {}
+    for part, rows in enumerate((jobs, gcodes, versions)):
+        for printer_id, *numbers in rows:
+            out.setdefault(printer_id, [(), (), ()])[part] = tuple(numbers)
+    return {pid: tuple(parts) for pid, parts in out.items()}
+
+
+def _printer_filament(db: Session, printer_id: int, where_tz) -> dict:
+    """One printer's {"months", "days"} (see filament_by_month), every print costed."""
+    months: dict[str, dict] = {}
+    days: dict[str, dict] = {}
+    ids = db.scalars(
+        select(PrintJob.id).where(PrintJob.printer_id == printer_id, PrintJob.filament_used > 0, PrintJob.start_time.isnot(None))
+    ).all()
+    for start in range(0, len(ids), CHUNK):
+        jobs = list(db.scalars(select(PrintJob).where(PrintJob.id.in_(ids[start:start + CHUNK]))))
+        costs = filament_cost.costs(db, jobs)
+        for j in jobs:
+            day = as_utc(j.start_time).astimezone(where_tz).strftime("%Y-%m-%d")
+            grams = filament_cost.grams_used(j, costs[j.id])
+            _count(months, day[:7], grams, costs[j.id])
+            _count(days, day, grams, costs[j.id])
+        db.expunge_all()  # done with these prints: don't keep them all in the session
+    for m in (*months.values(), *days.values()):
+        m["grams"], m["filament_cost"] = round(m["grams"], 1), round(m["filament_cost"], 2)
+    return {"months": _newest_first(months), "days": _newest_first(days)}
 
 
 def _count(rows: dict[str, dict], key: str, grams: float | None, cost: dict | None) -> None:
