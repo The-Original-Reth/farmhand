@@ -38,6 +38,11 @@ def render_stl_thumbnail(stl_path: str, size_px: int = 256) -> bytes | None:
         verts = _read_stl(stl_path)
     except Exception:
         return None  # unreadable: a missing preview is better than a blocked upload
+    return render_triangles(verts, size_px)
+
+
+def render_triangles(verts: np.ndarray, size_px: int = 256) -> bytes | None:
+    """A preview of any triangles, (n, 3, 3) (an OBJ's, or a STEP file's once it's been turned into triangles)."""
     verts = verts[np.isfinite(verts).all(axis=(1, 2))]
     if len(verts) == 0:
         return None

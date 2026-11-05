@@ -88,7 +88,7 @@ def test_a_hand_edited_or_hostile_file_is_cleaned_up_on_read(tmp_path):
     }))
     got = cs.read_document(tmp_path)
     assert got["appearance"]["scheme"] == "farmhand" and got["appearance"]["contrast"] == 100 and got["appearance"]["font"] == "play"
-    assert got["storage"] == {"stl_path": None, "threemf_path": "/data/x"}
+    assert got["storage"] == {"stl_path": None, "threemf_path": "/data/x", "project_path": None}
     assert len(got["shares"]) == 1 and "password" not in got["shares"][0] and "evil" not in got["shares"][0]
 
 

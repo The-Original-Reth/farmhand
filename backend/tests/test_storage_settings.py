@@ -141,7 +141,7 @@ def test_migrate_moves_everything_into_the_chosen_locations(db_session, share, s
 
     stl, threemf = _folder(share, "stl"), _folder(share, "3mf")
     out = svc.save(db_session, {"stl_path": str(stl), "threemf_path": str(threemf)})
-    assert out["outside"] == {"stl": 1, "threemf": 1}
+    assert out["outside"] == {"stl": 1, "threemf": 1, "project": 0}
 
     result = svc.migrate(db_session)
     assert result["moved_stl"] == 1 and result["moved_threemf"] == 1
@@ -157,7 +157,7 @@ def test_migrate_moves_everything_into_the_chosen_locations(db_session, share, s
     new_model_v = source_model_service.get_source_model(db_session, model.id).versions[0]
     assert new_model_v.thumbnail_path in (None, new_stl + ".png")  # (this test's model isn't a real STL: no preview)
     assert not any(os.path.exists(p) for p in (stl_file, old_3mf, old_gcode))  # originals removed after the verified copy
-    assert svc.describe(db_session)["outside"] == {"stl": 0, "threemf": 0}
+    assert svc.describe(db_session)["outside"] == {"stl": 0, "threemf": 0, "project": 0}
 
 
 def test_migrate_reports_a_file_that_isnt_where_the_database_says_without_failing(db_session, share):

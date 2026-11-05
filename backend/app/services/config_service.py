@@ -90,7 +90,8 @@ def _share_entries(db: Session) -> list[dict]:
 
 def build_document(db: Session) -> dict:
     return config_store.build_document(
-        get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db)
+        get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
+        project_path=storage.custom_path("project"),
     )
 
 
@@ -226,6 +227,7 @@ def inspect_location(raw: str) -> dict:
                 "shares": len(doc["shares"]),
                 "has_stl_folder": bool(doc["storage"]["stl_path"]),
                 "has_threemf_folder": bool(doc["storage"]["threemf_path"]),
+                "has_project_folder": bool(doc["storage"]["project_path"]),
                 **records_service.count_records(real),  # "printers": n, "models": n
             }
         except config_store.ConfigFileError as e:
@@ -271,7 +273,9 @@ def restore(db: Session) -> dict:
     result = {"restored": ["appearance", "display preferences"], "shares_added": [], "shares_kept": [], "needs_password": [], "warnings": []}
     save_config(db, {"appearance": doc["appearance"], "preferences": doc["preferences"]})
 
-    applied, warnings = storage_settings_service.restore_locations(db, doc["storage"]["stl_path"], doc["storage"]["threemf_path"])
+    applied, warnings = storage_settings_service.restore_locations(
+        db, doc["storage"]["stl_path"], doc["storage"]["threemf_path"], doc["storage"]["project_path"]
+    )
     result["restored"] += applied
     result["warnings"] += warnings
 

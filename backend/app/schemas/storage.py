@@ -25,12 +25,14 @@ class OutsideCounts(BaseModel):
 
     stl: int
     threemf: int
+    project: int = 0  # project files (CAD file versions)
 
 
 class StorageSettingsOut(BaseModel):
     browse_root: str
     stl: StorageLocation
     threemf: StorageLocation
+    project: StorageLocation  # project files: each project's own files (its CAD files)
     outside: OutsideCounts
 
 
@@ -39,6 +41,7 @@ class StorageSettingsUpdate(BaseModel):
 
     stl_path: str | None = None
     threemf_path: str | None = None
+    project_path: str | None = None
 
 
 class BrowseEntry(BaseModel):
@@ -62,5 +65,6 @@ class MigrationFailure(BaseModel):
 class MigrationResult(BaseModel):
     moved_stl: int
     moved_threemf: int
+    moved_project: int = 0
     missing: list[str]  # versions whose file wasn't where the database said it was
     failed: list[MigrationFailure]

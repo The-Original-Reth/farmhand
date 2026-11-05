@@ -151,16 +151,42 @@ export const normalizeBundle = (b) => {
 export const getPrinters = () => request("/printers");
 const getBundle = (bundleId) => request(`/bundles/${bundleId}`);
 
+// A project: its name and its own CAD files (its STL and 3MF files, printers and parts come later). Each CAD file
+// has every version, newest first, with where to download it and its preview (null when none could be made).
+export const normalizeProject = (p) => ({
+  id: p.id,
+  name: p.name,
+  created: p.created_at,
+  cadFiles: (p.cad_files || []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    versions: f.versions.map((v) => {
+      const base = `${API_BASE}/projects/${p.id}/cad/${f.id}/versions/${v.version}`;
+      return {
+        v: v.version,
+        filename: v.filename,
+        size: v.size_bytes,
+        note: v.note,
+        date: fmtDate(v.uploaded_at),
+        download: `${base}/download`,
+        preview: v.has_preview ? `${base}/preview?v=${encodeURIComponent(v.uploaded_at)}` : null,
+      };
+    }),
+  })),
+});
+
 export const fetchAll = async () => {
-  const [printers, models, bundles] = await Promise.all([
+  const [printers, models, bundles, projects] = await Promise.all([
     getPrinters(),
     request("/source-models"),
     request("/bundles"),
+    request("/projects"),
   ]);
   return {
     printers: printers.map(normalizePrinter),
     sourceModels: models.map(normalizeSourceModel),
     bundles: bundles.map(normalizeBundle),
+    projects: projects.map(normalizeProject),
   };
 };
 
@@ -170,6 +196,19 @@ export const fetchVersionSettings = async (versionId) => {
 };
 
 // ---- writes ----
+
+// Projects: make one, rename it, delete it (the server answers a made or renamed project as it now stands)
+export const createProject = (name) => request("/projects", jsonBody("POST", { name }));
+export const renameProject = (id, name) => request(`/projects/${id}`, jsonBody("PATCH", { name }));
+export const deleteProject = (id) => del(`/projects/${id}`);
+// A project's CAD files: a new one (its version 1), a newer version of one, and deleting a version or the whole file.
+// Each answers the project as it now stands.
+export const uploadCad = ({ projectId, file, note }) =>
+  request(`/projects/${projectId}/cad`, formBody("POST", { file, note: note || undefined }));
+export const uploadCadVersion = ({ projectId, cadId, file, note }) =>
+  request(`/projects/${projectId}/cad/${cadId}/versions`, formBody("POST", { file, note: note || undefined }));
+export const deleteCadVersion = (projectId, cadId, v) => del(`/projects/${projectId}/cad/${cadId}/versions/${v}`);
+export const deleteCadFile = (projectId, cadId) => del(`/projects/${projectId}/cad/${cadId}`);
 
 const ext = (name) => (name.split(".").pop() || "").toLowerCase();
 const typeFromExt = (e) => {
@@ -501,16 +540,18 @@ const normalizeStorage = (r) => ({
   browseRoot: r.browse_root,
   stl: normalizeLocation(r.stl),
   threemf: normalizeLocation(r.threemf),
-  outside: r.outside, // { stl, threemf }: versions whose files are still outside the selected locations
+  project: normalizeLocation(r.project), // project files: each project's own files (its CAD files)
+  outside: r.outside, // { stl, threemf, project }: versions whose files are still outside the selected locations
 });
 
 export const getStorageSettings = async () => normalizeStorage(await request("/settings/storage"));
 
 // Only the locations passed are changed; null resets that one to its default.
-export const saveStorageSettings = async ({ stlPath, threemfPath }) => {
+export const saveStorageSettings = async ({ stlPath, threemfPath, projectPath }) => {
   const body = {};
   if (stlPath !== undefined) body.stl_path = stlPath;
   if (threemfPath !== undefined) body.threemf_path = threemfPath;
+  if (projectPath !== undefined) body.project_path = projectPath;
   return normalizeStorage(await request("/settings/storage", jsonBody("PUT", body)));
 };
 
@@ -563,7 +604,7 @@ export const deleteShare = (id) => del(`/settings/storage/shares/${id}`);
 
 export const migrateStorage = async () => {
   const r = await post("/settings/storage/migrate");
-  return { movedStl: r.moved_stl, movedThreemf: r.moved_threemf, missing: r.missing, failed: r.failed };
+  return { movedStl: r.moved_stl, movedThreemf: r.moved_threemf, movedProject: r.moved_project || 0, missing: r.missing, failed: r.failed };
 };
 
 // Redraw one version's preview from its file with the current renderer. Resolves to { updated }.
@@ -613,6 +654,7 @@ const normalizeFound = (f) =>
       shares: f.summary.shares,
       hasStlFolder: f.summary.has_stl_folder,
       hasThreemfFolder: f.summary.has_threemf_folder,
+      hasProjectFolder: !!f.summary.has_project_folder,
       printers: f.summary.printers || 0, // printer files in its printers/ folder
       models: f.summary.models || 0,
     },

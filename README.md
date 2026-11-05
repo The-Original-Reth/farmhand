@@ -223,6 +223,25 @@ sudo docker compose down -v
     mixed-plate 3MFs that also use other models are kept, just unlinked from it.
   - Deleting removes the stored files (and their previews) and parsed settings for good.
 
+**Projects**, under Models in the menu: a piece of work for the farm. A project gathers what that work needs: its CAD
+files, STL files, 3MF files, printers and parts. **New project** on the Projects page makes one (a name not already
+used, in any case), and its page has **Rename**, the bin to delete it, and its five sections (CAD, STL files, 3MF
+files, Printers, Parts), each folding away with the arrow by its heading (remembered in this browser). CAD is built;
+the other sections are empty until each is built.
+- **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an
+  optional note on what it is. Each CAD file keeps every version, like a 3MF: **New version** adds the next one, named
+  `Bracket ver 1.f3d`, `Bracket ver 2.f3d`... (a "ver N" the uploaded name already has is replaced). The newest
+  version shows; **Show N older versions** (the down arrow) shows the rest. Each version can be downloaded or deleted;
+  deleting the only version deletes the CAD file, and deleting the project deletes its CAD files.
+- **Previews**, drawn like an STL's: STEP and IGES files (and BREP) are turned into triangles and drawn; STL and OBJ
+  files are drawn from their own triangles; a Fusion file (.f3d) shows the picture Fusion keeps inside it. Other kinds
+  (SolidWorks, Inventor, OpenSCAD...) have no preview. Click a preview to open it full size. A very large STEP file
+  that takes over 90 seconds to draw goes without one.
+- Project files are kept in the **Project files** folder chosen on the Settings page (by default Farmhand's own
+  storage), one folder per project: `<project files>/<project number>/cad/<CAD file number>/v<n>/`, each version's
+  preview next to it. It works like the STL and 3MF folders: it can be on a NAS, gets the same safety check, and
+  **Move them now** moves files into it when it changes.
+
 **Printers** (see "Printers" below)
 - Sortable by name, type, wired IP or wireless IP (remembered); add, edit and decommission. A decommissioned printer
   can be deleted (**Delete** on its page) once it has no 3MF files left; its print history, notes and maintenance go
@@ -249,7 +268,7 @@ Esoterical CANBus and USB guides, A better print_start macro, TMC Autotune, Shak
 energy usage monitoring, KIAUH, Moonraker Timelapse, and the Kalico, Klipper, KlipperScreen and Mainsail
 documentation); change them like any other.
 
-**Settings** — connecting a NAS (SMB or NFS) and choosing where STL and 3MF files go (see "Network storage"),
+**Settings** — connecting a NAS (SMB or NFS) and choosing where STL, 3MF and project files go (see "Network storage"),
 and where a copy of Farmhand's settings and records is kept
 
 **Not wired into the UI yet** (the API supports these, nothing calls them):
@@ -560,7 +579,7 @@ measures about 2.6:1, which is why the default changed. The colours live in
 ### Where settings and records are kept
 
 Farmhand's settings are: the look of the site (above), display preferences (the Models sort
-order), and your storage setup (the STL and 3MF folders and the network shares).
+order), and your storage setup (the STL, 3MF and project files folders and the network shares).
 
 - **On the server, always.** They're kept in Farmhand's database, so every browser and device
   shows the same look and order — change it on one, it changes on all.

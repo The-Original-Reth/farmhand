@@ -117,6 +117,88 @@ export function mockApi() {
   };
 
   // ------------------------------------------------------------------ the farm
+  // ------------------------------------------------------------------ projects: made, listed, renamed, deleted
+  const project = (id) => farm.projects.find((p) => p.id === Number(id)) || fail404("Project not found");
+  const projectName = (body, except) => {
+    const name = String(body.name ?? "").split(/\s+/).filter(Boolean).join(" ");
+    if (!name) throw new HttpError(409, "A project needs a name.");
+    if (name.length > 200) throw new HttpError(409, "A project's name can be at most 200 characters.");
+    const clash = farm.projects.find((p) => p !== except && p.name.toLowerCase() === name.toLowerCase());
+    if (clash) throw new HttpError(409, `There's already a project called ${clash.name}.`);
+    return name;
+  };
+  // As the API answers: a CAD file is named after its newest version; the stand-in preview picture stays in the mockup
+  const projectOut = (p) => ({
+    id: p.id, name: p.name, created_at: p.created_at,
+    cad_files: p.cad_files.map((f) => ({
+      id: f.id, name: f.versions[0].filename, created_at: f.created_at,
+      versions: f.versions.map(({ thumb, ...v }) => ({ ...v, has_preview: !!thumb })),
+    })),
+  });
+  on("GET", "/projects", () => [...farm.projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(projectOut));
+  on("POST", "/projects", (_p, body) => {
+    const p = { id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()), cad_files: [] };
+    farm.projects.push(p);
+    return [201, projectOut(p)];
+  });
+  on("GET", "/projects/:id", ({ id }) => projectOut(project(id)));
+  on("PATCH", "/projects/:id", ({ id }, body) => {
+    const p = project(id);
+    p.name = projectName(body, p);
+    return projectOut(p);
+  });
+  // CAD files: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version 2 is "Bracket ver 2.f3d").
+  // A kind the real backend draws a preview of gets a stand-in picture here.
+  const withVersion = (name, n) => {
+    const dot = name.lastIndexOf(".");
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+    return `${stem.replace(/\s*\bver\s*\d+$/i, "").replace(/[ ._-]+$/, "") || stem} ver ${n}${ext}`;
+  };
+  const previewable = (name) => /\.(stl|obj|step|stp|iges|igs|brep|f3d|f3z)$/i.test(name);
+  const cadFile = (id, cadId) => project(id).cad_files.find((f) => f.id === Number(cadId)) || fail404("CAD file not found");
+  const cadVersion = (id, cadId, v) => cadFile(id, cadId).versions.find((x) => x.version === Number(v)) || fail404("CAD file version not found");
+  const addCadVersion = (f, body) => {
+    const n = (f.versions[0]?.version || 0) + 1;
+    const filename = withVersion(body.files?.[0] || "CAD file", n);
+    f.versions.unshift({
+      version: n, filename, size_bytes: 1_250_000, note: String(body.fields?.note || "").trim() || null, uploaded_at: iso(nowUnix()),
+      thumb: previewable(filename) ? "stl-frog-keychain" : null,
+    });
+  };
+  on("POST", "/projects/:id/cad", ({ id }, body) => {
+    const p = project(id);
+    const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [] };
+    addCadVersion(f, body);
+    p.cad_files.push(f);
+    return [201, projectOut(p)];
+  });
+  on("POST", "/projects/:id/cad/:cadId/versions", ({ id, cadId }, body) => {
+    addCadVersion(cadFile(id, cadId), body);
+    return [201, projectOut(project(id))];
+  });
+  on("DELETE", "/projects/:id/cad/:cadId/versions/:v", ({ id, cadId, v }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    const f = cadFile(id, cadId);
+    const ver = cadVersion(id, cadId, v);
+    f.versions = f.versions.filter((x) => x !== ver);
+    if (!f.versions.length) p.cad_files = p.cad_files.filter((x) => x !== f);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/cad/:cadId", ({ id, cadId }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    const f = cadFile(id, cadId);
+    p.cad_files = p.cad_files.filter((x) => x !== f);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    farm.projects = farm.projects.filter((x) => x !== p);
+    return [204, null];
+  });
+
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
   // The range a scan starts with: as the real API in Docker, the /24 most of the farm's printers are on
   on("GET", "/printers/discover/range", () => {
@@ -971,10 +1053,10 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ settings, storage, shares
   const location = (path) => ({
-    path, default_path: path.includes("models") ? "/data/storage/source_models" : "/data/storage/bundles", is_default: false,
+    path, default_path: path.includes("models") ? "/data/storage/source_models" : path.includes("projects") ? "/data/storage/projects" : "/data/storage/bundles", is_default: false,
     status: { exists: true, writable: true, marker_ok: true, ready: true, free_bytes: 2.1e12, total_bytes: 4e12, separate_volume: true },
   });
-  const storageOut = () => ({ browse_root: "/data", stl: location(farm.storage.stl), threemf: location(farm.storage.threemf), outside: { stl: 0, threemf: 0 } });
+  const storageOut = () => ({ browse_root: "/data", stl: location(farm.storage.stl), threemf: location(farm.storage.threemf), project: location(farm.storage.project), outside: { stl: 0, threemf: 0, project: 0 } });
   const configLocation = () => ({
     path: farm.settingsFolder, is_set: !!farm.settingsFolder,
     status: farm.settingsFolder ? { exists: true, writable: true, marker_ok: true, ready: true } : null,
@@ -1025,16 +1107,17 @@ export function mockApi() {
   on("PUT", "/settings/storage", (_, body) => {
     if ("stl_path" in body) farm.storage.stl = body.stl_path || "/data/storage/source_models";
     if ("threemf_path" in body) farm.storage.threemf = body.threemf_path || "/data/storage/bundles";
+    if ("project_path" in body) farm.storage.project = body.project_path || "/data/storage/projects";
     return storageOut();
   });
   on("GET", "/settings/storage/browse", (_, _b, q) => {
     const path = q.get("path") || "/data";
-    const tree = { "/data": ["nas", "storage"], "/data/nas": ["farm-nas"], "/data/nas/farm-nas": ["3mf", "farmhand-settings", "models"], "/data/storage": ["bundles", "source_models"] };
+    const tree = { "/data": ["nas", "storage"], "/data/nas": ["farm-nas"], "/data/nas/farm-nas": ["3mf", "farmhand-settings", "models", "projects"], "/data/storage": ["bundles", "projects", "source_models"] };
     const parent = path === "/data" ? null : path.split("/").slice(0, -1).join("/") || "/data";
     return { path, root: "/data", parent, entries: (tree[path] || []).map((name) => ({ name, path: `${path}/${name}`, is_mount: path === "/data/nas" })) };
   });
   on("POST", "/settings/storage/folders", () => { throw notInMockup("Making folders"); });
-  on("POST", "/settings/storage/migrate", () => ({ moved_stl: 0, moved_threemf: 0, missing: [], failed: [] }));
+  on("POST", "/settings/storage/migrate", () => ({ moved_stl: 0, moved_threemf: 0, moved_project: 0, missing: [], failed: [] }));
   const capability = { ok: true, smb: true, nfs: true, message: null, smb_message: null, nfs_message: null };
   on("GET", "/settings/storage/shares", () => ({ shares: farm.shares, capability }));
   on("POST", "/settings/storage/shares", () => { throw notInMockup("Connecting a network share"); });
@@ -1051,10 +1134,12 @@ export function mockApi() {
   const fileRoutes = [
     [/^\/bundles\/versions\/(\d+)\/thumbnail$/, (m) => png(version(m[1]).v.thumb)],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/thumbnail$/, (m) => png(model(m[1]).versions.find((v) => v.version === Number(m[2]))?.thumb)],
+    [/^\/projects\/(\d+)\/cad\/(\d+)\/versions\/(\d+)\/preview$/, (m) => png(cadVersion(m[1], m[2], m[3]).thumb)],
   ];
   const downloadRoutes = [
     [/^\/bundles\/versions\/(\d+)\/download\/(3mf|gcode)$/, (m) => [version(m[1]).v.filename.replace(/\.3mf$/, m[2] === "gcode" ? ".gcode" : ".3mf")]],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/download$/, (m) => [model(m[1]).name]],
+    [/^\/projects\/(\d+)\/cad\/(\d+)\/versions\/(\d+)\/download$/, (m) => [cadVersion(m[1], m[2], m[3]).filename]],
   ];
 
   // ------------------------------------------------------------------ the Vite plugin

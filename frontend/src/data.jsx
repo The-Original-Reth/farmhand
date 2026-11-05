@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { errorText, fetchAll, getPrinters, normalizeBundle, normalizePrinter, normalizeSourceModel } from "./api.js";
+import { errorText, fetchAll, getPrinters, normalizeBundle, normalizePrinter, normalizeProject, normalizeSourceModel } from "./api.js";
 import { searchableExtras } from "./lib/search.jsx";
 
 const NONE = [];
@@ -7,7 +7,7 @@ const NONE = [];
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const [state, setState] = useState({ printers: [], sourceModels: [], bundles: [] });
+  const [state, setState] = useState({ printers: [], sourceModels: [], bundles: [], projects: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -40,6 +40,7 @@ export function DataProvider({ children }) {
   const putPrinter = useMemo(() => put("printers", normalizePrinter), [put]);
   const putModel = useMemo(() => put("sourceModels", normalizeSourceModel), [put]);
   const putBundle = useMemo(() => put("bundles", normalizeBundle), [put]);
+  const putProject = useMemo(() => put("projects", normalizeProject), [put]);
   // Just the printers (a sync moved their print hours and service on): the models and 3MFs haven't changed
   const refreshPrinters = useCallback(async () => {
     const printers = (await getPrinters()).map(normalizePrinter);
@@ -47,7 +48,7 @@ export function DataProvider({ children }) {
   }, []);
 
   const value = useMemo(() => {
-    const { printers, sourceModels, bundles } = state;
+    const { printers, sourceModels, bundles, projects } = state;
 
     // bundles <-> source models is many-to-many (a mixed plate has several). Looked up through maps made once per
     // load, not by scanning every 3MF on each call (the Models list asks for every model's on every keystroke).
@@ -90,6 +91,7 @@ export function DataProvider({ children }) {
       printers,
       sourceModels,
       bundles,
+      projects, // by name
       versionsByBundle,
       sourceVersionsByModel,
       bundlesForModel,
@@ -106,10 +108,11 @@ export function DataProvider({ children }) {
       putPrinter,
       putModel,
       putBundle,
+      putProject,
       loading,
       error,
     };
-  }, [state, refresh, refreshPrinters, putPrinter, putModel, putBundle, loading, error]);
+  }, [state, refresh, refreshPrinters, putPrinter, putModel, putBundle, putProject, loading, error]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

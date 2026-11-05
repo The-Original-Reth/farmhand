@@ -77,7 +77,7 @@ export function StorageSection({ onSettingsRestored }) {
   const [info, setInfo] = useState(null);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const [picker, setPicker] = useState(null); // null | "stl" | "threemf"
+  const [picker, setPicker] = useState(null); // null | "stl" | "threemf" | "project"
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveResult, setMoveResult] = useState(null);
   const [sharesInfo, setSharesInfo] = useState(null);
@@ -123,7 +123,7 @@ export function StorageSection({ onSettingsRestored }) {
     }
   };
 
-  const body = (kind, path) => (kind === "stl" ? { stlPath: path } : { threemfPath: path });
+  const body = (kind, path) => ({ [{ stl: "stlPath", threemf: "threemfPath", project: "projectPath" }[kind]]: path });
   const resetLocation = async (kind) => {
     setActionError(null);
     try {
@@ -134,6 +134,8 @@ export function StorageSection({ onSettingsRestored }) {
   };
   const outsideStl = info.outside.stl;
   const outsideThreemf = info.outside.threemf;
+  const outsideProject = info.outside.project || 0;
+  const outsideAll = outsideStl + outsideThreemf + outsideProject;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 820 }}>
@@ -172,20 +174,28 @@ export function StorageSection({ onSettingsRestored }) {
         onChange={() => setPicker("threemf")}
         onReset={() => resetLocation("threemf")}
       />
+      <LocationCard
+        title="Project files"
+        blurb="Each project's own files (its CAD files), in a folder per project."
+        location={info.project}
+        onChange={() => setPicker("project")}
+        onReset={() => resetLocation("project")}
+      />
       {actionError && <div style={uiText(12, c.amber)}>{actionError}</div>}
       <FarmCostFolderCard shares={sharesInfo.shares} />
       <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
 
-      {outsideStl + outsideThreemf > 0 && (
+      {outsideAll > 0 && (
         <div style={{ border: `1px solid ${c.borderStrong}`, borderRadius: 4, background: c.panelAlt, padding: 16 }}>
           <div style={uiText(13, c.textPrimary, { marginBottom: 6 })}>
             {[
               outsideStl > 0 && plural(outsideStl, "STL version", "STL versions"),
               outsideThreemf > 0 && plural(outsideThreemf, "3MF version", "3MF versions"),
+              outsideProject > 0 && plural(outsideProject, "project file version", "project file versions"),
             ]
               .filter(Boolean)
               .join(" and ")}{" "}
-            still {outsideStl + outsideThreemf === 1 ? "has" : "have"} files in a previous location.
+            still {outsideAll === 1 ? "has" : "have"} files in a previous location.
           </div>
           <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
             They keep working where they are — only new uploads use the locations above. Moving copies each file into its
@@ -202,8 +212,9 @@ export function StorageSection({ onSettingsRestored }) {
 
       {moveResult && (
         <div data-testid="move-result" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 14, ...ui, fontSize: fs(13), color: c.textMuted, lineHeight: 1.6 }}>
-          Moved {plural(moveResult.movedStl, "STL version", "STL versions")} and{" "}
-          {plural(moveResult.movedThreemf, "3MF version", "3MF versions")}.
+          Moved {plural(moveResult.movedStl, "STL version", "STL versions")},{" "}
+          {plural(moveResult.movedThreemf, "3MF version", "3MF versions")} and{" "}
+          {plural(moveResult.movedProject, "project file version", "project file versions")}.
           {moveResult.missing.length > 0 && (
             <div style={{ color: c.amber, marginTop: 6 }}>
               Not found on disk (skipped): <span style={mono}>{moveResult.missing.join(", ")}</span>
@@ -228,7 +239,7 @@ export function StorageSection({ onSettingsRestored }) {
           than silently filling the local disk.
         </div>
         <div style={{ marginTop: 6 }}>
-          <b style={{ color: c.textMuted }}>Previews</b> are saved next to each STL and 3MF file (Frog.stl gets Frog.stl.png),
+          <b style={{ color: c.textMuted }}>Previews</b> are saved next to each STL, 3MF and CAD file (Frog.stl gets Frog.stl.png),
           so they're on the NAS with their files, and only there: while a share is offline, its previews don't show.
         </div>
       </div>
@@ -236,8 +247,8 @@ export function StorageSection({ onSettingsRestored }) {
 
       {picker && (
         <FolderPicker
-          title={picker === "stl" ? "Choose the folder for STL files" : "Choose the folder for 3MF files"}
-          startPath={(picker === "stl" ? info.stl : info.threemf).isDefault ? null : (picker === "stl" ? info.stl : info.threemf).path}
+          title={`Choose the folder for ${{ stl: "STL files", threemf: "3MF files", project: "project files" }[picker]}`}
+          startPath={info[picker].isDefault ? null : info[picker].path}
           shares={sharesInfo.shares}
           onSelect={async (path) => setInfo(await saveStorageSettings(body(picker, path)))}
           onClose={() => setPicker(null)}

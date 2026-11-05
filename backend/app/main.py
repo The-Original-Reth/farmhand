@@ -15,7 +15,7 @@ from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .farm_cost_recorder import recorder as farm_cost_recorder
-from .routers import bundles, config_settings, farm_cost, moonraker, printers, prusalink, source_models, storage_settings
+from .routers import bundles, config_settings, farm_cost, moonraker, printers, projects, prusalink, source_models, storage_settings
 from .services import bundle_service, config_service, previews, storage_settings_service, sub_printer_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
@@ -76,6 +76,7 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
 
 
 app.include_router(printers.router)
+app.include_router(projects.router)
 app.include_router(source_models.router)
 app.include_router(bundles.router)
 app.include_router(storage_settings.router)

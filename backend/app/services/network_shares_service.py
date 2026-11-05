@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .. import mounts, storage
 from ..models import NetworkShare
 from ..mounts import MountError, ShareSpec
-from .storage_settings_service import count_version_files
+from .storage_settings_service import count_project_files, count_version_files
 
 log = logging.getLogger("farmhand.shares")
 
@@ -45,7 +45,7 @@ def _spec(row: NetworkShare) -> ShareSpec:
 
 def _files_here(db: Session, mount_point: Path) -> int:
     here = lambda p: storage.is_inside(p, mount_point)  # noqa: E731
-    return sum(count_version_files(db, here, here))
+    return sum(count_version_files(db, here, here)) + count_project_files(db, here)
 
 
 def _out(db: Session, row: NetworkShare) -> dict:
@@ -196,7 +196,7 @@ def delete_share(db: Session, share_id: int) -> None:
     row = _get(db, share_id)
     mount_point = mounts.mount_point_for(row.name)
 
-    labels = {"stl": "STL files", "threemf": "3MF files"}
+    labels = {"stl": "STL files", "threemf": "3MF files", "project": "project files"}
     in_use = [labels[k] for k in storage.KINDS if storage.custom_path(k) and storage.is_inside(storage.custom_path(k), mount_point)]
     if in_use:
         raise ShareInUse(

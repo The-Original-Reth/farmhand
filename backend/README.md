@@ -132,6 +132,17 @@ Postgres instance running.
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files: [{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]}` (a CAD file's `name` is its newest version's; versions newest first) |
+| POST | `/projects` | Make a project: `{name}` (spaces tidied). **409** if it's empty, over 200 characters, or another project's name (any case) |
+| GET | `/projects/{id}` | One project |
+| PATCH | `/projects/{id}` | Rename it: `{name}` (the same rules) |
+| DELETE | `/projects/{id}?confirm=true` | Delete a project with its CAD files (rows, then files) |
+| POST | `/projects/{id}/cad` | Upload a CAD file of any kind (multipart `file`, optional `note`) as version 1, kept as `<name> ver 1.<ext>` in the project files folder, with a preview next to it when one can be made (STEP/IGES/BREP through gmsh, STL, OBJ, a Fusion file's own picture). **503** if that folder isn't there right now. Answers the project |
+| POST | `/projects/{id}/cad/{cad_id}/versions` | A newer version of a CAD file (same fields); every version is kept |
+| GET | `/projects/{id}/cad/{cad_id}/versions/{v}/download` | Download one version |
+| GET | `/projects/{id}/cad/{cad_id}/versions/{v}/preview` | Its preview (PNG); **404** when it has none |
+| DELETE | `/projects/{id}/cad/{cad_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the CAD file with it. Answers the project |
+| DELETE | `/projects/{id}/cad/{cad_id}?confirm=true` | Delete a CAD file with every version. Answers the project |
 | GET | `/printers` | List printers |
 | POST | `/printers` | Register a printer (name is the unique key) |
 | GET | `/printers/discover/range` | The range Scan network starts with: `{cidr}`, the /24 of the server's own private IPv4 address, or, in a Docker container (which only sees Docker's network), the /24 most printers' IPs are in; `null` when neither is known |
@@ -228,14 +239,15 @@ Two independently chosen roots (Storage page, saved in the `app_settings` table)
 ```
 {stl_root}/{source_model_id}/v{n}/{file}        STL / OBJ / STEP
 {threemf_root}/{bundle_id}/v{n}/{file}          3MF and gcode
+{project_root}/{project_id}/cad/{cad_id}/v{n}/{file}   a project's CAD files (every version kept)
 {file}.png                                      its preview, next to it (and nowhere else)
 ```
 
 A pruned 3MF version's preview stays where the 3MF was. Previews the app kept itself before
 (`{storage_root}/thumbnails/...`) are moved out next to their files by `services/previews.py`.
 
-With nothing chosen they default to `{storage_root}/source_models` and
-`{storage_root}/bundles`, the same layout as before. The database stores absolute
+With nothing chosen they default to `{storage_root}/source_models`,
+`{storage_root}/bundles` and `{storage_root}/projects`. No two may overlap. The database stores absolute
 paths, so a file stays where it is when a location changes until it is moved.
 
 - A chosen folder must be under `FARMHAND_STORAGE_BROWSE_ROOT` (default: the parent

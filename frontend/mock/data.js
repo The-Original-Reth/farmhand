@@ -325,8 +325,32 @@ export function buildFarm() {
     },
   ];
 
+  // ------------------------------------------------------------------ projects: a name, and their CAD files
+  // (each version's `thumb` is the stand-in picture the mockup shows as its preview; null = none could be made)
+  const cadVersion = (version, filename, size_bytes, note, daysAgo, thumb) => ({
+    version, filename, size_bytes, note, uploaded_at: iso(NOW - daysAgo * DAY), thumb,
+  });
+  const projects = [
+    {
+      id: 1, name: "Aquarium shop order", created_at: iso(NOW - 6 * DAY),
+      cad_files: [
+        {
+          id: 1, created_at: iso(NOW - 6 * DAY),
+          versions: [
+            cadVersion(3, "Shop display stand ver 3.f3d", 2_412_000, "Wider base, slots for 24 sharks", 1, "stl-shark"),
+            cadVersion(2, "Shop display stand ver 2.f3d", 2_198_000, "Rounded edges", 4, "stl-shark"),
+            cadVersion(1, "Shop display stand ver 1.f3d", 1_904_000, null, 6, "stl-shark"),
+          ],
+        },
+        { id: 2, created_at: iso(NOW - 3 * DAY), versions: [cadVersion(1, "Starfish tag ver 1.step", 318_000, null, 3, "stl-frog-vertical")] },
+        { id: 3, created_at: iso(NOW - 2 * DAY), versions: [cadVersion(1, "Pump housing ver 1.SLDPRT", 1_120_000, "From the supplier", 2, null)] },
+      ],
+    },
+    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [] },
+  ];
+
   return {
-    now: NOW, printers, models, bundles, versionSettings, subPrinters, jobs, meterReadings, maintenance, config, shares, gcodeFilament,
+    now: NOW, printers, models, bundles, versionSettings, subPrinters, jobs, meterReadings, maintenance, config, shares, gcodeFilament, projects,
     // printer id -> { last_sync_at, last_sync_error }: the two online printers synced recently, the MK4 is off
     connections: {
       1: { last_sync_at: iso(NOW - 40 * 60), last_sync_error: null },
@@ -335,7 +359,7 @@ export function buildFarm() {
       5: { last_sync_at: iso(NOW - 40), last_sync_error: null },
     },
     settingsFolder: "/data/nas/farm-nas/farmhand-settings",
-    storage: { stl: "/data/nas/farm-nas/models", threemf: "/data/nas/farm-nas/3mf" },
-    nextIds: { printer: 10, model: 10, bundleVersion: 50, job: 1, share: 5, subPrinter: 20, part: 100 },
+    storage: { stl: "/data/nas/farm-nas/models", threemf: "/data/nas/farm-nas/3mf", project: "/data/nas/farm-nas/projects" },
+    nextIds: { printer: 10, model: 10, bundleVersion: 50, job: 1, share: 5, subPrinter: 20, part: 100, project: 10, cad: 10 },
   };
 }
