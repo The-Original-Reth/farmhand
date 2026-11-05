@@ -347,6 +347,12 @@ export function buildFarm() {
       ],
       // its STLs: two models from Models, and one of its own (not in Models)
       source_model_ids: [1, 6],
+      // its BOM: what it needs that isn't printed
+      parts: [
+        { id: 501, name: "M3x12 screw", quantity: 48, link: "https://www.boltdepot.com/", note: "Hardware drawer B" },
+        { id: 502, name: "Magnet 6x3mm", quantity: 24, link: "https://www.amazon.com/s?k=6x3mm+magnets", note: "N52, pack of 100" },
+        { id: 503, name: "Felt pad 10mm", quantity: 4, link: null, note: null },
+      ],
       // its 3MFs: two from Farmhand (their printers came with them), and one of its own for VT 1190
       bundle_ids: [1, 4],
       printer_ids: [1, 2],
@@ -366,7 +372,7 @@ export function buildFarm() {
         },
       ],
     },
-    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [2, 3], bundle_ids: [3], printer_ids: [1] },
+    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [2, 3], bundle_ids: [3], printer_ids: [1], parts: [] },
   ];
 
   return {

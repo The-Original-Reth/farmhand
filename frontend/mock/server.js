@@ -139,12 +139,13 @@ export function mockApi() {
     id: p.id, name: p.name, created_at: p.created_at,
     cad_files: filesOut(p.cad_files), stl_files: filesOut(p.stl_files), threemf_files: filesOut(p.threemf_files),
     source_model_ids: [...p.source_model_ids], bundle_ids: [...p.bundle_ids], printer_ids: [...p.printer_ids],
+    parts: p.parts.map((x) => ({ ...x })),
   });
   on("GET", "/projects", () => [...farm.projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(projectOut));
   on("POST", "/projects", (_p, body) => {
     const p = {
       id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()),
-      cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [], bundle_ids: [], printer_ids: [],
+      cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [], bundle_ids: [], printer_ids: [], parts: [],
     };
     farm.projects.push(p);
     return [201, projectOut(p)];
@@ -192,6 +193,57 @@ export function mockApi() {
   on("DELETE", "/projects/:id/printers/:pid", ({ id, pid }) => {
     const p = project(id);
     p.printer_ids = p.printer_ids.filter((x) => x !== Number(pid));
+    return projectOut(p);
+  });
+  // The BOM (parts list): parts one at a time, or a BOM CSV. As the API: a name, a quantity of 1 or more, an http(s)
+  // link (https:// added when none is typed) and notes.
+  const bomPartFields = (body, partial = false) => {
+    const out = {};
+    if (!partial || "name" in body) {
+      out.name = String(body.name ?? "").split(/\s+/).filter(Boolean).join(" ");
+      if (!out.name) throw new HttpError(422, "A part needs a name.");
+    }
+    if (!partial || body.quantity != null) {
+      const q = String(body.quantity ?? "").trim() === "" ? 1 : Number(body.quantity);
+      if (!Number.isInteger(q) || q < 1) throw new HttpError(422, "The quantity must be a whole number.");
+      out.quantity = q;
+    }
+    if (!partial || "link" in body) {
+      let link = String(body.link ?? "").trim();
+      if (link && !/^[A-Za-z][A-Za-z0-9+.-]*:(?!\d)/.test(link)) link = `https://${link}`;
+      if (link && !/^https?:\/\/[^\s/]+/i.test(link)) throw new HttpError(422, "The link must be a web address, like https://www.amazon.com/...");
+      out.link = link || null;
+    }
+    if (!partial || "note" in body) out.note = String(body.note ?? "").trim() || null;
+    return out;
+  };
+  on("POST", "/projects/:id/parts/bom", ({ id }, body) => {
+    // the mockup only sees the file's name, not what's in it: it adds two sample parts as a stand-in
+    const p = project(id);
+    if (!/\.csv$/i.test(body.files?.[0] || "")) throw new HttpError(422, "That BOM is empty: the template has the columns to fill in.");
+    if (body.fields?.replace === "true") p.parts = [];
+    const added = [
+      { name: "M3x8 screw (from the BOM)", quantity: 32, link: "https://www.boltdepot.com/", note: "Mockup: a stand-in for the CSV's rows" },
+      { name: "Rubber foot (from the BOM)", quantity: 8, link: null, note: null },
+    ];
+    for (const part of added) p.parts.push({ id: farm.nextIds.part++, ...part });
+    return { project: projectOut(p), added: added.length };
+  });
+  on("POST", "/projects/:id/parts", ({ id }, body) => {
+    const p = project(id);
+    p.parts.push({ id: farm.nextIds.part++, ...bomPartFields(body) });
+    return [201, projectOut(p)];
+  });
+  on("PATCH", "/projects/:id/parts/:partId", ({ id, partId }, body) => {
+    const p = project(id);
+    const part = p.parts.find((x) => x.id === Number(partId)) || fail404("Part not found");
+    Object.assign(part, bomPartFields(body, true));
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/parts/:partId", ({ id, partId }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    p.parts = p.parts.filter((x) => x.id !== Number(partId));
     return projectOut(p);
   });
   // A project's own files, CAD, STL or 3MF: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version

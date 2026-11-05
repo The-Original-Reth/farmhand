@@ -132,7 +132,7 @@ Postgres instance running.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files, stl_files, threemf_files, source_model_ids, bundle_ids, printer_ids}`. `cad_files`, `stl_files` and `threemf_files` (its own STLs and 3MFs, not in Models; a 3MF also has `printer_id`) are `[{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]` (a file's `name` is its newest version's; versions newest first); `source_model_ids`, `bundle_ids` and `printer_ids` are the models, 3MFs and printers from the rest of Farmhand it uses, in the order they were added |
+| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files, stl_files, threemf_files, source_model_ids, bundle_ids, printer_ids}`. `cad_files`, `stl_files` and `threemf_files` (its own STLs and 3MFs, not in Models; a 3MF also has `printer_id`) are `[{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]` (a file's `name` is its newest version's; versions newest first); `source_model_ids`, `bundle_ids` and `printer_ids` are the models, 3MFs and printers from the rest of Farmhand it uses, in the order they were added; `parts` is its BOM, `[{id, name, quantity, link, note}]` |
 | POST | `/projects` | Make a project: `{name}` (spaces tidied). **409** if it's empty, over 200 characters, or another project's name (any case) |
 | GET | `/projects/{id}` | One project |
 | PATCH | `/projects/{id}` | Rename it: `{name}` (the same rules) |
@@ -146,6 +146,10 @@ Postgres instance running.
 | DELETE | `/projects/{id}/{cad|stl|threemf}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the file with it. Answers the project |
 | DELETE | `/projects/{id}/{cad|stl|threemf}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}?confirm=true` | Delete one of its own files with every version. Answers the project |
 | PUT | `/projects/{id}/source-models/{model_id}` | Use a model from Models in the project (already in it: no change). **404** for a model or project that isn't there. Answers the project |
+| POST | `/projects/{id}/parts` | Add a part to the BOM: `{name, quantity?, link?, note?}` (quantity 1 or more, default 1; link an http(s) address, `https://` added when none is given). **422** without a name, for a bad quantity or a link that isn't a web address. Answers the project |
+| PATCH | `/projects/{id}/parts/{part_id}` | Change a part's `name`, `quantity`, `link` or `note` (only the fields sent; a blank or null link or note clears it) |
+| DELETE | `/projects/{id}/parts/{part_id}?confirm=true` | Remove a part from the BOM |
+| POST | `/projects/{id}/parts/bom` | Upload a BOM: multipart `file` (a CSV whose first row names its columns: Part, Quantity, Link, Notes in any order, only Part needed) and `replace` (true: its parts replace the BOM; false: they're added). UTF-8 (with or without Excel's byte-order mark) or Windows-1252, separated by `,` `;` or tab. Every row is checked first: **422** lists each wrong row and nothing changes. Answers `{project, added}` |
 | PUT | `/projects/{id}/bundles/{bundle_id}` | Use a 3MF in the project; the printer it's for comes too. **404** for a 3MF or project that isn't there. Answers the project |
 | DELETE | `/projects/{id}/bundles/{bundle_id}` | Take a 3MF out of the project (it stays, and so does its printer in the project) |
 | PUT | `/projects/{id}/printers/{printer_id}` | Put a printer in the project |

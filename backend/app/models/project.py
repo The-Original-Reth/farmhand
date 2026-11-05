@@ -15,7 +15,7 @@ def _now():
 class Project(Base):
     """
     A piece of work for the farm: its CAD files; its STL and 3MF files (ones from the rest of Farmhand, and ones of its
-    own); the printers those 3MFs are for; and in time its parts. Its own files are kept in the project files folder (chosen on the
+    own); the printers those 3MFs are for; and its parts list. Its own files are kept in the project files folder (chosen on the
     Settings page), one folder per project.
     """
 
@@ -44,6 +44,10 @@ class Project(Base):
     )
     printer_links: Mapped[list["ProjectPrinter"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="ProjectPrinter.added_at"
+    )
+    # its parts list (bill of materials): what it needs that isn't printed
+    parts: Mapped[list["ProjectPart"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="ProjectPart.id"
     )
 
 
@@ -202,3 +206,22 @@ class ProjectPrinter(Base):
     printer: Mapped["Printer"] = relationship(  # noqa: F821
         backref=backref("project_links", cascade="all, delete-orphan")
     )
+
+
+class ProjectPart(Base):
+    """
+    One line of a project's parts list (its bill of materials): something it needs that isn't printed (screws, magnets,
+    inserts...), how many, a link to buy it, and notes. Added one by one, or from a BOM (a CSV file).
+    """
+
+    __tablename__ = "project_parts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    link: Mapped[str | None] = mapped_column(String(1000))  # where to buy it: an http(s) address
+    note: Mapped[str | None] = mapped_column(String(1000))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship(back_populates="parts")

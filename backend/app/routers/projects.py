@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
-from ..schemas.project import ProjectIn, ProjectOut
-from ..services import project_files, project_service
+from ..schemas.project import BomOut, PartIn, PartUpdate, ProjectIn, ProjectOut
+from ..services import project_files, project_parts, project_service
 from ..services.project_files import CAD, STL, THREEMF, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
@@ -187,3 +187,40 @@ def _file_routes(kind: Kind) -> None:
 
 for _kind in project_files.KINDS.values():
     _file_routes(_kind)
+
+
+# ---- the parts list: parts added one at a time, or many from a BOM (a CSV file) ----
+
+
+@router.post("/{project_id}/parts", response_model=ProjectOut, status_code=201)
+def add_part(project_id: int, payload: PartIn, db: Session = Depends(get_db)):
+    """Add a part: its name, quantity (1 or more), a link to buy it (https:// added if it has none) and notes. 422 for
+    a missing name, a bad quantity or a link that isn't a web address."""
+    with answer_errors():
+        return out(project_parts.add_part(db, project_id, payload.name, payload.quantity, payload.link, payload.note))
+
+
+@router.patch("/{project_id}/parts/{part_id}", response_model=ProjectOut)
+def update_part(project_id: int, part_id: int, payload: PartUpdate, db: Session = Depends(get_db)):
+    with answer_errors():
+        return out(project_parts.update_part(db, project_id, part_id, payload.model_dump(exclude_unset=True)))
+
+
+@router.delete("/{project_id}/parts/{part_id}", response_model=ProjectOut)
+def delete_part(project_id: int, part_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    require_confirm(confirm)
+    with answer_errors():
+        return out(project_parts.delete_part(db, project_id, part_id))
+
+
+@router.post("/{project_id}/parts/bom", response_model=BomOut)
+def upload_bom(
+    project_id: int,
+    file: UploadFile = File(..., description="A CSV file: a heading row (Part, Quantity, Link, Notes), then a part a row"),
+    replace: bool = Form(False, description="true: the BOM's parts replace the list; false: they're added to it"),
+    db: Session = Depends(get_db),
+):
+    """Many parts at once from a BOM. Every row is checked first: 422 names each one that's wrong, and nothing changes."""
+    with answer_errors():
+        project, added = project_parts.upload_bom(db, project_id, file.file.read(), replace)
+        return {"project": out(project), "added": added}

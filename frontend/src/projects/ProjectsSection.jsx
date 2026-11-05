@@ -14,6 +14,7 @@ import { FILE_KINDS, FileCard, plural, UploadDialog } from "./ProjectFiles.jsx";
 import { StlActions, StlFiles } from "./StlSection.jsx";
 import { ThreemfActions, ThreemfFiles } from "./ThreemfSection.jsx";
 import { AddPrinterButton, ProjectPrinters } from "./ProjectPrinters.jsx";
+import { BomActions, BomList } from "./BomSection.jsx";
 
 // The Projects page: the list of projects, or one project's own page
 // onOpenModel(modelId) / onOpenPrinter(printerId): that model's or printer's own page
@@ -92,20 +93,21 @@ function ProjectNameForm({ project, onClose, onSaved }) {
   );
 }
 
-// What a project is made of, in page order. Each section folds away. Parts is empty for now.
+// What a project is made of, in page order. Each section folds away.
 const PROJECT_SECTIONS = [
   { key: "cad", label: "CAD", Icon: PenTool, count: (p) => p.cadFiles.length },
   { key: "stl", label: "STL files", Icon: Box, count: (p) => p.modelIds.length + p.stlFiles.length },
   { key: "threemf", label: "3MF files", Icon: FileBox, count: (p) => p.bundleIds.length + p.threemfFiles.length },
   { key: "printers", label: "Printers", Icon: Printer, count: (p) => p.printerIds.length },
-  { key: "parts", label: "Parts", Icon: Wrench, empty: "No parts yet." },
+  { key: "parts", label: "BOM", Icon: Wrench, count: (p) => p.parts.length }, // its parts list (bill of materials)
 ];
 
 function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
   const { projects, refresh } = useData();
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [dialog, setDialog] = useState(null); // null | "cad-upload" | "stl-add" | "stl-upload" | "threemf-add" | "threemf-upload" | "printer-add"
+  // null | "cad-upload" | "stl-add" | "stl-upload" | "threemf-add" | "threemf-upload" | "printer-add" | "part-add" | "bom-upload"
+  const [dialog, setDialog] = useState(null);
   const sections = useProjectSections();
   const project = projects.find((p) => p.id === projectId);
   if (!project) return null;
@@ -122,6 +124,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
     stl: <StlActions onAdd={() => setDialog("stl-add")} onUpload={() => setDialog("stl-upload")} />,
     threemf: <ThreemfActions onAdd={() => setDialog("threemf-add")} onUpload={() => setDialog("threemf-upload")} />,
     printers: <AddPrinterButton onClick={() => setDialog("printer-add")} />,
+    parts: <BomActions project={project} onUpload={() => setDialog("bom-upload")} onAdd={() => setDialog("part-add")} />,
   };
   const bodies = {
     cad: <CadFiles project={project} uploading={dialog === "cad-upload"} onCloseUpload={close} />,
@@ -146,6 +149,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
       />
     ),
     printers: <ProjectPrinters project={project} adding={dialog === "printer-add"} onCloseAdd={close} onOpenPrinter={onOpenPrinter} />,
+    parts: <BomList project={project} adding={dialog === "part-add"} uploading={dialog === "bom-upload"} onClose={close} />,
   };
   const ownFiles = project.cadFiles.length + project.stlFiles.length + project.threemfFiles.length;
 

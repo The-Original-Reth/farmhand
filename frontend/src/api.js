@@ -172,8 +172,8 @@ const normalizeProjectFiles = (projectId, kind, files) =>
     }),
   }));
 
-// A project: its name, its own CAD files, STLs and 3MFs, and the models, 3MFs and printers from the rest of Farmhand
-// it uses (their ids, in the order they were added). Its parts come later.
+// A project: its name, its own CAD files, STLs and 3MFs, the models, 3MFs and printers from the rest of Farmhand it
+// uses (their ids, in the order they were added), and its BOM (parts list): [{ id, name, quantity, link, note }].
 export const normalizeProject = (p) => ({
   id: p.id,
   name: p.name,
@@ -184,6 +184,7 @@ export const normalizeProject = (p) => ({
   modelIds: p.source_model_ids || [],
   bundleIds: p.bundle_ids || [],
   printerIds: p.printer_ids || [],
+  parts: p.parts || [],
 });
 
 export const fetchAll = async () => {
@@ -235,6 +236,14 @@ export const addProjectBundle = (projectId, bundleId) => request(`/projects/${pr
 export const removeProjectBundle = (projectId, bundleId) => request(`/projects/${projectId}/bundles/${bundleId}`, { method: "DELETE" });
 export const addProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "PUT" });
 export const removeProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "DELETE" });
+// A project's BOM: a part added, changed (only the fields given) or removed, each answering the project; and a BOM CSV
+// uploaded, its parts added to the list or replacing it, answering { project, added }
+export const addProjectPart = (projectId, { name, quantity, link, note }) =>
+  request(`/projects/${projectId}/parts`, jsonBody("POST", { name, quantity, link: link || null, note: note || null }));
+export const updateProjectPart = (projectId, partId, changes) => request(`/projects/${projectId}/parts/${partId}`, jsonBody("PATCH", changes));
+export const deleteProjectPart = (projectId, partId) => del(`/projects/${projectId}/parts/${partId}`);
+export const uploadBom = ({ projectId, file, replace }) =>
+  request(`/projects/${projectId}/parts/bom`, formBody("POST", { file, replace: String(!!replace) }));
 
 const ext = (name) => (name.split(".").pop() || "").toLowerCase();
 const typeFromExt = (e) => {

@@ -1,7 +1,7 @@
 """
 Projects: a piece of work for the farm. A project has a name; its own CAD files, STLs and 3MFs (project_files.py); and
 models, 3MFs and printers from the rest of Farmhand it uses, only pointed at. A 3MF it uses brings the printer it's for.
-Its parts come later.
+And its parts list (project_parts.py).
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ _LOAD = (
     selectinload(Project.model_links),
     selectinload(Project.bundle_links),
     selectinload(Project.printer_links),
+    selectinload(Project.parts),
 )
 
 
@@ -63,6 +64,9 @@ def out(project: Project) -> dict:
         "source_model_ids": [link.source_model_id for link in project.model_links],
         "bundle_ids": [link.bundle_id for link in project.bundle_links],
         "printer_ids": [link.printer_id for link in project.printer_links],
+        "parts": [
+            {"id": p.id, "name": p.name, "quantity": p.quantity, "link": p.link, "note": p.note} for p in project.parts
+        ],
     }
 
 

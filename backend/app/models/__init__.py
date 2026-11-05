@@ -17,8 +17,8 @@ from .source_model import SourceFileType, SourceModel, SourceModelVersion
 from .printer_camera import PrinterCamera
 from .printer_note import PrinterNote
 from .project import (
-    Project, ProjectBundle, ProjectCadFile, ProjectCadVersion, ProjectPrinter, ProjectSourceModel, ProjectStlFile,
-    ProjectStlVersion, ProjectThreemfFile, ProjectThreemfVersion,
+    Project, ProjectBundle, ProjectCadFile, ProjectCadVersion, ProjectPart, ProjectPrinter, ProjectSourceModel,
+    ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfVersion,
 )
 from .prusalink import MaintenanceEntry, PrusaLinkConnection
 from .source_model_note import SourceModelNote
@@ -47,6 +47,7 @@ __all__ = [
     "ProjectBundle",
     "ProjectCadFile",
     "ProjectCadVersion",
+    "ProjectPart",
     "ProjectPrinter",
     "ProjectSourceModel",
     "ProjectStlFile",

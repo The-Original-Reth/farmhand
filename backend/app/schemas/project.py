@@ -24,6 +24,14 @@ class ProjectFileOut(BaseModel):
     versions: list[FileVersionOut]  # newest first
 
 
+class PartOut(BaseModel):
+    id: int
+    name: str
+    quantity: int
+    link: str | None  # where to buy it
+    note: str | None
+
+
 class ProjectOut(BaseModel):
     id: int
     name: str
@@ -34,6 +42,28 @@ class ProjectOut(BaseModel):
     source_model_ids: list[int] = []  # models from the Models page it uses
     bundle_ids: list[int] = []  # 3MFs from the rest of Farmhand it uses
     printer_ids: list[int] = []  # printers it uses (brought by its 3MFs, or added)
+    parts: list[PartOut] = []  # its parts list (bill of materials), in the order added
+
+
+class PartIn(BaseModel):
+    name: str
+    quantity: int = 1
+    link: str | None = None
+    note: str | None = None
+
+
+class PartUpdate(BaseModel):
+    """Only the fields sent are changed; a blank or null link or note clears it."""
+
+    name: str | None = None
+    quantity: int | None = None
+    link: str | None = None
+    note: str | None = None
+
+
+class BomOut(BaseModel):
+    project: ProjectOut
+    added: int  # how many parts the BOM had
 
 
 class ProjectIn(BaseModel):

@@ -224,10 +224,9 @@ sudo docker compose down -v
   - Deleting removes the stored files (and their previews) and parsed settings for good.
 
 **Projects**, under Models in the menu: a piece of work for the farm. A project gathers what that work needs: its CAD
-files, STL files, 3MF files, printers and parts. **New project** on the Projects page makes one (a name not already
+files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its five sections (CAD, STL files, 3MF
-files, Printers, Parts), each folding away with the arrow by its heading (remembered in this browser). Parts is empty
-until it's built.
+files, Printers, BOM), each folding away with the arrow by its heading (remembered in this browser).
 - **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an
   optional note on what it is. Each CAD file keeps every version, like a 3MF: **New version** adds the next one, named
   `Bracket ver 1.f3d`, `Bracket ver 2.f3d`... (a "ver N" the uploaded name already has is replaced). The newest
@@ -264,6 +263,16 @@ until it's built.
   the project's 3MFs are for it, **Open** (its page), **Mainsail** (or **PrusaLink** for a Prusa: its own page in a
   new tab) and **Remove**, which asks first (the printer and the 3MFs for it stay). Deleting a printer
   takes it out of every project.
+- **BOM** (bill of materials): the parts the project needs that aren't printed, each with its name, quantity, a link
+  to buy it (a **Buy** button that opens it in a new tab; `https://` is added if it's left off) and notes. Beside the
+  heading:
+  - **Template** downloads a CSV to fill in (in Excel, Google Sheets...): columns Part, Quantity, Link, Notes, a part a
+    row (only Part is needed; a blank quantity is 1).
+  - **Upload BOM** reads a filled-in CSV. When the BOM already has parts it asks whether to add to them or replace
+    them. Every row is checked first: a file with mistakes changes nothing and says which rows ("Row 4: The quantity
+    must be a whole number."). Columns can be in any order; Excel's UTF-8 and older CSVs, and ";"-separated ones, are
+    read too.
+  - **Add part** adds one by hand; the pencil changes one, and the bin removes it (it asks first).
 - Project files are kept in the **Project files** folder chosen on the Settings page (by default Farmhand's own
   storage), one folder per project: `<project files>/<project number>/cad/<CAD file number>/v<n>/` (and `stl/` and
   `threemf/` for its own STLs and 3MFs), each version's preview next to it. It works like the STL and 3MF folders: it can be on a NAS, gets the same safety check, and
