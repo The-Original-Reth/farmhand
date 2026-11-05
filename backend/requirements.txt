@@ -7,7 +7,9 @@ psycopg[binary]>=3.1
 python-multipart>=0.0.9
 numpy>=1.26
 pillow>=10.0
-gmsh>=4.13  # turns a project's STEP / IGES CAD files into triangles for their preview (carries OpenCascade)
+# turns a project's STEP / IGES CAD files into triangles for their preview (carries OpenCascade). It has no build for
+# Linux on ARM (a Raspberry Pi, an ARM server), so there it isn't installed and those files go without a preview.
+gmsh>=4.13; sys_platform != "linux" or platform_machine == "x86_64"
 httpx>=0.27  # talking to each printer's Moonraker (also what the tests' client uses)
 
 # dev / test

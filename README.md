@@ -241,7 +241,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 - **Previews**, drawn like an STL's: STEP and IGES files (and BREP) are turned into triangles and drawn; STL and OBJ
   files are drawn from their own triangles; a Fusion file (.f3d) shows the picture Fusion keeps inside it. Other kinds
   (SolidWorks, Inventor, OpenSCAD...) have no preview. Click a preview to open it full size. A very large STEP file
-  that takes over 90 seconds to draw goes without one.
+  that takes over 90 seconds to draw goes without one. On an ARM computer (a Raspberry Pi, an ARM server) STEP,
+  IGES and BREP files have no preview, since the tool that draws them isn't made for ARM.
 - **Have / need**: each STL in a project (from Models or its own) and each BOM part shows how many the project has
   and how many it needs. An STL's is at the start of its heading, left of its name, and both numbers are changed right
   there (saved when you leave the box or press Enter). A BOM part's have is changed right there too, but its need only
