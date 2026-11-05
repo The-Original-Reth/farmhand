@@ -41,34 +41,33 @@ function LocationCard({ title, blurb, location, onChange, onReset }) {
         <span style={monoText(12, c.heading, { wordBreak: "break-all" })}>{location.path}</span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {s.separateVolume ? <Badge tone="teal">separate volume (network or external)</Badge> : <Badge>same disk as the app</Badge>}
         <span style={uiText(12, c.textFaint)}>
           {formatBytes(s.freeBytes)} free of {formatBytes(s.totalBytes)}
         </span>
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+          <button
+            onClick={onChange}
+            style={{ ...ui, fontSize: fs(13), background: "none", color: c.textMuted, border: `1px solid ${c.borderStrong}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" }}
+          >
+            Change…
+          </button>
+          {!location.isDefault && (
+            <button
+              onClick={onReset}
+              style={{ ...ui, fontSize: fs(13), background: "none", color: c.textFaint, border: `1px solid ${c.border}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" }}
+            >
+              Use default
+            </button>
+          )}
+        </div>
       </div>
       {!location.isDefault && !s.separateVolume && (
-        <div style={uiText(12, c.amber, { marginBottom: 12, lineHeight: 1.5 })}>
+        <div style={uiText(12, c.amber, { marginTop: 12, lineHeight: 1.5 })}>
           This folder is on the same disk as Farmhand's own data. If you meant a network share, check that it's mounted.
         </div>
       )}
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={onChange}
-          style={{ ...ui, fontSize: fs(13), background: "none", color: c.textMuted, border: `1px solid ${c.borderStrong}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" }}
-        >
-          Change…
-        </button>
-        {!location.isDefault && (
-          <button
-            onClick={onReset}
-            style={{ ...ui, fontSize: fs(13), background: "none", color: c.textFaint, border: `1px solid ${c.border}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" }}
-          >
-            Use default
-          </button>
-        )}
-      </div>
     </div>
   );
 }
