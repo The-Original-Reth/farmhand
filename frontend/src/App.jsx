@@ -8,6 +8,7 @@ import { CompareTray } from "./compare/CompareTray.jsx";
 import { DiffView } from "./compare/DiffView.jsx";
 import { Modal } from "./components/common/dialogs.jsx";
 import { ModelsSection } from "./models/ModelsSection.jsx";
+import { ProjectsSection } from "./projects/ProjectsSection.jsx";
 import { PrintersSection } from "./printers/PrintersSection.jsx";
 import { PowerSection } from "./power/PowerSection.jsx";
 import { FarmCostSection } from "./farmcost/FarmCostSection.jsx";
@@ -31,6 +32,15 @@ function SectionPage({ section, nav, compare, settings }) {
     case "models":
       return (
         <ModelsSection path={nav.models.path} setPath={nav.models.setPath} {...comparing} sort={modelSort.value} onSortChange={modelSort.change} />
+      );
+    case "projects":
+      return (
+        <ProjectsSection
+          path={nav.projects.path}
+          setPath={nav.projects.setPath}
+          onOpenModel={(modelId) => nav.open("models", { modelId })}
+          onOpenPrinter={(printerId) => nav.open("printers", { printerId })}
+        />
       );
     case "farm-cost":
       return <FarmCostSection order={farmCost.order} onOrder={farmCost.changeOrder} />;
@@ -57,7 +67,7 @@ function SectionPage({ section, nav, compare, settings }) {
 }
 
 function FarmhandApp() {
-  const { printers, sourceModels, bundles, bundleTitle, versionIndex, loading, error, refresh } = useData();
+  const { printers, sourceModels, bundles, projects, bundleTitle, versionIndex, loading, error, refresh } = useData();
   // Held HERE (not in a provider above) so that a change of look re-renders everything below
   const settings = useSavedSettings();
   // an unsaved look is undone when you leave the Appearance page
@@ -65,6 +75,7 @@ function FarmhandApp() {
     printers,
     sourceModels,
     bundles,
+    projects,
     bundleTitle,
     onLeave: (to) => to !== "appearance" && settings.appearance.discard(),
   });
@@ -96,7 +107,7 @@ function FarmhandApp() {
         * { box-sizing: border-box; }
       `}</style>
 
-      <Sidebar current={nav.section} counts={{ models: sourceModels.length, printers: printers.length }} onOpen={nav.goTo} />
+      <Sidebar current={nav.section} counts={{ models: sourceModels.length, projects: projects.length, printers: printers.length }} onOpen={nav.goTo} />
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>

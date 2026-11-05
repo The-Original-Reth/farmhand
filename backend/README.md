@@ -132,6 +132,35 @@ Postgres instance running.
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/projects` | Every project, by name: `{id, name, created_at, doc_files, cad_files, stl_files, threemf_files, source_model_ids, source_models, bundle_ids, printer_ids, parts}`. `doc_files` (its documents: any file), `cad_files`, `stl_files` and `threemf_files` (its own STLs and 3MFs, not in Models) are `[{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]` (a file's `name` is its newest version's; versions newest first). A 3MF also has `printer_id`, and each of its versions `gcode_name`; an STL has `need` and `have`. `source_model_ids`, `bundle_ids` and `printer_ids` are the models, 3MFs and printers from the rest of Farmhand it uses, in the order they were added; `source_models` lists those models with `{id, need, have}`; `parts` is its BOM, `[{id, name, need, have, link, note}]` |
+| POST | `/projects` | Make a project: `{name}` (spaces tidied). **409** if it's empty, over 200 characters, or another project's name (any case) |
+| GET | `/projects/{id}` | One project |
+| PATCH | `/projects/{id}` | Rename it: `{name}` (the same rules) |
+| DELETE | `/projects/{id}?confirm=true` | Delete a project with its own documents, CAD files, STLs and 3MFs (rows, then files). The models, 3MFs and printers it uses stay |
+| POST | `/projects/{id}/doc` | Upload a document, any file (multipart `file`, optional `note`), as version 1 in `.../{project}/docs/{file}/v1/`; a picture gets a preview of itself |
+| POST | `/projects/{id}/cad` | Upload a CAD file of any kind (multipart `file`, optional `note`) as version 1, kept as `<name> ver 1.<ext>` in the project files folder, with a preview next to it when one can be made (STEP/IGES/BREP through gmsh, STL, OBJ, a Fusion file's own picture). **503** if that folder isn't there right now. Answers the project |
+| POST | `/projects/{id}/stl` | Upload an STL or OBJ (multipart `file`, required `in_models`, optional `note`). `in_models=true`: it becomes a new model in Models (in the STL folder) that the project uses. `false`: the project's own, as version 1 in the project files folder (`.../{project}/stl/{file}/v1/`), with a preview. **422** for another kind of file or without `in_models`. Answers the project |
+| POST | `/projects/{id}/threemf` | Upload a 3MF to the project only (multipart `file`, optional `printer_id` and `note`), as version 1 in `.../{project}/threemf/{file}/v1/`; its printer comes into the project. (One also put in Models is uploaded with `POST /bundles`, then used with `PUT .../bundles/{id}`.) **422** for another kind of file; **404** for a printer that isn't there |
+| POST | `/projects/{id}/{doc\|cad\|stl\|threemf}/{file_id}/versions` | A newer version of one of its own files (multipart `file`, optional `note`); every version is kept |
+| GET | `/projects/{id}/{doc\|cad\|stl\|threemf}/{file_id}/versions/{v}/download` | Download one version |
+| GET | `/projects/{id}/{doc\|cad\|stl\|threemf}/{file_id}/versions/{v}/view` | The same file to open in the browser (`inline`, its own type; sandboxed so a web page or SVG can't run anything) |
+| GET | `/projects/{id}/{doc\|cad\|stl\|threemf}/{file_id}/versions/{v}/preview` | Its preview (PNG); **404** when it has none |
+| DELETE | `/projects/{id}/{doc\|cad\|stl\|threemf}/{file_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the file with it. Answers the project |
+| DELETE | `/projects/{id}/{doc\|cad\|stl\|threemf}/{file_id}?confirm=true` | Delete one of its own files with every version. Answers the project |
+| PUT | `/projects/{id}/threemf/{file_id}/versions/{v}/gcode` | A G-code for one version of its own 3MF (multipart `gcode`, a .gcode or .bgcode), kept next to the 3MF, replacing one it had |
+| GET | `/projects/{id}/threemf/{file_id}/versions/{v}/gcode` | Download it |
+| POST | `/projects/{id}/threemf/{file_id}/versions/{v}/print` | Send it to the 3MF's printer and start it, as `/bundles/versions/{id}/print` (**409** while the printer is busy; **422** with no printer; **502** unreachable) |
+| POST | `/projects/{id}/parts` | Add a part to the BOM: `{name, need?, have?, link?, note?}` (need 1 or more, default 1; have 0 or more, default 0; link an http(s) address, `https://` added when none is given). **422** without a name, for a bad count or a link that isn't a web address. Answers the project |
+| PATCH | `/projects/{id}/parts/{part_id}` | Change a part's `name`, `need`, `have`, `link` or `note` (only the fields sent; a blank or null link or note clears it) |
+| DELETE | `/projects/{id}/parts/{part_id}?confirm=true` | Remove a part from the BOM |
+| POST | `/projects/{id}/parts/bom` | Upload a BOM: multipart `file` (a CSV whose first row names its columns: Part, Need, Have, Link, Notes in any order, only Part needed; Quantity counts as Need) and `replace` (true: its parts replace the BOM; false: they're added). UTF-8 (with or without Excel's byte-order mark) or Windows-1252, separated by `,` `;` or tab. Every row is checked first: **422** lists each wrong row and nothing changes. Answers `{project, added}` |
+| PATCH | `/projects/{id}/source-models/{model_id}`, `/projects/{id}/stl/{file_id}` | How many prints of a model it uses, or of one of its own STLs, the project needs and has: `{need?, have?}` (only those sent change) |
+| PUT | `/projects/{id}/bundles/{bundle_id}` | Use a 3MF in the project; the printer it's for comes too. **404** for a 3MF or project that isn't there. Answers the project |
+| DELETE | `/projects/{id}/bundles/{bundle_id}` | Take a 3MF out of the project (it stays, and so does its printer in the project) |
+| PUT | `/projects/{id}/printers/{printer_id}` | Put a printer in the project |
+| DELETE | `/projects/{id}/printers/{printer_id}` | Take a printer out of the project (it and the project's 3MFs for it stay) |
+| PUT | `/projects/{id}/source-models/{model_id}` | Use a model from Models in the project (already in it: no change). **404** for a model or project that isn't there. Answers the project |
+| DELETE | `/projects/{id}/source-models/{model_id}` | Take a model out of the project (the model stays in Models; nothing is deleted, so no `confirm`). Answers the project |
 | GET | `/printers` | List printers |
 | POST | `/printers` | Register a printer (name is the unique key) |
 | GET | `/printers/discover/range` | The range Scan network starts with: `{cidr}`, the /24 of the server's own private IPv4 address, or, in a Docker container (which only sees Docker's network), the /24 most printers' IPs are in; `null` when neither is known |
@@ -228,14 +257,18 @@ Two independently chosen roots (Storage page, saved in the `app_settings` table)
 ```
 {stl_root}/{source_model_id}/v{n}/{file}        STL / OBJ / STEP
 {threemf_root}/{bundle_id}/v{n}/{file}          3MF and gcode
+{project_root}/{project_id}/docs/{doc_id}/v{n}/{file}  a project's documents (every version kept)
+{project_root}/{project_id}/cad/{cad_id}/v{n}/{file}   a project's CAD files (every version kept)
+{project_root}/{project_id}/stl/{stl_id}/v{n}/{file}   its own STLs (not in Models)
+{project_root}/{project_id}/threemf/{file_id}/v{n}/{file}  its own 3MFs (not in Models), and their G-code
 {file}.png                                      its preview, next to it (and nowhere else)
 ```
 
 A pruned 3MF version's preview stays where the 3MF was. Previews the app kept itself before
 (`{storage_root}/thumbnails/...`) are moved out next to their files by `services/previews.py`.
 
-With nothing chosen they default to `{storage_root}/source_models` and
-`{storage_root}/bundles`, the same layout as before. The database stores absolute
+With nothing chosen they default to `{storage_root}/source_models`,
+`{storage_root}/bundles` and `{storage_root}/projects`. No two may overlap. The database stores absolute
 paths, so a file stays where it is when a location changes until it is moved.
 
 - A chosen folder must be under `FARMHAND_STORAGE_BROWSE_ROOT` (default: the parent

@@ -3,8 +3,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Client tools so Farmhand can mount NAS shares itself (Storage page): mount.cifs for SMB, mount.nfs for NFS.
+# And the libraries gmsh needs to load (it draws a project's STEP / IGES previews; it never opens a window).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends cifs-utils nfs-common \
+    libgomp1 libglu1-mesa libgl1 libxcursor1 libxft2 libxinerama1 libxrender1 \
  && rm -rf /var/lib/apt/lists/*
 
 # psycopg[binary] avoids needing libpq-dev at build time; keep this minimal.

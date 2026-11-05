@@ -42,8 +42,9 @@ from .config import settings
 log = logging.getLogger("farmhand.storage")
 
 MARKER_NAME = ".farmhand-storage"
-KINDS = ("stl", "threemf")
-_LABELS = {"stl": "STL / model file", "threemf": "3MF / gcode"}
+KINDS = ("stl", "threemf", "project")
+_LABELS = {"stl": "STL / model file", "threemf": "3MF / gcode", "project": "project files"}
+FOLDER_LABELS = {"stl": "STL", "threemf": "3MF", "project": "project files"}  # "the STL folder", "the project files folder"
 
 
 class StorageUnavailableError(RuntimeError):
@@ -52,16 +53,17 @@ class StorageUnavailableError(RuntimeError):
 
 # kind -> folder chosen in the UI, or None for the default. Set at startup from the
 # database and whenever the setting changes (single-process app, so a module global is fine).
-_custom: dict[str, str | None] = {"stl": None, "threemf": None}
+_custom: dict[str, str | None] = {"stl": None, "threemf": None, "project": None}
 
 
-def configure(stl_path: str | None = None, threemf_path: str | None = None) -> None:
+def configure(stl_path: str | None = None, threemf_path: str | None = None, project_path: str | None = None) -> None:
     _custom["stl"] = stl_path or None
     _custom["threemf"] = threemf_path or None
+    _custom["project"] = project_path or None
 
 
 def reset() -> None:
-    configure(None, None)
+    configure(None, None, None)
 
 
 def custom_path(kind: str) -> str | None:
@@ -78,7 +80,7 @@ def local_root() -> Path:
 
 
 def default_root(kind: str) -> Path:
-    return local_root() / ("source_models" if kind == "stl" else "bundles")
+    return local_root() / {"stl": "source_models", "threemf": "bundles", "project": "projects"}[kind]
 
 
 def _made_default_root(kind: str) -> Path:
@@ -147,6 +149,11 @@ def source_model_version_dir(source_model_id: int, version: int) -> Path:
 
 def bundle_version_dir(bundle_id: int, version: int) -> Path:
     return _version_dir(ready_root("threemf"), bundle_id, version)
+
+
+def project_file_dir(project_id: int, folder: str, file_id: int, version: int) -> Path:
+    """A version of a project's own file: {project files}/{project id}/{folder: docs, cad, stl or threemf}/{file id}/v{n}"""
+    return _version_dir(ready_root("project") / str(project_id) / folder, file_id, version)
 
 
 # ------------------------------------------------------------------ writing
@@ -320,6 +327,15 @@ def _delete_quietly(path: Path) -> Path:
     return path.parent
 
 
+def tidy_project_folder(project_id: int) -> None:
+    """After a project's files were deleted: its docs/, cad/, stl/ and threemf/ folders and its own folder go if they're
+    empty (nothing else)."""
+    root = effective_root("project") / str(project_id)
+    for d in (root / "docs", root / "cad", root / "stl", root / "threemf", root):
+        if d.is_dir():
+            _rmdir_if_empty(d)
+
+
 def _prune_version_folder(d: Path) -> None:
     """Remove a `v{n}` folder if it's empty, then its `{id}` folder if that's empty too. Other folders are left alone."""
     if _VERSION_DIR.match(d.name):
@@ -348,6 +364,16 @@ def is_inside(path: str | os.PathLike, root: str | os.PathLike) -> bool:
 def overlaps(a: str | os.PathLike, b: str | os.PathLike) -> bool:
     """Same folder, or one inside the other."""
     return is_inside(a, b) or is_inside(b, a)
+
+
+def overlapping_kinds(roots: dict[str, Path]) -> tuple[str, str] | None:
+    """Two of the locations that are the same folder or one inside the other (their numbered folders would collide)."""
+    kinds = list(roots)
+    for i, a in enumerate(kinds):
+        for b in kinds[i + 1:]:
+            if overlaps(roots[a], roots[b]):
+                return a, b
+    return None
 
 
 def resolve_location(raw: str) -> Path:

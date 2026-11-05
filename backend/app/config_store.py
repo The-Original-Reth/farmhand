@@ -235,7 +235,9 @@ def _path_or_none(value) -> str | None:
     return value if isinstance(value, str) and 0 < len(value) <= 500 else None
 
 
-def build_document(config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict]) -> dict:
+def build_document(
+    config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None
+) -> dict:
     """What gets written. Share entries are cut down to the fields in _SHARE_FIELDS — never a password."""
     return {
         FORMAT_MARKER: FORMAT_VERSION,
@@ -243,7 +245,7 @@ def build_document(config: dict, stl_path: str | None, threemf_path: str | None,
         "note": "Written by Farmhand after every settings change. Passwords are never stored in this file.",
         "appearance": config["appearance"],
         "preferences": config["preferences"],
-        "storage": {"stl_path": stl_path, "threemf_path": threemf_path},
+        "storage": {"stl_path": stl_path, "threemf_path": threemf_path, "project_path": project_path},
         "shares": [{k: s.get(k) for k in _SHARE_FIELDS} for s in shares],
     }
 
@@ -294,6 +296,10 @@ def read_document(folder: str | os.PathLike) -> dict | None:
     return {
         "saved_at": raw.get("saved_at") if isinstance(raw.get("saved_at"), str) else None,
         **normalize_config(raw),
-        "storage": {"stl_path": _path_or_none(storage.get("stl_path")), "threemf_path": _path_or_none(storage.get("threemf_path"))},
+        "storage": {
+            "stl_path": _path_or_none(storage.get("stl_path")),
+            "threemf_path": _path_or_none(storage.get("threemf_path")),
+            "project_path": _path_or_none(storage.get("project_path")),  # files from before project files have none
+        },
         "shares": shares,
     }

@@ -117,6 +117,259 @@ export function mockApi() {
   };
 
   // ------------------------------------------------------------------ the farm
+  // ------------------------------------------------------------------ projects: made, listed, renamed, deleted
+  const project = (id) => farm.projects.find((p) => p.id === Number(id)) || fail404("Project not found");
+  const projectName = (body, except) => {
+    const name = String(body.name ?? "").split(/\s+/).filter(Boolean).join(" ");
+    if (!name) throw new HttpError(409, "A project needs a name.");
+    if (name.length > 200) throw new HttpError(409, "A project's name can be at most 200 characters.");
+    const clash = farm.projects.find((p) => p !== except && p.name.toLowerCase() === name.toLowerCase());
+    if (clash) throw new HttpError(409, `There's already a project called ${clash.name}.`);
+    return name;
+  };
+  // As the API answers: a project's own files (CAD, STL) are named after their newest version; the stand-in preview
+  // picture stays in the mockup
+  const filesOut = (files) =>
+    files.map((f) => ({
+      id: f.id, name: f.versions[0].filename, created_at: f.created_at,
+      ...("printer_id" in f ? { printer_id: f.printer_id } : {}),
+      ...("need" in f ? { need: f.need, have: f.have } : {}),
+      versions: f.versions.map(({ thumb, gcode, ...v }) => ({ ...v, has_preview: !!thumb, ...("printer_id" in f ? { gcode_name: gcode || null } : {}) })),
+    }));
+  const projectOut = (p) => ({
+    id: p.id, name: p.name, created_at: p.created_at,
+    doc_files: filesOut(p.doc_files || []), cad_files: filesOut(p.cad_files), stl_files: filesOut(p.stl_files), threemf_files: filesOut(p.threemf_files),
+    source_model_ids: [...p.source_model_ids], bundle_ids: [...p.bundle_ids], printer_ids: [...p.printer_ids],
+    source_models: p.source_model_ids.map((id) => ({ id, need: p.model_counts?.[id]?.need ?? 1, have: p.model_counts?.[id]?.have ?? 0 })),
+    parts: p.parts.map((x) => ({ ...x })),
+  });
+  on("GET", "/projects", () => [...farm.projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(projectOut));
+  on("POST", "/projects", (_p, body) => {
+    const p = {
+      id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()),
+      doc_files: [], cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [], bundle_ids: [], printer_ids: [], parts: [],
+    };
+    farm.projects.push(p);
+    return [201, projectOut(p)];
+  });
+  on("GET", "/projects/:id", ({ id }) => projectOut(project(id)));
+  on("PATCH", "/projects/:id", ({ id }, body) => {
+    const p = project(id);
+    p.name = projectName(body, p);
+    return projectOut(p);
+  });
+  // models from the Models page: put in a project, or taken out (the model stays)
+  on("PUT", "/projects/:id/source-models/:mid", ({ id, mid }) => {
+    const p = project(id);
+    const m = model(mid);
+    if (!p.source_model_ids.includes(m.id)) p.source_model_ids.push(m.id);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/source-models/:mid", ({ id, mid }) => {
+    const p = project(id);
+    p.source_model_ids = p.source_model_ids.filter((x) => x !== Number(mid));
+    return projectOut(p);
+  });
+  // 3MFs from the rest of Farmhand (bringing their printer) and printers: put in a project, or taken out
+  const linkPrinter = (p, printerId) => {
+    if (!p.printer_ids.includes(printerId)) p.printer_ids.push(printerId);
+  };
+  on("PUT", "/projects/:id/bundles/:bid", ({ id, bid }) => {
+    const p = project(id);
+    const b = farm.bundles.find((x) => x.id === Number(bid)) || fail404("Bundle not found");
+    if (!p.bundle_ids.includes(b.id)) p.bundle_ids.push(b.id);
+    linkPrinter(p, b.printer_id);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/bundles/:bid", ({ id, bid }) => {
+    const p = project(id);
+    p.bundle_ids = p.bundle_ids.filter((x) => x !== Number(bid));
+    return projectOut(p);
+  });
+  on("PUT", "/projects/:id/printers/:pid", ({ id, pid }) => {
+    const p = project(id);
+    const printer = farm.printers.find((x) => x.id === Number(pid)) || fail404("Printer not found");
+    linkPrinter(p, printer.id);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/printers/:pid", ({ id, pid }) => {
+    const p = project(id);
+    p.printer_ids = p.printer_ids.filter((x) => x !== Number(pid));
+    return projectOut(p);
+  });
+  // The BOM (parts list): parts one at a time, or a BOM CSV. As the API: a name, a quantity of 1 or more, an http(s)
+  // link (https:// added when none is typed) and notes.
+  // How many are needed (1 or more; blank 1) and had (0 or more; blank 0), as the API checks them
+  const countFields = (body, partial = false) => {
+    const out = {};
+    for (const [key, least, what] of [["need", 1, "How many are needed"], ["have", 0, "How many you have"]]) {
+      if (partial && body[key] == null) continue;
+      const n = String(body[key] ?? "").trim() === "" ? least : Number(body[key]);
+      if (!Number.isInteger(n) || n < least) throw new HttpError(422, `${what} must be a whole number from ${least}.`);
+      out[key] = n;
+    }
+    return out;
+  };
+  on("PATCH", "/projects/:id/source-models/:mid", ({ id, mid }, body) => {
+    const p = project(id);
+    if (!p.source_model_ids.includes(Number(mid))) fail404("That model isn't in this project");
+    p.model_counts = p.model_counts || {};
+    p.model_counts[mid] = { need: 1, have: 0, ...p.model_counts[mid], ...countFields(body, true) };
+    return projectOut(p);
+  });
+  on("PATCH", "/projects/:id/stl/:fid", ({ id, fid }, body) => {
+    const p = project(id);
+    const f = p.stl_files.find((x) => x.id === Number(fid)) || fail404("STL file not found");
+    Object.assign(f, countFields(body, true));
+    return projectOut(p);
+  });
+  // a project 3MF version's G-code: the mockup keeps its name; Send says it went (no printer is reached)
+  const projectGcodeVersion = (id, fid, v) => fileVersion(id, "threemf", fid, v);
+  on("PUT", "/projects/:id/threemf/:fid/versions/:v/gcode", ({ id, fid, v }, body) => {
+    const name = body.files?.[0] || "";
+    if (!/\.b?gcode$/i.test(name)) throw new HttpError(422, "Pick a sliced .gcode or .bgcode file");
+    projectGcodeVersion(id, fid, v).gcode = name;
+    return projectOut(project(id));
+  });
+  on("POST", "/projects/:id/threemf/:fid/versions/:v/print", ({ id, fid, v }) => {
+    const ver = projectGcodeVersion(id, fid, v);
+    if (!ver.gcode) fail404("This version has no G-code. Upload one first.");
+    const f = projectFile(id, "threemf", fid);
+    const printer = farm.printers.find((x) => x.id === f.printer_id);
+    if (!printer) throw new HttpError(422, "This 3MF has no printer to send it to.");
+    return { sent: `gcodes/${ver.gcode}`, printer: printer.name };
+  });
+  const bomPartFields = (body, partial = false) => {
+    const out = {};
+    if (!partial || "name" in body) {
+      out.name = String(body.name ?? "").split(/\s+/).filter(Boolean).join(" ");
+      if (!out.name) throw new HttpError(422, "A part needs a name.");
+    }
+    Object.assign(out, countFields(body, partial));
+    if (!partial || "link" in body) {
+      let link = String(body.link ?? "").trim();
+      if (link && !/^[A-Za-z][A-Za-z0-9+.-]*:(?!\d)/.test(link)) link = `https://${link}`;
+      if (link && !/^https?:\/\/[^\s/]+/i.test(link)) throw new HttpError(422, "The link must be a web address, like https://www.amazon.com/...");
+      out.link = link || null;
+    }
+    if (!partial || "note" in body) out.note = String(body.note ?? "").trim() || null;
+    return out;
+  };
+  on("POST", "/projects/:id/parts/bom", ({ id }, body) => {
+    // the mockup only sees the file's name, not what's in it: it adds two sample parts as a stand-in
+    const p = project(id);
+    if (!/\.csv$/i.test(body.files?.[0] || "")) throw new HttpError(422, "That BOM is empty: the template has the columns to fill in.");
+    if (body.fields?.replace === "true") p.parts = [];
+    const added = [
+      { name: "M3x8 screw (from the BOM)", need: 32, have: 0, link: "https://www.boltdepot.com/", note: "Mockup: a stand-in for the CSV's rows" },
+      { name: "Rubber foot (from the BOM)", need: 8, have: 8, link: null, note: null },
+    ];
+    for (const part of added) p.parts.push({ id: farm.nextIds.part++, ...part });
+    return { project: projectOut(p), added: added.length };
+  });
+  on("POST", "/projects/:id/parts", ({ id }, body) => {
+    const p = project(id);
+    p.parts.push({ id: farm.nextIds.part++, ...bomPartFields(body) });
+    return [201, projectOut(p)];
+  });
+  on("PATCH", "/projects/:id/parts/:partId", ({ id, partId }, body) => {
+    const p = project(id);
+    const part = p.parts.find((x) => x.id === Number(partId)) || fail404("Part not found");
+    Object.assign(part, bomPartFields(body, true));
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/parts/:partId", ({ id, partId }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    p.parts = p.parts.filter((x) => x.id !== Number(partId));
+    return projectOut(p);
+  });
+  // A project's own files, CAD, STL or 3MF: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version
+  // 2 is "Bracket ver 2.f3d"). A kind the real backend draws a preview of gets a stand-in picture here.
+  const withVersion = (name, n) => {
+    const dot = name.lastIndexOf(".");
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+    return `${stem.replace(/\s*\bver\s*\d+$/i, "").replace(/[ ._-]+$/, "") || stem} ver ${n}${ext}`;
+  };
+  const previewable = (name) => /\.(stl|obj|step|stp|iges|igs|brep|f3d|f3z|3mf|png|jpe?g|gif|webp|bmp)$/i.test(name);
+  const KIND = {
+    doc: { list: "doc_files", noun: "document" },
+    cad: { list: "cad_files", noun: "CAD file" }, stl: { list: "stl_files", noun: "STL file" }, threemf: { list: "threemf_files", noun: "3MF file" },
+  };
+  const kindOf = (kind) => KIND[kind] || fail404("Not found");
+  const projectFile = (id, kind, fid) =>
+    project(id)[kindOf(kind).list].find((f) => f.id === Number(fid)) || fail404(`${kindOf(kind).noun} not found`);
+  const fileVersion = (id, kind, fid, v) =>
+    projectFile(id, kind, fid).versions.find((x) => x.version === Number(v)) || fail404(`${kindOf(kind).noun} version not found`);
+  const isStl = (name) => /\.(stl|obj)$/i.test(name || "");
+  const addFileVersion = (f, body) => {
+    const n = (f.versions[0]?.version || 0) + 1;
+    const filename = withVersion(body.files?.[0] || "File", n);
+    f.versions.unshift({
+      version: n, filename, size_bytes: 1_250_000, note: String(body.fields?.note || "").trim() || null, uploaded_at: iso(nowUnix()),
+      thumb: !previewable(filename) ? null : /\.3mf$/i.test(filename) ? "frog-vt1190" : "stl-frog-keychain",
+    });
+  };
+  on("POST", "/projects/:id/:kind", ({ id, kind }, body) => {
+    const p = project(id);
+    kindOf(kind);
+    const name = body.files?.[0] || "";
+    if (kind === "stl") {
+      if (!isStl(name)) throw new HttpError(422, "An STL file has to be an .stl or .obj file.");
+      if (body.fields?.in_models === undefined) throw new HttpError(422, "Say whether it also goes in Models (in_models).");
+      if (body.fields.in_models === "true") {
+        // a new model in Models (as the real one, kept in the STL folder), which the project then uses
+        const m = {
+          id: farm.nextIds.model++, name, file_type: /\.obj$/i.test(name) ? "OBJ" : "STL", created_at: iso(nowUnix()),
+          versions: [{ id: 900 + farm.nextIds.model, version: 1, file_path: `${farm.storage.stl}/${farm.nextIds.model}/v1/${name}`, thumbnail_path: "x", thumb: "stl-frog-keychain", note: String(body.fields?.note || "").trim() || null, uploaded_at: iso(nowUnix()) }],
+          notes: "", notes_revision: 0, notes_updated_at: null,
+        };
+        farm.models.push(m);
+        p.source_model_ids.push(m.id);
+        return [201, projectOut(p)];
+      }
+    }
+    if (kind === "threemf" && !/\.3mf$/i.test(name)) throw new HttpError(422, "A 3MF file has to be a .3mf file.");
+    const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [], ...(kind === "stl" ? { need: 1, have: 0 } : {}) };
+    if (kind === "threemf") {
+      // the printer it's for comes into the project too
+      const pid = body.fields?.printer_id ? Number(body.fields.printer_id) : null;
+      if (pid != null && !farm.printers.some((x) => x.id === pid)) fail404("Printer not found");
+      f.printer_id = pid;
+      if (pid != null) linkPrinter(p, pid);
+    }
+    addFileVersion(f, body);
+    p[KIND[kind].list].push(f);
+    return [201, projectOut(p)];
+  });
+  on("POST", "/projects/:id/:kind/:fid/versions", ({ id, kind, fid }, body) => {
+    if (kind === "stl" && !isStl(body.files?.[0])) throw new HttpError(422, "An STL file has to be an .stl or .obj file.");
+    addFileVersion(projectFile(id, kind, fid), body);
+    return [201, projectOut(project(id))];
+  });
+  on("DELETE", "/projects/:id/:kind/:fid/versions/:v", ({ id, kind, fid, v }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    const f = projectFile(id, kind, fid);
+    const ver = fileVersion(id, kind, fid, v);
+    f.versions = f.versions.filter((x) => x !== ver);
+    if (!f.versions.length) p[KIND[kind].list] = p[KIND[kind].list].filter((x) => x !== f);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/:kind/:fid", ({ id, kind, fid }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    const f = projectFile(id, kind, fid);
+    p[KIND[kind].list] = p[KIND[kind].list].filter((x) => x !== f);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id", ({ id }, _b, q) => {
+    requireConfirm(q);
+    const p = project(id);
+    farm.projects = farm.projects.filter((x) => x !== p);
+    return [204, null];
+  });
+
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
   // The range a scan starts with: as the real API in Docker, the /24 most of the farm's printers are on
   on("GET", "/printers/discover/range", () => {
@@ -430,6 +683,8 @@ export function mockApi() {
     if (used.length && q.get("cascade") !== "true") throw new HttpError(409, `${used.length} 3MF file(s) were sliced from this model — pass cascade=true to delete them too`);
     farm.bundles = farm.bundles.filter((b) => !b.source_model_ids.includes(m.id));
     farm.models = farm.models.filter((x) => x.id !== m.id);
+    for (const p of farm.projects) p.source_model_ids = p.source_model_ids.filter((x) => x !== m.id); // out of every project
+    for (const p of farm.projects) p.bundle_ids = p.bundle_ids.filter((x) => farm.bundles.some((b) => b.id === x));
     return [204, null];
   });
   on("DELETE", "/source-models/:id/versions/:v", ({ id, v }, _b, q) => {
@@ -592,6 +847,7 @@ export function mockApi() {
   on("DELETE", "/bundles/:id", ({ id }, _b, q) => {
     requireConfirm(q);
     farm.bundles = farm.bundles.filter((b) => b.id !== Number(id));
+    for (const p of farm.projects) p.bundle_ids = p.bundle_ids.filter((x) => x !== Number(id)); // out of every project
     return [204, null];
   });
 
@@ -971,10 +1227,10 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ settings, storage, shares
   const location = (path) => ({
-    path, default_path: path.includes("models") ? "/data/storage/source_models" : "/data/storage/bundles", is_default: false,
+    path, default_path: path.includes("models") ? "/data/storage/source_models" : path.includes("projects") ? "/data/storage/projects" : "/data/storage/bundles", is_default: false,
     status: { exists: true, writable: true, marker_ok: true, ready: true, free_bytes: 2.1e12, total_bytes: 4e12, separate_volume: true },
   });
-  const storageOut = () => ({ browse_root: "/data", stl: location(farm.storage.stl), threemf: location(farm.storage.threemf), outside: { stl: 0, threemf: 0 } });
+  const storageOut = () => ({ browse_root: "/data", stl: location(farm.storage.stl), threemf: location(farm.storage.threemf), project: location(farm.storage.project), outside: { stl: 0, threemf: 0, project: 0 } });
   const configLocation = () => ({
     path: farm.settingsFolder, is_set: !!farm.settingsFolder,
     status: farm.settingsFolder ? { exists: true, writable: true, marker_ok: true, ready: true } : null,
@@ -1025,16 +1281,17 @@ export function mockApi() {
   on("PUT", "/settings/storage", (_, body) => {
     if ("stl_path" in body) farm.storage.stl = body.stl_path || "/data/storage/source_models";
     if ("threemf_path" in body) farm.storage.threemf = body.threemf_path || "/data/storage/bundles";
+    if ("project_path" in body) farm.storage.project = body.project_path || "/data/storage/projects";
     return storageOut();
   });
   on("GET", "/settings/storage/browse", (_, _b, q) => {
     const path = q.get("path") || "/data";
-    const tree = { "/data": ["nas", "storage"], "/data/nas": ["farm-nas"], "/data/nas/farm-nas": ["3mf", "farmhand-settings", "models"], "/data/storage": ["bundles", "source_models"] };
+    const tree = { "/data": ["nas", "storage"], "/data/nas": ["farm-nas"], "/data/nas/farm-nas": ["3mf", "farmhand-settings", "models", "projects"], "/data/storage": ["bundles", "projects", "source_models"] };
     const parent = path === "/data" ? null : path.split("/").slice(0, -1).join("/") || "/data";
     return { path, root: "/data", parent, entries: (tree[path] || []).map((name) => ({ name, path: `${path}/${name}`, is_mount: path === "/data/nas" })) };
   });
   on("POST", "/settings/storage/folders", () => { throw notInMockup("Making folders"); });
-  on("POST", "/settings/storage/migrate", () => ({ moved_stl: 0, moved_threemf: 0, missing: [], failed: [] }));
+  on("POST", "/settings/storage/migrate", () => ({ moved_stl: 0, moved_threemf: 0, moved_project: 0, missing: [], failed: [] }));
   const capability = { ok: true, smb: true, nfs: true, message: null, smb_message: null, nfs_message: null };
   on("GET", "/settings/storage/shares", () => ({ shares: farm.shares, capability }));
   on("POST", "/settings/storage/shares", () => { throw notInMockup("Connecting a network share"); });
@@ -1051,10 +1308,13 @@ export function mockApi() {
   const fileRoutes = [
     [/^\/bundles\/versions\/(\d+)\/thumbnail$/, (m) => png(version(m[1]).v.thumb)],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/thumbnail$/, (m) => png(model(m[1]).versions.find((v) => v.version === Number(m[2]))?.thumb)],
+    [/^\/projects\/(\d+)\/(doc|cad|stl|threemf)\/(\d+)\/versions\/(\d+)\/preview$/, (m) => png(fileVersion(m[1], m[2], m[3], m[4]).thumb)],
   ];
   const downloadRoutes = [
     [/^\/bundles\/versions\/(\d+)\/download\/(3mf|gcode)$/, (m) => [version(m[1]).v.filename.replace(/\.3mf$/, m[2] === "gcode" ? ".gcode" : ".3mf")]],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/download$/, (m) => [model(m[1]).name]],
+    [/^\/projects\/(\d+)\/(doc|cad|stl|threemf)\/(\d+)\/versions\/(\d+)\/download$/, (m) => [fileVersion(m[1], m[2], m[3], m[4]).filename]],
+    [/^\/projects\/(\d+)\/threemf\/(\d+)\/versions\/(\d+)\/gcode$/, (m) => [fileVersion(m[1], "threemf", m[2], m[3]).gcode || fail404("No G-code")]],
   ];
 
   // ------------------------------------------------------------------ the Vite plugin
@@ -1090,6 +1350,13 @@ export function mockApi() {
                 res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
                 return send(200, `Farmhand mockup: a stand-in for ${name}. The real file comes from the real backend.\n`, "text/plain");
               }
+            }
+            // a project file opened in the browser: shown (as the real one is), here as a stand-in
+            const view = url.pathname.match(/^\/projects\/(\d+)\/(doc|cad|stl|threemf)\/(\d+)\/versions\/(\d+)\/view$/);
+            if (view) {
+              const name = fileVersion(view[1], view[2], view[3], view[4]).filename;
+              res.setHeader("Content-Disposition", `inline; filename="${name}"`);
+              return send(200, `Farmhand mockup: ${name} would open here. The real file comes from the real backend.\n`, "text/plain");
             }
           }
           const chunks = [];

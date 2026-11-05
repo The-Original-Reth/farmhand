@@ -3,6 +3,7 @@ import { c } from "../theme.js";
 import { uiText } from "../styles.js";
 
 import { NotesSection } from "../notes/NotesSection.jsx";
+import { AddToProjectButton } from "../projects/AddToProject.jsx";
 import { DeleteBundleButton, NewVersionButton } from "./bundleActions.jsx";
 import { GcodeRow } from "./GcodeRow.jsx";
 import { VersionRow } from "./VersionRow.jsx";
@@ -50,6 +51,7 @@ export function BundleCard({ bundle: b, versions: vlist, title, grow = false, ex
           {rest.length > 0 && (
             <VersionsToggle open={isExpanded} olderCount={rest.length} controlsId={`versions-${b.id}`} onToggle={() => expansion.set(b.id, !isExpanded)} />
           )}
+          <AddToProjectButton bundle={b} />
           <NewVersionButton bundle={b} />
           <DeleteBundleButton bundle={b} />
         </div>

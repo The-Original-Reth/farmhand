@@ -9,14 +9,30 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..models import BundleVersion, SourceModelVersion
-from . import app_settings
+from . import app_settings, project_files
 
-KEYS = {"stl": "stl_storage_dir", "threemf": "threemf_storage_dir"}
+KEYS = {"stl": "stl_storage_dir", "threemf": "threemf_storage_dir", "project": "project_storage_dir"}
+
+
+def _configure(custom: dict[str, str | None]) -> None:
+    storage.configure(stl_path=custom["stl"], threemf_path=custom["threemf"], project_path=custom["project"])
+
+
+def _overlap_message(a: str, b: str) -> str:
+    return (
+        f"The {storage.FOLDER_LABELS[a]} and {storage.FOLDER_LABELS[b]} locations must be different folders, and neither "
+        "can be inside the other — their files are organised by number and would collide."
+    )
 
 
 def apply_saved_locations(db: Session) -> None:
     """Load the chosen locations into the storage module (called at startup)."""
-    storage.configure(stl_path=app_settings.get(db, KEYS["stl"]), threemf_path=app_settings.get(db, KEYS["threemf"]))
+    _configure({kind: app_settings.get(db, key) for kind, key in KEYS.items()})
+
+
+def count_project_files(db: Session, pick: Callable[[str], bool]) -> int:
+    """How many versions of projects' own files (CAD files, STLs) have a file `pick(path)` picks."""
+    return sum(1 for v in project_files.all_versions(db) if v.file_path and pick(v.file_path))
 
 
 def count_version_files(db: Session, stl: Callable[[str], bool], threemf: Callable[[str], bool]) -> tuple[int, int]:
@@ -36,10 +52,11 @@ def count_version_files(db: Session, stl: Callable[[str], bool], threemf: Callab
 def _count_outside(db: Session) -> dict:
     stl_root = storage.effective_root("stl")
     threemf_root = storage.effective_root("threemf")
+    project_root = storage.effective_root("project")
     n_stl, n_3mf = count_version_files(
         db, lambda p: not storage.is_inside(p, stl_root), lambda p: not storage.is_inside(p, threemf_root)
     )
-    return {"stl": n_stl, "threemf": n_3mf}
+    return {"stl": n_stl, "threemf": n_3mf, "project": count_project_files(db, lambda p: not storage.is_inside(p, project_root))}
 
 
 def describe(db: Session) -> dict:
@@ -55,13 +72,14 @@ def describe(db: Session) -> dict:
         "browse_root": str(storage.browse_root()),
         "stl": location("stl"),
         "threemf": location("threemf"),
+        "project": location("project"),
         "outside": _count_outside(db),
     }
 
 
 def save(db: Session, changes: dict) -> dict:
     """
-    Apply chosen locations. `changes` maps "stl_path"/"threemf_path" to a folder, or
+    Apply chosen locations. `changes` maps "stl_path"/"threemf_path"/"project_path" to a folder, or
     None to go back to the default; omitted keys are left alone. Everything is
     validated before anything is written, so a bad choice changes nothing.
     """
@@ -78,31 +96,33 @@ def save(db: Session, changes: dict) -> dict:
         return storage.custom_path(kind)
 
     roots = {k: Path(resulting_custom(k) or storage.default_root(k)) for k in storage.KINDS}
-    if storage.overlaps(roots["stl"], roots["threemf"]):
-        raise ValueError(
-            "The STL and 3MF locations must be different folders, and neither can be inside the other — "
-            "their files are organised by number and would collide."
-        )
+    clash = storage.overlapping_kinds(roots)
+    if clash:
+        raise ValueError(_overlap_message(*clash))
 
     for kind, path in chosen.items():
         if path is not None:
             storage.mark_location(path)
         app_settings.put(db, KEYS[kind], str(path) if path else None)
     db.commit()
-    storage.configure(stl_path=resulting_custom("stl"), threemf_path=resulting_custom("threemf"))
+    _configure({k: resulting_custom(k) for k in storage.KINDS})
     return describe(db)
 
 
-def restore_locations(db: Session, stl_path: str | None, threemf_path: str | None) -> tuple[list[str], list[str]]:
+def restore_locations(
+    db: Session, stl_path: str | None, threemf_path: str | None, project_path: str | None = None
+) -> tuple[list[str], list[str]]:
     """
-    Put the STL/3MF folders from a settings file back. Unlike save(), this doesn't require the folder to exist
+    Put the STL/3MF/project files folders from a settings file back. Unlike save(), this doesn't require the folder to exist
     right now: it may live on a share that hasn't reconnected yet. That is safe, because every write still
     checks the folder is really there (and has its marker) first. Returns (what was applied, warnings).
     """
     applied: list[str] = []
     warnings: list[str] = []
     chosen: dict[str, str | None] = {}
-    for kind, raw, label in (("stl", stl_path, "STL folder"), ("threemf", threemf_path, "3MF folder")):
+    labels = {k: f"{storage.FOLDER_LABELS[k]} folder" for k in storage.KINDS}
+    for kind, raw in (("stl", stl_path), ("threemf", threemf_path), ("project", project_path)):
+        label = labels[kind]
         if not raw:
             continue
         try:
@@ -114,14 +134,16 @@ def restore_locations(db: Session, stl_path: str | None, threemf_path: str | Non
         return chosen.get(kind, storage.custom_path(kind))
 
     roots = {k: Path(resulting(k) or storage.default_root(k)) for k in storage.KINDS}
-    if chosen and storage.overlaps(roots["stl"], roots["threemf"]):
-        return [], ["The STL and 3MF folders in the settings file overlap, so neither was restored."]
+    clash = storage.overlapping_kinds(roots) if chosen else None
+    if clash:
+        a, b = clash
+        return [], [f"The {labels[a]} and {labels[b]} in the settings file overlap, so no folder was restored."]
 
     for kind, path in chosen.items():
         app_settings.put(db, KEYS[kind], path)
-        applied.append("STL folder" if kind == "stl" else "3MF folder")
+        applied.append(labels[kind])
     db.commit()
-    storage.configure(stl_path=resulting("stl"), threemf_path=resulting("threemf"))
+    _configure({k: resulting(k) for k in storage.KINDS})
     return applied, warnings
 
 
@@ -137,7 +159,8 @@ def migrate(db: Session) -> dict:
     thumbs_root = storage.thumbnails_root()  # copies from when the app kept its own: moved out by services/previews.py
     stl_root = storage.effective_root("stl")
     threemf_root = storage.effective_root("threemf")
-    result: dict = {"moved_stl": 0, "moved_threemf": 0, "missing": [], "failed": []}
+    project_root = storage.effective_root("project")
+    result: dict = {"moved_stl": 0, "moved_threemf": 0, "moved_project": 0, "missing": [], "failed": []}
 
     def relocate(old: str | None, root: Path, dest_dir_fn, copies: list[str]) -> tuple[str | None, str | None]:
         """
@@ -234,6 +257,38 @@ def migrate(db: Session) -> dict:
                 storage.delete_files(stale)
                 if moved_any:
                     result["moved_threemf"] += 1
+        except storage.StorageUnavailableError:
+            db.rollback()
+            storage.delete_files(copies)
+            raise
+        except OSError as e:
+            db.rollback()
+            storage.delete_files(copies)  # originals are untouched; drop the copies made so far
+            result["failed"].append({"name": label, "error": str(e)})
+
+    # project files: each version of a project's own CAD files and STLs, with its preview
+    for v in list(project_files.all_versions(db)):
+        label = f"{v.filename} v{v.version}"
+        folder = next(k.folder for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
+        pid, cid, ver = v.file.project_id, v.file.id, v.version
+        copies = []
+        try:
+            if v.file_path and not storage.is_inside(v.file_path, project_root) and not os.path.exists(v.file_path):
+                result["missing"].append(label)
+            new_file, old_file = relocate(v.file_path, project_root, lambda: storage.project_file_dir(pid, folder, cid, ver), copies)
+            if new_file:
+                v.file_path = new_file
+                stale = [old_file]
+                old_preview = storage.preview_beside(old_file)
+                if os.path.isfile(old_preview):  # the preview kept with the file moves with it
+                    new_preview = storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png")
+                    copies.append(new_preview)
+                    stale.append(old_preview)
+                    if v.thumbnail_path == old_preview:
+                        v.thumbnail_path = new_preview
+                db.commit()
+                storage.delete_files(stale)
+                result["moved_project"] += 1
         except storage.StorageUnavailableError:
             db.rollback()
             storage.delete_files(copies)

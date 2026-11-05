@@ -151,16 +151,61 @@ export const normalizeBundle = (b) => {
 export const getPrinters = () => request("/printers");
 const getBundle = (bundleId) => request(`/bundles/${bundleId}`);
 
+// A project's own files of one kind ("cad" / "stl"): each with every version, newest first, with where to download it
+// and its preview (null when none could be made)
+const normalizeProjectFiles = (projectId, kind, files) =>
+  (files || []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    printerId: f.printer_id ?? null, // a 3MF's: the printer it's for
+    need: f.need ?? null, // an STL's: how many prints of it the project needs
+    have: f.have ?? null, // and has
+    versions: f.versions.map((v) => {
+      const base = `${API_BASE}/projects/${projectId}/${kind}/${f.id}/versions/${v.version}`;
+      return {
+        v: v.version,
+        filename: v.filename,
+        size: v.size_bytes,
+        note: v.note,
+        date: fmtDate(v.uploaded_at),
+        download: `${base}/download`,
+        view: `${base}/view`, // opened in the browser (a PDF, a picture...), not saved
+        preview: v.has_preview ? `${base}/preview?v=${encodeURIComponent(v.uploaded_at)}` : null,
+        gcodeName: v.gcode_name || null, // a 3MF version's G-code, if it has one
+        gcodeDownload: v.gcode_name ? `${base}/gcode` : null,
+      };
+    }),
+  }));
+
+// A project: its name, its own documents, CAD files, STLs and 3MFs, the models, 3MFs and printers from the rest of Farmhand it
+// uses (their ids, in the order they were added), and its BOM (parts list): [{ id, name, need, have, link, note }].
+export const normalizeProject = (p) => ({
+  id: p.id,
+  name: p.name,
+  created: p.created_at,
+  docFiles: normalizeProjectFiles(p.id, "doc", p.doc_files),
+  cadFiles: normalizeProjectFiles(p.id, "cad", p.cad_files),
+  stlFiles: normalizeProjectFiles(p.id, "stl", p.stl_files),
+  threemfFiles: normalizeProjectFiles(p.id, "threemf", p.threemf_files),
+  modelIds: p.source_model_ids || [],
+  modelCounts: Object.fromEntries((p.source_models || []).map((m) => [m.id, { need: m.need, have: m.have }])), // id -> { need, have }
+  bundleIds: p.bundle_ids || [],
+  printerIds: p.printer_ids || [],
+  parts: p.parts || [],
+});
+
 export const fetchAll = async () => {
-  const [printers, models, bundles] = await Promise.all([
+  const [printers, models, bundles, projects] = await Promise.all([
     getPrinters(),
     request("/source-models"),
     request("/bundles"),
+    request("/projects"),
   ]);
   return {
     printers: printers.map(normalizePrinter),
     sourceModels: models.map(normalizeSourceModel),
     bundles: bundles.map(normalizeBundle),
+    projects: projects.map(normalizeProject),
   };
 };
 
@@ -170,6 +215,50 @@ export const fetchVersionSettings = async (versionId) => {
 };
 
 // ---- writes ----
+
+// Projects: make one, rename it, delete it (the server answers a made or renamed project as it now stands)
+export const createProject = (name) => request("/projects", jsonBody("POST", { name }));
+export const renameProject = (id, name) => request(`/projects/${id}`, jsonBody("PATCH", { name }));
+export const deleteProject = (id) => del(`/projects/${id}`);
+// A project's own files, kind "doc", "cad", "stl" or "threemf": a new one (its version 1), a newer version of one, and deleting a version
+// or the whole file. An STL also says whether it goes in Models too (inModels: true makes it a model there that the
+// project uses; false keeps it the project's own). Each answers the project as it now stands.
+// A 3MF says which printer it's for (printerId), which then comes into the project too.
+export const uploadProjectFile = ({ kind, projectId, file, note, inModels, printerId }) =>
+  request(`/projects/${projectId}/${kind}`, formBody("POST", {
+    file,
+    note: note || undefined,
+    in_models: kind === "stl" ? String(!!inModels) : undefined,
+    printer_id: kind === "threemf" && printerId != null ? String(printerId) : undefined,
+  }));
+export const uploadProjectFileVersion = ({ kind, projectId, fileId, file, note }) =>
+  request(`/projects/${projectId}/${kind}/${fileId}/versions`, formBody("POST", { file, note: note || undefined }));
+export const deleteProjectFileVersion = (kind, projectId, fileId, v) => del(`/projects/${projectId}/${kind}/${fileId}/versions/${v}`);
+export const deleteProjectFile = (kind, projectId, fileId) => del(`/projects/${projectId}/${kind}/${fileId}`);
+// A model from the Models page: put in a project, or taken out of it (the model itself stays)
+export const addProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "PUT" });
+export const removeProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "DELETE" });
+// A 3MF from the rest of Farmhand (its printer comes too), and a printer: put in a project, or taken out
+export const addProjectBundle = (projectId, bundleId) => request(`/projects/${projectId}/bundles/${bundleId}`, { method: "PUT" });
+export const removeProjectBundle = (projectId, bundleId) => request(`/projects/${projectId}/bundles/${bundleId}`, { method: "DELETE" });
+export const addProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "PUT" });
+export const removeProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "DELETE" });
+// A project's BOM: a part added, changed (only the fields given) or removed, each answering the project; and a BOM CSV
+// uploaded, its parts added to the list or replacing it, answering { project, added }
+export const addProjectPart = (projectId, { name, need, have, link, note }) =>
+  request(`/projects/${projectId}/parts`, jsonBody("POST", { name, need, have, link: link || null, note: note || null }));
+export const updateProjectPart = (projectId, partId, changes) => request(`/projects/${projectId}/parts/${partId}`, jsonBody("PATCH", changes));
+export const deleteProjectPart = (projectId, partId) => del(`/projects/${projectId}/parts/${partId}`);
+// How many prints of an STL a project needs and has: a model from Models ("model") or one of its own ("stl"). Only the
+// counts given change.
+export const setProjectStlCounts = (projectId, kind, id, counts) =>
+  request(`/projects/${projectId}/${kind === "model" ? "source-models" : "stl"}/${id}`, jsonBody("PATCH", counts));
+// A project 3MF version's G-code: uploaded (replacing one it had), and sent to the 3MF's printer (it starts printing)
+export const uploadProjectGcode = ({ projectId, fileId, v, gcode }) =>
+  request(`/projects/${projectId}/threemf/${fileId}/versions/${v}/gcode`, formBody("PUT", { gcode }));
+export const sendProjectGcode = (projectId, fileId, v) => post(`/projects/${projectId}/threemf/${fileId}/versions/${v}/print`);
+export const uploadBom = ({ projectId, file, replace }) =>
+  request(`/projects/${projectId}/parts/bom`, formBody("POST", { file, replace: String(!!replace) }));
 
 const ext = (name) => (name.split(".").pop() || "").toLowerCase();
 const typeFromExt = (e) => {
@@ -501,16 +590,18 @@ const normalizeStorage = (r) => ({
   browseRoot: r.browse_root,
   stl: normalizeLocation(r.stl),
   threemf: normalizeLocation(r.threemf),
-  outside: r.outside, // { stl, threemf }: versions whose files are still outside the selected locations
+  project: normalizeLocation(r.project), // project files: each project's own files (its CAD files)
+  outside: r.outside, // { stl, threemf, project }: versions whose files are still outside the selected locations
 });
 
 export const getStorageSettings = async () => normalizeStorage(await request("/settings/storage"));
 
 // Only the locations passed are changed; null resets that one to its default.
-export const saveStorageSettings = async ({ stlPath, threemfPath }) => {
+export const saveStorageSettings = async ({ stlPath, threemfPath, projectPath }) => {
   const body = {};
   if (stlPath !== undefined) body.stl_path = stlPath;
   if (threemfPath !== undefined) body.threemf_path = threemfPath;
+  if (projectPath !== undefined) body.project_path = projectPath;
   return normalizeStorage(await request("/settings/storage", jsonBody("PUT", body)));
 };
 
@@ -563,7 +654,7 @@ export const deleteShare = (id) => del(`/settings/storage/shares/${id}`);
 
 export const migrateStorage = async () => {
   const r = await post("/settings/storage/migrate");
-  return { movedStl: r.moved_stl, movedThreemf: r.moved_threemf, missing: r.missing, failed: r.failed };
+  return { movedStl: r.moved_stl, movedThreemf: r.moved_threemf, movedProject: r.moved_project || 0, missing: r.missing, failed: r.failed };
 };
 
 // Redraw one version's preview from its file with the current renderer. Resolves to { updated }.
@@ -613,6 +704,7 @@ const normalizeFound = (f) =>
       shares: f.summary.shares,
       hasStlFolder: f.summary.has_stl_folder,
       hasThreemfFolder: f.summary.has_threemf_folder,
+      hasProjectFolder: !!f.summary.has_project_folder,
       printers: f.summary.printers || 0, // printer files in its printers/ folder
       models: f.summary.models || 0,
     },
