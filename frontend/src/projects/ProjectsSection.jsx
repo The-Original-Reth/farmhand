@@ -12,13 +12,15 @@ import { Row, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, plural, UploadDialog } from "./ProjectFiles.jsx";
 import { StlActions, StlFiles } from "./StlSection.jsx";
+import { ThreemfActions, ThreemfFiles } from "./ThreemfSection.jsx";
+import { AddPrinterButton, ProjectPrinters } from "./ProjectPrinters.jsx";
 
 // The Projects page: the list of projects, or one project's own page
-// onOpenModel(modelId): that model's page on Models
-export function ProjectsSection({ path, setPath, onOpenModel }) {
+// onOpenModel(modelId) / onOpenPrinter(printerId): that model's or printer's own page
+export function ProjectsSection({ path, setPath, onOpenModel, onOpenPrinter }) {
   const view = path[1]; // {projectId}
   return view ? (
-    <ProjectPage projectId={view.projectId} onDeleted={() => setPath([path[0]])} onOpenModel={onOpenModel} />
+    <ProjectPage projectId={view.projectId} onDeleted={() => setPath([path[0]])} onOpenModel={onOpenModel} onOpenPrinter={onOpenPrinter} />
   ) : (
     <ProjectList onOpen={(id) => setPath([path[0], { projectId: id }])} />
   );
@@ -90,21 +92,20 @@ function ProjectNameForm({ project, onClose, onSaved }) {
   );
 }
 
-// What a project is made of, in page order. Each section folds away. CAD and STL files are built; the others are
-// empty for now.
+// What a project is made of, in page order. Each section folds away. Parts is empty for now.
 const PROJECT_SECTIONS = [
   { key: "cad", label: "CAD", Icon: PenTool, count: (p) => p.cadFiles.length },
   { key: "stl", label: "STL files", Icon: Box, count: (p) => p.modelIds.length + p.stlFiles.length },
-  { key: "threemf", label: "3MF files", Icon: FileBox, empty: "No 3MF files yet." },
-  { key: "printers", label: "Printers", Icon: Printer, empty: "No printers yet." },
+  { key: "threemf", label: "3MF files", Icon: FileBox, count: (p) => p.bundleIds.length + p.threemfFiles.length },
+  { key: "printers", label: "Printers", Icon: Printer, count: (p) => p.printerIds.length },
   { key: "parts", label: "Parts", Icon: Wrench, empty: "No parts yet." },
 ];
 
-function ProjectPage({ projectId, onDeleted, onOpenModel }) {
+function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
   const { projects, refresh } = useData();
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [dialog, setDialog] = useState(null); // null | "cad-upload" | "stl-add" | "stl-upload"
+  const [dialog, setDialog] = useState(null); // null | "cad-upload" | "stl-add" | "stl-upload" | "threemf-add" | "threemf-upload" | "printer-add"
   const sections = useProjectSections();
   const project = projects.find((p) => p.id === projectId);
   if (!project) return null;
@@ -119,6 +120,8 @@ function ProjectPage({ projectId, onDeleted, onOpenModel }) {
       </button>
     ),
     stl: <StlActions onAdd={() => setDialog("stl-add")} onUpload={() => setDialog("stl-upload")} />,
+    threemf: <ThreemfActions onAdd={() => setDialog("threemf-add")} onUpload={() => setDialog("threemf-upload")} />,
+    printers: <AddPrinterButton onClick={() => setDialog("printer-add")} />,
   };
   const bodies = {
     cad: <CadFiles project={project} uploading={dialog === "cad-upload"} onCloseUpload={close} />,
@@ -132,8 +135,19 @@ function ProjectPage({ projectId, onDeleted, onOpenModel }) {
         onOpenModel={onOpenModel}
       />
     ),
+    threemf: (
+      <ThreemfFiles
+        project={project}
+        adding={dialog === "threemf-add"}
+        uploading={dialog === "threemf-upload"}
+        onCloseAdd={close}
+        onCloseUpload={close}
+        onOpenPrinter={onOpenPrinter}
+      />
+    ),
+    printers: <ProjectPrinters project={project} adding={dialog === "printer-add"} onCloseAdd={close} onOpenPrinter={onOpenPrinter} />,
   };
-  const ownFiles = project.cadFiles.length + project.stlFiles.length;
+  const ownFiles = project.cadFiles.length + project.stlFiles.length + project.threemfFiles.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1100 }}>
@@ -189,13 +203,15 @@ function ProjectPage({ projectId, onDeleted, onOpenModel }) {
           }}
         >
           Delete the project <strong>{project.name}</strong>?
-          {project.modelIds.length > 0 && " The models it uses stay in Models."}
+          {project.modelIds.length + project.bundleIds.length + project.printerIds.length > 0 &&
+            " The models, 3MF files and printers it uses from the rest of Farmhand stay where they are."}
           {ownFiles > 0 && (
             <DeleteWarning>
               Its own {[
                 project.cadFiles.length > 0 && plural(project.cadFiles.length, "CAD file"),
                 project.stlFiles.length > 0 && plural(project.stlFiles.length, "STL file"),
-              ].filter(Boolean).join(" and ")}, with every version, {ownFiles === 1 ? "is" : "are"} deleted for good.
+                project.threemfFiles.length > 0 && plural(project.threemfFiles.length, "3MF file"),
+              ].filter(Boolean).join(", ")}, with every version, {ownFiles === 1 ? "is" : "are"} deleted for good.
             </DeleteWarning>
           )}
         </ConfirmDialog>

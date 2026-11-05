@@ -347,6 +347,15 @@ export function buildFarm() {
       ],
       // its STLs: two models from Models, and one of its own (not in Models)
       source_model_ids: [1, 6],
+      // its 3MFs: two from Farmhand (their printers came with them), and one of its own for VT 1190
+      bundle_ids: [1, 4],
+      printer_ids: [1, 2],
+      threemf_files: [
+        {
+          id: 5, printer_id: 1, created_at: iso(NOW - 1 * DAY),
+          versions: [cadVersion(1, "Display plate ver 1.3mf", 3_640_000, "Stand and clips on one plate", 1, "frog-vt1190")],
+        },
+      ],
       stl_files: [
         {
           id: 4, created_at: iso(NOW - 2 * DAY),
@@ -357,7 +366,7 @@ export function buildFarm() {
         },
       ],
     },
-    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [], stl_files: [], source_model_ids: [2, 3] },
+    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [2, 3], bundle_ids: [3], printer_ids: [1] },
   ];
 
   return {

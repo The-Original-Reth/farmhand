@@ -8,7 +8,7 @@ from ..database import get_db
 from ..errors import answer_errors
 from ..schemas.project import ProjectIn, ProjectOut
 from ..services import project_files, project_service
-from ..services.project_files import CAD, STL, Kind
+from ..services.project_files import CAD, STL, THREEMF, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
 
@@ -42,7 +42,7 @@ def rename_project(project_id: int, payload: ProjectIn, db: Session = Depends(ge
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
-    """Delete a project with its own CAD files and STLs (every version, for good). Models it used stay in Models."""
+    """Delete a project with its own CAD files, STLs and 3MFs (every version, for good). What it used stays."""
     require_confirm(confirm)
     with answer_errors():
         project_service.delete_project(db, project_id)
@@ -64,7 +64,36 @@ def remove_model(project_id: int, source_model_id: int, db: Session = Depends(ge
         return out(project_service.remove_model(db, project_id, source_model_id))
 
 
-# ---- the project's own files, CAD (/cad) and STL (/stl): uploaded, versioned, previewed, downloaded, deleted ----
+# ---- 3MFs and printers from the rest of Farmhand: PUT puts one in the project, DELETE takes it out (nothing else changes) ----
+
+
+@router.put("/{project_id}/bundles/{bundle_id}", response_model=ProjectOut)
+def add_bundle(project_id: int, bundle_id: int, db: Session = Depends(get_db)):
+    """Use a 3MF in the project. The printer it's for comes too (taking the 3MF out later leaves the printer)."""
+    with answer_errors():
+        return out(project_service.add_bundle(db, project_id, bundle_id))
+
+
+@router.delete("/{project_id}/bundles/{bundle_id}", response_model=ProjectOut)
+def remove_bundle(project_id: int, bundle_id: int, db: Session = Depends(get_db)):
+    with answer_errors():
+        return out(project_service.remove_bundle(db, project_id, bundle_id))
+
+
+@router.put("/{project_id}/printers/{printer_id}", response_model=ProjectOut)
+def add_printer(project_id: int, printer_id: int, db: Session = Depends(get_db)):
+    with answer_errors():
+        return out(project_service.add_printer(db, project_id, printer_id))
+
+
+@router.delete("/{project_id}/printers/{printer_id}", response_model=ProjectOut)
+def remove_printer(project_id: int, printer_id: int, db: Session = Depends(get_db)):
+    with answer_errors():
+        return out(project_service.remove_printer(db, project_id, printer_id))
+
+
+# ---- the project's own files, CAD (/cad), STL (/stl) and 3MF (/threemf): uploaded, versioned, previewed, downloaded,
+# deleted ----
 
 
 @router.post("/{project_id}/cad", response_model=ProjectOut, status_code=201)
@@ -92,6 +121,24 @@ def upload_stl(
         if in_models:
             return out(project_service.upload_to_models(db, project_id, file.filename, file.file, note))
         project_files.upload(db, STL, project_id, file.filename, file.file, note)
+        return out(project_service.require_project(db, project_id))
+
+
+@router.post("/{project_id}/threemf", response_model=ProjectOut, status_code=201)
+def upload_threemf(
+    project_id: int,
+    file: UploadFile = File(...),
+    printer_id: int | None = Form(None, description="The printer it's for: it comes into the project too"),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    """
+    A 3MF uploaded to the project only (one also put in Models is uploaded there, then used: PUT .../bundles/{id}), as
+    version 1, with its printer. 422 for another kind of file; 404 for a printer that isn't there; 503 if the project
+    files folder isn't there right now.
+    """
+    with answer_errors():
+        project_files.upload(db, THREEMF, project_id, file.filename, file.file, note, printer_id=printer_id)
         return out(project_service.require_project(db, project_id))
 
 

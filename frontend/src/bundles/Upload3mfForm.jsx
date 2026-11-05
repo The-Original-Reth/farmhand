@@ -22,7 +22,8 @@ import { Dropzone, FieldSelect, SegmentedToggle, TextField } from "../components
 // source-model choice and printer field are both skipped — the bundle
 // attaches to the current folder, and the printer is read from the 3MF's own
 // embedded profile reference rather than asked for.
-export function Upload3mfForm({ presetModel, onClose }) {
+// onUploaded(the 3MF as the server answers it): called once it's uploaded (a project's page uses it to take it in)
+export function Upload3mfForm({ presetModel, onClose, onUploaded }) {
   const { sourceModels, printers, bundles, modelsForBundle, refresh } = useData();
   const [mode, setMode] = useState("existing"); // "existing" | "new"
   const [newName, setNewName] = useState("");
@@ -110,7 +111,8 @@ export function Upload3mfForm({ presetModel, onClose }) {
     if (versionTarget) {
       // A newer version of an existing entry: nothing new to create, the printer is already matched
       await run(async () => {
-        await addBundleVersion({ bundleId: versionTarget.id, threemf: threemfFile, gcode: gcodeFile, subPrinter: subPrinterFields(sub.pick) });
+        const out = await addBundleVersion({ bundleId: versionTarget.id, threemf: threemfFile, gcode: gcodeFile, subPrinter: subPrinterFields(sub.pick) });
+        await onUploaded?.(out);
         await refresh();
         onClose();
       });
@@ -159,7 +161,8 @@ export function Upload3mfForm({ presetModel, onClose }) {
         printerId = Number(existingPrinterId);
       }
 
-      await createBundle({ sourceModelIds, threemf: threemfFile, gcode: gcodeFile, printerId, subPrinter: subPrinterFields(sub.pick) });
+      const out = await createBundle({ sourceModelIds, threemf: threemfFile, gcode: gcodeFile, printerId, subPrinter: subPrinterFields(sub.pick) });
+      await onUploaded?.(out);
       await refresh();
       onClose();
     });

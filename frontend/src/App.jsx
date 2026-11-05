@@ -35,7 +35,12 @@ function SectionPage({ section, nav, compare, settings }) {
       );
     case "projects":
       return (
-        <ProjectsSection path={nav.projects.path} setPath={nav.projects.setPath} onOpenModel={(modelId) => nav.open("models", { modelId })} />
+        <ProjectsSection
+          path={nav.projects.path}
+          setPath={nav.projects.setPath}
+          onOpenModel={(modelId) => nav.open("models", { modelId })}
+          onOpenPrinter={(printerId) => nav.open("printers", { printerId })}
+        />
       );
     case "farm-cost":
       return <FarmCostSection order={farmCost.order} onOrder={farmCost.changeOrder} />;

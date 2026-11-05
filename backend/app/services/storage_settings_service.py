@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import storage
-from ..models import BundleVersion, ProjectStlVersion, SourceModelVersion
+from ..models import BundleVersion, SourceModelVersion
 from . import app_settings, project_files
 
 KEYS = {"stl": "stl_storage_dir", "threemf": "threemf_storage_dir", "project": "project_storage_dir"}
@@ -269,7 +269,7 @@ def migrate(db: Session) -> dict:
     # project files: each version of a project's own CAD files and STLs, with its preview
     for v in list(project_files.all_versions(db)):
         label = f"{v.filename} v{v.version}"
-        folder = "stl" if isinstance(v, ProjectStlVersion) else "cad"
+        folder = next(k.key for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
         pid, cid, ver = v.file.project_id, v.file.id, v.version
         copies = []
         try:

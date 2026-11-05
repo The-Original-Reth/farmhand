@@ -15,9 +15,10 @@ class FileVersionOut(BaseModel):
 
 
 class ProjectFileOut(BaseModel):
-    """A project's own file, CAD or STL."""
+    """A project's own file, CAD, STL or 3MF."""
 
     id: int
+    printer_id: int | None = None  # a 3MF's: the printer it's for (absent for CAD and STL files)
     name: str  # its newest version's file name
     created_at: dt.datetime
     versions: list[FileVersionOut]  # newest first
@@ -29,7 +30,10 @@ class ProjectOut(BaseModel):
     created_at: dt.datetime
     cad_files: list[ProjectFileOut] = []
     stl_files: list[ProjectFileOut] = []  # STLs of its own (not in Models)
+    threemf_files: list[ProjectFileOut] = []  # 3MFs of its own (not in Models)
     source_model_ids: list[int] = []  # models from the Models page it uses
+    bundle_ids: list[int] = []  # 3MFs from the rest of Farmhand it uses
+    printer_ids: list[int] = []  # printers it uses (brought by its 3MFs, or added)
 
 
 class ProjectIn(BaseModel):

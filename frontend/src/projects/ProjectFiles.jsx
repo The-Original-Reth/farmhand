@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, ChevronDown, PenTool, Upload } from "lucide-react";
+import { Box, ChevronDown, FileBox, PenTool, Upload } from "lucide-react";
 import { deleteProjectFile, deleteProjectFileVersion, uploadProjectFile, uploadProjectFileVersion } from "../api.js";
 import { c } from "../theme.js";
 import { useData } from "../data.jsx";
@@ -12,7 +12,20 @@ import { monoText, toolButton, uiText } from "../styles.js";
 
 export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-// A project's own files: its CAD files and its STLs that aren't in Models. Both work alike: a file with versions like
+// "Project only", boxed in purple: on an STL or 3MF a project keeps for itself (uploaded to it, not put in Models)
+export function ProjectOnlyTag() {
+  return (
+    <span
+      data-testid="project-only-tag"
+      title="Uploaded to this project only: not in Models, and deleted with the project"
+      style={uiText(11, c.projectOnly, { border: `1px solid ${c.projectOnly}`, borderRadius: 3, padding: "0 6px", fontWeight: 600, whiteSpace: "nowrap" })}
+    >
+      Project only
+    </span>
+  );
+}
+
+// A project's own files: its CAD files, and its STLs and 3MFs that aren't in Models. All work alike: a file with versions like
 // a 3MF's (the newest shown with its preview, the older ones behind a down arrow), kept in the project files folder.
 export const FILE_KINDS = {
   cad: {
@@ -23,10 +36,15 @@ export const FILE_KINDS = {
     key: "stl", noun: "STL file", Icon: Box, accept: ".stl,.obj", list: (p) => p.stlFiles,
     drop: "Drop the STL (or OBJ) file here", previews: "It gets a preview like an STL in Models.",
   },
+  threemf: {
+    key: "threemf", noun: "3MF file", Icon: FileBox, accept: ".3mf", list: (p) => p.threemfFiles,
+    drop: "Drop the 3MF file here", previews: "Its preview is the picture the slicer saved inside it.",
+  },
 };
 
 export function FileCard({ project, kind, file, onNewVersion }) {
-  const { putProject } = useData();
+  const { putProject, printers } = useData();
+  const printer = file.printerId != null ? printers.find((p) => p.id === file.printerId) : null;
   const [showOlder, setShowOlder] = useState(false); // older versions start folded away
   const [deleting, setDeleting] = useState(null); // null | "file" | a version
   const [latest, ...older] = file.versions;
@@ -44,8 +62,14 @@ export function FileCard({ project, kind, file, onNewVersion }) {
           >
             {file.name}
           </span>
+          {kind.key !== "cad" && <ProjectOnlyTag />}
         </span>
-        <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: "auto" })}>{plural(file.versions.length, "version")}</span>
+        {kind.key === "threemf" && (
+          <span data-testid="threemf-printer" style={uiText(12, printer ? c.textMuted : c.textFaint, { whiteSpace: "nowrap" })}>
+            {printer ? printer.name : "no printer"}
+          </span>
+        )}
+        <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: kind.key === "threemf" ? 0 : "auto" })}>{plural(file.versions.length, "version")}</span>
         {older.length > 0 && (
           <button
             data-testid={`${kind.key}-versions-toggle`}
@@ -127,11 +151,15 @@ function FileVersionRow({ ver, isLatest = false, onDelete }) {
 }
 
 // The dialog for a new file of this kind (no `file`), or a newer version of one: the file, and a note on what it is or
-// what changed. `extra` goes above the note (an STL's "also put it in Models?"); `check()` can stop the upload with a
-// reason, and `fields` adds to what's sent.
-export function UploadDialog({ project, kind, file: existing, onClose, extra, check, fields, onUploaded }) {
+// what changed. `extra` goes above the note (an STL's "also put it in Models?", a 3MF's printer); `check()` can stop
+// the upload with a reason, `fields` adds to what's sent, and `onPicked(file)` hears of the file chosen.
+export function UploadDialog({ project, kind, file: existing, onClose, extra, check, fields, onUploaded, onPicked, title }) {
   const { putProject } = useData();
-  const [picked, setPicked] = useState(null);
+  const [picked, setPickedState] = useState(null);
+  const setPicked = (f) => {
+    setPickedState(f);
+    onPicked?.(f);
+  };
   const [note, setNote] = useState("");
   const { busy, error, setError, run } = useAction();
   const submit = () => {
@@ -149,7 +177,7 @@ export function UploadDialog({ project, kind, file: existing, onClose, extra, ch
   };
   const next = existing ? existing.versions[0].v + 1 : 1;
   return (
-    <Modal title={existing ? `New version of ${existing.name}` : `Upload ${kind.noun.replace(" file", "")}`} onClose={onClose}>
+    <Modal title={title || (existing ? `New version of ${existing.name}` : `Upload ${kind.noun.replace(" file", "")}`)} onClose={onClose}>
       <Dropzone
         label={existing ? `Drop the newer version of the ${kind.noun} here` : kind.drop}
         file={picked}

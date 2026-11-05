@@ -1,7 +1,7 @@
 """
-A project's own files: its CAD files (any kind) and its STLs that aren't in Models. Both work the same way: a file with
-numbered versions like a 3MF's, each kept as "<name> ver <n>.<ext>" in {project files}/{project id}/{cad|stl}/{file
-id}/v{n}/, with a preview next to it when one can be made (thumbnails/cad_preview.py). Deleting goes rows first, then
+A project's own files: its CAD files (any kind), and its STLs and 3MFs that aren't in Models. All work the same way: a file with
+numbered versions like a 3MF's, each kept as "<name> ver <n>.<ext>" in {project files}/{project id}/{cad|stl|threemf}/
+{file id}/v{n}/, with a preview next to it when one can be made (thumbnails/cad_preview.py). Deleting goes rows first, then
 files.
 """
 from __future__ import annotations
@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..errors import NotFound
-from ..models import ProjectCadFile, ProjectCadVersion, ProjectStlFile, ProjectStlVersion
+from ..models import Printer, ProjectCadFile, ProjectCadVersion, ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfVersion
 from ..names import with_version
 from ..thumbnails.cad_preview import render_cad_preview
-from .project_service import require_project
+from .project_service import link_printer, require_project
 
 MAX_NOTE_LENGTH = 2000
 
@@ -39,7 +39,11 @@ STL = Kind(
     "stl", ProjectStlFile, ProjectStlVersion, "stl_file_id", "STL file", (".stl", ".obj"),
     "An STL file has to be an .stl or .obj file.",
 )
-KINDS = {k.key: k for k in (CAD, STL)}
+THREEMF = Kind(
+    "threemf", ProjectThreemfFile, ProjectThreemfVersion, "threemf_file_id", "3MF file", (".3mf",),
+    "A 3MF file has to be a .3mf file.",
+)
+KINDS = {k.key: k for k in (CAD, STL, THREEMF)}
 
 
 def _clean_note(note: str | None) -> str | None:
@@ -91,13 +95,22 @@ def _add_version(db: Session, kind: Kind, f, number: int, filename: str, file_ob
         raise
 
 
-def upload(db: Session, kind: Kind, project_id: int, filename: str, file_obj, note: str | None = None):
-    """A new file in the project, as its version 1. 503 (StorageUnavailableError) if the folder isn't there."""
+def upload(
+    db: Session, kind: Kind, project_id: int, filename: str, file_obj, note: str | None = None, printer_id: int | None = None,
+):
+    """
+    A new file in the project, as its version 1. 503 (StorageUnavailableError) if the folder isn't there. A 3MF is for
+    `printer_id` (chosen at upload; none is allowed), and that printer then comes into the project too.
+    """
     require_project(db, project_id)
     check_type(kind, filename)
     note = _clean_note(note)
+    if kind is THREEMF and printer_id is not None and db.get(Printer, printer_id) is None:
+        raise NotFound("Printer not found")
     storage.ready_root("project")  # refuse before anything is recorded
     f = kind.file_cls(project_id=project_id)
+    if kind is THREEMF:
+        f.printer_id = printer_id
     db.add(f)
     db.flush()
     try:
@@ -105,6 +118,8 @@ def upload(db: Session, kind: Kind, project_id: int, filename: str, file_obj, no
     except Exception:
         db.rollback()
         raise
+    if kind is THREEMF and printer_id is not None:
+        link_printer(db, project_id, printer_id)
     return f
 
 

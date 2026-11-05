@@ -157,6 +157,7 @@ const normalizeProjectFiles = (projectId, kind, files) =>
   (files || []).map((f) => ({
     id: f.id,
     name: f.name,
+    printerId: f.printer_id ?? null, // a 3MF's: the printer it's for
     versions: f.versions.map((v) => {
       const base = `${API_BASE}/projects/${projectId}/${kind}/${f.id}/versions/${v.version}`;
       return {
@@ -171,15 +172,18 @@ const normalizeProjectFiles = (projectId, kind, files) =>
     }),
   }));
 
-// A project: its name, its own CAD files and STLs, and the models from the Models page it uses (their ids, in the
-// order they were added). Its 3MF files, printers and parts come later.
+// A project: its name, its own CAD files, STLs and 3MFs, and the models, 3MFs and printers from the rest of Farmhand
+// it uses (their ids, in the order they were added). Its parts come later.
 export const normalizeProject = (p) => ({
   id: p.id,
   name: p.name,
   created: p.created_at,
   cadFiles: normalizeProjectFiles(p.id, "cad", p.cad_files),
   stlFiles: normalizeProjectFiles(p.id, "stl", p.stl_files),
+  threemfFiles: normalizeProjectFiles(p.id, "threemf", p.threemf_files),
   modelIds: p.source_model_ids || [],
+  bundleIds: p.bundle_ids || [],
+  printerIds: p.printer_ids || [],
 });
 
 export const fetchAll = async () => {
@@ -211,9 +215,13 @@ export const deleteProject = (id) => del(`/projects/${id}`);
 // A project's own files, kind "cad" or "stl": a new one (its version 1), a newer version of one, and deleting a version
 // or the whole file. An STL also says whether it goes in Models too (inModels: true makes it a model there that the
 // project uses; false keeps it the project's own). Each answers the project as it now stands.
-export const uploadProjectFile = ({ kind, projectId, file, note, inModels }) =>
+// A 3MF says which printer it's for (printerId), which then comes into the project too.
+export const uploadProjectFile = ({ kind, projectId, file, note, inModels, printerId }) =>
   request(`/projects/${projectId}/${kind}`, formBody("POST", {
-    file, note: note || undefined, in_models: kind === "stl" ? String(!!inModels) : undefined,
+    file,
+    note: note || undefined,
+    in_models: kind === "stl" ? String(!!inModels) : undefined,
+    printer_id: kind === "threemf" && printerId != null ? String(printerId) : undefined,
   }));
 export const uploadProjectFileVersion = ({ kind, projectId, fileId, file, note }) =>
   request(`/projects/${projectId}/${kind}/${fileId}/versions`, formBody("POST", { file, note: note || undefined }));
@@ -222,6 +230,11 @@ export const deleteProjectFile = (kind, projectId, fileId) => del(`/projects/${p
 // A model from the Models page: put in a project, or taken out of it (the model itself stays)
 export const addProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "PUT" });
 export const removeProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "DELETE" });
+// A 3MF from the rest of Farmhand (its printer comes too), and a printer: put in a project, or taken out
+export const addProjectBundle = (projectId, bundleId) => request(`/projects/${projectId}/bundles/${bundleId}`, { method: "PUT" });
+export const removeProjectBundle = (projectId, bundleId) => request(`/projects/${projectId}/bundles/${bundleId}`, { method: "DELETE" });
+export const addProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "PUT" });
+export const removeProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "DELETE" });
 
 const ext = (name) => (name.split(".").pop() || "").toLowerCase();
 const typeFromExt = (e) => {

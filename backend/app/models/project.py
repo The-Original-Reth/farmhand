@@ -14,8 +14,8 @@ def _now():
 
 class Project(Base):
     """
-    A piece of work for the farm: its CAD files, its STL files (models from the Models page, and STLs of its own), and
-    in time its 3MF files, printers and parts. Its own files are kept in the project files folder (chosen on the
+    A piece of work for the farm: its CAD files; its STL and 3MF files (ones from the rest of Farmhand, and ones of its
+    own); the printers those 3MFs are for; and in time its parts. Its own files are kept in the project files folder (chosen on the
     Settings page), one folder per project.
     """
 
@@ -32,14 +32,23 @@ class Project(Base):
     stl_files: Mapped[list["ProjectStlFile"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="ProjectStlFile.id"
     )
+    threemf_files: Mapped[list["ProjectThreemfFile"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="ProjectThreemfFile.id"
+    )
     # models from the Models page it uses: only pointed at (taking one out, or deleting the project, leaves the model)
     model_links: Mapped[list["ProjectSourceModel"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="ProjectSourceModel.added_at"
     )
+    bundle_links: Mapped[list["ProjectBundle"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="ProjectBundle.added_at"
+    )
+    printer_links: Mapped[list["ProjectPrinter"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="ProjectPrinter.added_at"
+    )
 
 
-# A project's own files, CAD or STL, each kind in tables of its own but alike: a file with numbered versions, each kept
-# in {project files}/{project id}/{cad|stl}/{file id}/v{n}/, named like a 3MF version ("Bracket ver 2.f3d"), with its
+# A project's own files, CAD, STL or 3MF, each kind in tables of its own but alike: a file with numbered versions, each kept
+# in {project files}/{project id}/{cad|stl|threemf}/{file id}/v{n}/, named like a 3MF version ("Bracket ver 2.f3d"), with its
 # preview next to it when one could be made. A file is shown by its newest version's name. No version is pruned: these
 # can't be made again from anything else. (services/project_files.py handles both kinds.)
 
@@ -120,5 +129,76 @@ class ProjectSourceModel(Base):
 
     project: Mapped["Project"] = relationship(back_populates="model_links")
     source_model: Mapped["SourceModel"] = relationship(  # noqa: F821
+        backref=backref("project_links", cascade="all, delete-orphan")
+    )
+
+
+class ProjectThreemfFile(Base):
+    """
+    A 3MF uploaded to a project only, not put in Models: it belongs to the project. It's sliced for one printer (chosen
+    at upload, suggested from the file), which the project then uses too; a printer deleted later leaves it without one.
+    """
+
+    __tablename__ = "project_threemf_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    printer_id: Mapped[int | None] = mapped_column(ForeignKey("printers.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship(back_populates="threemf_files")
+    printer: Mapped["Printer | None"] = relationship(  # noqa: F821
+        backref=backref("project_threemf_files", passive_deletes=True)
+    )
+    versions: Mapped[list["ProjectThreemfVersion"]] = relationship(
+        back_populates="file", order_by="ProjectThreemfVersion.version.desc()", cascade="all, delete-orphan"
+    )
+
+
+class ProjectThreemfVersion(Base):
+    __tablename__ = "project_threemf_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    threemf_file_id: Mapped[int] = mapped_column(ForeignKey("project_threemf_files.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)  # as kept: "Plate ver 2.3mf"
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumbnail_path: Mapped[str | None] = mapped_column(String(500))  # the picture inside the 3MF, next to it
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(Text)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    file: Mapped["ProjectThreemfFile"] = relationship(back_populates="versions")
+
+
+class ProjectBundle(Base):
+    """
+    A 3MF from the rest of Farmhand used in a project (one on the Models and Printers pages). Using one brings the
+    printer it's for (ProjectPrinter); taking it out leaves the printer. Deleting the 3MF takes it out of every project.
+    """
+
+    __tablename__ = "project_bundles"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    bundle_id: Mapped[int] = mapped_column(ForeignKey("bundles.id"), primary_key=True, index=True)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship(back_populates="bundle_links")
+    bundle: Mapped["Bundle"] = relationship(  # noqa: F821
+        backref=backref("project_links", cascade="all, delete-orphan")
+    )
+
+
+class ProjectPrinter(Base):
+    """A printer a project uses: brought by its 3MFs, or added by hand. Deleting the printer takes it out of every project."""
+
+    __tablename__ = "project_printers"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), primary_key=True, index=True)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship(back_populates="printer_links")
+    printer: Mapped["Printer"] = relationship(  # noqa: F821
         backref=backref("project_links", cascade="all, delete-orphan")
     )

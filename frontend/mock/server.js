@@ -132,15 +132,20 @@ export function mockApi() {
   const filesOut = (files) =>
     files.map((f) => ({
       id: f.id, name: f.versions[0].filename, created_at: f.created_at,
+      ...("printer_id" in f ? { printer_id: f.printer_id } : {}),
       versions: f.versions.map(({ thumb, ...v }) => ({ ...v, has_preview: !!thumb })),
     }));
   const projectOut = (p) => ({
     id: p.id, name: p.name, created_at: p.created_at,
-    cad_files: filesOut(p.cad_files), stl_files: filesOut(p.stl_files), source_model_ids: [...p.source_model_ids],
+    cad_files: filesOut(p.cad_files), stl_files: filesOut(p.stl_files), threemf_files: filesOut(p.threemf_files),
+    source_model_ids: [...p.source_model_ids], bundle_ids: [...p.bundle_ids], printer_ids: [...p.printer_ids],
   });
   on("GET", "/projects", () => [...farm.projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(projectOut));
   on("POST", "/projects", (_p, body) => {
-    const p = { id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()), cad_files: [], stl_files: [], source_model_ids: [] };
+    const p = {
+      id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()),
+      cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [], bundle_ids: [], printer_ids: [],
+    };
     farm.projects.push(p);
     return [201, projectOut(p)];
   });
@@ -162,15 +167,44 @@ export function mockApi() {
     p.source_model_ids = p.source_model_ids.filter((x) => x !== Number(mid));
     return projectOut(p);
   });
-  // A project's own files, CAD or STL: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version
+  // 3MFs from the rest of Farmhand (bringing their printer) and printers: put in a project, or taken out
+  const linkPrinter = (p, printerId) => {
+    if (!p.printer_ids.includes(printerId)) p.printer_ids.push(printerId);
+  };
+  on("PUT", "/projects/:id/bundles/:bid", ({ id, bid }) => {
+    const p = project(id);
+    const b = farm.bundles.find((x) => x.id === Number(bid)) || fail404("Bundle not found");
+    if (!p.bundle_ids.includes(b.id)) p.bundle_ids.push(b.id);
+    linkPrinter(p, b.printer_id);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/bundles/:bid", ({ id, bid }) => {
+    const p = project(id);
+    p.bundle_ids = p.bundle_ids.filter((x) => x !== Number(bid));
+    return projectOut(p);
+  });
+  on("PUT", "/projects/:id/printers/:pid", ({ id, pid }) => {
+    const p = project(id);
+    const printer = farm.printers.find((x) => x.id === Number(pid)) || fail404("Printer not found");
+    linkPrinter(p, printer.id);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/printers/:pid", ({ id, pid }) => {
+    const p = project(id);
+    p.printer_ids = p.printer_ids.filter((x) => x !== Number(pid));
+    return projectOut(p);
+  });
+  // A project's own files, CAD, STL or 3MF: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version
   // 2 is "Bracket ver 2.f3d"). A kind the real backend draws a preview of gets a stand-in picture here.
   const withVersion = (name, n) => {
     const dot = name.lastIndexOf(".");
     const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
     return `${stem.replace(/\s*\bver\s*\d+$/i, "").replace(/[ ._-]+$/, "") || stem} ver ${n}${ext}`;
   };
-  const previewable = (name) => /\.(stl|obj|step|stp|iges|igs|brep|f3d|f3z)$/i.test(name);
-  const KIND = { cad: { list: "cad_files", noun: "CAD file" }, stl: { list: "stl_files", noun: "STL file" } };
+  const previewable = (name) => /\.(stl|obj|step|stp|iges|igs|brep|f3d|f3z|3mf)$/i.test(name);
+  const KIND = {
+    cad: { list: "cad_files", noun: "CAD file" }, stl: { list: "stl_files", noun: "STL file" }, threemf: { list: "threemf_files", noun: "3MF file" },
+  };
   const kindOf = (kind) => KIND[kind] || fail404("Not found");
   const projectFile = (id, kind, fid) =>
     project(id)[kindOf(kind).list].find((f) => f.id === Number(fid)) || fail404(`${kindOf(kind).noun} not found`);
@@ -182,7 +216,7 @@ export function mockApi() {
     const filename = withVersion(body.files?.[0] || "File", n);
     f.versions.unshift({
       version: n, filename, size_bytes: 1_250_000, note: String(body.fields?.note || "").trim() || null, uploaded_at: iso(nowUnix()),
-      thumb: previewable(filename) ? "stl-frog-keychain" : null,
+      thumb: !previewable(filename) ? null : /\.3mf$/i.test(filename) ? "frog-vt1190" : "stl-frog-keychain",
     });
   };
   on("POST", "/projects/:id/:kind", ({ id, kind }, body) => {
@@ -204,7 +238,15 @@ export function mockApi() {
         return [201, projectOut(p)];
       }
     }
+    if (kind === "threemf" && !/\.3mf$/i.test(name)) throw new HttpError(422, "A 3MF file has to be a .3mf file.");
     const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [] };
+    if (kind === "threemf") {
+      // the printer it's for comes into the project too
+      const pid = body.fields?.printer_id ? Number(body.fields.printer_id) : null;
+      if (pid != null && !farm.printers.some((x) => x.id === pid)) fail404("Printer not found");
+      f.printer_id = pid;
+      if (pid != null) linkPrinter(p, pid);
+    }
     addFileVersion(f, body);
     p[KIND[kind].list].push(f);
     return [201, projectOut(p)];
@@ -551,6 +593,7 @@ export function mockApi() {
     farm.bundles = farm.bundles.filter((b) => !b.source_model_ids.includes(m.id));
     farm.models = farm.models.filter((x) => x.id !== m.id);
     for (const p of farm.projects) p.source_model_ids = p.source_model_ids.filter((x) => x !== m.id); // out of every project
+    for (const p of farm.projects) p.bundle_ids = p.bundle_ids.filter((x) => farm.bundles.some((b) => b.id === x));
     return [204, null];
   });
   on("DELETE", "/source-models/:id/versions/:v", ({ id, v }, _b, q) => {
@@ -713,6 +756,7 @@ export function mockApi() {
   on("DELETE", "/bundles/:id", ({ id }, _b, q) => {
     requireConfirm(q);
     farm.bundles = farm.bundles.filter((b) => b.id !== Number(id));
+    for (const p of farm.projects) p.bundle_ids = p.bundle_ids.filter((x) => x !== Number(id)); // out of every project
     return [204, null];
   });
 
@@ -1173,12 +1217,12 @@ export function mockApi() {
   const fileRoutes = [
     [/^\/bundles\/versions\/(\d+)\/thumbnail$/, (m) => png(version(m[1]).v.thumb)],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/thumbnail$/, (m) => png(model(m[1]).versions.find((v) => v.version === Number(m[2]))?.thumb)],
-    [/^\/projects\/(\d+)\/(cad|stl)\/(\d+)\/versions\/(\d+)\/preview$/, (m) => png(fileVersion(m[1], m[2], m[3], m[4]).thumb)],
+    [/^\/projects\/(\d+)\/(cad|stl|threemf)\/(\d+)\/versions\/(\d+)\/preview$/, (m) => png(fileVersion(m[1], m[2], m[3], m[4]).thumb)],
   ];
   const downloadRoutes = [
     [/^\/bundles\/versions\/(\d+)\/download\/(3mf|gcode)$/, (m) => [version(m[1]).v.filename.replace(/\.3mf$/, m[2] === "gcode" ? ".gcode" : ".3mf")]],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/download$/, (m) => [model(m[1]).name]],
-    [/^\/projects\/(\d+)\/(cad|stl)\/(\d+)\/versions\/(\d+)\/download$/, (m) => [fileVersion(m[1], m[2], m[3], m[4]).filename]],
+    [/^\/projects\/(\d+)\/(cad|stl|threemf)\/(\d+)\/versions\/(\d+)\/download$/, (m) => [fileVersion(m[1], m[2], m[3], m[4]).filename]],
   ];
 
   // ------------------------------------------------------------------ the Vite plugin

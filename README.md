@@ -226,8 +226,8 @@ sudo docker compose down -v
 **Projects**, under Models in the menu: a piece of work for the farm. A project gathers what that work needs: its CAD
 files, STL files, 3MF files, printers and parts. **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its five sections (CAD, STL files, 3MF
-files, Printers, Parts), each folding away with the arrow by its heading (remembered in this browser). CAD and STL
-files are built; the other sections are empty until each is built.
+files, Printers, Parts), each folding away with the arrow by its heading (remembered in this browser). Parts is empty
+until it's built.
 - **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an
   optional note on what it is. Each CAD file keeps every version, like a 3MF: **New version** adds the next one, named
   `Bracket ver 1.f3d`, `Bracket ver 2.f3d`... (a "ver N" the uploaded name already has is replaced). The newest
@@ -250,10 +250,23 @@ files are built; the other sections are empty until each is built.
   - **Upload STL** takes an STL or OBJ file and asks **Also put it in Models?** (it has to be answered). **Yes**: it
     becomes a new model on the Models page, kept in the STL folder, which the project uses. **No**: it belongs to the
     project: kept in the project files folder with versions like a CAD file (**New version**, older ones behind the
-    down arrow, Download, delete) and its preview, and deleted with the project.
+    down arrow, Download, delete) and its preview, and deleted with the project. It has a purple **Project only** tag.
+- **3MF files** work the same way, and the printer a 3MF is for always comes into the project with it:
+  - **Add existing 3MF** picks 3MFs already in Farmhand (searchable by name, printer or STL; ones already in the project
+    aren't offered). Each shows with **In Models**, its printer, its newest version (older ones behind the down arrow)
+    with its G-code (Download, Send to the printer), **New version** (the 3MF's next version everywhere), **Open** (its
+    printer's page) and **Take out** (the 3MF stays, and so does its printer in the project). Each 3MF's card on the
+    Models and Printers pages also has **Add to project**, asking for a project you have or a new one.
+  - **Upload 3MF** asks **Also put it in Models?** first. **Yes**: the usual 3MF upload (its STL, its printer read
+    from the file), then the project uses it. **No**: it's the project's own (**Project only**, versioned, its preview
+    the picture inside the 3MF), for a printer you pick (suggested from the file's printer profile).
+- **Printers** lists the printers the project uses (brought by its 3MFs, or **Add printer**), each with how many of
+  the project's 3MFs are for it, **Open** (its page), **Mainsail** (or **PrusaLink** for a Prusa: its own page in a
+  new tab) and **Remove**, which asks first (the printer and the 3MFs for it stay). Deleting a printer
+  takes it out of every project.
 - Project files are kept in the **Project files** folder chosen on the Settings page (by default Farmhand's own
-  storage), one folder per project: `<project files>/<project number>/cad/<CAD file number>/v<n>/` (and `stl/` for
-  its own STLs), each version's preview next to it. It works like the STL and 3MF folders: it can be on a NAS, gets the same safety check, and
+  storage), one folder per project: `<project files>/<project number>/cad/<CAD file number>/v<n>/` (and `stl/` and
+  `threemf/` for its own STLs and 3MFs), each version's preview next to it. It works like the STL and 3MF folders: it can be on a NAS, gets the same safety check, and
   **Move them now** moves files into it when it changes.
 
 **Printers** (see "Printers" below)

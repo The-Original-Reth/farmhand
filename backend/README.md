@@ -132,19 +132,24 @@ Postgres instance running.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files, stl_files, source_model_ids}`. `cad_files` and `stl_files` (its own STLs, not in Models) are `[{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]` (a file's `name` is its newest version's; versions newest first); `source_model_ids` are the models from Models it uses, in the order they were added |
+| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files, stl_files, threemf_files, source_model_ids, bundle_ids, printer_ids}`. `cad_files`, `stl_files` and `threemf_files` (its own STLs and 3MFs, not in Models; a 3MF also has `printer_id`) are `[{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]` (a file's `name` is its newest version's; versions newest first); `source_model_ids`, `bundle_ids` and `printer_ids` are the models, 3MFs and printers from the rest of Farmhand it uses, in the order they were added |
 | POST | `/projects` | Make a project: `{name}` (spaces tidied). **409** if it's empty, over 200 characters, or another project's name (any case) |
 | GET | `/projects/{id}` | One project |
 | PATCH | `/projects/{id}` | Rename it: `{name}` (the same rules) |
 | DELETE | `/projects/{id}?confirm=true` | Delete a project with its CAD files (rows, then files) |
 | POST | `/projects/{id}/cad` | Upload a CAD file of any kind (multipart `file`, optional `note`) as version 1, kept as `<name> ver 1.<ext>` in the project files folder, with a preview next to it when one can be made (STEP/IGES/BREP through gmsh, STL, OBJ, a Fusion file's own picture). **503** if that folder isn't there right now. Answers the project |
 | POST | `/projects/{id}/stl` | Upload an STL or OBJ (multipart `file`, required `in_models`, optional `note`). `in_models=true`: it becomes a new model in Models (in the STL folder) that the project uses. `false`: the project's own, as version 1 in the project files folder (`.../{project}/stl/{file}/v1/`), with a preview. **422** for another kind of file or without `in_models`. Answers the project |
-| POST | `/projects/{id}/{cad\|stl}/{file_id}/versions` | A newer version of one of its own files (multipart `file`, optional `note`); every version is kept |
-| GET | `/projects/{id}/{cad\|stl}/{file_id}/versions/{v}/download` | Download one version |
-| GET | `/projects/{id}/{cad\|stl}/{file_id}/versions/{v}/preview` | Its preview (PNG); **404** when it has none |
-| DELETE | `/projects/{id}/{cad\|stl}/{file_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the file with it. Answers the project |
-| DELETE | `/projects/{id}/{cad\|stl}/{file_id}?confirm=true` | Delete one of its own files with every version. Answers the project |
+| POST | `/projects/{id}/threemf` | Upload a 3MF to the project only (multipart `file`, optional `printer_id` and `note`), as version 1 in `.../{project}/threemf/{file}/v1/`; its printer comes into the project. (One also put in Models is uploaded with `POST /bundles`, then used with `PUT .../bundles/{id}`.) **422** for another kind of file; **404** for a printer that isn't there |
+| POST | `/projects/{id}/{cad|stl|threemf}/{file_id}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}/versions` | A newer version of one of its own files (multipart `file`, optional `note`); every version is kept |
+| GET | `/projects/{id}/{cad|stl|threemf}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}/versions/{v}/download` | Download one version |
+| GET | `/projects/{id}/{cad|stl|threemf}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}/versions/{v}/preview` | Its preview (PNG); **404** when it has none |
+| DELETE | `/projects/{id}/{cad|stl|threemf}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the file with it. Answers the project |
+| DELETE | `/projects/{id}/{cad|stl|threemf}\|| GET | `/projects/{id}/{cad|stl|threemf}/{file_id}?confirm=true` | Delete one of its own files with every version. Answers the project |
 | PUT | `/projects/{id}/source-models/{model_id}` | Use a model from Models in the project (already in it: no change). **404** for a model or project that isn't there. Answers the project |
+| PUT | `/projects/{id}/bundles/{bundle_id}` | Use a 3MF in the project; the printer it's for comes too. **404** for a 3MF or project that isn't there. Answers the project |
+| DELETE | `/projects/{id}/bundles/{bundle_id}` | Take a 3MF out of the project (it stays, and so does its printer in the project) |
+| PUT | `/projects/{id}/printers/{printer_id}` | Put a printer in the project |
+| DELETE | `/projects/{id}/printers/{printer_id}` | Take a printer out of the project (it and the project's 3MFs for it stay) |
 | DELETE | `/projects/{id}/source-models/{model_id}` | Take a model out of the project (the model stays in Models; nothing is deleted, so no `confirm`). Answers the project |
 | GET | `/printers` | List printers |
 | POST | `/printers` | Register a printer (name is the unique key) |
@@ -244,6 +249,7 @@ Two independently chosen roots (Storage page, saved in the `app_settings` table)
 {threemf_root}/{bundle_id}/v{n}/{file}          3MF and gcode
 {project_root}/{project_id}/cad/{cad_id}/v{n}/{file}   a project's CAD files (every version kept)
 {project_root}/{project_id}/stl/{stl_id}/v{n}/{file}   its own STLs (not in Models)
+{project_root}/{project_id}/threemf/{file_id}/v{n}/{file}   its own 3MFs (not in Models)
 {file}.png                                      its preview, next to it (and nowhere else)
 ```
 

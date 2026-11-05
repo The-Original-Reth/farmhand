@@ -21,6 +21,7 @@ for (const p of PRESETS) {
     ["secondary on panel", c.teal, c.panel], ["secondary on its chip", c.teal, c.tealDim],
     ["green on panel", c.green, c.panel], ["green on its chip", c.green, c.greenDim],
     ["danger on panel", c.danger, c.panel],
+    ["project only tag on panel", c.projectOnly, c.panel], ["project only tag on a heading", c.projectOnly, c.panelAlt],
     ["text on accent button", c.onAccent, c.amber], ["text on secondary", c.onTeal, c.teal], ["text on danger button", c.onDanger, c.danger],
   ];
   const bad = checks.filter(([, fg, bg]) => ratio(fg, bg) < MIN);

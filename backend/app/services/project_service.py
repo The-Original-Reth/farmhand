@@ -1,6 +1,7 @@
 """
-Projects: a piece of work for the farm. A project has a name; its own CAD files and STLs (project_files.py); and models
-from the Models page it uses, only pointed at. Its 3MF files, printers and parts come later.
+Projects: a piece of work for the farm. A project has a name; its own CAD files, STLs and 3MFs (project_files.py); and
+models, 3MFs and printers from the rest of Farmhand it uses, only pointed at. A 3MF it uses brings the printer it's for.
+Its parts come later.
 """
 from __future__ import annotations
 
@@ -11,22 +12,30 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import storage
 from ..errors import NotFound
-from ..models import Project, ProjectCadFile, ProjectSourceModel, ProjectStlFile, SourceFileType, SourceModel
+from ..models import (
+    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectPrinter, ProjectSourceModel, ProjectStlFile,
+    ProjectThreemfFile, SourceFileType, SourceModel,
+)
 
 MAX_NAME_LENGTH = 200
 
 _LOAD = (
     selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),
     selectinload(Project.stl_files).selectinload(ProjectStlFile.versions),
+    selectinload(Project.threemf_files).selectinload(ProjectThreemfFile.versions),
     selectinload(Project.model_links),
+    selectinload(Project.bundle_links),
+    selectinload(Project.printer_links),
 )
 
 
 def _files_out(files) -> list[dict]:
-    """A project's own files (CAD or STL) as the API answers them: each named after its newest version."""
+    """A project's own files (CAD, STL or 3MF) as the API answers them: each named after its newest version (a 3MF
+    also says which printer it's for)."""
     return [
         {
             "id": f.id,
+            **({"printer_id": f.printer_id} if isinstance(f, ProjectThreemfFile) else {}),
             "name": f.versions[0].filename if f.versions else "",
             "created_at": f.created_at,
             "versions": [
@@ -42,15 +51,18 @@ def _files_out(files) -> list[dict]:
 
 
 def out(project: Project) -> dict:
-    """A project as the API answers it: its own CAD files and STLs with their versions (newest first), and the ids of
-    the models from the Models page it uses (in the order they were added)."""
+    """A project as the API answers it: its own CAD files, STLs and 3MFs with their versions (newest first), and the
+    ids of the models, 3MFs and printers from the rest of Farmhand it uses (in the order they were added)."""
     return {
         "id": project.id,
         "name": project.name,
         "created_at": project.created_at,
         "cad_files": _files_out(project.cad_files),
         "stl_files": _files_out(project.stl_files),
+        "threemf_files": _files_out(project.threemf_files),
         "source_model_ids": [link.source_model_id for link in project.model_links],
+        "bundle_ids": [link.bundle_id for link in project.bundle_links],
+        "printer_ids": [link.printer_id for link in project.printer_links],
     }
 
 
@@ -94,8 +106,8 @@ def rename_project(db: Session, project_id: int, name: str) -> Project:
 
 
 def delete_project(db: Session, project_id: int) -> None:
-    """Delete the project and its own files (rows first, then files, then its folder if that's left empty). The models
-    it used stay in Models."""
+    """Delete the project and its own files (rows first, then files, then its folder if that's left empty). The models,
+    3MFs and printers it used stay where they are."""
     from .project_files import files_of_project  # (it imports this module)
 
     project = require_project(db, project_id)
@@ -142,3 +154,54 @@ def upload_to_models(db: Session, project_id: int, filename: str, file_obj, note
     file_type = SourceFileType.obj if name.lower().endswith(".obj") else SourceFileType.stl
     model = source_model_service.create_source_model(db, name=name, file_type=file_type, file_obj=file_obj, note=note)
     return add_model(db, project_id, model.id)
+
+
+# ---- 3MFs from the rest of Farmhand, and printers ----
+
+
+def link_printer(db: Session, project_id: int, printer_id: int) -> None:
+    """The project uses this printer (already does: nothing changes). Committed."""
+    if db.get(ProjectPrinter, (project_id, printer_id)) is None:
+        db.add(ProjectPrinter(project_id=project_id, printer_id=printer_id))
+        db.commit()
+
+
+def add_bundle(db: Session, project_id: int, bundle_id: int) -> Project:
+    """Use a 3MF from the rest of Farmhand in the project. The printer it's for comes into the project too."""
+    require_project(db, project_id)
+    bundle = db.get(Bundle, bundle_id)
+    if bundle is None:
+        raise NotFound("Bundle not found")
+    if db.get(ProjectBundle, (project_id, bundle_id)) is None:
+        db.add(ProjectBundle(project_id=project_id, bundle_id=bundle_id))
+        db.commit()
+    link_printer(db, project_id, bundle.printer_id)
+    return require_project(db, project_id)
+
+
+def remove_bundle(db: Session, project_id: int, bundle_id: int) -> Project:
+    """Take a 3MF out of the project. The 3MF itself stays, and so does its printer in the project."""
+    require_project(db, project_id)
+    link = db.get(ProjectBundle, (project_id, bundle_id))
+    if link is not None:
+        db.delete(link)
+        db.commit()
+    return require_project(db, project_id)
+
+
+def add_printer(db: Session, project_id: int, printer_id: int) -> Project:
+    require_project(db, project_id)
+    if db.get(Printer, printer_id) is None:
+        raise NotFound("Printer not found")
+    link_printer(db, project_id, printer_id)
+    return require_project(db, project_id)
+
+
+def remove_printer(db: Session, project_id: int, printer_id: int) -> Project:
+    """Take a printer out of the project. The printer itself, and the project's 3MFs for it, stay."""
+    require_project(db, project_id)
+    link = db.get(ProjectPrinter, (project_id, printer_id))
+    if link is not None:
+        db.delete(link)
+        db.commit()
+    return require_project(db, project_id)
