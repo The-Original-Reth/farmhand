@@ -198,3 +198,16 @@ def test_a_document_is_uploaded_versioned_and_deleted_with_its_notes(api):
     assert [d["name"] for d in r.json()["doc_files"]] == ["Photo ver 1.jpg"]
     api.delete(f"/projects/{pid}", params={"confirm": "true"}).raise_for_status()
     assert not (root / str(pid)).exists()
+
+
+def test_a_document_opens_in_the_browser_and_cant_run_scripts(api):
+    pid = _project(api)
+    doc = api.post(f"/projects/{pid}/doc", files={"file": ("Quote.pdf", io.BytesIO(b"%PDF-1.4 quote"))}).json()["doc_files"][0]
+    r = api.get(f"/projects/{pid}/doc/{doc['id']}/versions/1/view")
+    assert r.status_code == 200 and r.content == b"%PDF-1.4 quote"
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.headers["content-disposition"].startswith("inline")  # shown, not saved
+    assert r.headers["content-security-policy"] == "sandbox" and r.headers["x-content-type-options"] == "nosniff"
+    page = api.post(f"/projects/{pid}/doc", files={"file": ("Notes.html", io.BytesIO(b"<script>alert(1)</script>"))}).json()["doc_files"][-1]
+    assert api.get(f"/projects/{pid}/doc/{page['id']}/versions/1/view").headers["content-security-policy"] == "sandbox"
+    assert api.get(f"/projects/{pid}/doc/{doc['id']}/versions/9/view").status_code == 404

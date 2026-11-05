@@ -230,7 +230,9 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 - **Documents**: **Upload document** takes any file at all (a quote, drawings, instructions, photos, a
   spreadsheet...) with notes. Like CAD files, each keeps every version (**New version**, older ones behind the down
   arrow, each with its own notes), each can be downloaded or deleted, and they're deleted with the project. A picture
-  (PNG, JPG, GIF, WebP, BMP) shows a preview of itself. They're kept in `<project files>/<project number>/docs/`.
+  (PNG, JPG, GIF, WebP, BMP) shows a preview of itself. Clicking a document's name (or a version's file name) opens
+  it in a new tab: a PDF, picture or text file shows in the browser, anything else downloads. A web page or SVG opened
+  that way is shown sandboxed, so nothing in it runs. They're kept in `<project files>/<project number>/docs/`.
 - **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an
   optional note on what it is. Each CAD file keeps every version, like a 3MF: **New version** adds the next one, named
   `Bracket ver 1.f3d`, `Bracket ver 2.f3d`... (a "ver N" the uploaded name already has is replaced). The newest

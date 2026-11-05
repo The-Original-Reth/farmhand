@@ -184,6 +184,20 @@ def _file_routes(kind: Kind) -> None:
         require_readable(v.file_path)
         return FileResponse(v.file_path, filename=v.filename)
 
+    @router.get(f"{base}/versions/{{version}}/view", name=f"view_{kind.key}_version")
+    def view(project_id: int, file_id: int, version: int, db: Session = Depends(get_db)):
+        """
+        The file to open in the browser (a PDF, a picture, a text file shows there; anything else downloads). Sandboxed:
+        an uploaded web page or SVG is shown, but nothing in it runs.
+        """
+        with answer_errors():
+            v = project_files.require_version(db, kind, project_id, file_id, version)
+        require_readable(v.file_path)
+        return FileResponse(
+            v.file_path, filename=v.filename, content_disposition_type="inline",
+            headers={"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"},
+        )
+
     @router.get(f"{base}/versions/{{version}}/preview", name=f"{kind.key}_version_preview")
     def preview(project_id: int, file_id: int, version: int, request: Request, db: Session = Depends(get_db)):
         """Its preview (kept next to the file). 404 when none could be made, or its folder can't be reached."""

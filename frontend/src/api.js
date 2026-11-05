@@ -169,6 +169,7 @@ const normalizeProjectFiles = (projectId, kind, files) =>
         note: v.note,
         date: fmtDate(v.uploaded_at),
         download: `${base}/download`,
+        view: `${base}/view`, // opened in the browser (a PDF, a picture...), not saved
         preview: v.has_preview ? `${base}/preview?v=${encodeURIComponent(v.uploaded_at)}` : null,
         gcodeName: v.gcode_name || null, // a 3MF version's G-code, if it has one
         gcodeDownload: v.gcode_name ? `${base}/gcode` : null,

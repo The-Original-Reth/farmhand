@@ -1351,6 +1351,13 @@ export function mockApi() {
                 return send(200, `Farmhand mockup: a stand-in for ${name}. The real file comes from the real backend.\n`, "text/plain");
               }
             }
+            // a project file opened in the browser: shown (as the real one is), here as a stand-in
+            const view = url.pathname.match(/^\/projects\/(\d+)\/(doc|cad|stl|threemf)\/(\d+)\/versions\/(\d+)\/view$/);
+            if (view) {
+              const name = fileVersion(view[1], view[2], view[3], view[4]).filename;
+              res.setHeader("Content-Disposition", `inline; filename="${name}"`);
+              return send(200, `Farmhand mockup: ${name} would open here. The real file comes from the real backend.\n`, "text/plain");
+            }
           }
           const chunks = [];
           for await (const chunk of req) chunks.push(chunk);

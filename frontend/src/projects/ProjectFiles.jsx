@@ -105,8 +105,10 @@ function CountBox({ value, least, onSave, color, label, testId }) {
 
 // A project's own files: its documents and CAD files, and its STLs and 3MFs that aren't in Models. All work alike: a file with versions like
 // a 3MF's (the newest shown with its preview, the older ones behind a down arrow), kept in the project files folder.
+// opens: clicking a file's name opens it in a new tab
 export const FILE_KINDS = {
   doc: {
+    opens: true,
     key: "doc", noun: "document", Icon: FileText, accept: undefined, list: (p) => p.docFiles, noteLabel: "Notes (optional)",
     drop: "Drop the file here (any kind)", previews: "Pictures get a preview.",
   },
@@ -143,13 +145,26 @@ export function FileCard({ project, kind, file, onNewVersion }) {
             <HaveNeed have={file.have} need={file.need} label="prints" onSave={(counts) => setProjectStlCounts(project.id, "stl", file.id, counts)} />
           )}
           <kind.Icon size={14} color={c.textFaint} style={{ flexShrink: 0 }} />
-          <span
-            data-testid={`${kind.key}-name`}
-            title={file.name}
-            style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" })}
-          >
-            {file.name}
-          </span>
+          {kind.opens ? (
+            <a
+              data-testid={`${kind.key}-name`}
+              href={latest.view}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open ${file.name} in a new tab`}
+              style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
+            >
+              {file.name}
+            </a>
+          ) : (
+            <span
+              data-testid={`${kind.key}-name`}
+              title={file.name}
+              style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" })}
+            >
+              {file.name}
+            </span>
+          )}
           {(kind.key === "stl" || kind.key === "threemf") && <ProjectOnlyTag />}
         </span>
         {kind.key === "threemf" && (
@@ -188,13 +203,13 @@ export function FileCard({ project, kind, file, onNewVersion }) {
         </button>
         <TrashButton onClick={() => setDeleting("file")} title={`Delete this ${kind.noun}, every version`} />
       </div>
-      <FileVersionRow ver={latest} isLatest onDelete={() => setDeleting(latest)} />
+      <FileVersionRow ver={latest} isLatest opens={kind.opens} onDelete={() => setDeleting(latest)} />
       {latest.gcodeName && <GcodeLine project={project} file={file} ver={latest} printer={printer} />}
       <div id={bodyId}>
         {showOlder &&
           older.map((v) => (
             <div key={v.v}>
-              <FileVersionRow ver={v} onDelete={() => setDeleting(v)} />
+              <FileVersionRow ver={v} opens={kind.opens} onDelete={() => setDeleting(v)} />
               {v.gcodeName && <GcodeLine project={project} file={file} ver={v} printer={printer} />}
             </div>
           ))}
@@ -292,8 +307,8 @@ function GcodeUpload({ project, file, ver, onClose }) {
 }
 
 // One version: its preview (drawn like an STL's where the file allows), number, date, size, what changed, and
-// Download and delete
-function FileVersionRow({ ver, isLatest = false, onDelete }) {
+// Download and delete. opens: its file name opens it in a new tab (a document's)
+function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
   return (
     <div
       data-testid="file-version"
@@ -305,7 +320,20 @@ function FileVersionRow({ ver, isLatest = false, onDelete }) {
       </a>
       <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 30 })}>v{ver.v}</span>
       <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-        <div style={monoText(12, c.textPrimary, { overflowWrap: "anywhere" })}>{ver.filename}</div>
+        {opens ? (
+          <a
+            href={ver.view}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="file-version-open"
+            title={`Open ${ver.filename} in a new tab`}
+            style={monoText(12, c.textPrimary, { overflowWrap: "anywhere", textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
+          >
+            {ver.filename}
+          </a>
+        ) : (
+          <div style={monoText(12, c.textPrimary, { overflowWrap: "anywhere" })}>{ver.filename}</div>
+        )}
         <div style={uiText(12, c.textFaint, { marginTop: 3 })}>
           {[ver.date, formatBytes(ver.size), ver.note].filter(Boolean).join(" · ")}
         </div>
