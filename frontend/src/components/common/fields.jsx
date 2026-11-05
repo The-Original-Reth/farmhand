@@ -47,7 +47,8 @@ export function SearchBox({ value, onChange, placeholder, label, testId, clearTe
   );
 }
 
-export function Dropzone({ label, compact = false, onFile, file, accept }) {
+// `multiple`: several files can be picked or dropped at once, and `file` / `onFile` are a list of them instead
+export function Dropzone({ label, compact = false, onFile, file, accept, multiple = false }) {
   const inputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -75,11 +76,18 @@ export function Dropzone({ label, compact = false, onFile, file, accept }) {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    if (multiple) {
+      const dropped = [...(e.dataTransfer.files || [])].filter((f) => accepts(f.name));
+      if (dropped.length) onFile?.(dropped);
+      return;
+    }
     const dropped = e.dataTransfer.files?.[0];
     if (!dropped) return;
     if (!accepts(dropped.name)) return;
     onFile?.(dropped);
   };
+  const picked = multiple ? (file?.length ? file : null) : file;
+  const pickedName = !picked ? null : !multiple ? picked.name : picked.length === 1 ? picked[0].name : `${picked.length} files: ${picked.map((f) => f.name).join(", ")}`;
 
   return (
     <div
@@ -89,11 +97,11 @@ export function Dropzone({ label, compact = false, onFile, file, accept }) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       style={{
-        border: `1.5px dashed ${isDragging ? c.amber : file ? c.teal : c.borderStrong}`,
+        border: `1.5px dashed ${isDragging ? c.amber : picked ? c.teal : c.borderStrong}`,
         borderRadius: 4,
         padding: compact ? "14px 16px" : "26px 16px",
         textAlign: "center",
-        color: file ? c.textPrimary : c.textFaint,
+        color: picked ? c.textPrimary : c.textFaint,
         background: isDragging ? c.amberDim : "transparent",
         ...ui,
         fontSize: fs(13),
@@ -111,11 +119,12 @@ export function Dropzone({ label, compact = false, onFile, file, accept }) {
         ref={inputRef}
         type="file"
         accept={accept}
-        onChange={(e) => onFile?.(e.target.files?.[0] || null)}
+        multiple={multiple}
+        onChange={(e) => onFile?.(multiple ? [...(e.target.files || [])] : e.target.files?.[0] || null)}
         style={{ display: "none" }}
       />
-      <Upload size={compact ? 14 : 20} color={isDragging ? c.amber : file ? c.teal : c.textFaint} style={{ marginBottom: compact ? 0 : 8 }} />
-      <div>{file ? file.name : isDragging ? "Drop it" : label}</div>
+      <Upload size={compact ? 14 : 20} color={isDragging ? c.amber : picked ? c.teal : c.textFaint} style={{ marginBottom: compact ? 0 : 8 }} />
+      <div style={{ wordBreak: "break-word" }}>{picked ? pickedName : isDragging ? (multiple ? "Drop them" : "Drop it") : label}</div>
     </div>
   );
 }

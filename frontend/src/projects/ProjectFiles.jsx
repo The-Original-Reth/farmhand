@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, FileBox, FileCode, FileText, PenTool, Send, Upload } from "lucide-react";
 import {
-  deleteProjectFile, deleteProjectFileVersion, sendProjectGcode, setProjectStlCounts, uploadProjectFile,
+  deleteProjectFile, deleteProjectFileVersion, errorText, sendProjectGcode, setProjectStlCounts, uploadProjectFile,
   uploadProjectFileVersion, uploadProjectGcode,
 } from "../api.js";
 import { c, fs } from "../theme.js";
@@ -104,7 +104,7 @@ export const FILE_KINDS = {
   },
   stl: {
     key: "stl", noun: "STL file", Icon: Box, accept: ".stl,.obj", list: (p) => p.stlFiles,
-    drop: "Drop the STL (or OBJ) file here", previews: "It gets a preview like an STL in Models.",
+    drop: "Drop STL (or OBJ) files here: one, or several at once", previews: "It gets a preview like an STL in Models.",
   },
   threemf: {
     key: "threemf", noun: "3MF file", Icon: FileBox, accept: ".3mf", list: (p) => p.threemfFiles,
@@ -321,24 +321,41 @@ function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
 // The dialog for a new file of this kind (no `file`), or a newer version of one: the file, and a note on what it is or
 // what changed. `extra` goes above the note (an STL's "also put it in Models?", a 3MF's printer); `check()` can stop
 // the upload with a reason, `fields` adds to what's sent, and `onPicked(file)` hears of the file chosen.
-export function UploadDialog({ project, kind, file: existing, onClose, extra, check, fields, onUploaded, onPicked, title }) {
+// `multiple`: several new files can be picked at once, each uploaded in turn with the same answers and note (not for a
+// new version, which is one file)
+export function UploadDialog({ project, kind, file: existing, onClose, extra, check, fields, onUploaded, onPicked, title, multiple = false }) {
   const { putProject } = useData();
-  const [picked, setPickedState] = useState(null);
+  const many = multiple && !existing;
+  const [picked, setPickedState] = useState(null); // a file, or with `many` a list of them
   const setPicked = (f) => {
     setPickedState(f);
     onPicked?.(f);
   };
   const [note, setNote] = useState("");
+  const [sending, setSending] = useState(0); // with `many`: which of them is on its way (1, 2...)
   const { busy, error, setError, run } = useAction();
+  const files = many ? picked || [] : picked ? [picked] : [];
   const submit = () => {
-    if (!picked) return setError(`Choose the ${kind.noun} to upload.`);
+    if (!files.length) return setError(`Choose the ${kind.noun}${many ? "s" : ""} to upload.`);
     const reason = check?.();
     if (reason) return setError(reason);
     run(async () => {
-      const out = existing
-        ? await uploadProjectFileVersion({ kind: kind.key, projectId: project.id, fileId: existing.id, file: picked, note })
-        : await uploadProjectFile({ kind: kind.key, projectId: project.id, file: picked, note, ...fields });
-      putProject(out);
+      if (existing) {
+        putProject(await uploadProjectFileVersion({ kind: kind.key, projectId: project.id, fileId: existing.id, file: picked, note }));
+      } else {
+        for (const [i, f] of files.entries()) {
+          setSending(i + 1);
+          try {
+            putProject(await uploadProjectFile({ kind: kind.key, projectId: project.id, file: f, note, ...fields }));
+          } catch (e) {
+            if (!i) throw e;
+            // the ones before it are in: keep only the rest picked, so Upload carries on from this one
+            setPickedState(files.slice(i));
+            await onUploaded?.();
+            throw new Error(`${plural(i, kind.noun)} uploaded, then ${f.name} couldn't be: ${errorText(e)} Upload tries the rest again.`);
+          }
+        }
+      }
       await onUploaded?.();
       onClose();
     });
@@ -351,6 +368,7 @@ export function UploadDialog({ project, kind, file: existing, onClose, extra, ch
         file={picked}
         onFile={setPicked}
         accept={kind.accept}
+        multiple={many}
       />
       {extra}
       <TextField
@@ -364,7 +382,14 @@ export function UploadDialog({ project, kind, file: existing, onClose, extra, ch
           It's kept as version {next} ("name ver {next}") in the project files folder chosen on the Settings page. {kind.previews}
         </div>
       )}
-      <ModalActions onClose={onClose} onSubmit={submit} actionLabel="Upload" submitting={busy} errorMsg={error} />
+      <ModalActions
+        onClose={onClose}
+        onSubmit={submit}
+        actionLabel={files.length > 1 ? `Upload ${files.length}` : "Upload"}
+        submitting={busy}
+        submittingLabel={files.length > 1 ? `Uploading ${sending} of ${files.length}…` : "Uploading…"}
+        errorMsg={error}
+      />
     </Modal>
   );
 }

@@ -258,10 +258,12 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
     From the other side, a model's page has **Add to project** next to its newest version's **Download** (with how
     many projects it's in): it asks for **a project you have** (those it's already in are greyed out) or **a new
     project**, named there and then.
-  - **Upload STL** takes an STL or OBJ file and asks **Also put it in Models?** (it has to be answered). **Yes**: it
-    becomes a new model on the Models page, kept in the STL folder, which the project uses. **No**: it belongs to the
-    project: kept in the project files folder with versions like a CAD file (**New version**, older ones behind the
-    down arrow, Download, delete) and its preview, and deleted with the project. It has a purple **Project only** tag.
+  - **Upload STL** takes one STL or OBJ file or several at once (pick or drop them together) and asks **Also put them
+    in Models?** (it has to be answered; the answer and the note go for all of them). **Yes**: each becomes a new model
+    on the Models page, kept in the STL folder, which the project uses. **No**: each belongs to the project: kept in
+    the project files folder with versions like a CAD file (**New version**, older ones behind the down arrow,
+    Download, delete) and its preview, and deleted with the project. It has a purple **Project only** tag. Several
+    files go up one after another; if one fails, the ones before it are kept and **Upload** carries on from that one.
 - **3MF files** work the same way, and the printer a 3MF is for always comes into the project with it:
   - **Add existing 3MF** picks 3MFs already in Farmhand (searchable by name, printer or STL; ones already in the project
     aren't offered). Each shows with **In Models**, its printer, its newest version (older ones behind the down arrow)

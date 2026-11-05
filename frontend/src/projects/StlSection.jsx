@@ -176,15 +176,16 @@ function UploadStl({ project, onClose }) {
     <UploadDialog
       project={project}
       kind={STL}
+      multiple
       onClose={onClose}
-      check={() => (inModels ? null : "Choose whether to also put it in Models.")}
+      check={() => (inModels ? null : "Choose whether to also put them in Models.")}
       fields={{ inModels: inModels === "yes" }}
       onUploaded={() => (inModels === "yes" ? refresh() : null)}
       extra={
         <div data-testid="stl-in-models" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 12, marginBottom: 14, background: c.panelAlt }}>
-          <div style={uiText(13, c.heading, { marginBottom: 10 })}>Also put it in Models?</div>
-          {option("yes", "Yes, put it in Models too", "It becomes a model on the Models page, kept in the STL folder, and this project uses it.")}
-          {option("no", "No, keep it in this project only", "It belongs to this project: kept in the project files folder, with versions, and deleted with the project.")}
+          <div style={uiText(13, c.heading, { marginBottom: 10 })}>Also put them in Models?</div>
+          {option("yes", "Yes, put them in Models too", "Each becomes a model on the Models page, kept in the STL folder, and this project uses it.")}
+          {option("no", "No, keep them in this project only", "Each belongs to this project: kept in the project files folder, with versions, and deleted with the project.")}
         </div>
       }
     />
