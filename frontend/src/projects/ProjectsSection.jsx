@@ -10,7 +10,8 @@ import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components
 import { TextField } from "../components/common/fields.jsx";
 import { Row, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
-import { FILE_KINDS, FileCard, plural, UploadDialog } from "./ProjectFiles.jsx";
+import { FILE_KINDS, FileCard, UploadDialog } from "./ProjectFiles.jsx";
+import { EmptyBox, plural } from "./pieces.jsx";
 import { StlActions, StlFiles } from "./StlSection.jsx";
 import { ThreemfActions, ThreemfFiles } from "./ThreemfSection.jsx";
 import { AddPrinterButton, ProjectPrinters } from "./ProjectPrinters.jsx";

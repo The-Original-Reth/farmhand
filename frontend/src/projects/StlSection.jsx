@@ -1,16 +1,14 @@
 import { useState } from "react";
-import { Box, ChevronDown, ExternalLink, Plus, Upload } from "lucide-react";
+import { Box, ExternalLink, Plus, Upload } from "lucide-react";
 import { addProjectModel, API_BASE, removeProjectModel, setProjectStlCounts } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
-import { useAction } from "../hooks/useAction.js";
-import { nameCollator } from "../models/modelSort.js";
 import { AddModelFileForm } from "../models/modelActions.jsx";
-import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
-import { SearchBox } from "../components/common/fields.jsx";
-import { DownloadButton, Row, Thumb } from "../components/common/ui.jsx";
-import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
-import { FILE_KINDS, FileCard, HaveNeed, HaveNeedLabel, plural, UploadDialog } from "./ProjectFiles.jsx";
+import { Modal } from "../components/common/dialogs.jsx";
+import { DownloadButton } from "../components/common/ui.jsx";
+import { toolButton, uiText } from "../styles.js";
+import { FILE_KINDS, FileCard, HaveNeed, HaveNeedLabel, UploadDialog } from "./ProjectFiles.jsx";
+import { Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, OlderToggle, PickDialog, plural, TakeOutButton, VersionLine } from "./pieces.jsx";
 
 const STL = FILE_KINDS.stl;
 
@@ -36,14 +34,13 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
   const { sourceModels } = useData();
   const [newVersionOf, setNewVersionOf] = useState(null);
   const models = project.modelIds.map((id) => sourceModels.find((m) => m.id === id)).filter(Boolean);
-  const count = models.length + project.stlFiles.length;
   return (
     <>
-      {count === 0 ? (
-        <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint, { lineHeight: 1.5 }) })}>
+      {models.length + project.stlFiles.length === 0 ? (
+        <EmptyBox>
           No STL files yet. <b style={{ color: c.textMuted }}>Add from Models</b> uses a model already in Farmhand;{" "}
           <b style={{ color: c.textMuted }}>Upload STL</b> adds a new one.
-        </div>
+        </EmptyBox>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {/* what the two numbers at the start of each card are, lined up over them */}
@@ -65,81 +62,59 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
   );
 }
 
-// A model from the Models page in the project: its name, "In Models", its newest version with its preview (the older
-// ones behind the down arrow), and New version, Open in Models and Take out of project. It IS the model in Models, not a
-// copy: a new version uploaded here is that model's new version, on the Models page too.
+// A model from the Models page in the project: have / need, its name, "In Models", its newest version with its preview
+// (the older ones behind the down arrow), and New version, Open in Models and Take out of project. It IS the model in
+// Models, not a copy: a new version uploaded here is that model's new version, on the Models page too.
 function ModelCard({ project, model, onOpen }) {
   const { putProject } = useData();
-  const [asking, setAsking] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [showOlder, setShowOlder] = useState(false); // older versions start folded away
+  const [showOlder, setShowOlder] = useState(false);
   const [latest, ...older] = model.versions;
-  const row = (v, isLatest) => (
-    <div key={v.v} data-testid="stl-model-version" data-version={v.v} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 16px", borderTop: `1px solid ${c.border}`, flexWrap: "wrap" }}>
-      <Thumb src={v.thumb} size={64} background="#FFFFFF" placeholderIcon />
-      <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 30 })}>v{v.v}</span>
-      <div style={{ flex: "1 1 220px", minWidth: 0, ...uiText(12, c.textFaint) }}>{[v.date, v.note].filter(Boolean).join(" · ")}</div>
-      <div style={{ marginLeft: "auto" }}>
-        <DownloadButton href={`${API_BASE}/source-models/${model.id}/versions/${v.v}/download`} />
-      </div>
-    </div>
+  const counts = project.modelCounts[model.id];
+  const line = (v, isLatest) => (
+    <VersionLine key={v.v} testId="stl-model-version" ver={v} isLatest={isLatest} thumb={v.thumb} details={[v.date, v.note].filter(Boolean).join(" · ")}>
+      <DownloadButton href={`${API_BASE}/source-models/${model.id}/versions/${v.v}/download`} />
+    </VersionLine>
   );
   return (
-    <div data-testid="stl-model" data-model-id={model.id} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 4, flexWrap: "wrap", padding: "5px 8px 5px 12px", background: c.panelAlt }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px", minWidth: 0 }}>
-          {/* have / need at the start of the heading, left of the name */}
-          <HaveNeed
-            have={project.modelCounts[model.id]?.have ?? 0}
-            need={project.modelCounts[model.id]?.need ?? 1}
-            label="prints"
-            onSave={(counts) => setProjectStlCounts(project.id, "model", model.id, counts)}
+    <Card
+      testId="stl-model"
+      dataAttrs={{ "data-model-id": model.id }}
+      heading={
+        <>
+          <CardTitle
+            lead={
+              <HaveNeed
+                have={counts?.have ?? 0}
+                need={counts?.need ?? 1}
+                label="prints"
+                onSave={(change) => setProjectStlCounts(project.id, "model", model.id, change)}
+              />
+            }
+            Icon={Box}
+            name={model.name}
+            tags={<InModelsTag title="This is the model on the Models page: a new version uploaded here is its new version there too" />}
           />
-          <Box size={14} color={c.textFaint} style={{ flexShrink: 0 }} />
-          <span title={model.name} style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" })}>
-            {model.name}
-          </span>
-          <span
-            title="This is the model on the Models page: a new version uploaded here is its new version there too"
-            style={uiText(11, c.textMuted, { border: `1px solid ${c.borderStrong}`, borderRadius: 3, padding: "0 6px", whiteSpace: "nowrap" })}
-          >
-            In Models
-          </span>
-        </span>
-        <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: "auto" })}>{plural(model.versions.length, "version")}</span>
-        {older.length > 0 && (
-          <button
-            data-testid="stl-model-versions-toggle"
-            aria-expanded={showOlder}
-            onClick={() => setShowOlder(!showOlder)}
-            title={showOlder ? `Hide ${plural(older.length, "older version")}` : `Show ${plural(older.length, "older version")}`}
-            style={toolButton(12, { whiteSpace: "nowrap" })}
-          >
-            <ChevronDown size={12} style={{ transform: showOlder ? "rotate(180deg)" : "none", transition: "transform 0.12s ease" }} />
-            {older.length} older
-          </button>
-        )}
-        <button
-          data-testid="stl-model-new-version"
-          onClick={() => setUploading(true)}
-          title="Upload a newer version: it's this model's new version on the Models page too"
-          style={toolButton(12, { whiteSpace: "nowrap" })}
-        >
-          <Upload size={12} />
-          {latest ? "New version" : "Add file"}
-        </button>
-        <button data-testid="stl-open-model" onClick={onOpen} title="Open it on the Models page" style={toolButton(12, { whiteSpace: "nowrap" })}>
-          <ExternalLink size={12} />
-          Open in Models
-        </button>
-        <button data-testid="stl-take-out" onClick={() => setAsking(true)} title="Take it out of this project" style={toolButton(12, { whiteSpace: "nowrap" })}>
-          Take out
-        </button>
-      </div>
+          <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: "auto" })}>{plural(model.versions.length, "version")}</span>
+          <OlderToggle count={older.length} open={showOlder} onToggle={() => setShowOlder(!showOlder)} testId="stl-model-versions-toggle" />
+          <HeadingButton
+            testId="stl-model-new-version"
+            Icon={Upload}
+            label={latest ? "New version" : "Add file"}
+            title="Upload a newer version: it's this model's new version on the Models page too"
+            onClick={() => setUploading(true)}
+          />
+          <HeadingButton testId="stl-open-model" Icon={ExternalLink} label="Open in Models" title="Open it on the Models page" onClick={onOpen} />
+          <TakeOutButton testId="stl-take-out" onConfirm={async () => putProject(await removeProjectModel(project.id, model.id))}>
+            Take <strong>{model.name}</strong> out of {project.name}? It stays in Models: nothing is deleted.
+          </TakeOutButton>
+        </>
+      }
+    >
       {latest ? (
         <>
-          {row(latest, true)}
-          {showOlder && older.map((v) => row(v, false))}
+          {line(latest, true)}
+          {showOlder && older.map((v) => line(v, false))}
         </>
       ) : (
         <div style={{ padding: "8px 16px", borderTop: `1px solid ${c.border}`, ...uiText(12, c.textFaint) }}>No file in this model yet.</div>
@@ -152,68 +127,27 @@ function ModelCard({ project, model, onOpen }) {
           <AddModelFileForm model={model} isNewVersion={!!latest} onClose={() => setUploading(false)} />
         </Modal>
       )}
-      {asking && (
-        <ConfirmDialog
-          title="Take out of project"
-          confirmLabel="Take it out"
-          tone="warn"
-          onClose={() => setAsking(false)}
-          onConfirm={async () => putProject(await removeProjectModel(project.id, model.id))}
-        >
-          Take <strong>{model.name}</strong> out of {project.name}? It stays in Models: nothing is deleted.
-        </ConfirmDialog>
-      )}
-    </div>
+    </Card>
   );
 }
 
-// Picking models from the Models page to use: every model not in the project yet, searchable. Each is added at once,
-// and the dialog stays open for the next.
+// Picking models from the Models page to use: every model not in the project yet
 function AddFromModels({ project, onClose }) {
-  const { sourceModels, putProject } = useData();
-  const [query, setQuery] = useState("");
-  const { busy, error, run } = useAction();
-  const inProject = new Set(project.modelIds);
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const choices = sourceModels
-    .filter((m) => !inProject.has(m.id))
-    .filter((m) => words.every((w) => m.name.toLowerCase().includes(w)))
-    .sort((a, b) => nameCollator.compare(a.name, b.name));
+  const { sourceModels } = useData();
+  const items = sourceModels
+    .filter((m) => !project.modelIds.includes(m.id))
+    .map((m) => ({ id: m.id, name: m.name, sub: `${m.type} · ${plural(m.versions.length, "version")}`, thumb: m.thumb }));
   return (
-    <Modal title={`Add models to ${project.name}`} onClose={onClose} width={560}>
-      <SearchBox value={query} onChange={setQuery} placeholder="Search models…" label="Search models" style={{ marginBottom: 12 }} />
-      {error && <div style={uiText(12, c.amber, { marginBottom: 10 })}>{error}</div>}
-      <div style={panelBox({ overflow: "hidden", maxHeight: "50vh", overflowY: "auto" })}>
-        {choices.length === 0 ? (
-          <div style={{ padding: 16, ...uiText(13, c.textFaint) }}>
-            {sourceModels.length === inProject.size ? "Every model in Models is in this project already." : "No models match."}
-          </div>
-        ) : (
-          choices.map((m) => (
-            <Row key={m.id} hoverable={false}>
-              <Thumb src={m.thumb} size={36} background="#FFFFFF" placeholderIcon />
-              <div style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
-                <div style={uiText(13, c.textPrimary, { overflowWrap: "anywhere" })}>{m.name}</div>
-                <div style={uiText(12, c.textFaint, { marginTop: 2 })}>{m.type} · {plural(m.versions.length, "version")}</div>
-              </div>
-              <button
-                disabled={busy}
-                data-testid={`stl-pick-${m.id}`}
-                onClick={() => run(async () => putProject(await addProjectModel(project.id, m.id)))}
-                style={{ ...primaryButton(busy), fontSize: fs(12), padding: "5px 12px", marginLeft: 12, ...ui }}
-              >
-                Add
-              </button>
-            </Row>
-          ))
-        )}
-      </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-        <button onClick={onClose} style={toolButton(13)}>
-          Done
-        </button>
-      </div>
-    </Modal>
+    <PickDialog
+      title={`Add models to ${project.name}`}
+      noun="models"
+      searchPlaceholder="Search models…"
+      items={items}
+      allTaken="Every model in Models is in this project already."
+      add={(id) => addProjectModel(project.id, id)}
+      pickTestId="stl-pick"
+      onClose={onClose}
+    />
   );
 }
 

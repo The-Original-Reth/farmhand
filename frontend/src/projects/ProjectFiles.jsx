@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, ChevronDown, FileBox, FileCode, FileText, PenTool, Send, Upload } from "lucide-react";
+import { Box, FileBox, FileCode, FileText, PenTool, Send, Upload } from "lucide-react";
 import {
   deleteProjectFile, deleteProjectFileVersion, sendProjectGcode, setProjectStlCounts, uploadProjectFile,
   uploadProjectFileVersion, uploadProjectGcode,
@@ -11,22 +11,8 @@ import { formatBytes } from "../lib/format.js";
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
-import { fieldBox, headerButton, monoText, toolButton, uiText } from "../styles.js";
-
-export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-// "Project only", boxed in purple: on an STL or 3MF a project keeps for itself (uploaded to it, not put in Models)
-export function ProjectOnlyTag() {
-  return (
-    <span
-      data-testid="project-only-tag"
-      title="Uploaded to this project only: not in Models, and deleted with the project"
-      style={uiText(11, c.projectOnly, { border: `1px solid ${c.projectOnly}`, borderRadius: 3, padding: "0 6px", fontWeight: 600, whiteSpace: "nowrap" })}
-    >
-      Project only
-    </span>
-  );
-}
+import { fieldBox, headerButton, monoText, uiText } from "../styles.js";
+import { Card, CardTitle, HeadingButton, nameStyle, OlderToggle, plural, ProjectOnlyTag } from "./pieces.jsx";
 
 // How many: "have / need", changed right there (each saved when the box is left or Enter is pressed; one out of range
 // goes back). Amber while there are fewer than needed, green once there are enough. `onSave({ have })` or
@@ -136,73 +122,59 @@ export function FileCard({ project, kind, file, onNewVersion }) {
   const [gcodeFor, setGcodeFor] = useState(null); // a 3MF version a G-code is being uploaded for
   const [latest, ...older] = file.versions;
   const bodyId = `${kind.key}-versions-${file.id}`;
+  // a document's name opens it in a new tab
+  const name = kind.opens ? (
+    <a
+      data-testid={`${kind.key}-name`}
+      href={latest.view}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Open ${file.name} in a new tab`}
+      style={nameStyle({ textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
+    >
+      {file.name}
+    </a>
+  ) : (
+    file.name
+  );
   return (
-    <div data-testid={`${kind.key}-file`} data-file-id={file.id} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden" }}>
-      {/* one slim line; in a narrow window the buttons move onto a second line rather than squeezing the name */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 4, flexWrap: "wrap", padding: "5px 8px 5px 12px", background: c.panelAlt }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px", minWidth: 0 }}>
-          {kind.key === "stl" && (
-            <HaveNeed have={file.have} need={file.need} label="prints" onSave={(counts) => setProjectStlCounts(project.id, "stl", file.id, counts)} />
-          )}
-          <kind.Icon size={14} color={c.textFaint} style={{ flexShrink: 0 }} />
-          {kind.opens ? (
-            <a
-              data-testid={`${kind.key}-name`}
-              href={latest.view}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`Open ${file.name} in a new tab`}
-              style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
-            >
-              {file.name}
-            </a>
-          ) : (
-            <span
-              data-testid={`${kind.key}-name`}
-              title={file.name}
-              style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" })}
-            >
-              {file.name}
+    <Card
+      testId={`${kind.key}-file`}
+      dataAttrs={{ "data-file-id": file.id }}
+      heading={
+        <>
+          <CardTitle
+            lead={
+              kind.key === "stl" && (
+                <HaveNeed have={file.have} need={file.need} label="prints" onSave={(counts) => setProjectStlCounts(project.id, "stl", file.id, counts)} />
+              )
+            }
+            Icon={kind.Icon}
+            name={name}
+            testId={`${kind.key}-name`}
+            tags={(kind.key === "stl" || kind.key === "threemf") && <ProjectOnlyTag />}
+          />
+          {kind.key === "threemf" && (
+            <span data-testid="threemf-printer" style={uiText(12, printer ? c.textMuted : c.textFaint, { whiteSpace: "nowrap" })}>
+              {printer ? printer.name : "no printer"}
             </span>
           )}
-          {(kind.key === "stl" || kind.key === "threemf") && <ProjectOnlyTag />}
-        </span>
-        {kind.key === "threemf" && (
-          <span data-testid="threemf-printer" style={uiText(12, printer ? c.textMuted : c.textFaint, { whiteSpace: "nowrap" })}>
-            {printer ? printer.name : "no printer"}
-          </span>
-        )}
-        <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: kind.key === "threemf" ? 0 : "auto" })}>{plural(file.versions.length, "version")}</span>
-        {older.length > 0 && (
-          <button
-            data-testid={`${kind.key}-versions-toggle`}
-            aria-expanded={showOlder}
-            aria-controls={bodyId}
-            onClick={() => setShowOlder(!showOlder)}
-            title={showOlder ? `Hide ${plural(older.length, "older version")}` : `Show ${plural(older.length, "older version")}`}
-            style={toolButton(12, { whiteSpace: "nowrap", flexShrink: 0 })}
-          >
-            <ChevronDown size={12} style={{ transform: showOlder ? "rotate(180deg)" : "none", transition: "transform 0.12s ease" }} />
-            {older.length} older
-          </button>
-        )}
-        {kind.key === "threemf" && (
-          <button
-            data-testid="threemf-gcode-upload"
-            onClick={() => setGcodeFor(latest)}
-            title={latest.gcodeName ? "Upload a newer G-code for its newest version" : "Upload the G-code sliced from its newest version"}
-            style={toolButton(12, { whiteSpace: "nowrap", flexShrink: 0 })}
-          >
-            <FileCode size={12} />
-            {latest.gcodeName ? "Replace G-code" : "Upload G-code"}
-          </button>
-        )}
-        <button data-testid={`${kind.key}-new-version`} onClick={onNewVersion} style={toolButton(12, { whiteSpace: "nowrap", flexShrink: 0 })}>
-          <Upload size={12} />
-          New version
-        </button>
-        <TrashButton onClick={() => setDeleting("file")} title={`Delete this ${kind.noun}, every version`} />
-      </div>
+          <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: kind.key === "threemf" ? 0 : "auto" })}>{plural(file.versions.length, "version")}</span>
+          <OlderToggle count={older.length} open={showOlder} onToggle={() => setShowOlder(!showOlder)} testId={`${kind.key}-versions-toggle`} controlsId={bodyId} />
+          {kind.key === "threemf" && (
+            <HeadingButton
+              testId="threemf-gcode-upload"
+              Icon={FileCode}
+              label={latest.gcodeName ? "Replace G-code" : "Upload G-code"}
+              title={latest.gcodeName ? "Upload a newer G-code for its newest version" : "Upload the G-code sliced from its newest version"}
+              onClick={() => setGcodeFor(latest)}
+            />
+          )}
+          <HeadingButton testId={`${kind.key}-new-version`} Icon={Upload} label="New version" onClick={onNewVersion} />
+          <TrashButton onClick={() => setDeleting("file")} title={`Delete this ${kind.noun}, every version`} />
+        </>
+      }
+    >
       <FileVersionRow ver={latest} isLatest opens={kind.opens} onDelete={() => setDeleting(latest)} />
       {latest.gcodeName && <GcodeLine project={project} file={file} ver={latest} printer={printer} />}
       <div id={bodyId}>
@@ -241,7 +213,7 @@ export function FileCard({ project, kind, file, onNewVersion }) {
           <DeleteWarning>The {deleting === "file" ? "files are" : "file is"} deleted for good.</DeleteWarning>
         </ConfirmDialog>
       )}
-    </div>
+    </Card>
   );
 }
 
