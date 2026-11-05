@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, FileBox, FolderKanban, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
+import { Box, FileBox, FileText, FolderKanban, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { createProject, deleteProject, renameProject } from "../api.js";
 import { c } from "../theme.js";
 import { useData } from "../data.jsx";
@@ -95,18 +95,19 @@ function ProjectNameForm({ project, onClose, onSaved }) {
 
 // What a project is made of, in page order. Each section folds away.
 const PROJECT_SECTIONS = [
+  { key: "doc", label: "Documents", Icon: FileText, count: (p) => p.docFiles.length }, // any file, with versions and notes
   { key: "cad", label: "CAD", Icon: PenTool, count: (p) => p.cadFiles.length },
   { key: "stl", label: "STL files", Icon: Box, count: (p) => p.modelIds.length + p.stlFiles.length },
+  { key: "parts", label: "BOM", Icon: Wrench, count: (p) => p.parts.length }, // its parts list (bill of materials)
   { key: "threemf", label: "3MF files", Icon: FileBox, count: (p) => p.bundleIds.length + p.threemfFiles.length },
   { key: "printers", label: "Printers", Icon: Printer, count: (p) => p.printerIds.length },
-  { key: "parts", label: "BOM", Icon: Wrench, count: (p) => p.parts.length }, // its parts list (bill of materials)
 ];
 
 function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
   const { projects, refresh } = useData();
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // null | "cad-upload" | "stl-add" | "stl-upload" | "threemf-add" | "threemf-upload" | "printer-add" | "part-add" | "bom-upload"
+  // null | "doc-upload" | "cad-upload" | "stl-add" | "stl-upload" | "threemf-add" | "threemf-upload" | "printer-add" | "part-add" | "bom-upload"
   const [dialog, setDialog] = useState(null);
   const sections = useProjectSections();
   const project = projects.find((p) => p.id === projectId);
@@ -115,6 +116,12 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
 
   // each section's buttons (shown while it's open) and what's in it
   const actions = {
+    doc: (
+      <button data-testid="doc-upload" onClick={() => setDialog("doc-upload")} style={toolButton(12)}>
+        <Upload size={12} />
+        Upload document
+      </button>
+    ),
     cad: (
       <button data-testid="cad-upload" onClick={() => setDialog("cad-upload")} style={toolButton(12)}>
         <Upload size={12} />
@@ -127,7 +134,8 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
     parts: <BomActions project={project} onUpload={() => setDialog("bom-upload")} onAdd={() => setDialog("part-add")} />,
   };
   const bodies = {
-    cad: <CadFiles project={project} uploading={dialog === "cad-upload"} onCloseUpload={close} />,
+    doc: <OwnFiles project={project} kind={FILE_KINDS.doc} uploading={dialog === "doc-upload"} onCloseUpload={close} />,
+    cad: <OwnFiles project={project} kind={FILE_KINDS.cad} uploading={dialog === "cad-upload"} onCloseUpload={close} />,
     stl: (
       <StlFiles
         project={project}
@@ -151,7 +159,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
     printers: <ProjectPrinters project={project} adding={dialog === "printer-add"} onCloseAdd={close} onOpenPrinter={onOpenPrinter} />,
     parts: <BomList project={project} adding={dialog === "part-add"} uploading={dialog === "bom-upload"} onClose={close} />,
   };
-  const ownFiles = project.cadFiles.length + project.stlFiles.length + project.threemfFiles.length;
+  const ownFiles = project.docFiles.length + project.cadFiles.length + project.stlFiles.length + project.threemfFiles.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1100 }}>
@@ -212,6 +220,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
           {ownFiles > 0 && (
             <DeleteWarning>
               Its own {[
+                project.docFiles.length > 0 && plural(project.docFiles.length, "document"),
                 project.cadFiles.length > 0 && plural(project.cadFiles.length, "CAD file"),
                 project.stlFiles.length > 0 && plural(project.stlFiles.length, "STL file"),
                 project.threemfFiles.length > 0 && plural(project.threemfFiles.length, "3MF file"),
@@ -224,20 +233,33 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
   );
 }
 
-// The project's CAD files, any kind (Fusion, STEP, SolidWorks...), each with its versions
-function CadFiles({ project, uploading, onCloseUpload }) {
+// What an empty Documents or CAD section says
+const EMPTY = {
+  doc: (
+    <>
+      No documents yet. <b style={{ color: c.textMuted }}>Upload document</b> adds any file (a quote, drawings,
+      instructions, photos, a spreadsheet...) with notes; each newer version is kept, and every version can be downloaded.
+    </>
+  ),
+  cad: (
+    <>
+      No CAD files yet. <b style={{ color: c.textMuted }}>Upload CAD</b> adds one of any kind (Fusion, STEP, IGES,
+      SolidWorks, OpenSCAD...); each newer version is kept, and every version can be downloaded.
+    </>
+  ),
+};
+
+// The project's documents or CAD files (`kind`), each with its versions
+function OwnFiles({ project, kind, uploading, onCloseUpload }) {
   const [newVersionOf, setNewVersionOf] = useState(null);
-  const kind = FILE_KINDS.cad;
+  const files = kind.list(project);
   return (
     <>
-      {project.cadFiles.length === 0 ? (
-        <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint, { lineHeight: 1.5 }) })}>
-          No CAD files yet. <b style={{ color: c.textMuted }}>Upload CAD</b> adds one of any kind (Fusion, STEP, IGES,
-          SolidWorks, OpenSCAD...); each newer version is kept, and every version can be downloaded.
-        </div>
+      {files.length === 0 ? (
+        <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint, { lineHeight: 1.5 }) })}>{EMPTY[kind.key]}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {project.cadFiles.map((f) => (
+          {files.map((f) => (
             <FileCard key={f.id} project={project} kind={kind} file={f} onNewVersion={() => setNewVersionOf(f)} />
           ))}
         </div>

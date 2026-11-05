@@ -1,11 +1,13 @@
 """
-Previews for a project's CAD files, drawn like an STL's wherever the file can be turned into triangles:
+Previews for a project's own files (CAD files, documents, STLs, 3MFs), drawn like an STL's wherever the file can be
+turned into triangles:
 
   * STL: as an STL
   * OBJ: its faces, read here
   * STEP / IGES / BREP: turned into triangles by gmsh (OpenCascade), in a separate process (cad_mesh.py) so a file it
     can't handle, or one that takes too long, never holds up or brings down the API
   * Fusion (.f3d, .f3z) and anything else that is a ZIP with a picture inside (a 3MF's thumbnail): that picture
+  * a picture itself (PNG, JPG, GIF, WebP, BMP): a smaller copy
 
 Anything else (a SolidWorks or Inventor file, an OpenSCAD script...) has no preview. Every path fails soft: no preview
 is better than a blocked upload.
@@ -32,6 +34,7 @@ MESHED = {".step", ".stp", ".iges", ".igs", ".brep", ".brp"}  # what gmsh can tu
 MESH_TIMEOUT_S = 90  # a huge assembly can take a while; past this it goes without a preview
 SIZE_PX = 256
 _PICTURE = (".png", ".jpg", ".jpeg")
+_IMAGE = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 
 def render_cad_preview(path: str, size_px: int = SIZE_PX) -> bytes | None:
@@ -45,6 +48,9 @@ def render_cad_preview(path: str, size_px: int = SIZE_PX) -> bytes | None:
         if ext in MESHED:
             verts = _mesh(path)
             return render_triangles(verts, size_px) if verts is not None else None
+        if ext in _IMAGE:
+            with Image.open(path) as img:
+                return _fitted(img, size_px)
         if zipfile.is_zipfile(path):
             return _picture_inside(path, size_px)
     except Exception as e:  # noqa: BLE001 - any file, any failure: no preview
@@ -112,7 +118,13 @@ def _picture_inside(path: str, size_px: int) -> bytes | None:
             return None
         named = [i for i in pictures if any(w in i.filename.lower() for w in ("thumb", "preview", "small"))]
         best = max(named or pictures, key=lambda i: i.file_size)
-        img = Image.open(io.BytesIO(z.read(best))).convert("RGBA")
+        img = Image.open(io.BytesIO(z.read(best)))
+        return _fitted(img, size_px)
+
+
+def _fitted(img: Image.Image, size_px: int) -> bytes:
+    """The picture shrunk to fit a square on white, as a PNG."""
+    img = img.convert("RGBA")
     img.thumbnail((size_px, size_px))
     tile = Image.new("RGBA", (size_px, size_px), (255, 255, 255, 255))
     tile.alpha_composite(img, ((size_px - img.width) // 2, (size_px - img.height) // 2))

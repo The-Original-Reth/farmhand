@@ -333,6 +333,16 @@ export function buildFarm() {
   const projects = [
     {
       id: 1, name: "Aquarium shop order", created_at: iso(NOW - 6 * DAY),
+      doc_files: [
+        {
+          id: 6, created_at: iso(NOW - 6 * DAY),
+          versions: [
+            cadVersion(2, "Shop quote ver 2.pdf", 182_000, "Price agreed: signed copy", 3, null),
+            cadVersion(1, "Shop quote ver 1.pdf", 176_000, "First quote sent", 6, null),
+          ],
+        },
+        { id: 7, created_at: iso(NOW - 5 * DAY), versions: [cadVersion(1, "Shelf photo ver 1.jpg", 940_000, "Where the stand goes", 5, "stl-shark")] },
+      ],
       cad_files: [
         {
           id: 1, created_at: iso(NOW - 6 * DAY),
@@ -347,11 +357,12 @@ export function buildFarm() {
       ],
       // its STLs: two models from Models, and one of its own (not in Models)
       source_model_ids: [1, 6],
+      model_counts: { 1: { need: 24, have: 18 }, 6: { need: 40, have: 40 } }, // how many prints of each it needs and has
       // its BOM: what it needs that isn't printed
       parts: [
-        { id: 501, name: "M3x12 screw", quantity: 48, link: "https://www.boltdepot.com/", note: "Hardware drawer B" },
-        { id: 502, name: "Magnet 6x3mm", quantity: 24, link: "https://www.amazon.com/s?k=6x3mm+magnets", note: "N52, pack of 100" },
-        { id: 503, name: "Felt pad 10mm", quantity: 4, link: null, note: null },
+        { id: 501, name: "M3x12 screw", need: 48, have: 48, link: "https://www.boltdepot.com/", note: "Hardware drawer B" },
+        { id: 502, name: "Magnet 6x3mm", need: 24, have: 10, link: "https://www.amazon.com/s?k=6x3mm+magnets", note: "N52, pack of 100" },
+        { id: 503, name: "Felt pad 10mm", need: 4, have: 0, link: null, note: null },
       ],
       // its 3MFs: two from Farmhand (their printers came with them), and one of its own for VT 1190
       bundle_ids: [1, 4],
@@ -359,12 +370,12 @@ export function buildFarm() {
       threemf_files: [
         {
           id: 5, printer_id: 1, created_at: iso(NOW - 1 * DAY),
-          versions: [cadVersion(1, "Display plate ver 1.3mf", 3_640_000, "Stand and clips on one plate", 1, "frog-vt1190")],
+          versions: [{ ...cadVersion(1, "Display plate ver 1.3mf", 3_640_000, "Stand and clips on one plate", 1, "frog-vt1190"), gcode: "Display plate ver 1.gcode" }],
         },
       ],
       stl_files: [
         {
-          id: 4, created_at: iso(NOW - 2 * DAY),
+          id: 4, created_at: iso(NOW - 2 * DAY), need: 6, have: 2,
           versions: [
             cadVersion(2, "Display stand clip ver 2.stl", 412_000, "Thicker hook", 1, "stl-frog-vertical"),
             cadVersion(1, "Display stand clip ver 1.stl", 398_000, null, 2, "stl-frog-vertical"),
@@ -372,7 +383,7 @@ export function buildFarm() {
         },
       ],
     },
-    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [2, 3], bundle_ids: [3], printer_ids: [1], parts: [] },
+    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), doc_files: [], cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [2, 3], bundle_ids: [3], printer_ids: [1], parts: [] },
   ];
 
   return {

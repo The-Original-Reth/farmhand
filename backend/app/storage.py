@@ -152,7 +152,7 @@ def bundle_version_dir(bundle_id: int, version: int) -> Path:
 
 
 def project_file_dir(project_id: int, folder: str, file_id: int, version: int) -> Path:
-    """A version of a project's own file: {project files}/{project id}/{folder: cad or stl}/{file id}/v{n}"""
+    """A version of a project's own file: {project files}/{project id}/{folder: docs, cad, stl or threemf}/{file id}/v{n}"""
     return _version_dir(ready_root("project") / str(project_id) / folder, file_id, version)
 
 
@@ -328,10 +328,10 @@ def _delete_quietly(path: Path) -> Path:
 
 
 def tidy_project_folder(project_id: int) -> None:
-    """After a project's files were deleted: its cad/, stl/ and threemf/ folders and its own folder go if they're empty
-    (nothing else)."""
+    """After a project's files were deleted: its docs/, cad/, stl/ and threemf/ folders and its own folder go if they're
+    empty (nothing else)."""
     root = effective_root("project") / str(project_id)
-    for d in (root / "cad", root / "stl", root / "threemf", root):
+    for d in (root / "docs", root / "cad", root / "stl", root / "threemf", root):
         if d.is_dir():
             _rmdir_if_empty(d)
 

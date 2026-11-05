@@ -1,7 +1,8 @@
 """
-A project's parts list (its bill of materials): what it needs that isn't printed. Each part has a name, a quantity, a
-link to buy it and notes. Parts are added one at a time, or many at once from a BOM: a CSV file with a heading row
-(Part, Quantity, Link, Notes; the template the Projects page offers), added to the list or replacing it.
+A project's parts list (its bill of materials): what it needs that isn't printed. Each part has a name, how many are
+needed and how many it has, a link to buy it and notes. Parts are added one at a time, or many at once from a BOM: a
+CSV file with a heading row (Part, Need, Have, Link, Notes; the template the Projects page offers), added to the list
+or replacing it.
 """
 from __future__ import annotations
 
@@ -27,7 +28,8 @@ _HAS_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:(?!\d)")  # "https:", but no
 # A BOM's columns, by the headings they may have (any case, spaces ignored): the template's first
 _HEADINGS = {
     "name": ("part", "partname", "name", "item", "description"),
-    "quantity": ("quantity", "qty", "count", "amount"),
+    "need": ("need", "needed", "quantity", "qty", "count", "amount"),
+    "have": ("have", "onhand", "instock", "stock", "got"),
     "link": ("link", "purchaselink", "url", "buy", "buylink", "where"),
     "note": ("notes", "note", "comment", "comments"),
 }
@@ -42,14 +44,24 @@ def clean_name(name: str | None) -> str:
     return name
 
 
-def clean_quantity(quantity) -> int:
+def clean_count(value, *, least: int, blank: int, what: str) -> int:
+    """A whole number from `least` up (blank: `blank`). `what` names it in the message ("How many are needed")."""
+    text = str(value if value is not None else "").strip()
     try:
-        n = int(str(quantity).strip()) if str(quantity).strip() else 1
+        n = int(text) if text else blank
     except ValueError:
-        raise ValueError("The quantity must be a whole number.") from None
-    if not 1 <= n <= MAX_QUANTITY:
-        raise ValueError(f"The quantity must be from 1 to {MAX_QUANTITY}.")
+        raise ValueError(f"{what} must be a whole number.") from None
+    if not least <= n <= MAX_QUANTITY:
+        raise ValueError(f"{what} must be from {least} to {MAX_QUANTITY}.")
     return n
+
+
+def clean_need(value) -> int:
+    return clean_count(value, least=1, blank=1, what="How many are needed")
+
+
+def clean_have(value) -> int:
+    return clean_count(value, least=0, blank=0, what="How many you have")
 
 
 def clean_link(link: str | None) -> str | None:
@@ -81,10 +93,12 @@ def _require_part(db: Session, project_id: int, part_id: int) -> ProjectPart:
     return part
 
 
-def add_part(db: Session, project_id: int, name: str, quantity=1, link: str | None = None, note: str | None = None):
+def add_part(
+    db: Session, project_id: int, name: str, need=1, have=0, link: str | None = None, note: str | None = None,
+):
     require_project(db, project_id)
     db.add(ProjectPart(
-        project_id=project_id, name=clean_name(name), quantity=clean_quantity(quantity), link=clean_link(link),
+        project_id=project_id, name=clean_name(name), need=clean_need(need), have=clean_have(have), link=clean_link(link),
         note=clean_note(note),
     ))
     db.commit()
@@ -92,13 +106,15 @@ def add_part(db: Session, project_id: int, name: str, quantity=1, link: str | No
 
 
 def update_part(db: Session, project_id: int, part_id: int, changes: dict):
-    """changes: only the fields to change (name, quantity, link, note); a blank or null link or note clears it."""
+    """changes: only the fields to change (name, need, have, link, note); a blank or null link or note clears it."""
     require_project(db, project_id)
     part = _require_part(db, project_id, part_id)
     if "name" in changes:
         part.name = clean_name(changes["name"])
-    if changes.get("quantity") is not None:
-        part.quantity = clean_quantity(changes["quantity"])
+    if changes.get("need") is not None:
+        part.need = clean_need(changes["need"])
+    if changes.get("have") is not None:
+        part.have = clean_have(changes["have"])
     if "link" in changes:
         part.link = clean_link(changes["link"])
     if "note" in changes:
@@ -127,9 +143,10 @@ def _column(headings: list[str], field: str) -> int | None:
 
 def read_bom(data: bytes) -> list[dict]:
     """
-    The parts in a BOM: a CSV file whose first row names its columns (Part, Quantity, Link, Notes, in any order; only
-    Part is needed). Blank rows are skipped. Every row is checked first, and a ValueError lists each one that's wrong
-    ("Row 4: The quantity must be a whole number."), so a BOM goes in whole or not at all.
+    The parts in a BOM: a CSV file whose first row names its columns (Part, Need, Have, Link, Notes, in any order; only
+    Part is needed, and a Quantity column is taken as Need). Blank rows are skipped. Every row is checked first, and a
+    ValueError lists each one that's wrong ("Row 4: How many are needed must be a whole number."), so a BOM goes in
+    whole or not at all.
     """
     if len(data) > MAX_BOM_BYTES:
         raise ValueError("That BOM is too big: a CSV of at most 2 MB, please.")
@@ -147,7 +164,7 @@ def read_bom(data: bytes) -> list[dict]:
     headings, body = rows[0], rows[1:]
     cols = {field: _column(headings, field) for field in _HEADINGS}
     if cols["name"] is None:
-        raise ValueError("The BOM's first row needs a Part column (the template has Part, Quantity, Link and Notes).")
+        raise ValueError("The BOM's first row needs a Part column (the template has Part, Need, Have, Link and Notes).")
 
     def cell(row: list[str], field: str) -> str:
         i = cols[field]
@@ -161,7 +178,8 @@ def read_bom(data: bytes) -> list[dict]:
         try:
             parts.append({
                 "name": clean_name(cell(row, "name")),
-                "quantity": clean_quantity(cell(row, "quantity")),
+                "need": clean_need(cell(row, "need")),
+                "have": clean_have(cell(row, "have")),
                 "link": clean_link(cell(row, "link")),
                 "note": clean_note(cell(row, "note")),
             })

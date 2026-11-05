@@ -1,6 +1,6 @@
 """
-A project's own files: its CAD files (any kind), and its STLs and 3MFs that aren't in Models. All work the same way: a file with
-numbered versions like a 3MF's, each kept as "<name> ver <n>.<ext>" in {project files}/{project id}/{cad|stl|threemf}/
+A project's own files: its documents (any file) and CAD files (any kind), and its STLs and 3MFs that aren't in Models. All work the same way: a file with
+numbered versions like a 3MF's, each kept as "<name> ver <n>.<ext>" in {project files}/{project id}/{docs|cad|stl|threemf}/
 {file id}/v{n}/, with a preview next to it when one can be made (thumbnails/cad_preview.py). Deleting goes rows first, then
 files.
 """
@@ -15,7 +15,10 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..errors import NotFound
-from ..models import Printer, ProjectCadFile, ProjectCadVersion, ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfVersion
+from ..models import (
+    Printer, ProjectCadFile, ProjectCadVersion, ProjectDocFile, ProjectDocVersion, ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfGcode,
+    ProjectThreemfVersion,
+)
 from ..names import with_version
 from ..thumbnails.cad_preview import render_cad_preview
 from .project_service import link_printer, require_project
@@ -33,7 +36,13 @@ class Kind:
     extensions: tuple[str, ...] | None = None  # the only ones taken (None: any)
     wrong_type: str = ""
 
+    @property
+    def folder(self) -> str:
+        """The folder its files go in, in the project's folder: docs/, cad/, stl/, threemf/"""
+        return "docs" if self.key == "doc" else self.key
 
+
+DOC = Kind("doc", ProjectDocFile, ProjectDocVersion, "doc_file_id", "document")
 CAD = Kind("cad", ProjectCadFile, ProjectCadVersion, "cad_file_id", "CAD file")
 STL = Kind(
     "stl", ProjectStlFile, ProjectStlVersion, "stl_file_id", "STL file", (".stl", ".obj"),
@@ -43,7 +52,7 @@ THREEMF = Kind(
     "threemf", ProjectThreemfFile, ProjectThreemfVersion, "threemf_file_id", "3MF file", (".3mf",),
     "A 3MF file has to be a .3mf file.",
 )
-KINDS = {k.key: k for k in (CAD, STL, THREEMF)}
+KINDS = {k.key: k for k in (DOC, CAD, STL, THREEMF)}
 
 
 def _clean_note(note: str | None) -> str | None:
@@ -74,13 +83,14 @@ def require_version(db: Session, kind: Kind, project_id: int, file_id: int, vers
 
 
 def _files_of(v) -> list[str | None]:
-    return [v.file_path, v.thumbnail_path, storage.preview_beside(v.file_path)]
+    gcode = getattr(v, "gcode", None)  # a 3MF version's G-code goes with it
+    return [v.file_path, v.thumbnail_path, storage.preview_beside(v.file_path), gcode.file_path if gcode else None]
 
 
 def _add_version(db: Session, kind: Kind, f, number: int, filename: str, file_obj, note: str | None) -> None:
     """Write the file (and its preview) and record it. A record that can't be saved takes its files back out."""
     name = with_version(Path(filename or "").name or kind.noun, number)
-    path = storage.save_upload(storage.project_file_dir(f.project_id, kind.key, f.id, number), name, file_obj)
+    path = storage.save_upload(storage.project_file_dir(f.project_id, kind.folder, f.id, number), name, file_obj)
     png = render_cad_preview(path)
     thumb = storage.save_preview_beside(path, png) if png else None
     try:
@@ -165,3 +175,42 @@ def files_of_project(db: Session, project_id: int) -> list[str | None]:
         versions = db.scalars(select(kind.version_cls).join(kind.file_cls).where(kind.file_cls.project_id == project_id))
         paths += [p for v in versions for p in _files_of(v)]
     return paths
+
+
+# ---- a project 3MF version's G-code: uploaded, downloaded, sent to its printer ----
+
+
+def attach_gcode(db: Session, project_id: int, file_id: int, version: int, filename: str, file_obj) -> None:
+    """Give one version of a project's own 3MF its G-code (a .gcode or .bgcode sliced from it), kept next to the 3MF
+    and replacing one it had."""
+    from .bundle_service.versions import check_gcode_name
+
+    v = require_version(db, THREEMF, project_id, file_id, version)
+    check_gcode_name(filename)
+    path = storage.save_upload(Path(v.file_path).parent, Path(filename).name, file_obj)
+    old = v.gcode.file_path if v.gcode else None
+    if v.gcode:
+        v.gcode.filename, v.gcode.file_path = Path(filename).name, path
+    else:
+        db.add(ProjectThreemfGcode(version_id=v.id, filename=Path(filename).name, file_path=path))
+    db.commit()
+    if old and os.path.abspath(old) != os.path.abspath(path):
+        storage.delete_files([old], prune=False)
+
+
+def require_gcode(db: Session, project_id: int, file_id: int, version: int) -> ProjectThreemfGcode:
+    v = require_version(db, THREEMF, project_id, file_id, version)
+    if v.gcode is None:
+        raise NotFound("This version has no G-code. Upload one first.")
+    return v.gcode
+
+
+def send_gcode(db: Session, project_id: int, file_id: int, version: int) -> dict:
+    """Send the version's G-code to the printer its 3MF is for, and start it (send_print: never while it's busy)."""
+    from .send_print import send_file
+
+    gcode = require_gcode(db, project_id, file_id, version)
+    printer = gcode.version.file.printer
+    if printer is None:
+        raise ValueError("This 3MF has no printer to send it to.")
+    return send_file(db, printer, gcode.filename, gcode.file_path)

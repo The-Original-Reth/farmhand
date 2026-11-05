@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { ChevronDown, ExternalLink, FileBox, Plus, Upload } from "lucide-react";
+import { ChevronDown, ExternalLink, FileBox, FileCode, Plus, Upload } from "lucide-react";
 import { addProjectBundle, bundle3mfUrl, errorText, inspectThreemf, removeProjectBundle } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
@@ -8,6 +8,7 @@ import { nameCollator } from "../models/modelSort.js";
 import { NewVersionButton } from "../bundles/bundleActions.jsx";
 import { GcodeRow } from "../bundles/GcodeRow.jsx";
 import { Upload3mfForm } from "../bundles/Upload3mfForm.jsx";
+import { UploadGcodeForm } from "../bundles/UploadGcodeForm.jsx";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { FieldSelect, SearchBox } from "../components/common/fields.jsx";
 import { DownloadButton, Row, Thumb } from "../components/common/ui.jsx";
@@ -71,6 +72,7 @@ function BundleLinkCard({ project, bundle: b, onOpenPrinter }) {
   const { putProject, printers, bundleTitle } = useData();
   const [asking, setAsking] = useState(false);
   const [showOlder, setShowOlder] = useState(false);
+  const [uploadingGcode, setUploadingGcode] = useState(false);
   const [latest, ...older] = b.versions;
   const printer = printers.find((p) => p.id === b.printerId);
   const row = (v, isLatest) => (
@@ -120,6 +122,15 @@ function BundleLinkCard({ project, bundle: b, onOpenPrinter }) {
             {older.length} older
           </button>
         )}
+        <button
+          data-testid="threemf-bundle-gcode-upload"
+          onClick={() => setUploadingGcode(true)}
+          title={latest?.gcodeName ? "Upload a newer G-code for its newest version" : "Upload the G-code sliced from its newest version"}
+          style={toolButton(12, { whiteSpace: "nowrap" })}
+        >
+          <FileCode size={12} />
+          {latest?.gcodeName ? "Replace G-code" : "Upload G-code"}
+        </button>
         <NewVersionButton bundle={b} />
         <button data-testid="threemf-open-printer" onClick={onOpenPrinter} title="Open it on its printer's page" style={toolButton(12, { whiteSpace: "nowrap" })}>
           <ExternalLink size={12} />
@@ -131,6 +142,11 @@ function BundleLinkCard({ project, bundle: b, onOpenPrinter }) {
       </div>
       {latest && row(latest, true)}
       {showOlder && older.map((v) => row(v, false))}
+      {uploadingGcode && (
+        <Modal title={`G-code for ${b.name}`} onClose={() => setUploadingGcode(false)}>
+          <UploadGcodeForm bundles={[b]} onClose={() => setUploadingGcode(false)} />
+        </Modal>
+      )}
       {asking && (
         <ConfirmDialog
           title="Take out of project"

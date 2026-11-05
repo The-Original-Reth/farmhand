@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Box, ChevronDown, ExternalLink, Plus, Upload } from "lucide-react";
-import { addProjectModel, API_BASE, removeProjectModel } from "../api.js";
+import { addProjectModel, API_BASE, removeProjectModel, setProjectStlCounts } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
@@ -10,7 +10,7 @@ import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { SearchBox } from "../components/common/fields.jsx";
 import { DownloadButton, Row, Thumb } from "../components/common/ui.jsx";
 import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
-import { FILE_KINDS, FileCard, plural, UploadDialog } from "./ProjectFiles.jsx";
+import { FILE_KINDS, FileCard, HaveNeed, HaveNeedLabel, plural, UploadDialog } from "./ProjectFiles.jsx";
 
 const STL = FILE_KINDS.stl;
 
@@ -46,6 +46,10 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* what the two numbers at the start of each card are, lined up over them */}
+          <div style={{ marginBottom: -6 }}>
+            <HaveNeedLabel testId="stl-have-need-label" />
+          </div>
           {models.map((m) => (
             <ModelCard key={`m${m.id}`} project={project} model={m} onOpen={() => onOpenModel(m.id)} />
           ))}
@@ -84,6 +88,13 @@ function ModelCard({ project, model, onOpen }) {
     <div data-testid="stl-model" data-model-id={model.id} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 4, flexWrap: "wrap", padding: "5px 8px 5px 12px", background: c.panelAlt }}>
         <span style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px", minWidth: 0 }}>
+          {/* have / need at the start of the heading, left of the name */}
+          <HaveNeed
+            have={project.modelCounts[model.id]?.have ?? 0}
+            need={project.modelCounts[model.id]?.need ?? 1}
+            label="prints"
+            onSave={(counts) => setProjectStlCounts(project.id, "model", model.id, counts)}
+          />
           <Box size={14} color={c.textFaint} style={{ flexShrink: 0 }} />
           <span title={model.name} style={monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" })}>
             {model.name}

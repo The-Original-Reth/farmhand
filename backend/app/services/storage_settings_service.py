@@ -269,7 +269,7 @@ def migrate(db: Session) -> dict:
     # project files: each version of a project's own CAD files and STLs, with its preview
     for v in list(project_files.all_versions(db)):
         label = f"{v.filename} v{v.version}"
-        folder = next(k.key for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
+        folder = next(k.folder for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
         pid, cid, ver = v.file.project_id, v.file.id, v.version
         copies = []
         try:

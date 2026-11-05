@@ -1,5 +1,6 @@
 """
-Projects: a piece of work for the farm. A project has a name; its own CAD files, STLs and 3MFs (project_files.py); and
+Projects: a piece of work for the farm. A project has a name; its own documents, CAD files, STLs and 3MFs
+(project_files.py); and
 models, 3MFs and printers from the rest of Farmhand it uses, only pointed at. A 3MF it uses brings the printer it's for.
 And its parts list (project_parts.py).
 """
@@ -13,16 +14,17 @@ from sqlalchemy.orm import Session, selectinload
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectPrinter, ProjectSourceModel, ProjectStlFile,
-    ProjectThreemfFile, SourceFileType, SourceModel,
+    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectDocFile, ProjectPrinter, ProjectSourceModel, ProjectStlFile,
+    ProjectThreemfFile, ProjectThreemfVersion, SourceFileType, SourceModel,
 )
 
 MAX_NAME_LENGTH = 200
 
 _LOAD = (
+    selectinload(Project.doc_files).selectinload(ProjectDocFile.versions),
     selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),
     selectinload(Project.stl_files).selectinload(ProjectStlFile.versions),
-    selectinload(Project.threemf_files).selectinload(ProjectThreemfFile.versions),
+    selectinload(Project.threemf_files).selectinload(ProjectThreemfFile.versions).selectinload(ProjectThreemfVersion.gcode),
     selectinload(Project.model_links),
     selectinload(Project.bundle_links),
     selectinload(Project.printer_links),
@@ -37,12 +39,14 @@ def _files_out(files) -> list[dict]:
         {
             "id": f.id,
             **({"printer_id": f.printer_id} if isinstance(f, ProjectThreemfFile) else {}),
+            **({"need": f.need, "have": f.have} if isinstance(f, ProjectStlFile) else {}),
             "name": f.versions[0].filename if f.versions else "",
             "created_at": f.created_at,
             "versions": [
                 {
                     "version": v.version, "filename": v.filename, "size_bytes": v.size_bytes, "note": v.note,
                     "uploaded_at": v.uploaded_at, "has_preview": bool(v.thumbnail_path),
+                    **({"gcode_name": v.gcode.filename if v.gcode else None} if hasattr(v, "gcode") else {}),
                 }
                 for v in f.versions
             ],
@@ -58,14 +62,17 @@ def out(project: Project) -> dict:
         "id": project.id,
         "name": project.name,
         "created_at": project.created_at,
+        "doc_files": _files_out(project.doc_files),
         "cad_files": _files_out(project.cad_files),
         "stl_files": _files_out(project.stl_files),
         "threemf_files": _files_out(project.threemf_files),
         "source_model_ids": [link.source_model_id for link in project.model_links],
+        "source_models": [{"id": link.source_model_id, "need": link.need, "have": link.have} for link in project.model_links],
         "bundle_ids": [link.bundle_id for link in project.bundle_links],
         "printer_ids": [link.printer_id for link in project.printer_links],
         "parts": [
-            {"id": p.id, "name": p.name, "quantity": p.quantity, "link": p.link, "note": p.note} for p in project.parts
+            {"id": p.id, "name": p.name, "need": p.need, "have": p.have, "link": p.link, "note": p.note}
+            for p in project.parts
         ],
     }
 
@@ -208,4 +215,31 @@ def remove_printer(db: Session, project_id: int, printer_id: int) -> Project:
     if link is not None:
         db.delete(link)
         db.commit()
+    return require_project(db, project_id)
+
+
+# ---- how many prints of an STL a project needs and has ----
+
+
+def set_counts(db: Session, project_id: int, kind: str, thing_id: int, need=None, have=None) -> Project:
+    """
+    How many of a model from Models (kind "model") or of one of the project's own STLs (kind "stl") the project needs
+    and has. Only the counts given change.
+    """
+    from .project_parts import clean_have, clean_need
+
+    require_project(db, project_id)
+    if kind == "model":
+        row = db.get(ProjectSourceModel, (project_id, thing_id))
+        if row is None:
+            raise NotFound("That model isn't in this project")
+    else:
+        row = db.get(ProjectStlFile, thing_id)
+        if row is None or row.project_id != project_id:
+            raise NotFound("STL file not found")
+    if need is not None:
+        row.need = clean_need(need)
+    if have is not None:
+        row.have = clean_have(have)
+    db.commit()
     return require_project(db, project_id)

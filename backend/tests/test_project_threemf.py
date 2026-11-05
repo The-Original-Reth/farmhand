@@ -116,3 +116,54 @@ def test_a_project_3mf_can_go_without_a_printer_and_must_be_a_3mf(api):
     assert r.status_code == 201 and r.json()["threemf_files"][0]["printer_id"] is None and r.json()["printer_ids"] == []
     r = _upload(api, pid, name="Frog.stl", data=b"solid x")
     assert r.status_code == 422 and ".3mf" in r.json()["detail"]
+
+
+# ------------------------------------------------------------------ a project 3MF's G-code
+
+
+def test_a_project_3mf_version_gets_a_gcode_that_is_downloaded_and_sent(api, monkeypatch):
+    import httpx
+
+    from app.services.moonraker import client as mr_client
+
+    from .fake_moonraker import FakeMoonraker
+
+    moonraker = FakeMoonraker()
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(moonraker.handle))
+    pid = _project(api)
+    printer = api.post("/printers", json={"name": "VT 1190", "wired_ip": "10.0.6.21"}).json()["id"]
+    f = _upload(api, pid, printer_id=printer).json()["threemf_files"][0]
+    base = f"/projects/{pid}/threemf/{f['id']}/versions/1"
+    assert f["versions"][0]["gcode_name"] is None
+    assert api.post(f"{base}/print").status_code == 404  # no G-code yet
+
+    assert api.put(f"{base}/gcode", files={"gcode": ("plate.stl", b"x")}).status_code == 422  # not a G-code
+    r = api.put(f"{base}/gcode", files={"gcode": ("Frog plate.gcode", b"G28\nG1 X10\n")})
+    assert r.status_code == 200 and r.json()["threemf_files"][0]["versions"][0]["gcode_name"] == "Frog plate.gcode"
+    root = storage.effective_root("project")
+    assert (root / str(pid) / "threemf" / str(f["id"]) / "v1" / "Frog plate.gcode").is_file()  # next to its 3MF
+    assert api.get(f"{base}/gcode").content == b"G28\nG1 X10\n"
+
+    r = api.put(f"{base}/gcode", files={"gcode": ("Frog plate 2.gcode", b"G28\n")})  # replaces it
+    assert r.json()["threemf_files"][0]["versions"][0]["gcode_name"] == "Frog plate 2.gcode"
+    assert not (root / str(pid) / "threemf" / str(f["id"]) / "v1" / "Frog plate.gcode").exists()
+
+    r = api.post(f"{base}/print")
+    assert r.status_code == 200 and r.json() == {"sent": "gcodes/Frog plate 2.gcode", "printer": "VT 1190"}
+    assert moonraker.uploads[0]["filename"] == "Frog plate 2.gcode" and moonraker.uploads[0]["print"] == "true"
+
+    moonraker.print_state = "printing"
+    r = api.post(f"{base}/print")
+    assert r.status_code == 409 and "printing" in r.json()["detail"]
+
+    api.delete(f"/projects/{pid}", params={"confirm": "true"}).raise_for_status()
+    assert not (root / str(pid)).exists()  # the G-code went with its 3MF
+
+
+def test_a_project_3mf_with_no_printer_cant_be_sent(api):
+    pid = _project(api)
+    f = _upload(api, pid).json()["threemf_files"][0]
+    base = f"/projects/{pid}/threemf/{f['id']}/versions/1"
+    api.put(f"{base}/gcode", files={"gcode": ("p.gcode", b"G28")}).raise_for_status()
+    r = api.post(f"{base}/print")
+    assert r.status_code == 422 and "no printer" in r.json()["detail"]

@@ -158,6 +158,8 @@ const normalizeProjectFiles = (projectId, kind, files) =>
     id: f.id,
     name: f.name,
     printerId: f.printer_id ?? null, // a 3MF's: the printer it's for
+    need: f.need ?? null, // an STL's: how many prints of it the project needs
+    have: f.have ?? null, // and has
     versions: f.versions.map((v) => {
       const base = `${API_BASE}/projects/${projectId}/${kind}/${f.id}/versions/${v.version}`;
       return {
@@ -168,20 +170,24 @@ const normalizeProjectFiles = (projectId, kind, files) =>
         date: fmtDate(v.uploaded_at),
         download: `${base}/download`,
         preview: v.has_preview ? `${base}/preview?v=${encodeURIComponent(v.uploaded_at)}` : null,
+        gcodeName: v.gcode_name || null, // a 3MF version's G-code, if it has one
+        gcodeDownload: v.gcode_name ? `${base}/gcode` : null,
       };
     }),
   }));
 
-// A project: its name, its own CAD files, STLs and 3MFs, the models, 3MFs and printers from the rest of Farmhand it
-// uses (their ids, in the order they were added), and its BOM (parts list): [{ id, name, quantity, link, note }].
+// A project: its name, its own documents, CAD files, STLs and 3MFs, the models, 3MFs and printers from the rest of Farmhand it
+// uses (their ids, in the order they were added), and its BOM (parts list): [{ id, name, need, have, link, note }].
 export const normalizeProject = (p) => ({
   id: p.id,
   name: p.name,
   created: p.created_at,
+  docFiles: normalizeProjectFiles(p.id, "doc", p.doc_files),
   cadFiles: normalizeProjectFiles(p.id, "cad", p.cad_files),
   stlFiles: normalizeProjectFiles(p.id, "stl", p.stl_files),
   threemfFiles: normalizeProjectFiles(p.id, "threemf", p.threemf_files),
   modelIds: p.source_model_ids || [],
+  modelCounts: Object.fromEntries((p.source_models || []).map((m) => [m.id, { need: m.need, have: m.have }])), // id -> { need, have }
   bundleIds: p.bundle_ids || [],
   printerIds: p.printer_ids || [],
   parts: p.parts || [],
@@ -213,7 +219,7 @@ export const fetchVersionSettings = async (versionId) => {
 export const createProject = (name) => request("/projects", jsonBody("POST", { name }));
 export const renameProject = (id, name) => request(`/projects/${id}`, jsonBody("PATCH", { name }));
 export const deleteProject = (id) => del(`/projects/${id}`);
-// A project's own files, kind "cad" or "stl": a new one (its version 1), a newer version of one, and deleting a version
+// A project's own files, kind "doc", "cad", "stl" or "threemf": a new one (its version 1), a newer version of one, and deleting a version
 // or the whole file. An STL also says whether it goes in Models too (inModels: true makes it a model there that the
 // project uses; false keeps it the project's own). Each answers the project as it now stands.
 // A 3MF says which printer it's for (printerId), which then comes into the project too.
@@ -238,10 +244,18 @@ export const addProjectPrinter = (projectId, printerId) => request(`/projects/${
 export const removeProjectPrinter = (projectId, printerId) => request(`/projects/${projectId}/printers/${printerId}`, { method: "DELETE" });
 // A project's BOM: a part added, changed (only the fields given) or removed, each answering the project; and a BOM CSV
 // uploaded, its parts added to the list or replacing it, answering { project, added }
-export const addProjectPart = (projectId, { name, quantity, link, note }) =>
-  request(`/projects/${projectId}/parts`, jsonBody("POST", { name, quantity, link: link || null, note: note || null }));
+export const addProjectPart = (projectId, { name, need, have, link, note }) =>
+  request(`/projects/${projectId}/parts`, jsonBody("POST", { name, need, have, link: link || null, note: note || null }));
 export const updateProjectPart = (projectId, partId, changes) => request(`/projects/${projectId}/parts/${partId}`, jsonBody("PATCH", changes));
 export const deleteProjectPart = (projectId, partId) => del(`/projects/${projectId}/parts/${partId}`);
+// How many prints of an STL a project needs and has: a model from Models ("model") or one of its own ("stl"). Only the
+// counts given change.
+export const setProjectStlCounts = (projectId, kind, id, counts) =>
+  request(`/projects/${projectId}/${kind === "model" ? "source-models" : "stl"}/${id}`, jsonBody("PATCH", counts));
+// A project 3MF version's G-code: uploaded (replacing one it had), and sent to the 3MF's printer (it starts printing)
+export const uploadProjectGcode = ({ projectId, fileId, v, gcode }) =>
+  request(`/projects/${projectId}/threemf/${fileId}/versions/${v}/gcode`, formBody("PUT", { gcode }));
+export const sendProjectGcode = (projectId, fileId, v) => post(`/projects/${projectId}/threemf/${fileId}/versions/${v}/print`);
 export const uploadBom = ({ projectId, file, replace }) =>
   request(`/projects/${projectId}/parts/bom`, formBody("POST", { file, replace: String(!!replace) }));
 

@@ -169,3 +169,32 @@ def test_the_project_files_folder_must_be_its_own(db_session, share):
     with pytest.raises(ValueError, match="The STL and project files locations must be different folders"):
         storage_settings_service.save(db_session, {"stl_path": str(chosen), "project_path": str(chosen / "inner")})
     assert storage.custom_path("project") is None
+
+
+# ------------------------------------------------------------------ documents: any file, versioned, with notes
+
+
+def test_a_document_is_uploaded_versioned_and_deleted_with_its_notes(api):
+    pid = _project(api)
+    r = api.post(f"/projects/{pid}/doc", files={"file": ("Quote.pdf", io.BytesIO(b"%PDF-1.4 quote"))}, data={"note": "From the shop"})
+    assert r.status_code == 201
+    doc = r.json()["doc_files"][0]
+    assert doc["name"] == "Quote ver 1.pdf" and doc["versions"][0]["note"] == "From the shop"
+    assert doc["versions"][0]["has_preview"] is False  # a PDF has none
+    r = api.post(f"/projects/{pid}/doc/{doc['id']}/versions", files={"file": ("Quote.pdf", io.BytesIO(b"%PDF-1.4 v2"))}, data={"note": "Price agreed"})
+    doc = r.json()["doc_files"][0]
+    assert doc["name"] == "Quote ver 2.pdf" and [(v["version"], v["note"]) for v in doc["versions"]] == [(2, "Price agreed"), (1, "From the shop")]
+    root = storage.effective_root("project")
+    assert (root / str(pid) / "docs" / str(doc["id"]) / "v2" / "Quote ver 2.pdf").is_file()
+    assert api.get(f"/projects/{pid}/doc/{doc['id']}/versions/1/download").content == b"%PDF-1.4 quote"
+    assert r.json()["cad_files"] == []  # a document isn't a CAD file
+
+    pic = api.post(f"/projects/{pid}/doc", files={"file": ("Photo.jpg", io.BytesIO(_png_bytes((300, 120))))}).json()["doc_files"][-1]
+    assert pic["versions"][0]["has_preview"]  # a picture is its own preview
+    r = api.get(f"/projects/{pid}/doc/{pic['id']}/versions/1/preview")
+    assert r.status_code == 200 and Image.open(io.BytesIO(r.content)).size == (256, 256)
+
+    r = api.delete(f"/projects/{pid}/doc/{doc['id']}", params={"confirm": "true"})
+    assert [d["name"] for d in r.json()["doc_files"]] == ["Photo ver 1.jpg"]
+    api.delete(f"/projects/{pid}", params={"confirm": "true"}).raise_for_status()
+    assert not (root / str(pid)).exists()

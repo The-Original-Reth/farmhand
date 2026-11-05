@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
-from ..schemas.project import BomOut, PartIn, PartUpdate, ProjectIn, ProjectOut
-from ..services import project_files, project_parts, project_service
-from ..services.project_files import CAD, STL, THREEMF, Kind
+from ..schemas.project import BomOut, Counts, PartIn, PartUpdate, ProjectIn, ProjectOut
+from ..services import project_files, project_parts, project_service, send_print
+from ..services.project_files import CAD, DOC, STL, THREEMF, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
 
@@ -42,7 +42,7 @@ def rename_project(project_id: int, payload: ProjectIn, db: Session = Depends(ge
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
-    """Delete a project with its own CAD files, STLs and 3MFs (every version, for good). What it used stays."""
+    """Delete a project with its own documents, CAD files, STLs and 3MFs (every version, for good). What it used stays."""
     require_confirm(confirm)
     with answer_errors():
         project_service.delete_project(db, project_id)
@@ -56,6 +56,20 @@ def delete_project(project_id: int, confirm: bool = Query(False), db: Session = 
 def add_model(project_id: int, source_model_id: int, db: Session = Depends(get_db)):
     with answer_errors():
         return out(project_service.add_model(db, project_id, source_model_id))
+
+
+@router.patch("/{project_id}/source-models/{source_model_id}", response_model=ProjectOut)
+def set_model_counts(project_id: int, source_model_id: int, payload: Counts, db: Session = Depends(get_db)):
+    """How many prints of the model the project needs and has (need 1 or more, have 0 or more)."""
+    with answer_errors():
+        return out(project_service.set_counts(db, project_id, "model", source_model_id, payload.need, payload.have))
+
+
+@router.patch("/{project_id}/stl/{file_id}", response_model=ProjectOut)
+def set_stl_counts(project_id: int, file_id: int, payload: Counts, db: Session = Depends(get_db)):
+    """How many prints of one of its own STLs the project needs and has."""
+    with answer_errors():
+        return out(project_service.set_counts(db, project_id, "stl", file_id, payload.need, payload.have))
 
 
 @router.delete("/{project_id}/source-models/{source_model_id}", response_model=ProjectOut)
@@ -94,6 +108,15 @@ def remove_printer(project_id: int, printer_id: int, db: Session = Depends(get_d
 
 # ---- the project's own files, CAD (/cad), STL (/stl) and 3MF (/threemf): uploaded, versioned, previewed, downloaded,
 # deleted ----
+
+
+@router.post("/{project_id}/doc", response_model=ProjectOut, status_code=201)
+def upload_doc(project_id: int, file: UploadFile = File(...), note: str | None = Form(None), db: Session = Depends(get_db)):
+    """A document, any file at all, as version 1 (a picture gets a preview of itself). 503 if the project files folder
+    isn't there right now."""
+    with answer_errors():
+        project_files.upload(db, DOC, project_id, file.filename, file.file, note)
+        return out(project_service.require_project(db, project_id))
 
 
 @router.post("/{project_id}/cad", response_model=ProjectOut, status_code=201)
@@ -189,15 +212,47 @@ for _kind in project_files.KINDS.values():
     _file_routes(_kind)
 
 
+# ---- a project 3MF version's G-code: uploaded (replacing one it had), downloaded, sent to the 3MF's printer ----
+
+
+@router.put("/{project_id}/threemf/{file_id}/versions/{version}/gcode", response_model=ProjectOut)
+def upload_threemf_gcode(project_id: int, file_id: int, version: int, gcode: UploadFile = File(...), db: Session = Depends(get_db)):
+    """A .gcode or .bgcode sliced from that version, kept next to its 3MF. 422 for another kind of file."""
+    with answer_errors():
+        project_files.attach_gcode(db, project_id, file_id, version, gcode.filename, gcode.file)
+        return out(project_service.require_project(db, project_id))
+
+
+@router.get("/{project_id}/threemf/{file_id}/versions/{version}/gcode")
+def download_threemf_gcode(project_id: int, file_id: int, version: int, db: Session = Depends(get_db)):
+    with answer_errors():
+        g = project_files.require_gcode(db, project_id, file_id, version)
+    require_readable(g.file_path)
+    return FileResponse(g.file_path, filename=g.filename)
+
+
+@router.post("/{project_id}/threemf/{file_id}/versions/{version}/print")
+def send_threemf_gcode(project_id: int, file_id: int, version: int, db: Session = Depends(get_db)):
+    """
+    Send that version's G-code to the printer the 3MF is for and start printing it. Refused (409) while the printer is
+    busy; 422 when the 3MF has no printer or the version no G-code; a printer that can't be reached answers 502.
+    """
+    with answer_errors():
+        try:
+            return project_files.send_gcode(db, project_id, file_id, version)
+        except send_print.PrinterBusy as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
+
+
 # ---- the parts list: parts added one at a time, or many from a BOM (a CSV file) ----
 
 
 @router.post("/{project_id}/parts", response_model=ProjectOut, status_code=201)
 def add_part(project_id: int, payload: PartIn, db: Session = Depends(get_db)):
-    """Add a part: its name, quantity (1 or more), a link to buy it (https:// added if it has none) and notes. 422 for
-    a missing name, a bad quantity or a link that isn't a web address."""
+    """Add a part: its name, how many are needed (1 or more) and had (0 or more), a link to buy it (https:// added if it
+    has none) and notes. 422 for a missing name, a bad count or a link that isn't a web address."""
     with answer_errors():
-        return out(project_parts.add_part(db, project_id, payload.name, payload.quantity, payload.link, payload.note))
+        return out(project_parts.add_part(db, project_id, payload.name, payload.need, payload.have, payload.link, payload.note))
 
 
 @router.patch("/{project_id}/parts/{part_id}", response_model=ProjectOut)
@@ -216,7 +271,7 @@ def delete_part(project_id: int, part_id: int, confirm: bool = Query(False), db:
 @router.post("/{project_id}/parts/bom", response_model=BomOut)
 def upload_bom(
     project_id: int,
-    file: UploadFile = File(..., description="A CSV file: a heading row (Part, Quantity, Link, Notes), then a part a row"),
+    file: UploadFile = File(..., description="A CSV file: a heading row (Part, Need, Have, Link, Notes), then a part a row"),
     replace: bool = Form(False, description="true: the BOM's parts replace the list; false: they're added to it"),
     db: Session = Depends(get_db),
 ):

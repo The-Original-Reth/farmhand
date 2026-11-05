@@ -223,10 +223,14 @@ sudo docker compose down -v
     mixed-plate 3MFs that also use other models are kept, just unlinked from it.
   - Deleting removes the stored files (and their previews) and parsed settings for good.
 
-**Projects**, under Models in the menu: a piece of work for the farm. A project gathers what that work needs: its CAD
-files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
-used, in any case), and its page has **Rename**, the bin to delete it, and its five sections (CAD, STL files, 3MF
-files, Printers, BOM), each folding away with the arrow by its heading (remembered in this browser).
+**Projects**, under Models in the menu: a piece of work for the farm. A project gathers what that work needs: its
+documents, CAD files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
+used, in any case), and its page has **Rename**, the bin to delete it, and its six sections (Documents, CAD, STL
+files, BOM, 3MF files, Printers), each folding away with the arrow by its heading (remembered in this browser).
+- **Documents**: **Upload document** takes any file at all (a quote, drawings, instructions, photos, a
+  spreadsheet...) with notes. Like CAD files, each keeps every version (**New version**, older ones behind the down
+  arrow, each with its own notes), each can be downloaded or deleted, and they're deleted with the project. A picture
+  (PNG, JPG, GIF, WebP, BMP) shows a preview of itself. They're kept in `<project files>/<project number>/docs/`.
 - **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an
   optional note on what it is. Each CAD file keeps every version, like a 3MF: **New version** adds the next one, named
   `Bracket ver 1.f3d`, `Bracket ver 2.f3d`... (a "ver N" the uploaded name already has is replaced). The newest
@@ -236,6 +240,11 @@ files, Printers, BOM), each folding away with the arrow by its heading (remember
   files are drawn from their own triangles; a Fusion file (.f3d) shows the picture Fusion keeps inside it. Other kinds
   (SolidWorks, Inventor, OpenSCAD...) have no preview. Click a preview to open it full size. A very large STEP file
   that takes over 90 seconds to draw goes without one.
+- **Have / need**: each STL in a project (from Models or its own) and each BOM part shows how many the project has
+  and how many it needs. An STL's is at the start of its heading, left of its name, and both numbers are changed right
+  there (saved when you leave the box or press Enter). A BOM part's have is changed right there too, but its need only
+  with its **Edit** button. The have is amber while it's short and green once there are enough. A new one starts at
+  0 / 1.
 - **STL files** come two ways:
   - **Add from Models** picks models already on the Models page (searchable; each is added at once; ones already in
     the project aren't offered). They show with
@@ -259,18 +268,22 @@ files, Printers, BOM), each folding away with the arrow by its heading (remember
   - **Upload 3MF** asks **Also put it in Models?** first. **Yes**: the usual 3MF upload (its STL, its printer read
     from the file), then the project uses it. **No**: it's the project's own (**Project only**, versioned, its preview
     the picture inside the 3MF), for a printer you pick (suggested from the file's printer profile).
+  - **G-code**, as on the Models page: **Upload G-code** (or **Replace G-code**) on a 3MF in the project gives its
+    newest version a .gcode or .bgcode, shown under that version with **Download** and **Send to <printer>** (it asks
+    first, since printing starts straight away, and is refused while the printer is busy). A project-only 3MF's
+    G-code is kept next to it in the project files folder.
 - **Printers** lists the printers the project uses (brought by its 3MFs, or **Add printer**), each with how many of
   the project's 3MFs are for it, **Open** (its page), **Mainsail** (or **PrusaLink** for a Prusa: its own page in a
   new tab) and **Remove**, which asks first (the printer and the 3MFs for it stay). Deleting a printer
   takes it out of every project.
-- **BOM** (bill of materials): the parts the project needs that aren't printed, each with its name, quantity, a link
+- **BOM** (bill of materials): the parts the project needs that aren't printed, each with its name, have / need, a link
   to buy it (a **Buy** button that opens it in a new tab; `https://` is added if it's left off) and notes. Beside the
   heading:
-  - **Template** downloads a CSV to fill in (in Excel, Google Sheets...): columns Part, Quantity, Link, Notes, a part a
-    row (only Part is needed; a blank quantity is 1).
+  - **BOM Template** downloads "BOM Template.csv" to fill in (in Excel, Google Sheets...): columns Part, Need, Have, Link, Notes, a part
+    a row (only Part is needed; a blank Need is 1 and a blank Have is 0; an older BOM's Quantity column counts as Need).
   - **Upload BOM** reads a filled-in CSV. When the BOM already has parts it asks whether to add to them or replace
-    them. Every row is checked first: a file with mistakes changes nothing and says which rows ("Row 4: The quantity
-    must be a whole number."). Columns can be in any order; Excel's UTF-8 and older CSVs, and ";"-separated ones, are
+    them. Every row is checked first: a file with mistakes changes nothing and says which rows ("Row 4: How many are
+    needed must be a whole number."). Columns can be in any order; Excel's UTF-8 and older CSVs, and ";"-separated ones, are
     read too.
   - **Add part** adds one by hand; the pencil changes one, and the bin removes it (it asks first).
 - Project files are kept in the **Project files** folder chosen on the Settings page (by default Farmhand's own

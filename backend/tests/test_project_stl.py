@@ -117,3 +117,28 @@ def test_deleting_a_project_deletes_its_own_stls_but_not_its_models(api):
     api.delete(f"/projects/{pid}", params={"confirm": "true"}).raise_for_status()
     assert not folder.exists()
     assert api.get(f"/source-models/{model_id}").status_code == 200
+
+
+# ------------------------------------------------------------------ how many: have / need
+
+
+def test_an_stl_in_a_project_has_how_many_it_needs_and_has(api):
+    pid = _project(api)
+    frog = _model(api)
+    p = api.put(f"/projects/{pid}/source-models/{frog}").json()
+    assert p["source_models"] == [{"id": frog, "need": 1, "have": 0}]  # 1 needed, none yet
+    p = api.patch(f"/projects/{pid}/source-models/{frog}", json={"need": 24, "have": 6}).json()
+    assert p["source_models"] == [{"id": frog, "need": 24, "have": 6}]
+    p = api.patch(f"/projects/{pid}/source-models/{frog}", json={"have": 24}).json()
+    assert p["source_models"][0] == {"id": frog, "need": 24, "have": 24}  # only what was sent changed
+
+    own = _upload(api, pid, in_models=False).json()["stl_files"][0]
+    assert own["need"] == 1 and own["have"] == 0
+    p = api.patch(f"/projects/{pid}/stl/{own['id']}", json={"need": 10, "have": 2}).json()
+    assert (p["stl_files"][0]["need"], p["stl_files"][0]["have"]) == (10, 2)
+
+    assert api.patch(f"/projects/{pid}/source-models/{frog}", json={"need": 0}).status_code == 422
+    assert api.patch(f"/projects/{pid}/stl/{own['id']}", json={"have": -1}).status_code == 422
+    assert api.patch(f"/projects/{pid}/source-models/999", json={"need": 2}).status_code == 404
+    other = _project(api, "Other")
+    assert api.patch(f"/projects/{other}/stl/{own['id']}", json={"need": 2}).status_code == 404
