@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import answer_errors
 from ..schemas.project import ProjectIn, ProjectOut
-from ..services import project_cad_service, project_service
+from ..services import project_files, project_service
+from ..services.project_files import CAD, STL, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
 
@@ -41,63 +42,101 @@ def rename_project(project_id: int, payload: ProjectIn, db: Session = Depends(ge
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
-    """Delete a project with its CAD files (every version, for good)."""
+    """Delete a project with its own CAD files and STLs (every version, for good). Models it used stay in Models."""
     require_confirm(confirm)
     with answer_errors():
         project_service.delete_project(db, project_id)
     return Response(status_code=204)
 
 
-# ---- the project's CAD files: uploaded, versioned, previewed, downloaded, deleted (a delete needs confirm=true) ----
+# ---- models from the Models page: PUT puts one in the project, DELETE takes it out (the model itself stays) ----
+
+
+@router.put("/{project_id}/source-models/{source_model_id}", response_model=ProjectOut)
+def add_model(project_id: int, source_model_id: int, db: Session = Depends(get_db)):
+    with answer_errors():
+        return out(project_service.add_model(db, project_id, source_model_id))
+
+
+@router.delete("/{project_id}/source-models/{source_model_id}", response_model=ProjectOut)
+def remove_model(project_id: int, source_model_id: int, db: Session = Depends(get_db)):
+    with answer_errors():
+        return out(project_service.remove_model(db, project_id, source_model_id))
+
+
+# ---- the project's own files, CAD (/cad) and STL (/stl): uploaded, versioned, previewed, downloaded, deleted ----
 
 
 @router.post("/{project_id}/cad", response_model=ProjectOut, status_code=201)
 def upload_cad(project_id: int, file: UploadFile = File(...), note: str | None = Form(None), db: Session = Depends(get_db)):
     """A CAD file of any kind, as version 1. 503 if the project files folder isn't there right now."""
     with answer_errors():
-        project_cad_service.upload(db, project_id, file.filename, file.file, note)
+        project_files.upload(db, CAD, project_id, file.filename, file.file, note)
         return out(project_service.require_project(db, project_id))
 
 
-@router.post("/{project_id}/cad/{cad_id}/versions", response_model=ProjectOut, status_code=201)
-def upload_cad_version(
-    project_id: int, cad_id: int, file: UploadFile = File(...), note: str | None = Form(None), db: Session = Depends(get_db),
+@router.post("/{project_id}/stl", response_model=ProjectOut, status_code=201)
+def upload_stl(
+    project_id: int,
+    file: UploadFile = File(...),
+    in_models: bool = Form(..., description="true: also put it in Models (a new model the project uses); false: the project's own"),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
 ):
-    """A newer version of one of the project's CAD files."""
+    """
+    An STL (or OBJ) uploaded on a project's page. in_models=true: it becomes a new model in Models (kept in the STL
+    folder) that the project uses. false: it belongs to the project, as version 1, in the project files folder. 422 for
+    another kind of file; 503 if the folder it goes to isn't there right now.
+    """
     with answer_errors():
-        project_cad_service.add_version(db, project_id, cad_id, file.filename, file.file, note)
+        if in_models:
+            return out(project_service.upload_to_models(db, project_id, file.filename, file.file, note))
+        project_files.upload(db, STL, project_id, file.filename, file.file, note)
         return out(project_service.require_project(db, project_id))
 
 
-@router.get("/{project_id}/cad/{cad_id}/versions/{version}/download")
-def download_cad_version(project_id: int, cad_id: int, version: int, db: Session = Depends(get_db)):
-    with answer_errors():
-        v = project_cad_service.require_version(db, project_id, cad_id, version)
-    require_readable(v.file_path)
-    return FileResponse(v.file_path, filename=v.filename)
+def _file_routes(kind: Kind) -> None:
+    """New version, download, preview and delete, for one kind of project file."""
+    base = f"/{{project_id}}/{kind.key}/{{file_id}}"
+
+    @router.post(f"{base}/versions", response_model=ProjectOut, status_code=201, name=f"upload_{kind.key}_version")
+    def upload_version(
+        project_id: int, file_id: int, file: UploadFile = File(...), note: str | None = Form(None), db: Session = Depends(get_db),
+    ):
+        with answer_errors():
+            project_files.add_version(db, kind, project_id, file_id, file.filename, file.file, note)
+            return out(project_service.require_project(db, project_id))
+
+    @router.get(f"{base}/versions/{{version}}/download", name=f"download_{kind.key}_version")
+    def download(project_id: int, file_id: int, version: int, db: Session = Depends(get_db)):
+        with answer_errors():
+            v = project_files.require_version(db, kind, project_id, file_id, version)
+        require_readable(v.file_path)
+        return FileResponse(v.file_path, filename=v.filename)
+
+    @router.get(f"{base}/versions/{{version}}/preview", name=f"{kind.key}_version_preview")
+    def preview(project_id: int, file_id: int, version: int, request: Request, db: Session = Depends(get_db)):
+        """Its preview (kept next to the file). 404 when none could be made, or its folder can't be reached."""
+        with answer_errors():
+            v = project_files.require_version(db, kind, project_id, file_id, version)
+        return preview_response(v.thumbnail_path, v.file_path, request)
+
+    @router.delete(f"{base}/versions/{{version}}", response_model=ProjectOut, name=f"delete_{kind.key}_version")
+    def delete_version(project_id: int, file_id: int, version: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
+        """Delete one version's file for good. Deleting its only version deletes the file."""
+        require_confirm(confirm)
+        with answer_errors():
+            project_files.delete_version(db, kind, project_id, file_id, version)
+            return out(project_service.require_project(db, project_id))
+
+    @router.delete(base, response_model=ProjectOut, name=f"delete_{kind.key}_file")
+    def delete_file(project_id: int, file_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
+        """Delete the file and every version of it, for good."""
+        require_confirm(confirm)
+        with answer_errors():
+            project_files.delete_file(db, kind, project_id, file_id)
+            return out(project_service.require_project(db, project_id))
 
 
-@router.get("/{project_id}/cad/{cad_id}/versions/{version}/preview")
-def cad_version_preview(project_id: int, cad_id: int, version: int, request: Request, db: Session = Depends(get_db)):
-    """Its preview (kept next to the file). 404 when none could be made, or its folder can't be reached."""
-    with answer_errors():
-        v = project_cad_service.require_version(db, project_id, cad_id, version)
-    return preview_response(v.thumbnail_path, v.file_path, request)
-
-
-@router.delete("/{project_id}/cad/{cad_id}/versions/{version}", response_model=ProjectOut)
-def delete_cad_version(project_id: int, cad_id: int, version: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
-    """Delete one version's file for good. Deleting its only version deletes the CAD file."""
-    require_confirm(confirm)
-    with answer_errors():
-        project_cad_service.delete_version(db, project_id, cad_id, version)
-        return out(project_service.require_project(db, project_id))
-
-
-@router.delete("/{project_id}/cad/{cad_id}", response_model=ProjectOut)
-def delete_cad_file(project_id: int, cad_id: int, confirm: bool = Query(False), db: Session = Depends(get_db)):
-    """Delete a CAD file and every version of it, for good."""
-    require_confirm(confirm)
-    with answer_errors():
-        project_cad_service.delete_cad_file(db, project_id, cad_id)
-        return out(project_service.require_project(db, project_id))
+for _kind in project_files.KINDS.values():
+    _file_routes(_kind)

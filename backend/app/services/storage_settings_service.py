@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import storage
-from ..models import BundleVersion, ProjectCadFile, ProjectCadVersion, SourceModelVersion
-from . import app_settings
+from ..models import BundleVersion, ProjectStlVersion, SourceModelVersion
+from . import app_settings, project_files
 
 KEYS = {"stl": "stl_storage_dir", "threemf": "threemf_storage_dir", "project": "project_storage_dir"}
 
@@ -31,8 +31,8 @@ def apply_saved_locations(db: Session) -> None:
 
 
 def count_project_files(db: Session, pick: Callable[[str], bool]) -> int:
-    """How many project file versions (CAD files' versions) have a file `pick(path)` picks."""
-    return sum(1 for path in db.scalars(select(ProjectCadVersion.file_path)) if path and pick(path))
+    """How many versions of projects' own files (CAD files, STLs) have a file `pick(path)` picks."""
+    return sum(1 for v in project_files.all_versions(db) if v.file_path and pick(v.file_path))
 
 
 def count_version_files(db: Session, stl: Callable[[str], bool], threemf: Callable[[str], bool]) -> tuple[int, int]:
@@ -266,16 +266,16 @@ def migrate(db: Session) -> dict:
             storage.delete_files(copies)  # originals are untouched; drop the copies made so far
             result["failed"].append({"name": label, "error": str(e)})
 
-    # project files: each CAD file version, with its preview
-    for v in list(db.scalars(select(ProjectCadVersion))):
+    # project files: each version of a project's own CAD files and STLs, with its preview
+    for v in list(project_files.all_versions(db)):
         label = f"{v.filename} v{v.version}"
-        cad: ProjectCadFile = v.cad_file
-        pid, cid, ver = cad.project_id, cad.id, v.version
+        folder = "stl" if isinstance(v, ProjectStlVersion) else "cad"
+        pid, cid, ver = v.file.project_id, v.file.id, v.version
         copies = []
         try:
             if v.file_path and not storage.is_inside(v.file_path, project_root) and not os.path.exists(v.file_path):
                 result["missing"].append(label)
-            new_file, old_file = relocate(v.file_path, project_root, lambda: storage.cad_version_dir(pid, cid, ver), copies)
+            new_file, old_file = relocate(v.file_path, project_root, lambda: storage.project_file_dir(pid, folder, cid, ver), copies)
             if new_file:
                 v.file_path = new_file
                 stale = [old_file]

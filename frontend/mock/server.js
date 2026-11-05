@@ -127,17 +127,20 @@ export function mockApi() {
     if (clash) throw new HttpError(409, `There's already a project called ${clash.name}.`);
     return name;
   };
-  // As the API answers: a CAD file is named after its newest version; the stand-in preview picture stays in the mockup
-  const projectOut = (p) => ({
-    id: p.id, name: p.name, created_at: p.created_at,
-    cad_files: p.cad_files.map((f) => ({
+  // As the API answers: a project's own files (CAD, STL) are named after their newest version; the stand-in preview
+  // picture stays in the mockup
+  const filesOut = (files) =>
+    files.map((f) => ({
       id: f.id, name: f.versions[0].filename, created_at: f.created_at,
       versions: f.versions.map(({ thumb, ...v }) => ({ ...v, has_preview: !!thumb })),
-    })),
+    }));
+  const projectOut = (p) => ({
+    id: p.id, name: p.name, created_at: p.created_at,
+    cad_files: filesOut(p.cad_files), stl_files: filesOut(p.stl_files), source_model_ids: [...p.source_model_ids],
   });
   on("GET", "/projects", () => [...farm.projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(projectOut));
   on("POST", "/projects", (_p, body) => {
-    const p = { id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()), cad_files: [] };
+    const p = { id: farm.nextIds.project++, name: projectName(body), created_at: iso(nowUnix()), cad_files: [], stl_files: [], source_model_ids: [] };
     farm.projects.push(p);
     return [201, projectOut(p)];
   });
@@ -147,49 +150,84 @@ export function mockApi() {
     p.name = projectName(body, p);
     return projectOut(p);
   });
-  // CAD files: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version 2 is "Bracket ver 2.f3d").
-  // A kind the real backend draws a preview of gets a stand-in picture here.
+  // models from the Models page: put in a project, or taken out (the model stays)
+  on("PUT", "/projects/:id/source-models/:mid", ({ id, mid }) => {
+    const p = project(id);
+    const m = model(mid);
+    if (!p.source_model_ids.includes(m.id)) p.source_model_ids.push(m.id);
+    return projectOut(p);
+  });
+  on("DELETE", "/projects/:id/source-models/:mid", ({ id, mid }) => {
+    const p = project(id);
+    p.source_model_ids = p.source_model_ids.filter((x) => x !== Number(mid));
+    return projectOut(p);
+  });
+  // A project's own files, CAD or STL: the mockup keeps their names and sizes, not the files ("Bracket.f3d" as version
+  // 2 is "Bracket ver 2.f3d"). A kind the real backend draws a preview of gets a stand-in picture here.
   const withVersion = (name, n) => {
     const dot = name.lastIndexOf(".");
     const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
     return `${stem.replace(/\s*\bver\s*\d+$/i, "").replace(/[ ._-]+$/, "") || stem} ver ${n}${ext}`;
   };
   const previewable = (name) => /\.(stl|obj|step|stp|iges|igs|brep|f3d|f3z)$/i.test(name);
-  const cadFile = (id, cadId) => project(id).cad_files.find((f) => f.id === Number(cadId)) || fail404("CAD file not found");
-  const cadVersion = (id, cadId, v) => cadFile(id, cadId).versions.find((x) => x.version === Number(v)) || fail404("CAD file version not found");
-  const addCadVersion = (f, body) => {
+  const KIND = { cad: { list: "cad_files", noun: "CAD file" }, stl: { list: "stl_files", noun: "STL file" } };
+  const kindOf = (kind) => KIND[kind] || fail404("Not found");
+  const projectFile = (id, kind, fid) =>
+    project(id)[kindOf(kind).list].find((f) => f.id === Number(fid)) || fail404(`${kindOf(kind).noun} not found`);
+  const fileVersion = (id, kind, fid, v) =>
+    projectFile(id, kind, fid).versions.find((x) => x.version === Number(v)) || fail404(`${kindOf(kind).noun} version not found`);
+  const isStl = (name) => /\.(stl|obj)$/i.test(name || "");
+  const addFileVersion = (f, body) => {
     const n = (f.versions[0]?.version || 0) + 1;
-    const filename = withVersion(body.files?.[0] || "CAD file", n);
+    const filename = withVersion(body.files?.[0] || "File", n);
     f.versions.unshift({
       version: n, filename, size_bytes: 1_250_000, note: String(body.fields?.note || "").trim() || null, uploaded_at: iso(nowUnix()),
       thumb: previewable(filename) ? "stl-frog-keychain" : null,
     });
   };
-  on("POST", "/projects/:id/cad", ({ id }, body) => {
+  on("POST", "/projects/:id/:kind", ({ id, kind }, body) => {
     const p = project(id);
+    kindOf(kind);
+    const name = body.files?.[0] || "";
+    if (kind === "stl") {
+      if (!isStl(name)) throw new HttpError(422, "An STL file has to be an .stl or .obj file.");
+      if (body.fields?.in_models === undefined) throw new HttpError(422, "Say whether it also goes in Models (in_models).");
+      if (body.fields.in_models === "true") {
+        // a new model in Models (as the real one, kept in the STL folder), which the project then uses
+        const m = {
+          id: farm.nextIds.model++, name, file_type: /\.obj$/i.test(name) ? "OBJ" : "STL", created_at: iso(nowUnix()),
+          versions: [{ id: 900 + farm.nextIds.model, version: 1, file_path: `${farm.storage.stl}/${farm.nextIds.model}/v1/${name}`, thumbnail_path: "x", thumb: "stl-frog-keychain", note: String(body.fields?.note || "").trim() || null, uploaded_at: iso(nowUnix()) }],
+          notes: "", notes_revision: 0, notes_updated_at: null,
+        };
+        farm.models.push(m);
+        p.source_model_ids.push(m.id);
+        return [201, projectOut(p)];
+      }
+    }
     const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [] };
-    addCadVersion(f, body);
-    p.cad_files.push(f);
+    addFileVersion(f, body);
+    p[KIND[kind].list].push(f);
     return [201, projectOut(p)];
   });
-  on("POST", "/projects/:id/cad/:cadId/versions", ({ id, cadId }, body) => {
-    addCadVersion(cadFile(id, cadId), body);
+  on("POST", "/projects/:id/:kind/:fid/versions", ({ id, kind, fid }, body) => {
+    if (kind === "stl" && !isStl(body.files?.[0])) throw new HttpError(422, "An STL file has to be an .stl or .obj file.");
+    addFileVersion(projectFile(id, kind, fid), body);
     return [201, projectOut(project(id))];
   });
-  on("DELETE", "/projects/:id/cad/:cadId/versions/:v", ({ id, cadId, v }, _b, q) => {
+  on("DELETE", "/projects/:id/:kind/:fid/versions/:v", ({ id, kind, fid, v }, _b, q) => {
     requireConfirm(q);
     const p = project(id);
-    const f = cadFile(id, cadId);
-    const ver = cadVersion(id, cadId, v);
+    const f = projectFile(id, kind, fid);
+    const ver = fileVersion(id, kind, fid, v);
     f.versions = f.versions.filter((x) => x !== ver);
-    if (!f.versions.length) p.cad_files = p.cad_files.filter((x) => x !== f);
+    if (!f.versions.length) p[KIND[kind].list] = p[KIND[kind].list].filter((x) => x !== f);
     return projectOut(p);
   });
-  on("DELETE", "/projects/:id/cad/:cadId", ({ id, cadId }, _b, q) => {
+  on("DELETE", "/projects/:id/:kind/:fid", ({ id, kind, fid }, _b, q) => {
     requireConfirm(q);
     const p = project(id);
-    const f = cadFile(id, cadId);
-    p.cad_files = p.cad_files.filter((x) => x !== f);
+    const f = projectFile(id, kind, fid);
+    p[KIND[kind].list] = p[KIND[kind].list].filter((x) => x !== f);
     return projectOut(p);
   });
   on("DELETE", "/projects/:id", ({ id }, _b, q) => {
@@ -512,6 +550,7 @@ export function mockApi() {
     if (used.length && q.get("cascade") !== "true") throw new HttpError(409, `${used.length} 3MF file(s) were sliced from this model — pass cascade=true to delete them too`);
     farm.bundles = farm.bundles.filter((b) => !b.source_model_ids.includes(m.id));
     farm.models = farm.models.filter((x) => x.id !== m.id);
+    for (const p of farm.projects) p.source_model_ids = p.source_model_ids.filter((x) => x !== m.id); // out of every project
     return [204, null];
   });
   on("DELETE", "/source-models/:id/versions/:v", ({ id, v }, _b, q) => {
@@ -1134,12 +1173,12 @@ export function mockApi() {
   const fileRoutes = [
     [/^\/bundles\/versions\/(\d+)\/thumbnail$/, (m) => png(version(m[1]).v.thumb)],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/thumbnail$/, (m) => png(model(m[1]).versions.find((v) => v.version === Number(m[2]))?.thumb)],
-    [/^\/projects\/(\d+)\/cad\/(\d+)\/versions\/(\d+)\/preview$/, (m) => png(cadVersion(m[1], m[2], m[3]).thumb)],
+    [/^\/projects\/(\d+)\/(cad|stl)\/(\d+)\/versions\/(\d+)\/preview$/, (m) => png(fileVersion(m[1], m[2], m[3], m[4]).thumb)],
   ];
   const downloadRoutes = [
     [/^\/bundles\/versions\/(\d+)\/download\/(3mf|gcode)$/, (m) => [version(m[1]).v.filename.replace(/\.3mf$/, m[2] === "gcode" ? ".gcode" : ".3mf")]],
     [/^\/source-models\/(\d+)\/versions\/(\d+)\/download$/, (m) => [model(m[1]).name]],
-    [/^\/projects\/(\d+)\/cad\/(\d+)\/versions\/(\d+)\/download$/, (m) => [cadVersion(m[1], m[2], m[3]).filename]],
+    [/^\/projects\/(\d+)\/(cad|stl)\/(\d+)\/versions\/(\d+)\/download$/, (m) => [fileVersion(m[1], m[2], m[3], m[4]).filename]],
   ];
 
   // ------------------------------------------------------------------ the Vite plugin

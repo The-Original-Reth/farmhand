@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, FileBox, FolderKanban, Pencil, PenTool, Plus, Printer, Wrench } from "lucide-react";
+import { Box, FileBox, FolderKanban, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { createProject, deleteProject, renameProject } from "../api.js";
 import { c } from "../theme.js";
 import { useData } from "../data.jsx";
@@ -10,13 +10,15 @@ import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components
 import { TextField } from "../components/common/fields.jsx";
 import { Row, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
-import { CadFiles, UploadCadButton } from "./CadSection.jsx";
+import { FILE_KINDS, FileCard, plural, UploadDialog } from "./ProjectFiles.jsx";
+import { StlActions, StlFiles } from "./StlSection.jsx";
 
 // The Projects page: the list of projects, or one project's own page
-export function ProjectsSection({ path, setPath }) {
+// onOpenModel(modelId): that model's page on Models
+export function ProjectsSection({ path, setPath, onOpenModel }) {
   const view = path[1]; // {projectId}
   return view ? (
-    <ProjectPage projectId={view.projectId} onDeleted={() => setPath([path[0]])} />
+    <ProjectPage projectId={view.projectId} onDeleted={() => setPath([path[0]])} onOpenModel={onOpenModel} />
   ) : (
     <ProjectList onOpen={(id) => setPath([path[0], { projectId: id }])} />
   );
@@ -88,23 +90,50 @@ function ProjectNameForm({ project, onClose, onSaved }) {
   );
 }
 
-// What a project is made of, in page order. Each section folds away. CAD is built; the others are empty for now.
+// What a project is made of, in page order. Each section folds away. CAD and STL files are built; the others are
+// empty for now.
 const PROJECT_SECTIONS = [
-  { key: "cad", label: "CAD", Icon: PenTool, empty: "No CAD files yet." },
-  { key: "stl", label: "STL files", Icon: Box, empty: "No STL files yet." },
+  { key: "cad", label: "CAD", Icon: PenTool, count: (p) => p.cadFiles.length },
+  { key: "stl", label: "STL files", Icon: Box, count: (p) => p.modelIds.length + p.stlFiles.length },
   { key: "threemf", label: "3MF files", Icon: FileBox, empty: "No 3MF files yet." },
   { key: "printers", label: "Printers", Icon: Printer, empty: "No printers yet." },
   { key: "parts", label: "Parts", Icon: Wrench, empty: "No parts yet." },
 ];
 
-function ProjectPage({ projectId, onDeleted }) {
+function ProjectPage({ projectId, onDeleted, onOpenModel }) {
   const { projects, refresh } = useData();
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [uploadingCad, setUploadingCad] = useState(false);
+  const [dialog, setDialog] = useState(null); // null | "cad-upload" | "stl-add" | "stl-upload"
   const sections = useProjectSections();
   const project = projects.find((p) => p.id === projectId);
   if (!project) return null;
+  const close = () => setDialog(null);
+
+  // each section's buttons (shown while it's open) and what's in it
+  const actions = {
+    cad: (
+      <button data-testid="cad-upload" onClick={() => setDialog("cad-upload")} style={toolButton(12)}>
+        <Upload size={12} />
+        Upload CAD
+      </button>
+    ),
+    stl: <StlActions onAdd={() => setDialog("stl-add")} onUpload={() => setDialog("stl-upload")} />,
+  };
+  const bodies = {
+    cad: <CadFiles project={project} uploading={dialog === "cad-upload"} onCloseUpload={close} />,
+    stl: (
+      <StlFiles
+        project={project}
+        adding={dialog === "stl-add"}
+        uploading={dialog === "stl-upload"}
+        onCloseAdd={close}
+        onCloseUpload={close}
+        onOpenModel={onOpenModel}
+      />
+    ),
+  };
+  const ownFiles = project.cadFiles.length + project.stlFiles.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1100 }}>
@@ -121,7 +150,7 @@ function ProjectPage({ projectId, onDeleted }) {
         </div>
       </div>
 
-      {PROJECT_SECTIONS.map(({ key, label, Icon, empty }) => {
+      {PROJECT_SECTIONS.map(({ key, label, Icon, count, empty }) => {
         const open = sections.isOpen(key);
         const bodyId = `project-section-${key}`;
         return (
@@ -130,17 +159,13 @@ function ProjectPage({ projectId, onDeleted }) {
               <SectionToggle open={open} onToggle={() => sections.toggle(key)} controlsId={bodyId} testId={`project-toggle-${key}`}>
                 <Icon size={14} />
                 {label}
-                {key === "cad" && ` (${project.cadFiles.length})`}
+                {count && ` (${count(project)})`}
               </SectionToggle>
-              {open && key === "cad" && <UploadCadButton onClick={() => setUploadingCad(true)} />}
+              {open && actions[key]}
             </div>
             {open && (
               <div id={bodyId}>
-                {key === "cad" ? (
-                  <CadFiles project={project} uploading={uploadingCad} onCloseUpload={() => setUploadingCad(false)} />
-                ) : (
-                  <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint) })}>{empty}</div>
-                )}
+                {bodies[key] || <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint) })}>{empty}</div>}
               </div>
             )}
           </div>
@@ -164,14 +189,42 @@ function ProjectPage({ projectId, onDeleted }) {
           }}
         >
           Delete the project <strong>{project.name}</strong>?
-          {project.cadFiles.length > 0 && (
+          {project.modelIds.length > 0 && " The models it uses stay in Models."}
+          {ownFiles > 0 && (
             <DeleteWarning>
-              Its {project.cadFiles.length === 1 ? "CAD file" : `${project.cadFiles.length} CAD files`}, with every version, {project.cadFiles.length === 1 ? "is" : "are"} deleted for good.
+              Its own {[
+                project.cadFiles.length > 0 && plural(project.cadFiles.length, "CAD file"),
+                project.stlFiles.length > 0 && plural(project.stlFiles.length, "STL file"),
+              ].filter(Boolean).join(" and ")}, with every version, {ownFiles === 1 ? "is" : "are"} deleted for good.
             </DeleteWarning>
           )}
         </ConfirmDialog>
       )}
     </div>
+  );
+}
+
+// The project's CAD files, any kind (Fusion, STEP, SolidWorks...), each with its versions
+function CadFiles({ project, uploading, onCloseUpload }) {
+  const [newVersionOf, setNewVersionOf] = useState(null);
+  const kind = FILE_KINDS.cad;
+  return (
+    <>
+      {project.cadFiles.length === 0 ? (
+        <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint, { lineHeight: 1.5 }) })}>
+          No CAD files yet. <b style={{ color: c.textMuted }}>Upload CAD</b> adds one of any kind (Fusion, STEP, IGES,
+          SolidWorks, OpenSCAD...); each newer version is kept, and every version can be downloaded.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {project.cadFiles.map((f) => (
+            <FileCard key={f.id} project={project} kind={kind} file={f} onNewVersion={() => setNewVersionOf(f)} />
+          ))}
+        </div>
+      )}
+      {uploading && <UploadDialog project={project} kind={kind} onClose={onCloseUpload} />}
+      {newVersionOf && <UploadDialog project={project} kind={kind} file={newVersionOf} onClose={() => setNewVersionOf(null)} />}
+    </>
   );
 }
 

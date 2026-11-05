@@ -34,7 +34,9 @@ function SectionPage({ section, nav, compare, settings }) {
         <ModelsSection path={nav.models.path} setPath={nav.models.setPath} {...comparing} sort={modelSort.value} onSortChange={modelSort.change} />
       );
     case "projects":
-      return <ProjectsSection path={nav.projects.path} setPath={nav.projects.setPath} />;
+      return (
+        <ProjectsSection path={nav.projects.path} setPath={nav.projects.setPath} onOpenModel={(modelId) => nav.open("models", { modelId })} />
+      );
     case "farm-cost":
       return <FarmCostSection order={farmCost.order} onOrder={farmCost.changeOrder} />;
     case "power":

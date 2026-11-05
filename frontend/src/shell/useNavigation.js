@@ -57,6 +57,16 @@ export function useNavigation({ printers, sourceModels, bundles, projects, bundl
     openSection(key);
     if (window.location.pathname !== `/${key}`) window.history.pushState(null, "", `/${key}`);
   };
+  // Straight to one model, printer or project (a project's Open in Models): that page in its own section, with the
+  // address following. segment: { modelId } / { printerId } / { projectId }
+  const open = (key, segment) => {
+    leave.current(key);
+    setSection(key);
+    if (key === "models") setModelPath([...MODELS_TOP, segment]);
+    else if (key === "projects") setProjectPath([...PROJECTS_TOP, segment]);
+    else setPrinterPath([...PRINTERS_TOP, segment]);
+    if (window.location.pathname !== `/${key}`) window.history.pushState(null, "", `/${key}`);
+  };
 
   const modelPathSafe = modelPath.every((seg) => seg.modelId == null || sourceModels.some((m) => m.id === seg.modelId))
     ? modelPath
@@ -103,6 +113,7 @@ export function useNavigation({ printers, sourceModels, bundles, projects, bundl
   return {
     section,
     goTo,
+    open,
     crumbs,
     jumpTo: (i) => setPath(path.slice(0, i + 1)), // a breadcrumb clicked: back up to that step
     printers: { path: printerPathSafe, setPath: setPrinterPath },

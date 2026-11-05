@@ -151,17 +151,14 @@ export const normalizeBundle = (b) => {
 export const getPrinters = () => request("/printers");
 const getBundle = (bundleId) => request(`/bundles/${bundleId}`);
 
-// A project: its name and its own CAD files (its STL and 3MF files, printers and parts come later). Each CAD file
-// has every version, newest first, with where to download it and its preview (null when none could be made).
-export const normalizeProject = (p) => ({
-  id: p.id,
-  name: p.name,
-  created: p.created_at,
-  cadFiles: (p.cad_files || []).map((f) => ({
+// A project's own files of one kind ("cad" / "stl"): each with every version, newest first, with where to download it
+// and its preview (null when none could be made)
+const normalizeProjectFiles = (projectId, kind, files) =>
+  (files || []).map((f) => ({
     id: f.id,
     name: f.name,
     versions: f.versions.map((v) => {
-      const base = `${API_BASE}/projects/${p.id}/cad/${f.id}/versions/${v.version}`;
+      const base = `${API_BASE}/projects/${projectId}/${kind}/${f.id}/versions/${v.version}`;
       return {
         v: v.version,
         filename: v.filename,
@@ -172,7 +169,17 @@ export const normalizeProject = (p) => ({
         preview: v.has_preview ? `${base}/preview?v=${encodeURIComponent(v.uploaded_at)}` : null,
       };
     }),
-  })),
+  }));
+
+// A project: its name, its own CAD files and STLs, and the models from the Models page it uses (their ids, in the
+// order they were added). Its 3MF files, printers and parts come later.
+export const normalizeProject = (p) => ({
+  id: p.id,
+  name: p.name,
+  created: p.created_at,
+  cadFiles: normalizeProjectFiles(p.id, "cad", p.cad_files),
+  stlFiles: normalizeProjectFiles(p.id, "stl", p.stl_files),
+  modelIds: p.source_model_ids || [],
 });
 
 export const fetchAll = async () => {
@@ -201,14 +208,20 @@ export const fetchVersionSettings = async (versionId) => {
 export const createProject = (name) => request("/projects", jsonBody("POST", { name }));
 export const renameProject = (id, name) => request(`/projects/${id}`, jsonBody("PATCH", { name }));
 export const deleteProject = (id) => del(`/projects/${id}`);
-// A project's CAD files: a new one (its version 1), a newer version of one, and deleting a version or the whole file.
-// Each answers the project as it now stands.
-export const uploadCad = ({ projectId, file, note }) =>
-  request(`/projects/${projectId}/cad`, formBody("POST", { file, note: note || undefined }));
-export const uploadCadVersion = ({ projectId, cadId, file, note }) =>
-  request(`/projects/${projectId}/cad/${cadId}/versions`, formBody("POST", { file, note: note || undefined }));
-export const deleteCadVersion = (projectId, cadId, v) => del(`/projects/${projectId}/cad/${cadId}/versions/${v}`);
-export const deleteCadFile = (projectId, cadId) => del(`/projects/${projectId}/cad/${cadId}`);
+// A project's own files, kind "cad" or "stl": a new one (its version 1), a newer version of one, and deleting a version
+// or the whole file. An STL also says whether it goes in Models too (inModels: true makes it a model there that the
+// project uses; false keeps it the project's own). Each answers the project as it now stands.
+export const uploadProjectFile = ({ kind, projectId, file, note, inModels }) =>
+  request(`/projects/${projectId}/${kind}`, formBody("POST", {
+    file, note: note || undefined, in_models: kind === "stl" ? String(!!inModels) : undefined,
+  }));
+export const uploadProjectFileVersion = ({ kind, projectId, fileId, file, note }) =>
+  request(`/projects/${projectId}/${kind}/${fileId}/versions`, formBody("POST", { file, note: note || undefined }));
+export const deleteProjectFileVersion = (kind, projectId, fileId, v) => del(`/projects/${projectId}/${kind}/${fileId}/versions/${v}`);
+export const deleteProjectFile = (kind, projectId, fileId) => del(`/projects/${projectId}/${kind}/${fileId}`);
+// A model from the Models page: put in a project, or taken out of it (the model itself stays)
+export const addProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "PUT" });
+export const removeProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "DELETE" });
 
 const ext = (name) => (name.split(".").pop() || "").toLowerCase();
 const typeFromExt = (e) => {

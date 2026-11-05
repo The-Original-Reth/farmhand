@@ -132,17 +132,20 @@ Postgres instance running.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files: [{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]}` (a CAD file's `name` is its newest version's; versions newest first) |
+| GET | `/projects` | Every project, by name: `{id, name, created_at, cad_files, stl_files, source_model_ids}`. `cad_files` and `stl_files` (its own STLs, not in Models) are `[{id, name, created_at, versions: [{version, filename, size_bytes, note, uploaded_at, has_preview}]}]` (a file's `name` is its newest version's; versions newest first); `source_model_ids` are the models from Models it uses, in the order they were added |
 | POST | `/projects` | Make a project: `{name}` (spaces tidied). **409** if it's empty, over 200 characters, or another project's name (any case) |
 | GET | `/projects/{id}` | One project |
 | PATCH | `/projects/{id}` | Rename it: `{name}` (the same rules) |
 | DELETE | `/projects/{id}?confirm=true` | Delete a project with its CAD files (rows, then files) |
 | POST | `/projects/{id}/cad` | Upload a CAD file of any kind (multipart `file`, optional `note`) as version 1, kept as `<name> ver 1.<ext>` in the project files folder, with a preview next to it when one can be made (STEP/IGES/BREP through gmsh, STL, OBJ, a Fusion file's own picture). **503** if that folder isn't there right now. Answers the project |
-| POST | `/projects/{id}/cad/{cad_id}/versions` | A newer version of a CAD file (same fields); every version is kept |
-| GET | `/projects/{id}/cad/{cad_id}/versions/{v}/download` | Download one version |
-| GET | `/projects/{id}/cad/{cad_id}/versions/{v}/preview` | Its preview (PNG); **404** when it has none |
-| DELETE | `/projects/{id}/cad/{cad_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the CAD file with it. Answers the project |
-| DELETE | `/projects/{id}/cad/{cad_id}?confirm=true` | Delete a CAD file with every version. Answers the project |
+| POST | `/projects/{id}/stl` | Upload an STL or OBJ (multipart `file`, required `in_models`, optional `note`). `in_models=true`: it becomes a new model in Models (in the STL folder) that the project uses. `false`: the project's own, as version 1 in the project files folder (`.../{project}/stl/{file}/v1/`), with a preview. **422** for another kind of file or without `in_models`. Answers the project |
+| POST | `/projects/{id}/{cad\|stl}/{file_id}/versions` | A newer version of one of its own files (multipart `file`, optional `note`); every version is kept |
+| GET | `/projects/{id}/{cad\|stl}/{file_id}/versions/{v}/download` | Download one version |
+| GET | `/projects/{id}/{cad\|stl}/{file_id}/versions/{v}/preview` | Its preview (PNG); **404** when it has none |
+| DELETE | `/projects/{id}/{cad\|stl}/{file_id}/versions/{v}?confirm=true` | Delete one version's file; the last one takes the file with it. Answers the project |
+| DELETE | `/projects/{id}/{cad\|stl}/{file_id}?confirm=true` | Delete one of its own files with every version. Answers the project |
+| PUT | `/projects/{id}/source-models/{model_id}` | Use a model from Models in the project (already in it: no change). **404** for a model or project that isn't there. Answers the project |
+| DELETE | `/projects/{id}/source-models/{model_id}` | Take a model out of the project (the model stays in Models; nothing is deleted, so no `confirm`). Answers the project |
 | GET | `/printers` | List printers |
 | POST | `/printers` | Register a printer (name is the unique key) |
 | GET | `/printers/discover/range` | The range Scan network starts with: `{cidr}`, the /24 of the server's own private IPv4 address, or, in a Docker container (which only sees Docker's network), the /24 most printers' IPs are in; `null` when neither is known |
@@ -240,6 +243,7 @@ Two independently chosen roots (Storage page, saved in the `app_settings` table)
 {stl_root}/{source_model_id}/v{n}/{file}        STL / OBJ / STEP
 {threemf_root}/{bundle_id}/v{n}/{file}          3MF and gcode
 {project_root}/{project_id}/cad/{cad_id}/v{n}/{file}   a project's CAD files (every version kept)
+{project_root}/{project_id}/stl/{stl_id}/v{n}/{file}   its own STLs (not in Models)
 {file}.png                                      its preview, next to it (and nowhere else)
 ```
 

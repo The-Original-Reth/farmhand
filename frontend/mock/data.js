@@ -345,8 +345,19 @@ export function buildFarm() {
         { id: 2, created_at: iso(NOW - 3 * DAY), versions: [cadVersion(1, "Starfish tag ver 1.step", 318_000, null, 3, "stl-frog-vertical")] },
         { id: 3, created_at: iso(NOW - 2 * DAY), versions: [cadVersion(1, "Pump housing ver 1.SLDPRT", 1_120_000, "From the supplier", 2, null)] },
       ],
+      // its STLs: two models from Models, and one of its own (not in Models)
+      source_model_ids: [1, 6],
+      stl_files: [
+        {
+          id: 4, created_at: iso(NOW - 2 * DAY),
+          versions: [
+            cadVersion(2, "Display stand clip ver 2.stl", 412_000, "Thicker hook", 1, "stl-frog-vertical"),
+            cadVersion(1, "Display stand clip ver 1.stl", 398_000, null, 2, "stl-frog-vertical"),
+          ],
+        },
+      ],
     },
-    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [] },
+    { id: 2, name: "Frog keychains for the fair", created_at: iso(NOW - 20 * DAY), cad_files: [], stl_files: [], source_model_ids: [2, 3] },
   ];
 
   return {

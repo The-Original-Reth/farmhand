@@ -226,8 +226,8 @@ sudo docker compose down -v
 **Projects**, under Models in the menu: a piece of work for the farm. A project gathers what that work needs: its CAD
 files, STL files, 3MF files, printers and parts. **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its five sections (CAD, STL files, 3MF
-files, Printers, Parts), each folding away with the arrow by its heading (remembered in this browser). CAD is built;
-the other sections are empty until each is built.
+files, Printers, Parts), each folding away with the arrow by its heading (remembered in this browser). CAD and STL
+files are built; the other sections are empty until each is built.
 - **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an
   optional note on what it is. Each CAD file keeps every version, like a 3MF: **New version** adds the next one, named
   `Bracket ver 1.f3d`, `Bracket ver 2.f3d`... (a "ver N" the uploaded name already has is replaced). The newest
@@ -237,9 +237,23 @@ the other sections are empty until each is built.
   files are drawn from their own triangles; a Fusion file (.f3d) shows the picture Fusion keeps inside it. Other kinds
   (SolidWorks, Inventor, OpenSCAD...) have no preview. Click a preview to open it full size. A very large STEP file
   that takes over 90 seconds to draw goes without one.
+- **STL files** come two ways:
+  - **Add from Models** picks models already on the Models page (searchable; each is added at once; ones already in
+    the project aren't offered). They show with
+    an **In Models** tag, their newest version and its preview (older ones behind the down arrow). Each is the
+    model in Models, not a copy: **New version** here uploads its next version, which shows on the Models page and in
+    every project that uses it. **Open in Models** opens the model's page, and **Take
+    out** takes it out of the project (it stays in Models). Deleting a model takes it out of every project.
+    From the other side, a model's page has **Add to project** next to its newest version's **Download** (with how
+    many projects it's in): it asks for **a project you have** (those it's already in are greyed out) or **a new
+    project**, named there and then.
+  - **Upload STL** takes an STL or OBJ file and asks **Also put it in Models?** (it has to be answered). **Yes**: it
+    becomes a new model on the Models page, kept in the STL folder, which the project uses. **No**: it belongs to the
+    project: kept in the project files folder with versions like a CAD file (**New version**, older ones behind the
+    down arrow, Download, delete) and its preview, and deleted with the project.
 - Project files are kept in the **Project files** folder chosen on the Settings page (by default Farmhand's own
-  storage), one folder per project: `<project files>/<project number>/cad/<CAD file number>/v<n>/`, each version's
-  preview next to it. It works like the STL and 3MF folders: it can be on a NAS, gets the same safety check, and
+  storage), one folder per project: `<project files>/<project number>/cad/<CAD file number>/v<n>/` (and `stl/` for
+  its own STLs), each version's preview next to it. It works like the STL and 3MF folders: it can be on a NAS, gets the same safety check, and
   **Move them now** moves files into it when it changes.
 
 **Printers** (see "Printers" below)

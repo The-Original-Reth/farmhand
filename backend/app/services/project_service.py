@@ -1,42 +1,56 @@
 """
-Projects: a piece of work for the farm. A project has a name, and its own CAD files (project_cad_service.py); its STL
-files, 3MF files, printers and parts come later.
+Projects: a piece of work for the farm. A project has a name; its own CAD files and STLs (project_files.py); and models
+from the Models page it uses, only pointed at. Its 3MF files, printers and parts come later.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import storage
 from ..errors import NotFound
-from ..models import Project, ProjectCadFile
+from ..models import Project, ProjectCadFile, ProjectSourceModel, ProjectStlFile, SourceFileType, SourceModel
 
 MAX_NAME_LENGTH = 200
 
-_LOAD = (selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),)
+_LOAD = (
+    selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),
+    selectinload(Project.stl_files).selectinload(ProjectStlFile.versions),
+    selectinload(Project.model_links),
+)
+
+
+def _files_out(files) -> list[dict]:
+    """A project's own files (CAD or STL) as the API answers them: each named after its newest version."""
+    return [
+        {
+            "id": f.id,
+            "name": f.versions[0].filename if f.versions else "",
+            "created_at": f.created_at,
+            "versions": [
+                {
+                    "version": v.version, "filename": v.filename, "size_bytes": v.size_bytes, "note": v.note,
+                    "uploaded_at": v.uploaded_at, "has_preview": bool(v.thumbnail_path),
+                }
+                for v in f.versions
+            ],
+        }
+        for f in files
+    ]
 
 
 def out(project: Project) -> dict:
-    """A project as the API answers it: its name, and its CAD files with their versions (newest first)."""
+    """A project as the API answers it: its own CAD files and STLs with their versions (newest first), and the ids of
+    the models from the Models page it uses (in the order they were added)."""
     return {
         "id": project.id,
         "name": project.name,
         "created_at": project.created_at,
-        "cad_files": [
-            {
-                "id": cad.id,
-                "name": cad.versions[0].filename if cad.versions else "",  # its newest version's
-                "created_at": cad.created_at,
-                "versions": [
-                    {
-                        "version": v.version, "filename": v.filename, "size_bytes": v.size_bytes, "note": v.note,
-                        "uploaded_at": v.uploaded_at, "has_preview": bool(v.thumbnail_path),
-                    }
-                    for v in cad.versions
-                ],
-            }
-            for cad in project.cad_files
-        ],
+        "cad_files": _files_out(project.cad_files),
+        "stl_files": _files_out(project.stl_files),
+        "source_model_ids": [link.source_model_id for link in project.model_links],
     }
 
 
@@ -45,7 +59,7 @@ def list_projects(db: Session) -> list[Project]:
 
 
 def require_project(db: Session, project_id: int) -> Project:
-    db.expire_all()  # CAD files just added or deleted are read fresh
+    db.expire_all()  # files and links just added or removed are read fresh
     project = db.scalar(select(Project).options(*_LOAD).where(Project.id == project_id))
     if project is None:
         raise NotFound("Project not found")
@@ -80,8 +94,9 @@ def rename_project(db: Session, project_id: int, name: str) -> Project:
 
 
 def delete_project(db: Session, project_id: int) -> None:
-    """Delete the project and its CAD files: rows first, then the files, then its folder if that's left empty."""
-    from .project_cad_service import files_of_project  # (it imports this module)
+    """Delete the project and its own files (rows first, then files, then its folder if that's left empty). The models
+    it used stay in Models."""
+    from .project_files import files_of_project  # (it imports this module)
 
     project = require_project(db, project_id)
     paths = files_of_project(db, project_id)
@@ -89,3 +104,41 @@ def delete_project(db: Session, project_id: int) -> None:
     db.commit()
     storage.delete_files(paths)
     storage.tidy_project_folder(project_id)
+
+
+# ---- models from the Models page ----
+
+
+def add_model(db: Session, project_id: int, source_model_id: int) -> Project:
+    """Use a model from Models in the project (already in it: nothing changes)."""
+    require_project(db, project_id)
+    if db.get(SourceModel, source_model_id) is None:
+        raise NotFound("Source model not found")
+    if db.get(ProjectSourceModel, (project_id, source_model_id)) is None:
+        db.add(ProjectSourceModel(project_id=project_id, source_model_id=source_model_id))
+        db.commit()
+    return require_project(db, project_id)
+
+
+def remove_model(db: Session, project_id: int, source_model_id: int) -> Project:
+    """Take a model out of the project. The model itself stays in Models."""
+    require_project(db, project_id)
+    link = db.get(ProjectSourceModel, (project_id, source_model_id))
+    if link is not None:
+        db.delete(link)
+        db.commit()
+    return require_project(db, project_id)
+
+
+def upload_to_models(db: Session, project_id: int, filename: str, file_obj, note: str | None = None) -> Project:
+    """An STL uploaded on a project's page and also put in Models: a new model there (in the STL folder), which the
+    project then uses."""
+    from . import source_model_service
+    from .project_files import STL, check_type
+
+    require_project(db, project_id)
+    check_type(STL, filename)
+    name = Path(filename or "").name
+    file_type = SourceFileType.obj if name.lower().endswith(".obj") else SourceFileType.stl
+    model = source_model_service.create_source_model(db, name=name, file_type=file_type, file_obj=file_obj, note=note)
+    return add_model(db, project_id, model.id)

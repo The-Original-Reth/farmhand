@@ -11,6 +11,7 @@ import { CompareSelectButton } from "../compare/CompareTray.jsx";
 import { SettingsViewer } from "../compare/SettingsBrowser.jsx";
 import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialogs.jsx";
 import { Badge, DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
+import { AddToProjectButton } from "../projects/AddToProject.jsx";
 
 export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compareSelection = [], onToggleCompare }) {
   const { refresh, printers } = useData();
@@ -30,7 +31,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         display: "grid",
         gridTemplateColumns: showFileStatus
           ? "36px 24px 60px 90px 1fr 110px 104px 240px"
-          : "24px 60px 90px 1fr 150px",
+          : "24px 60px 90px 1fr auto", // a model's newest version also has Add to project
         alignItems: "center",
         padding: "9px 16px",
         borderTop: isLatest ? "none" : `1px solid ${c.border}`,
@@ -90,6 +91,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
             Settings
           </button>
         )}
+        {isModelRow && isLatest && <AddToProjectButton model={model} />}
         <DownloadButton
           disabled={showFileStatus && !ver.full}
           href={showFileStatus ? bundle3mfUrl(ver.id) : model ? sourceModelDownloadUrl(model.id, ver.v) : undefined}
