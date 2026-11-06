@@ -269,6 +269,10 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
     the project files folder with versions like a CAD file (**New version**, older ones behind the down arrow,
     Download, delete) and its preview, and deleted with the project. It has a purple **Project only** tag. Several
     files go up one after another; if one fails, the ones before it are kept and **Upload** carries on from that one.
+- A project's STLs are shown as a **grid of tiles**: each with its newest version's preview, name, tag, version and
+  date, and prints have / need, plus **Download**, **Move…**, **Versions** (the whole card: older versions, **New
+  version**, **Open in Models**; clicking the preview does the same) and a trash can (an uploaded STL) or **X** to
+  take a model out of the project.
 - **Sub-components** organise a project's STLs (both kinds): each STL can be in one (**Body**, **Fins**...), or one
   inside another (**Body / Fins**). The STLs in none come first, then each sub-component by name, with how many STLs
   it has; click its name to fold it away.

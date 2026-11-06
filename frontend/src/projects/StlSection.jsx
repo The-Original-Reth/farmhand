@@ -1,18 +1,19 @@
 import { useState } from "react";
-import { Box, ChevronDown, ExternalLink, Folder, Plus, Upload } from "lucide-react";
-import { addProjectModel, API_BASE, removeProjectModel, setProjectStlCounts } from "../api.js";
+import { Box, ChevronDown, Download, ExternalLink, Folder, FolderInput, Layers, Plus, Upload, X } from "lucide-react";
+import { addProjectModel, API_BASE, deleteProjectFile, removeProjectModel, setProjectStlCounts } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
 import { AddModelFileForm } from "../models/modelActions.jsx";
 import { nameCollator } from "../models/modelSort.js";
-import { Modal, ModalActions } from "../components/common/dialogs.jsx";
+import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { folderPathOf, TextField } from "../components/common/fields.jsx";
-import { DownloadButton } from "../components/common/ui.jsx";
+import { DownloadButton, TrashButton } from "../components/common/ui.jsx";
 import { toolButton, uiText } from "../styles.js";
-import { FILE_KINDS, FileCard, HaveNeed, HaveNeedLabel, UploadDialog } from "./ProjectFiles.jsx";
+import { FILE_KINDS, FileCard, HaveNeed, UploadDialog } from "./ProjectFiles.jsx";
 import {
-  Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, MoveButton, OlderToggle, PickDialog, plural, TakeOutButton, VersionLine,
+  Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, MoveButton, nameStyle, OlderToggle, PickDialog, plural, ProjectOnlyTag, TakeOutButton,
+  VersionLine,
 } from "./pieces.jsx";
 
 const STL = FILE_KINDS.stl;
@@ -53,45 +54,81 @@ function inComponents(items) {
 // A project's STL files, two kinds: models from the Models page it uses (each opens there, and taking one out of the
 // project leaves it in Models), and STLs uploaded to the project only, which belong to it (versioned like its CAD files).
 // Either kind can be in one of the project's sub-components (Body, Fins...), set by the folder it was uploaded from or
-// with Move…, and is shown under it.
+// with Move…, and is shown under it. They're laid out as a grid of tiles; a tile's Versions opens its whole card.
 export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload, onOpenModel }) {
-  const { sourceModels } = useData();
+  const { sourceModels, putProject } = useData();
   const [newVersionOf, setNewVersionOf] = useState(null);
   const [moving, setMoving] = useState(null); // null | { kind: "model" | "stl", id, name, component }
   const [folded, setFolded] = useState([]); // the sub-components folded away
+  const [details, setDetails] = useState(null); // the key of the item whose whole card is open
   const models = project.modelIds.map((id) => sourceModels.find((m) => m.id === id)).filter(Boolean);
   const items = [
     ...models.map((m) => {
       const component = project.modelCounts[m.id]?.component || null;
+      const counts = project.modelCounts[m.id];
+      const latest = m.versions[0];
+      const move = () => setMoving({ kind: "model", id: m.id, name: m.name, component });
       return {
         key: `m${m.id}`,
+        name: m.name,
         component,
-        card: (
-          <ModelCard
+        tile: (
+          <StlTile
             key={`m${m.id}`}
-            project={project}
-            model={m}
-            onOpen={() => onOpenModel(m.id)}
-            onMove={() => setMoving({ kind: "model", id: m.id, name: m.name, component })}
+            testId="stl-model"
+            dataAttrs={{ "data-model-id": m.id }}
+            name={m.name}
+            thumb={latest?.thumb}
+            tag={<InModelsTag title="This is the model on the Models page: a new version uploaded here is its new version there too" />}
+            ver={latest}
+            versions={m.versions.length}
+            haveNeed={<HaveNeed have={counts?.have ?? 0} need={counts?.need ?? 1} label="prints" onSave={(change) => setProjectStlCounts(project.id, "model", m.id, change)} />}
+            download={latest && `${API_BASE}/source-models/${m.id}/versions/${latest.v}/download`}
+            onMove={move}
+            onDetails={() => setDetails(`m${m.id}`)}
+            last={
+              <TakeOutButton
+                testId="stl-take-out"
+                label={<X size={12} />}
+                onConfirm={async () => putProject(await removeProjectModel(project.id, m.id))}
+              >
+                Take <strong>{m.name}</strong> out of {project.name}? It stays in Models: nothing is deleted.
+              </TakeOutButton>
+            }
           />
         ),
+        card: <ModelCard project={project} model={m} onOpen={() => onOpenModel(m.id)} onMove={move} />,
       };
     }),
-    ...project.stlFiles.map((f) => ({
-      key: `f${f.id}`,
-      component: f.component,
-      card: (
-        <FileCard
-          key={`f${f.id}`}
-          project={project}
-          kind={STL}
-          file={f}
-          onNewVersion={() => setNewVersionOf(f)}
-          onMove={() => setMoving({ kind: "stl", id: f.id, name: f.name, component: f.component })}
-        />
-      ),
-    })),
+    ...project.stlFiles.map((f) => {
+      const latest = f.versions[0];
+      const move = () => setMoving({ kind: "stl", id: f.id, name: f.name, component: f.component });
+      return {
+        key: `f${f.id}`,
+        name: f.name,
+        component: f.component,
+        tile: (
+          <StlTile
+            key={`f${f.id}`}
+            testId="stl-file"
+            dataAttrs={{ "data-file-id": f.id }}
+            name={f.name}
+            thumb={latest.preview}
+            tag={<ProjectOnlyTag />}
+            ver={latest}
+            versions={f.versions.length}
+            haveNeed={<HaveNeed have={f.have} need={f.need} label="prints" onSave={(counts) => setProjectStlCounts(project.id, "stl", f.id, counts)} />}
+            download={latest.download}
+            onMove={move}
+            onDetails={() => setDetails(`f${f.id}`)}
+            last={<DeleteStl project={project} file={f} />}
+          />
+        ),
+        card: <FileCard project={project} kind={STL} file={f} onNewVersion={() => setNewVersionOf(f)} onMove={move} />,
+      };
+    }),
   ];
+  const open = details && items.find((i) => i.key === details); // gone once it's deleted or taken out
   const groups = inComponents(items);
   const fold = (component) => setFolded(folded.includes(component) ? folded.filter((x) => x !== component) : [...folded, component]);
   return (
@@ -103,16 +140,12 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
         </EmptyBox>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* what the two numbers at the start of each card are, lined up over them */}
-          <div style={{ marginBottom: -6 }}>
-            <HaveNeedLabel testId="stl-have-need-label" />
-          </div>
           {groups.map(({ component, items: inIt }) =>
             component === null ? (
-              inIt.map((i) => i.card)
+              inIt.length > 0 && <TileGrid key="none">{inIt.map((i) => i.tile)}</TileGrid>
             ) : (
               <ComponentGroup key={`c:${component}`} component={component} count={inIt.length} open={!folded.includes(component)} onToggle={() => fold(component)}>
-                {inIt.map((i) => i.card)}
+                <TileGrid>{inIt.map((i) => i.tile)}</TileGrid>
               </ComponentGroup>
             )
           )}
@@ -120,6 +153,11 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
       )}
       {adding && <AddFromModels project={project} onClose={onCloseAdd} />}
       {uploading && <UploadStl project={project} onClose={onCloseUpload} />}
+      {open && (
+        <Modal title={open.name} width={860} onClose={() => setDetails(null)}>
+          {open.card}
+        </Modal>
+      )}
       {newVersionOf && <UploadDialog project={project} kind={STL} file={newVersionOf} onClose={() => setNewVersionOf(null)} />}
       {moving && (
         <MoveDialog
@@ -128,6 +166,90 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
           components={groups.map((g) => g.component).filter(Boolean)}
           onClose={() => setMoving(null)}
         />
+      )}
+    </>
+  );
+}
+
+// The STLs side by side, as many to a row as fit
+function TileGrid({ children }) {
+  return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>{children}</div>;
+}
+
+// A small button on a tile: just an icon (what it does on hover), or a link when `href` is given
+function TileButton({ testId, Icon, title, onClick, href, children }) {
+  const style = toolButton(12, { padding: "4px 7px", gap: 4, textDecoration: "none", whiteSpace: "nowrap" });
+  return href ? (
+    <a data-testid={testId} href={href} title={title} aria-label={title} style={style}>
+      <Icon size={13} />
+    </a>
+  ) : (
+    <button data-testid={testId} onClick={onClick} title={title} aria-label={title} style={style}>
+      <Icon size={13} />
+      {children}
+    </button>
+  );
+}
+
+// One STL as a tile: its newest version's preview (click it for every version), its name and tag, its newest version
+// and date, how many prints it has and needs, and Download, Move, Versions and `last` (a trash can, or Take out)
+function StlTile({ testId, dataAttrs, name, thumb, tag, ver, versions, haveNeed, download, onMove, onDetails, last }) {
+  return (
+    <div data-testid={testId} {...dataAttrs} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <button
+        data-testid="stl-tile-preview"
+        onClick={onDetails}
+        title={`${name}: show every version`}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", aspectRatio: "4 / 3", padding: 0, border: "none", borderBottom: `1px solid ${c.border}`, background: "#FFFFFF", cursor: "pointer" }}
+      >
+        {thumb ? (
+          <img src={thumb} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+        ) : (
+          <Box size={36} color="#C7CACC" />
+        )}
+      </button>
+      <div style={{ padding: "7px 8px 8px", display: "flex", flexDirection: "column", gap: 6, background: c.panelAlt, flex: 1 }}>
+        <div data-testid="stl-name" title={name} style={nameStyle({ minWidth: 0 })}>
+          {name}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {tag}
+          {ver && <span style={uiText(11, c.textFaint, { whiteSpace: "nowrap" })}>v{ver.v}{ver.date ? ` · ${ver.date}` : ""}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }} title="Prints: have / need">
+          <span style={uiText(11, c.textFaint)}>Prints</span>
+          {haveNeed}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: "auto" }}>
+          {download && <TileButton testId="stl-tile-download" Icon={Download} title="Download its newest version" href={download} />}
+          <TileButton testId="stl-tile-move" Icon={FolderInput} title="Move it to another sub-component" onClick={onMove} />
+          <TileButton testId="stl-tile-versions" Icon={Layers} title="Every version, New version and the rest" onClick={onDetails}>
+            {versions}
+          </TileButton>
+          <span style={{ marginLeft: "auto" }}>{last}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// An uploaded STL's trash can: deletes it, every version (asked first)
+function DeleteStl({ project, file }) {
+  const { putProject } = useData();
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <TrashButton onClick={() => setAsking(true)} title="Delete this STL file, every version" />
+      {asking && (
+        <ConfirmDialog
+          title="Delete STL file"
+          confirmLabel="Delete"
+          onClose={() => setAsking(false)}
+          onConfirm={async () => putProject(await deleteProjectFile("stl", project.id, file.id))}
+        >
+          Delete <strong>{file.name}</strong> and {file.versions.length === 1 ? "its only version" : `all ${file.versions.length} versions`}?
+          <DeleteWarning>The files are deleted for good.</DeleteWarning>
+        </ConfirmDialog>
       )}
     </>
   );
