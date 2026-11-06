@@ -228,7 +228,7 @@ documents, CAD files, STL files, 3MF files, printers and its BOM (the parts it n
 used, in any case), and its page has **Rename**, the bin to delete it, and its six sections (Documents, CAD, STL
 files, BOM, 3MF files, Printers), each folding away with the arrow by its heading (remembered in this browser).
 - **Documents**: **Upload document** takes any file at all (a quote, drawings, instructions, photos, a
-  spreadsheet...) with notes. Like CAD files, each keeps every version (**New version**, older ones behind the down
+  spreadsheet...), one or several at once (each its own document, all with the same notes). Like CAD files, each keeps every version (**New version**, older ones behind the down
   arrow, each with its own notes), each can be downloaded or deleted, and they're deleted with the project. A picture
   (PNG, JPG, GIF, WebP, BMP) shows a preview of itself. Clicking a document's name (or a version's file name) opens
   it in a new tab: a PDF, picture or text file shows in the browser, anything else downloads. A web page or SVG opened
@@ -283,7 +283,9 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
     Models and Printers pages also has **Add to project**, asking for a project you have or a new one.
   - **Upload 3MF** asks **Also put it in Models?** first. **Yes**: the usual 3MF upload (its STL, its printer read
     from the file), then the project uses it. **No**: it's the project's own (**Project only**, versioned, its preview
-    the picture inside the 3MF), for a printer you pick (suggested from the file's printer profile).
+    the picture inside the 3MF), for a printer you pick (suggested from the file's printer profile). **No** takes
+    several 3MFs at once: each goes to the printer it was sliced for when that's a printer here, and the printer you
+    pick is for the rest (the dialog lists which goes where). **Yes** takes one at a time.
   - **G-code**, as on the Models page: **Upload G-code** (or **Replace G-code**) on a 3MF in the project gives its
     newest version a .gcode or .bgcode, shown under that version with **Download** and **Send to <printer>** (it asks
     first, since printing starts straight away, and is refused while the printer is busy). A project-only 3MF's

@@ -195,23 +195,33 @@ function UploadThreemf({ project, onClose }) {
   );
 }
 
-// A 3MF for the project only: the file, the printer it's for (suggested from the file's own printer profile), a note
+// 3MFs for the project only: the files (one or several), the printer each is for, a note. Each file is read for the
+// printer it was sliced for; one that's a printer here goes to it, and the printer picked is for the rest. With one
+// file, the printer it names is simply picked (and can be changed).
 function UploadProjectThreemf({ project, onClose }) {
   const { printers } = useData();
   const [printerId, setPrinterId] = useState("");
-  const [reading, setReading] = useState(null); // what the file says about its printer, once read
+  const [read, setRead] = useState(null); // null | { busy } | { files: [{ file, profile, matched, error }] }
   const choices = printers.filter((p) => !p.decommissioned).map((p) => ({ value: String(p.id), label: p.name }));
-  const onPicked = async (file) => {
-    setReading(file ? { busy: true } : null);
-    if (!file) return;
-    try {
-      const r = await inspectThreemf(file);
-      setReading({ profile: r.printerProfileName, matched: r.matchedPrinter });
-      if (r.matchedPrinter) setPrinterId(String(r.matchedPrinter.id));
-    } catch (e) {
-      setReading({ error: errorText(e) });
-    }
+  const onPicked = async (picked) => {
+    const files = picked || [];
+    setRead(files.length ? { busy: true } : null);
+    if (!files.length) return;
+    const results = await Promise.all(
+      files.map((file) =>
+        inspectThreemf(file).then(
+          (r) => ({ file, profile: r.printerProfileName, matched: r.matchedPrinter }),
+          (e) => ({ file, error: errorText(e) }),
+        ),
+      ),
+    );
+    setRead({ files: results });
+    if (results.length === 1 && results[0].matched) setPrinterId(String(results[0].matched.id));
   };
+  const single = read?.files?.length === 1;
+  const own = (f) => (single ? null : read?.files?.find((x) => x.file === f)?.matched); // a file's own printer, with several
+  const rest = read?.files ? read.files.filter((x) => !own(x.file)) : []; // the files the printer picked is for
+  const need = !read?.files || rest.length > 0;
   return (
     <UploadDialog
       project={project}
@@ -219,26 +229,61 @@ function UploadProjectThreemf({ project, onClose }) {
       title="Upload 3MF to this project only"
       onClose={onClose}
       onPicked={onPicked}
-      check={() => (printerId ? null : "Pick the printer this 3MF is for.")}
-      fields={{ printerId: printerId ? Number(printerId) : null }}
+      check={() => (read?.busy ? "Still reading the 3MF files…" : need && !printerId ? `Pick the printer ${single || !read ? "this 3MF is" : "they're"} for.` : null)}
+      fieldsFor={(f) => ({ printerId: own(f)?.id ?? (printerId ? Number(printerId) : null) })}
       extra={
         <div data-testid="threemf-printer-choice">
-          <FieldSelect label="Printer it's for (it comes into the project too)" placeholder="Select a printer…" value={printerId} onChange={setPrinterId} options={choices} />
-          {reading && (
-            <div style={uiText(12, reading.error ? c.amber : c.textFaint, { marginTop: -8, marginBottom: 12, lineHeight: 1.5 })}>
-              {reading.busy
-                ? "Reading the 3MF…"
-                : reading.error
-                  ? `Couldn't read the 3MF: ${reading.error}`
-                  : reading.matched
-                    ? `Picked ${reading.matched.name}: the printer this file was sliced for.`
-                    : reading.profile
-                      ? `It was sliced for "${reading.profile}", which isn't a printer here: pick the one it's for.`
-                      : "The file doesn't say which printer it's for: pick it."}
+          {need && (
+            <FieldSelect
+              label={read?.files && !single && rest.length < read.files.length ? `Printer for the ${plural(rest.length, "other file")} (it comes into the project too)` : "Printer it's for (it comes into the project too)"}
+              placeholder="Select a printer…"
+              value={printerId}
+              onChange={setPrinterId}
+              options={choices}
+            />
+          )}
+          {read && (
+            <div data-testid="threemf-printer-read" style={uiText(12, c.textFaint, { marginTop: need ? -8 : 0, marginBottom: 12, lineHeight: 1.5 })}>
+              {read.busy ? "Reading the 3MF…" : single ? <OneRead r={read.files[0]} /> : <ManyRead files={read.files} />}
             </div>
           )}
         </div>
       }
     />
+  );
+}
+
+// What one 3MF says about its printer
+function OneRead({ r }) {
+  if (r.error) return <span style={{ color: c.amber }}>Couldn't read the 3MF: {r.error}</span>;
+  if (r.matched) return `Picked ${r.matched.name}: the printer this file was sliced for.`;
+  if (r.profile) return `It was sliced for "${r.profile}", which isn't a printer here: pick the one it's for.`;
+  return "The file doesn't say which printer it's for: pick it.";
+}
+
+// Which printer each of several 3MFs goes to: its own, or the one picked
+function ManyRead({ files }) {
+  return (
+    <>
+      {files.some((r) => r.matched)
+        ? "Each goes to the printer it was sliced for; the printer picked is for the rest."
+        : "None of them names a printer here, so they all go to the printer picked."}
+      <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+        {files.map((r, i) => (
+          <li key={i} style={{ overflowWrap: "anywhere" }}>
+            <span style={{ color: c.textMuted }}>{r.file.name}</span>:{" "}
+            {r.matched ? (
+              r.matched.name
+            ) : r.error ? (
+              <span style={{ color: c.amber }}>couldn't be read ({r.error}), so the printer picked</span>
+            ) : r.profile ? (
+              `sliced for "${r.profile}", not a printer here, so the printer picked`
+            ) : (
+              "doesn't say, so the printer picked"
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

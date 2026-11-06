@@ -91,12 +91,13 @@ function CountBox({ value, least, onSave, color, label, testId }) {
 
 // A project's own files: its documents and CAD files, and its STLs and 3MFs that aren't in Models. All work alike: a file with versions like
 // a 3MF's (the newest shown with its preview, the older ones behind a down arrow), kept in the project files folder.
-// opens: clicking a file's name opens it in a new tab
+// opens: clicking a file's name opens it in a new tab; multiple: several can be uploaded at once
 export const FILE_KINDS = {
   doc: {
     opens: true,
+    multiple: true,
     key: "doc", noun: "document", Icon: FileText, accept: undefined, list: (p) => p.docFiles, noteLabel: "Notes (optional)",
-    drop: "Drop the file here (any kind)", previews: "Pictures get a preview.",
+    drop: "Drop the files here (any kind): one or several", previews: "Pictures get a preview.",
   },
   cad: {
     key: "cad", noun: "CAD file", Icon: PenTool, accept: undefined, list: (p) => p.cadFiles,
@@ -107,8 +108,9 @@ export const FILE_KINDS = {
     drop: "Drop STL (or OBJ) files here: one, several, or a folder of them", previews: "It gets a preview like an STL in Models.",
   },
   threemf: {
+    multiple: true,
     key: "threemf", noun: "3MF file", Icon: FileBox, accept: ".3mf", list: (p) => p.threemfFiles,
-    drop: "Drop the 3MF file here", previews: "Its preview is the picture the slicer saved inside it.",
+    drop: "Drop the 3MF files here: one or several", previews: "Its preview is the picture the slicer saved inside it.",
   },
 };
 
@@ -323,11 +325,11 @@ function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
 // The dialog for a new file of this kind (no `file`), or a newer version of one: the file, and a note on what it is or
 // what changed. `extra` goes above the note (an STL's "also put it in Models?", a 3MF's printer); `check()` can stop
 // the upload with a reason, `fields` adds to what's sent, and `onPicked(file)` hears of the file chosen.
-// `multiple`: several new files can be picked at once, each uploaded in turn with the same answers and note (not for a
+// `multiple` (the kind's own by default): several new files can be picked at once, each uploaded in turn with the same answers and note (not for a
 // new version, which is one file); `folders`: a whole folder too, and `fieldsFor(file)` adds what's sent for each file
 // (its sub-component, from the folder it was in)
 export function UploadDialog({
-  project, kind, file: existing, onClose, extra, check, fields, fieldsFor, onUploaded, onPicked, title, multiple = false, folders = false,
+  project, kind, file: existing, onClose, extra, check, fields, fieldsFor, onUploaded, onPicked, title, multiple = kind.multiple, folders = false,
 }) {
   const { putProject } = useData();
   const many = multiple && !existing;
