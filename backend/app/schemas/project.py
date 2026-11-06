@@ -22,6 +22,7 @@ class ProjectFileOut(BaseModel):
     printer_id: int | None = None  # a 3MF's: the printer it's for (absent for CAD and STL files)
     need: int | None = None  # an STL's: how many prints of it the project needs
     have: int | None = None  # and how many it has
+    component: str | None = None  # an STL's: the sub-component it's in ("Fins", "Body/Left"), or none
     name: str  # its newest version's file name
     created_at: dt.datetime
     versions: list[FileVersionOut]  # newest first
@@ -33,6 +34,7 @@ class ModelUseOut(BaseModel):
     id: int
     need: int
     have: int
+    component: str | None = None  # the sub-component it's in, or none
 
 
 class Counts(BaseModel):
@@ -40,6 +42,13 @@ class Counts(BaseModel):
 
     need: int | None = None
     have: int | None = None
+
+
+class StlChange(Counts):
+    """An STL's counts, and the sub-component it's in ("Body/Left" for one inside another; blank or null: none).
+    Only what's sent changes."""
+
+    component: str | None = None
 
 
 class PartOut(BaseModel):

@@ -47,9 +47,45 @@ export function SearchBox({ value, onChange, placeholder, label, testId, clearTe
   );
 }
 
-// `multiple`: several files can be picked or dropped at once, and `file` / `onFile` are a list of them instead
-export function Dropzone({ label, compact = false, onFile, file, accept, multiple = false }) {
+// Where a file picked or dropped with a folder was in it ("Shark/Fins/Fin.stl"), or just its name
+export const folderPathOf = (f) => f.folderPath || f.webkitRelativePath || f.name;
+
+// Every file in what was dropped, folders read all the way down, each with its folderPath ("Shark/Fins/Fin.stl")
+async function droppedFiles(entries) {
+  const fileOf = (entry) =>
+    new Promise((resolve) =>
+      entry.file(
+        (f) => {
+          f.folderPath = entry.fullPath.replace(/^\/+/, "");
+          resolve([f]);
+        },
+        () => resolve([])
+      )
+    );
+  const inside = async (dir) => {
+    const reader = dir.createReader();
+    const all = [];
+    for (;;) {
+      // a folder is read a batch at a time, until an empty one
+      const batch = await new Promise((resolve) => reader.readEntries(resolve, () => resolve([])));
+      if (!batch.length) return all;
+      all.push(...batch);
+    }
+  };
+  const out = [];
+  for (const entry of entries) {
+    if (entry.isFile) out.push(...(await fileOf(entry)));
+    else if (entry.isDirectory) out.push(...(await droppedFiles(await inside(entry))));
+  }
+  return out;
+}
+
+// `multiple`: several files can be picked or dropped at once, and `file` / `onFile` are a list of them instead.
+// `folders` (with `multiple`): a folder can be dropped or chosen too, and every file in it and the folders inside it is
+// taken, each knowing where it was (folderPathOf).
+export function Dropzone({ label, compact = false, onFile, file, accept, multiple = false, folders = false }) {
   const inputRef = useRef(null);
+  const folderRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // Matching against `accept` ourselves: browsers don't enforce the
@@ -76,6 +112,15 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    if (multiple && folders && e.dataTransfer.items?.length) {
+      // read the entries now: they're gone once this event is over
+      const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
+      droppedFiles(entries).then((all) => {
+        const taken = all.filter((f) => accepts(f.name));
+        if (taken.length) onFile?.(taken);
+      });
+      return;
+    }
     if (multiple) {
       const dropped = [...(e.dataTransfer.files || [])].filter((f) => accepts(f.name));
       if (dropped.length) onFile?.(dropped);
@@ -87,7 +132,8 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
     onFile?.(dropped);
   };
   const picked = multiple ? (file?.length ? file : null) : file;
-  const pickedName = !picked ? null : !multiple ? picked.name : picked.length === 1 ? picked[0].name : `${picked.length} files: ${picked.map((f) => f.name).join(", ")}`;
+  const names = (list) => (list.length > 6 ? `${list.slice(0, 5).map((f) => f.name).join(", ")} and ${list.length - 5} more` : list.map((f) => f.name).join(", "));
+  const pickedName = !picked ? null : !multiple ? picked.name : picked.length === 1 ? picked[0].name : `${picked.length} files: ${names(picked)}`;
 
   return (
     <div
@@ -123,8 +169,34 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
         onChange={(e) => onFile?.(multiple ? [...(e.target.files || [])] : e.target.files?.[0] || null)}
         style={{ display: "none" }}
       />
+      {folders && (
+        <input
+          ref={folderRef}
+          type="file"
+          webkitdirectory=""
+          multiple
+          onChange={(e) => {
+            const taken = [...(e.target.files || [])].filter((f) => accepts(f.name));
+            if (taken.length) onFile?.(taken);
+          }}
+          style={{ display: "none" }}
+        />
+      )}
       <Upload size={compact ? 14 : 20} color={isDragging ? c.amber : picked ? c.teal : c.textFaint} style={{ marginBottom: compact ? 0 : 8 }} />
       <div style={{ wordBreak: "break-word" }}>{picked ? pickedName : isDragging ? (multiple ? "Drop them" : "Drop it") : label}</div>
+      {folders && !isDragging && (
+        <button
+          type="button"
+          data-testid="dropzone-choose-folder"
+          onClick={(e) => {
+            e.stopPropagation(); // not the file picker as well
+            folderRef.current?.click();
+          }}
+          style={{ ...ui, fontSize: fs(12), background: "none", border: "none", color: c.amber, textDecoration: "underline", cursor: "pointer", marginTop: 6, padding: 0 }}
+        >
+          or choose a folder
+        </button>
+      )}
     </div>
   );
 }

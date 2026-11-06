@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, ForeignKeyConstraint, Integer, String, Text
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from ..database import Base
@@ -138,6 +138,11 @@ class ProjectStlFile(Base):
     versions: Mapped[list["ProjectStlVersion"]] = relationship(
         back_populates="file", order_by="ProjectStlVersion.version.desc()", cascade="all, delete-orphan"
     )
+    component_row: Mapped["ProjectStlFileComponent | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+
+    @property
+    def component(self) -> str | None:
+        return self.component_row.component if self.component_row else None
 
 
 class ProjectStlVersion(Base):
@@ -174,6 +179,36 @@ class ProjectSourceModel(Base):
     source_model: Mapped["SourceModel"] = relationship(  # noqa: F821
         backref=backref("project_links", cascade="all, delete-orphan")
     )
+    component_row: Mapped["ProjectModelComponent | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+
+    @property
+    def component(self) -> str | None:
+        return self.component_row.component if self.component_row else None
+
+
+# Which sub-component of a project an STL is in ("Fins", or "Body/Left" for one inside another), set from the folder
+# it was uploaded from or moved by hand. Tables of their own (no row: not in one) because a column can't be added to
+# a table that's already there; each goes with its STL or model use.
+
+
+class ProjectStlFileComponent(Base):
+    __tablename__ = "project_stl_file_components"
+
+    stl_file_id: Mapped[int] = mapped_column(ForeignKey("project_stl_files.id"), primary_key=True)
+    component: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class ProjectModelComponent(Base):
+    __tablename__ = "project_model_components"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "source_model_id"], ["project_source_models.project_id", "project_source_models.source_model_id"]
+        ),
+    )
+
+    project_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_model_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    component: Mapped[str] = mapped_column(String(200), nullable=False)
 
 
 class ProjectThreemfFile(Base):

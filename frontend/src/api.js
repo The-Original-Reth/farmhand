@@ -160,6 +160,7 @@ const normalizeProjectFiles = (projectId, kind, files) =>
     printerId: f.printer_id ?? null, // a 3MF's: the printer it's for
     need: f.need ?? null, // an STL's: how many prints of it the project needs
     have: f.have ?? null, // and has
+    component: f.component || null, // an STL's: the sub-component it's in ("Body/Fins"), or none
     versions: f.versions.map((v) => {
       const base = `${API_BASE}/projects/${projectId}/${kind}/${f.id}/versions/${v.version}`;
       return {
@@ -188,7 +189,8 @@ export const normalizeProject = (p) => ({
   stlFiles: normalizeProjectFiles(p.id, "stl", p.stl_files),
   threemfFiles: normalizeProjectFiles(p.id, "threemf", p.threemf_files),
   modelIds: p.source_model_ids || [],
-  modelCounts: Object.fromEntries((p.source_models || []).map((m) => [m.id, { need: m.need, have: m.have }])), // id -> { need, have }
+  // id -> { need, have, component }: how many prints of each model it needs and has, and the sub-component it's in
+  modelCounts: Object.fromEntries((p.source_models || []).map((m) => [m.id, { need: m.need, have: m.have, component: m.component || null }])),
   bundleIds: p.bundle_ids || [],
   printerIds: p.printer_ids || [],
   parts: p.parts || [],
@@ -222,13 +224,15 @@ export const renameProject = (id, name) => request(`/projects/${id}`, jsonBody("
 export const deleteProject = (id) => del(`/projects/${id}`);
 // A project's own files, kind "doc", "cad", "stl" or "threemf": a new one (its version 1), a newer version of one, and deleting a version
 // or the whole file. An STL also says whether it goes in Models too (inModels: true makes it a model there that the
-// project uses; false keeps it the project's own). Each answers the project as it now stands.
+// project uses; false keeps it the project's own) and the sub-component it goes in, if any (component: its folder,
+// "Body/Fins"). Each answers the project as it now stands.
 // A 3MF says which printer it's for (printerId), which then comes into the project too.
-export const uploadProjectFile = ({ kind, projectId, file, note, inModels, printerId }) =>
+export const uploadProjectFile = ({ kind, projectId, file, note, inModels, component, printerId }) =>
   request(`/projects/${projectId}/${kind}`, formBody("POST", {
     file,
     note: note || undefined,
     in_models: kind === "stl" ? String(!!inModels) : undefined,
+    component: kind === "stl" && component ? component : undefined,
     printer_id: kind === "threemf" && printerId != null ? String(printerId) : undefined,
   }));
 export const uploadProjectFileVersion = ({ kind, projectId, fileId, file, note }) =>
@@ -249,8 +253,8 @@ export const addProjectPart = (projectId, { name, need, have, link, note }) =>
   request(`/projects/${projectId}/parts`, jsonBody("POST", { name, need, have, link: link || null, note: note || null }));
 export const updateProjectPart = (projectId, partId, changes) => request(`/projects/${projectId}/parts/${partId}`, jsonBody("PATCH", changes));
 export const deleteProjectPart = (projectId, partId) => del(`/projects/${projectId}/parts/${partId}`);
-// How many prints of an STL a project needs and has: a model from Models ("model") or one of its own ("stl"). Only the
-// counts given change.
+// How many prints of an STL a project needs and has, and the sub-component it's in ({ component: "Body/Fins" }, or null
+// for none): a model from Models ("model") or one of its own ("stl"). Only what's given changes.
 export const setProjectStlCounts = (projectId, kind, id, counts) =>
   request(`/projects/${projectId}/${kind === "model" ? "source-models" : "stl"}/${id}`, jsonBody("PATCH", counts));
 // A project 3MF version's G-code: uploaded (replacing one it had), and sent to the 3MF's printer (it starts printing)

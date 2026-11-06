@@ -14,18 +14,22 @@ from sqlalchemy.orm import Session, selectinload
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectDocFile, ProjectPrinter, ProjectSourceModel, ProjectStlFile,
-    ProjectThreemfFile, ProjectThreemfVersion, SourceFileType, SourceModel,
+    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectDocFile, ProjectModelComponent, ProjectPrinter,
+    ProjectSourceModel, ProjectStlFile, ProjectStlFileComponent, ProjectThreemfFile, ProjectThreemfVersion, SourceFileType,
+    SourceModel,
 )
 
 MAX_NAME_LENGTH = 200
+MAX_COMPONENT_LENGTH = 200
+KEEP = object()  # set_counts: leave the sub-component as it is
 
 _LOAD = (
     selectinload(Project.doc_files).selectinload(ProjectDocFile.versions),
     selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),
     selectinload(Project.stl_files).selectinload(ProjectStlFile.versions),
+    selectinload(Project.stl_files).selectinload(ProjectStlFile.component_row),
     selectinload(Project.threemf_files).selectinload(ProjectThreemfFile.versions).selectinload(ProjectThreemfVersion.gcode),
-    selectinload(Project.model_links),
+    selectinload(Project.model_links).selectinload(ProjectSourceModel.component_row),
     selectinload(Project.bundle_links),
     selectinload(Project.printer_links),
     selectinload(Project.parts),
@@ -39,7 +43,7 @@ def _files_out(files) -> list[dict]:
         {
             "id": f.id,
             **({"printer_id": f.printer_id} if isinstance(f, ProjectThreemfFile) else {}),
-            **({"need": f.need, "have": f.have} if isinstance(f, ProjectStlFile) else {}),
+            **({"need": f.need, "have": f.have, "component": f.component} if isinstance(f, ProjectStlFile) else {}),
             "name": f.versions[0].filename if f.versions else "",
             "created_at": f.created_at,
             "versions": [
@@ -67,7 +71,10 @@ def out(project: Project) -> dict:
         "stl_files": _files_out(project.stl_files),
         "threemf_files": _files_out(project.threemf_files),
         "source_model_ids": [link.source_model_id for link in project.model_links],
-        "source_models": [{"id": link.source_model_id, "need": link.need, "have": link.have} for link in project.model_links],
+        "source_models": [
+            {"id": link.source_model_id, "need": link.need, "have": link.have, "component": link.component}
+            for link in project.model_links
+        ],
         "bundle_ids": [link.bundle_id for link in project.bundle_links],
         "printer_ids": [link.printer_id for link in project.printer_links],
         "parts": [
@@ -153,9 +160,11 @@ def remove_model(db: Session, project_id: int, source_model_id: int) -> Project:
     return require_project(db, project_id)
 
 
-def upload_to_models(db: Session, project_id: int, filename: str, file_obj, note: str | None = None) -> Project:
+def upload_to_models(
+    db: Session, project_id: int, filename: str, file_obj, note: str | None = None, component: str | None = None,
+) -> Project:
     """An STL uploaded on a project's page and also put in Models: a new model there (in the STL folder), which the
-    project then uses."""
+    project then uses (in `component`, if one is given)."""
     from . import source_model_service
     from .project_files import STL, check_type
 
@@ -164,7 +173,8 @@ def upload_to_models(db: Session, project_id: int, filename: str, file_obj, note
     name = Path(filename or "").name
     file_type = SourceFileType.obj if name.lower().endswith(".obj") else SourceFileType.stl
     model = source_model_service.create_source_model(db, name=name, file_type=file_type, file_obj=file_obj, note=note)
-    return add_model(db, project_id, model.id)
+    add_model(db, project_id, model.id)
+    return set_counts(db, project_id, "model", model.id, component=component)
 
 
 # ---- 3MFs from the rest of Farmhand, and printers ----
@@ -218,13 +228,25 @@ def remove_printer(db: Session, project_id: int, printer_id: int) -> Project:
     return require_project(db, project_id)
 
 
-# ---- how many prints of an STL a project needs and has ----
+# ---- how many prints of an STL a project needs and has, and which of its sub-components it's in ----
 
 
-def set_counts(db: Session, project_id: int, kind: str, thing_id: int, need=None, have=None) -> Project:
+def clean_component(component: str | None) -> str | None:
+    """
+    A sub-component's name, kept as its folders are: "Body / Left" or "Body\\Left" is "Body/Left" (one inside
+    another). Blank is none. Spaces tidied in each part; at most MAX_COMPONENT_LENGTH characters.
+    """
+    parts = [" ".join(p.split()) for p in (component or "").replace("\\", "/").split("/")]
+    name = "/".join(p for p in parts if p)
+    if len(name) > MAX_COMPONENT_LENGTH:
+        raise ValueError(f"A sub-component's name can be at most {MAX_COMPONENT_LENGTH} characters.")
+    return name or None
+
+
+def set_counts(db: Session, project_id: int, kind: str, thing_id: int, need=None, have=None, component=KEEP) -> Project:
     """
     How many of a model from Models (kind "model") or of one of the project's own STLs (kind "stl") the project needs
-    and has. Only the counts given change.
+    and has, and the sub-component it's in (None: in none). Only what's given changes.
     """
     from .project_parts import clean_have, clean_need
 
@@ -241,5 +263,15 @@ def set_counts(db: Session, project_id: int, kind: str, thing_id: int, need=None
         row.need = clean_need(need)
     if have is not None:
         row.have = clean_have(have)
+    if component is not KEEP:
+        name = clean_component(component)
+        if name is None:
+            row.component_row = None
+        elif row.component_row is not None:
+            row.component_row.component = name
+        elif kind == "model":
+            row.component_row = ProjectModelComponent(project_id=project_id, source_model_id=thing_id, component=name)
+        else:
+            row.component_row = ProjectStlFileComponent(stl_file_id=thing_id, component=name)
     db.commit()
     return require_project(db, project_id)

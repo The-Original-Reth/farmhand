@@ -20,10 +20,12 @@ def _model(api, name="Frog.stl"):
     return api.post("/source-models", data={"name": name, "file_type": "STL"}).json()["id"]
 
 
-def _upload(api, pid, in_models, name="Frog.stl", data=None, note=None):
+def _upload(api, pid, in_models, name="Frog.stl", data=None, note=None, component=None):
     fields = {"in_models": "true" if in_models else "false"}
     if note:
         fields["note"] = note
+    if component is not None:
+        fields["component"] = component
     return api.post(f"/projects/{pid}/stl", files={"file": (name, io.BytesIO(data or _stl_bytes()))}, data=fields)
 
 
@@ -126,11 +128,11 @@ def test_an_stl_in_a_project_has_how_many_it_needs_and_has(api):
     pid = _project(api)
     frog = _model(api)
     p = api.put(f"/projects/{pid}/source-models/{frog}").json()
-    assert p["source_models"] == [{"id": frog, "need": 1, "have": 0}]  # 1 needed, none yet
+    assert p["source_models"] == [{"id": frog, "need": 1, "have": 0, "component": None}]  # 1 needed, none yet
     p = api.patch(f"/projects/{pid}/source-models/{frog}", json={"need": 24, "have": 6}).json()
-    assert p["source_models"] == [{"id": frog, "need": 24, "have": 6}]
+    assert p["source_models"] == [{"id": frog, "need": 24, "have": 6, "component": None}]
     p = api.patch(f"/projects/{pid}/source-models/{frog}", json={"have": 24}).json()
-    assert p["source_models"][0] == {"id": frog, "need": 24, "have": 24}  # only what was sent changed
+    assert p["source_models"][0] == {"id": frog, "need": 24, "have": 24, "component": None}  # only what was sent changed
 
     own = _upload(api, pid, in_models=False).json()["stl_files"][0]
     assert own["need"] == 1 and own["have"] == 0
@@ -142,3 +144,59 @@ def test_an_stl_in_a_project_has_how_many_it_needs_and_has(api):
     assert api.patch(f"/projects/{pid}/source-models/999", json={"need": 2}).status_code == 404
     other = _project(api, "Other")
     assert api.patch(f"/projects/{other}/stl/{own['id']}", json={"need": 2}).status_code == 404
+
+
+# ------------------------------------------------------------------ sub-components
+
+
+def test_an_stl_uploaded_from_a_subfolder_goes_in_that_sub_component(api):
+    pid = _project(api)
+    own = _upload(api, pid, in_models=False, name="Fin.stl", component=" Body \\ Fins ").json()["stl_files"][0]
+    assert own["component"] == "Body/Fins"  # one inside another, however the folders were written
+    p = _upload(api, pid, in_models=True, name="Tail.stl", component="Body").json()
+    assert p["source_models"][0]["component"] == "Body"  # put in Models too: the project's use of it is in Body
+    p = _upload(api, pid, in_models=False, name="Loose.stl", component="  /  ").json()
+    assert p["stl_files"][1]["component"] is None  # straight in the folder picked: in none
+
+    r = _upload(api, pid, in_models=False, name="Long.stl", component="x" * 201)
+    assert r.status_code == 422 and len(api.get(f"/projects/{pid}").json()["stl_files"]) == 2  # refused, nothing saved
+
+
+def test_an_stl_is_moved_between_sub_components(api):
+    pid = _project(api)
+    own = _upload(api, pid, in_models=False, name="Fin.stl").json()["stl_files"][0]
+    frog = _model(api)
+    api.put(f"/projects/{pid}/source-models/{frog}").raise_for_status()
+
+    p = api.patch(f"/projects/{pid}/stl/{own['id']}", json={"component": "Fins"}).json()
+    assert p["stl_files"][0]["component"] == "Fins"
+    p = api.patch(f"/projects/{pid}/stl/{own['id']}", json={"component": "Body/Fins", "have": 3}).json()
+    assert (p["stl_files"][0]["component"], p["stl_files"][0]["have"]) == ("Body/Fins", 3)
+    p = api.patch(f"/projects/{pid}/stl/{own['id']}", json={"need": 5}).json()
+    assert p["stl_files"][0]["component"] == "Body/Fins"  # not sent: stays
+    p = api.patch(f"/projects/{pid}/stl/{own['id']}", json={"component": None}).json()
+    assert p["stl_files"][0]["component"] is None  # taken out of it
+
+    p = api.patch(f"/projects/{pid}/source-models/{frog}", json={"component": "Body"}).json()
+    assert p["source_models"][0]["component"] == "Body"
+    p = api.patch(f"/projects/{pid}/source-models/{frog}", json={"component": ""}).json()
+    assert p["source_models"][0]["component"] is None
+
+
+def test_a_sub_component_goes_with_its_stl(api):
+    pid = _project(api)
+    own = _upload(api, pid, in_models=False, name="Fin.stl", component="Fins").json()["stl_files"][0]
+    frog = _model(api)
+    api.put(f"/projects/{pid}/source-models/{frog}").raise_for_status()
+    api.patch(f"/projects/{pid}/source-models/{frog}", json={"component": "Body"}).raise_for_status()
+
+    api.delete(f"/projects/{pid}/stl/{own['id']}", params={"confirm": "true"}).raise_for_status()
+    api.delete(f"/projects/{pid}/source-models/{frog}").raise_for_status()
+    p = api.put(f"/projects/{pid}/source-models/{frog}").json()
+    assert p["source_models"][0]["component"] is None  # put back in: starts in none
+
+    api.patch(f"/projects/{pid}/source-models/{frog}", json={"component": "Body"}).raise_for_status()
+    api.delete(f"/source-models/{frog}", params={"confirm": "true"}).raise_for_status()
+    other = _upload(api, pid, in_models=False, name="Gill.stl", component="Head").json()
+    api.delete(f"/projects/{pid}", params={"confirm": "true"}).raise_for_status()
+    assert other["stl_files"][0]["component"] == "Head"

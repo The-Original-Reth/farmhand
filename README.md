@@ -258,12 +258,23 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
     From the other side, a model's page has **Add to project** next to its newest version's **Download** (with how
     many projects it's in): it asks for **a project you have** (those it's already in are greyed out) or **a new
     project**, named there and then.
-  - **Upload STL** takes one STL or OBJ file or several at once (pick or drop them together) and asks **Also put them
+  - **Upload STL** takes one STL or OBJ file, several at once (pick or drop them together), or a whole folder of them
+    (drop it, or **or choose a folder**), and asks **Also put them
     in Models?** (it has to be answered; the answer and the note go for all of them). **Yes**: each becomes a new model
     on the Models page, kept in the STL folder, which the project uses. **No**: each belongs to the project: kept in
     the project files folder with versions like a CAD file (**New version**, older ones behind the down arrow,
     Download, delete) and its preview, and deleted with the project. It has a purple **Project only** tag. Several
     files go up one after another; if one fails, the ones before it are kept and **Upload** carries on from that one.
+- **Sub-components** organise a project's STLs (both kinds): each STL can be in one (**Body**, **Fins**...), or one
+  inside another (**Body / Fins**). The STLs in none come first, then each sub-component by name, with how many STLs
+  it has; click its name to fold it away.
+  - Uploading a folder puts each file in the sub-component named by the folder it was in, below the one chosen: from
+    `Shark/Fins/Fin left.stl`, *Fin left* goes in **Fins**, from `Shark/Body/Left/Gill.stl` in **Body / Left**, and
+    files straight in `Shark` in none. Several folders or files dropped side by side go by their own folders. Before
+    uploading, the dialog says which sub-components the files will go in.
+  - **Move…** on an STL puts it in another: pick one of the project's sub-components, or type a new name (a `/` puts
+    one inside another); left blank, it's in none. A sub-component is there while it has an STL in it.
+  - A model from Models is in a sub-component of this project only: in another project it can be somewhere else.
 - **3MF files** work the same way, and the printer a 3MF is for always comes into the project with it:
   - **Add existing 3MF** picks 3MFs already in Farmhand (searchable by name, printer or STL; ones already in the project
     aren't offered). Each shows with **In Models**, its printer, its newest version (older ones behind the down arrow)

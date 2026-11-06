@@ -133,14 +133,16 @@ export function mockApi() {
     files.map((f) => ({
       id: f.id, name: f.versions[0].filename, created_at: f.created_at,
       ...("printer_id" in f ? { printer_id: f.printer_id } : {}),
-      ...("need" in f ? { need: f.need, have: f.have } : {}),
+      ...("need" in f ? { need: f.need, have: f.have, component: f.component || null } : {}),
       versions: f.versions.map(({ thumb, gcode, ...v }) => ({ ...v, has_preview: !!thumb, ...("printer_id" in f ? { gcode_name: gcode || null } : {}) })),
     }));
   const projectOut = (p) => ({
     id: p.id, name: p.name, created_at: p.created_at,
     doc_files: filesOut(p.doc_files || []), cad_files: filesOut(p.cad_files), stl_files: filesOut(p.stl_files), threemf_files: filesOut(p.threemf_files),
     source_model_ids: [...p.source_model_ids], bundle_ids: [...p.bundle_ids], printer_ids: [...p.printer_ids],
-    source_models: p.source_model_ids.map((id) => ({ id, need: p.model_counts?.[id]?.need ?? 1, have: p.model_counts?.[id]?.have ?? 0 })),
+    source_models: p.source_model_ids.map((id) => ({
+      id, need: p.model_counts?.[id]?.need ?? 1, have: p.model_counts?.[id]?.have ?? 0, component: p.model_counts?.[id]?.component || null,
+    })),
     parts: p.parts.map((x) => ({ ...x })),
   });
   on("GET", "/projects", () => [...farm.projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(projectOut));
@@ -168,6 +170,7 @@ export function mockApi() {
   on("DELETE", "/projects/:id/source-models/:mid", ({ id, mid }) => {
     const p = project(id);
     p.source_model_ids = p.source_model_ids.filter((x) => x !== Number(mid));
+    if (p.model_counts) delete p.model_counts[mid]; // put back in later, it starts afresh (counts, sub-component)
     return projectOut(p);
   });
   // 3MFs from the rest of Farmhand (bringing their printer) and printers: put in a project, or taken out
@@ -210,17 +213,24 @@ export function mockApi() {
     }
     return out;
   };
+  // The sub-component an STL is in, as the API keeps it: "Body / Fins" or "Body\\Fins" is "Body/Fins"; blank is none
+  const cleanComponent = (text) => {
+    const name = String(text ?? "").replace(/\\/g, "/").split("/").map((x) => x.trim().split(/\s+/).join(" ")).filter(Boolean).join("/");
+    if (name.length > 200) throw new HttpError(422, "A sub-component's name can be at most 200 characters.");
+    return name || null;
+  };
+  const componentField = (body) => ("component" in body ? { component: cleanComponent(body.component) } : {});
   on("PATCH", "/projects/:id/source-models/:mid", ({ id, mid }, body) => {
     const p = project(id);
     if (!p.source_model_ids.includes(Number(mid))) fail404("That model isn't in this project");
     p.model_counts = p.model_counts || {};
-    p.model_counts[mid] = { need: 1, have: 0, ...p.model_counts[mid], ...countFields(body, true) };
+    p.model_counts[mid] = { need: 1, have: 0, ...p.model_counts[mid], ...countFields(body, true), ...componentField(body) };
     return projectOut(p);
   });
   on("PATCH", "/projects/:id/stl/:fid", ({ id, fid }, body) => {
     const p = project(id);
     const f = p.stl_files.find((x) => x.id === Number(fid)) || fail404("STL file not found");
-    Object.assign(f, countFields(body, true));
+    Object.assign(f, countFields(body, true), componentField(body));
     return projectOut(p);
   });
   // a project 3MF version's G-code: the mockup keeps its name; Send says it went (no printer is reached)
@@ -314,9 +324,11 @@ export function mockApi() {
     const p = project(id);
     kindOf(kind);
     const name = body.files?.[0] || "";
+    let component = null; // an STL's sub-component
     if (kind === "stl") {
       if (!isStl(name)) throw new HttpError(422, "An STL file has to be an .stl or .obj file.");
       if (body.fields?.in_models === undefined) throw new HttpError(422, "Say whether it also goes in Models (in_models).");
+      component = cleanComponent(body.fields?.component); // the folder it came from
       if (body.fields.in_models === "true") {
         // a new model in Models (as the real one, kept in the STL folder), which the project then uses
         const m = {
@@ -326,11 +338,15 @@ export function mockApi() {
         };
         farm.models.push(m);
         p.source_model_ids.push(m.id);
+        if (component) {
+          p.model_counts = p.model_counts || {};
+          p.model_counts[m.id] = { need: 1, have: 0, component };
+        }
         return [201, projectOut(p)];
       }
     }
     if (kind === "threemf" && !/\.3mf$/i.test(name)) throw new HttpError(422, "A 3MF file has to be a .3mf file.");
-    const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [], ...(kind === "stl" ? { need: 1, have: 0 } : {}) };
+    const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [], ...(kind === "stl" ? { need: 1, have: 0, component } : {}) };
     if (kind === "threemf") {
       // the printer it's for comes into the project too
       const pid = body.fields?.printer_id ? Number(body.fields.printer_id) : null;

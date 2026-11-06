@@ -1,14 +1,19 @@
 import { useState } from "react";
-import { Box, ExternalLink, Plus, Upload } from "lucide-react";
+import { Box, ChevronDown, ExternalLink, Folder, Plus, Upload } from "lucide-react";
 import { addProjectModel, API_BASE, removeProjectModel, setProjectStlCounts } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 import { AddModelFileForm } from "../models/modelActions.jsx";
-import { Modal } from "../components/common/dialogs.jsx";
+import { nameCollator } from "../models/modelSort.js";
+import { Modal, ModalActions } from "../components/common/dialogs.jsx";
+import { folderPathOf, TextField } from "../components/common/fields.jsx";
 import { DownloadButton } from "../components/common/ui.jsx";
 import { toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, HaveNeed, HaveNeedLabel, UploadDialog } from "./ProjectFiles.jsx";
-import { Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, OlderToggle, PickDialog, plural, TakeOutButton, VersionLine } from "./pieces.jsx";
+import {
+  Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, MoveButton, OlderToggle, PickDialog, plural, TakeOutButton, VersionLine,
+} from "./pieces.jsx";
 
 const STL = FILE_KINDS.stl;
 
@@ -28,18 +33,73 @@ export function StlActions({ onAdd, onUpload }) {
   );
 }
 
+// A sub-component as it's shown: "Body/Fins" is "Body / Fins"
+const shown = (component) => component.split("/").join(" / ");
+
+// The STLs in the project's sub-components: those in none first, then each sub-component, by name ("Body" just before
+// "Body/Fins"). [{ component (null: none), items }]
+function inComponents(items) {
+  const named = new Map();
+  for (const item of items.filter((i) => i.component)) {
+    if (!named.has(item.component)) named.set(item.component, []);
+    named.get(item.component).push(item);
+  }
+  return [
+    { component: null, items: items.filter((i) => !i.component) },
+    ...[...named.keys()].sort(nameCollator.compare).map((component) => ({ component, items: named.get(component) })),
+  ];
+}
+
 // A project's STL files, two kinds: models from the Models page it uses (each opens there, and taking one out of the
 // project leaves it in Models), and STLs uploaded to the project only, which belong to it (versioned like its CAD files).
+// Either kind can be in one of the project's sub-components (Body, Fins...), set by the folder it was uploaded from or
+// with Move…, and is shown under it.
 export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload, onOpenModel }) {
   const { sourceModels } = useData();
   const [newVersionOf, setNewVersionOf] = useState(null);
+  const [moving, setMoving] = useState(null); // null | { kind: "model" | "stl", id, name, component }
+  const [folded, setFolded] = useState([]); // the sub-components folded away
   const models = project.modelIds.map((id) => sourceModels.find((m) => m.id === id)).filter(Boolean);
+  const items = [
+    ...models.map((m) => {
+      const component = project.modelCounts[m.id]?.component || null;
+      return {
+        key: `m${m.id}`,
+        component,
+        card: (
+          <ModelCard
+            key={`m${m.id}`}
+            project={project}
+            model={m}
+            onOpen={() => onOpenModel(m.id)}
+            onMove={() => setMoving({ kind: "model", id: m.id, name: m.name, component })}
+          />
+        ),
+      };
+    }),
+    ...project.stlFiles.map((f) => ({
+      key: `f${f.id}`,
+      component: f.component,
+      card: (
+        <FileCard
+          key={`f${f.id}`}
+          project={project}
+          kind={STL}
+          file={f}
+          onNewVersion={() => setNewVersionOf(f)}
+          onMove={() => setMoving({ kind: "stl", id: f.id, name: f.name, component: f.component })}
+        />
+      ),
+    })),
+  ];
+  const groups = inComponents(items);
+  const fold = (component) => setFolded(folded.includes(component) ? folded.filter((x) => x !== component) : [...folded, component]);
   return (
     <>
-      {models.length + project.stlFiles.length === 0 ? (
+      {items.length === 0 ? (
         <EmptyBox>
           No STL files yet. <b style={{ color: c.textMuted }}>Add from Models</b> uses a model already in Farmhand;{" "}
-          <b style={{ color: c.textMuted }}>Upload STL</b> adds a new one.
+          <b style={{ color: c.textMuted }}>Upload STL</b> adds a new one, or a whole folder of them.
         </EmptyBox>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -47,25 +107,103 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
           <div style={{ marginBottom: -6 }}>
             <HaveNeedLabel testId="stl-have-need-label" />
           </div>
-          {models.map((m) => (
-            <ModelCard key={`m${m.id}`} project={project} model={m} onOpen={() => onOpenModel(m.id)} />
-          ))}
-          {project.stlFiles.map((f) => (
-            <FileCard key={`f${f.id}`} project={project} kind={STL} file={f} onNewVersion={() => setNewVersionOf(f)} />
-          ))}
+          {groups.map(({ component, items: inIt }) =>
+            component === null ? (
+              inIt.map((i) => i.card)
+            ) : (
+              <ComponentGroup key={`c:${component}`} component={component} count={inIt.length} open={!folded.includes(component)} onToggle={() => fold(component)}>
+                {inIt.map((i) => i.card)}
+              </ComponentGroup>
+            )
+          )}
         </div>
       )}
       {adding && <AddFromModels project={project} onClose={onCloseAdd} />}
       {uploading && <UploadStl project={project} onClose={onCloseUpload} />}
       {newVersionOf && <UploadDialog project={project} kind={STL} file={newVersionOf} onClose={() => setNewVersionOf(null)} />}
+      {moving && (
+        <MoveDialog
+          project={project}
+          item={moving}
+          components={groups.map((g) => g.component).filter(Boolean)}
+          onClose={() => setMoving(null)}
+        />
+      )}
     </>
+  );
+}
+
+// One sub-component: its name and how many STLs are in it (click to fold them away), then its STLs, set in a little
+function ComponentGroup({ component, count, open, onToggle, children }) {
+  const bodyId = `stl-component-${component}`;
+  return (
+    <div data-testid="stl-component" data-component={component} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <button
+        data-testid="stl-component-toggle"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={onToggle}
+        title={open ? "Fold it away" : "Show its STLs"}
+        style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "4px 0 0", cursor: "pointer", textAlign: "left", ...ui }}
+      >
+        <ChevronDown size={14} color={c.textFaint} style={{ transform: open ? "none" : "rotate(-90deg)", transition: "transform 0.12s ease", flexShrink: 0 }} />
+        <Folder size={14} color={c.amber} style={{ flexShrink: 0 }} />
+        <span style={uiText(14, c.heading, { wordBreak: "break-word" })}>{shown(component)}</span>
+        <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap" })}>{plural(count, "STL")}</span>
+      </button>
+      {open && (
+        <div id={bodyId} style={{ display: "flex", flexDirection: "column", gap: 10, paddingLeft: 14, borderLeft: `2px solid ${c.border}`, marginLeft: 6 }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Moving an STL to another sub-component: one of the project's, picked, or a new one typed ("Body / Fins" for one
+// inside another); left blank, it's in none
+function MoveDialog({ project, item, components, onClose }) {
+  const { putProject } = useData();
+  const [name, setName] = useState(item.component ? shown(item.component) : "");
+  const { busy, error, run } = useAction();
+  const move = () =>
+    run(async () => {
+      putProject(await setProjectStlCounts(project.id, item.kind, item.id, { component: name.trim() || null }));
+      onClose();
+    });
+  return (
+    <Modal title={`Move ${item.name}`} onClose={onClose}>
+      {components.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={uiText(12, c.textFaint, { marginBottom: 6 })}>The project's sub-components</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {components.map((comp) => (
+              <button
+                key={comp}
+                data-testid="stl-move-pick"
+                onClick={() => setName(shown(comp))}
+                style={toolButton(12, shown(comp) === name.trim() ? { borderColor: c.amber, color: c.heading } : {})}
+              >
+                <Folder size={12} />
+                {shown(comp)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <TextField label="Sub-component (a / puts one inside another: Body / Fins)" value={name} onChange={setName} placeholder="e.g. Fins" />
+      <div style={uiText(12, c.textFaint, { marginBottom: 12, lineHeight: 1.5 })}>
+        Type a new name to start a sub-component, or leave it blank to take {item.name} out of any.
+      </div>
+      <ModalActions onClose={onClose} onSubmit={move} actionLabel="Move" submitting={busy} submittingLabel="Moving…" errorMsg={error} />
+    </Modal>
   );
 }
 
 // A model from the Models page in the project: have / need, its name, "In Models", its newest version with its preview
 // (the older ones behind the down arrow), and New version, Open in Models and Take out of project. It IS the model in
 // Models, not a copy: a new version uploaded here is that model's new version, on the Models page too.
-function ModelCard({ project, model, onOpen }) {
+function ModelCard({ project, model, onOpen, onMove }) {
   const { putProject } = useData();
   const [uploading, setUploading] = useState(false);
   const [showOlder, setShowOlder] = useState(false);
@@ -97,6 +235,7 @@ function ModelCard({ project, model, onOpen }) {
           />
           <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap", marginLeft: "auto" })}>{plural(model.versions.length, "version")}</span>
           <OlderToggle count={older.length} open={showOlder} onToggle={() => setShowOlder(!showOlder)} testId="stl-model-versions-toggle" />
+          <MoveButton testId="stl-model-move" onClick={onMove} />
           <HeadingButton
             testId="stl-model-new-version"
             Icon={Upload}
@@ -151,11 +290,26 @@ function AddFromModels({ project, onClose }) {
   );
 }
 
+// The sub-component each file picked with its folders goes in: the folders it was in, below the one chosen. Files from
+// one folder ("Shark/Fins/Fin.stl") go by the folders inside it ("Fins"), and those straight in it in none; files or
+// folders dropped side by side ("Fins/Fin.stl", "Tail.stl") by their own folders. Map file -> "Fins" | "Body/Fins" | null
+function componentsFromFolders(files) {
+  const folders = files.map((f) => folderPathOf(f).split("/").filter(Boolean).slice(0, -1));
+  const top = folders[0]?.[0];
+  const oneFolder = top != null && folders.every((parts) => parts[0] === top);
+  return new Map(files.map((f, i) => [f, folders[i].slice(oneFolder ? 1 : 0).join("/") || null]));
+}
+
 // An STL uploaded on the project's page, and the question that comes with it: also put it in Models (a new model
-// there, which the project uses), or keep it in this project only (it belongs to the project).
+// there, which the project uses), or keep it in this project only (it belongs to the project). Several can be picked,
+// or a whole folder: each file then goes in the sub-component named by the folder it was in.
 function UploadStl({ project, onClose }) {
   const { refresh } = useData();
   const [inModels, setInModels] = useState(null); // null until answered: "yes" | "no"
+  const [components, setComponents] = useState(new Map()); // file -> its sub-component (componentsFromFolders)
+  const counted = new Map();
+  for (const comp of components.values()) counted.set(comp, (counted.get(comp) || 0) + 1);
+  const named = [...counted.keys()].filter(Boolean).sort(nameCollator.compare);
   const option = (value, title, detail) => (
     <label style={{ display: "flex", alignItems: "flex-start", gap: 8, ...ui, fontSize: fs(13), color: c.textPrimary, marginBottom: 8, cursor: "pointer" }}>
       <input
@@ -177,16 +331,28 @@ function UploadStl({ project, onClose }) {
       project={project}
       kind={STL}
       multiple
+      folders
       onClose={onClose}
+      onPicked={(files) => setComponents(componentsFromFolders(files || []))}
       check={() => (inModels ? null : "Choose whether to also put them in Models.")}
       fields={{ inModels: inModels === "yes" }}
+      fieldsFor={(f) => ({ component: components.get(f) || undefined })}
       onUploaded={() => (inModels === "yes" ? refresh() : null)}
       extra={
-        <div data-testid="stl-in-models" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 12, marginBottom: 14, background: c.panelAlt }}>
-          <div style={uiText(13, c.heading, { marginBottom: 10 })}>Also put them in Models?</div>
-          {option("yes", "Yes, put them in Models too", "Each becomes a model on the Models page, kept in the STL folder, and this project uses it.")}
-          {option("no", "No, keep them in this project only", "Each belongs to this project: kept in the project files folder, with versions, and deleted with the project.")}
-        </div>
+        <>
+          {named.length > 0 && (
+            <div data-testid="stl-upload-components" style={uiText(12, c.textMuted, { marginTop: -6, marginBottom: 14, lineHeight: 1.6 })}>
+              From the folders, into {plural(named.length, "sub-component")}:{" "}
+              {named.map((comp) => `${shown(comp)} (${counted.get(comp)})`).join(", ")}
+              {counted.get(null) ? `; ${counted.get(null)} not in one` : ""}.
+            </div>
+          )}
+          <div data-testid="stl-in-models" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 12, marginBottom: 14, background: c.panelAlt }}>
+            <div style={uiText(13, c.heading, { marginBottom: 10 })}>Also put them in Models?</div>
+            {option("yes", "Yes, put them in Models too", "Each becomes a model on the Models page, kept in the STL folder, and this project uses it.")}
+            {option("no", "No, keep them in this project only", "Each belongs to this project: kept in the project files folder, with versions, and deleted with the project.")}
+          </div>
+        </>
       }
     />
   );

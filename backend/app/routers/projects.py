@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
-from ..schemas.project import BomOut, Counts, PartIn, PartUpdate, ProjectIn, ProjectOut
+from ..schemas.project import BomOut, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
 from ..services import project_files, project_parts, project_service, send_print
 from ..services.project_files import CAD, DOC, STL, THREEMF, Kind
 from ..services.project_service import out
@@ -58,18 +58,27 @@ def add_model(project_id: int, source_model_id: int, db: Session = Depends(get_d
         return out(project_service.add_model(db, project_id, source_model_id))
 
 
+def _change(payload: StlChange) -> dict:
+    """set_counts' arguments from what was sent: the sub-component only when it was sent (null clears it)."""
+    sent = {"need": payload.need, "have": payload.have}
+    if "component" in payload.model_fields_set:
+        sent["component"] = payload.component
+    return sent
+
+
 @router.patch("/{project_id}/source-models/{source_model_id}", response_model=ProjectOut)
-def set_model_counts(project_id: int, source_model_id: int, payload: Counts, db: Session = Depends(get_db)):
-    """How many prints of the model the project needs and has (need 1 or more, have 0 or more)."""
+def set_model_counts(project_id: int, source_model_id: int, payload: StlChange, db: Session = Depends(get_db)):
+    """How many prints of the model the project needs and has (need 1 or more, have 0 or more), and the sub-component
+    it's in."""
     with answer_errors():
-        return out(project_service.set_counts(db, project_id, "model", source_model_id, payload.need, payload.have))
+        return out(project_service.set_counts(db, project_id, "model", source_model_id, **_change(payload)))
 
 
 @router.patch("/{project_id}/stl/{file_id}", response_model=ProjectOut)
-def set_stl_counts(project_id: int, file_id: int, payload: Counts, db: Session = Depends(get_db)):
-    """How many prints of one of its own STLs the project needs and has."""
+def set_stl_counts(project_id: int, file_id: int, payload: StlChange, db: Session = Depends(get_db)):
+    """How many prints of one of its own STLs the project needs and has, and the sub-component it's in."""
     with answer_errors():
-        return out(project_service.set_counts(db, project_id, "stl", file_id, payload.need, payload.have))
+        return out(project_service.set_counts(db, project_id, "stl", file_id, **_change(payload)))
 
 
 @router.delete("/{project_id}/source-models/{source_model_id}", response_model=ProjectOut)
@@ -133,6 +142,7 @@ def upload_stl(
     file: UploadFile = File(...),
     in_models: bool = Form(..., description="true: also put it in Models (a new model the project uses); false: the project's own"),
     note: str | None = Form(None),
+    component: str | None = Form(None, description="The sub-component it goes in (its folder; \"Body/Left\" for one inside another)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -141,10 +151,11 @@ def upload_stl(
     another kind of file; 503 if the folder it goes to isn't there right now.
     """
     with answer_errors():
+        component = project_service.clean_component(component)  # a bad name refused before anything is saved
         if in_models:
-            return out(project_service.upload_to_models(db, project_id, file.filename, file.file, note))
-        project_files.upload(db, STL, project_id, file.filename, file.file, note)
-        return out(project_service.require_project(db, project_id))
+            return out(project_service.upload_to_models(db, project_id, file.filename, file.file, note, component))
+        f = project_files.upload(db, STL, project_id, file.filename, file.file, note)
+        return out(project_service.set_counts(db, project_id, "stl", f.id, component=component))
 
 
 @router.post("/{project_id}/threemf", response_model=ProjectOut, status_code=201)

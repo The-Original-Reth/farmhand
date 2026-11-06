@@ -12,7 +12,7 @@ import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components
 import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
 import { fieldBox, headerButton, monoText, uiText } from "../styles.js";
-import { Card, CardTitle, HeadingButton, nameStyle, OlderToggle, plural, ProjectOnlyTag } from "./pieces.jsx";
+import { Card, CardTitle, HeadingButton, MoveButton, nameStyle, OlderToggle, plural, ProjectOnlyTag } from "./pieces.jsx";
 
 // How many: "have / need", changed right there (each saved when the box is left or Enter is pressed; one out of range
 // goes back). Amber while there are fewer than needed, green once there are enough. `onSave({ have })` or
@@ -104,7 +104,7 @@ export const FILE_KINDS = {
   },
   stl: {
     key: "stl", noun: "STL file", Icon: Box, accept: ".stl,.obj", list: (p) => p.stlFiles,
-    drop: "Drop STL (or OBJ) files here: one, or several at once", previews: "It gets a preview like an STL in Models.",
+    drop: "Drop STL (or OBJ) files here: one, several, or a folder of them", previews: "It gets a preview like an STL in Models.",
   },
   threemf: {
     key: "threemf", noun: "3MF file", Icon: FileBox, accept: ".3mf", list: (p) => p.threemfFiles,
@@ -114,7 +114,8 @@ export const FILE_KINDS = {
 
 // A project's own STL also has how many prints it needs and has; its own 3MF, the printer it's for and, per version,
 // its G-code (Upload G-code for the newest; Download and Send to the printer).
-export function FileCard({ project, kind, file, onNewVersion }) {
+// `onMove`: a Move… button, for an STL's sub-component
+export function FileCard({ project, kind, file, onNewVersion, onMove }) {
   const { putProject, printers } = useData();
   const printer = file.printerId != null ? printers.find((p) => p.id === file.printerId) : null;
   const [showOlder, setShowOlder] = useState(false); // older versions start folded away
@@ -170,6 +171,7 @@ export function FileCard({ project, kind, file, onNewVersion }) {
               onClick={() => setGcodeFor(latest)}
             />
           )}
+          {onMove && <MoveButton testId={`${kind.key}-move`} onClick={onMove} />}
           <HeadingButton testId={`${kind.key}-new-version`} Icon={Upload} label="New version" onClick={onNewVersion} />
           <TrashButton onClick={() => setDeleting("file")} title={`Delete this ${kind.noun}, every version`} />
         </>
@@ -322,8 +324,11 @@ function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
 // what changed. `extra` goes above the note (an STL's "also put it in Models?", a 3MF's printer); `check()` can stop
 // the upload with a reason, `fields` adds to what's sent, and `onPicked(file)` hears of the file chosen.
 // `multiple`: several new files can be picked at once, each uploaded in turn with the same answers and note (not for a
-// new version, which is one file)
-export function UploadDialog({ project, kind, file: existing, onClose, extra, check, fields, onUploaded, onPicked, title, multiple = false }) {
+// new version, which is one file); `folders`: a whole folder too, and `fieldsFor(file)` adds what's sent for each file
+// (its sub-component, from the folder it was in)
+export function UploadDialog({
+  project, kind, file: existing, onClose, extra, check, fields, fieldsFor, onUploaded, onPicked, title, multiple = false, folders = false,
+}) {
   const { putProject } = useData();
   const many = multiple && !existing;
   const [picked, setPickedState] = useState(null); // a file, or with `many` a list of them
@@ -346,7 +351,7 @@ export function UploadDialog({ project, kind, file: existing, onClose, extra, ch
         for (const [i, f] of files.entries()) {
           setSending(i + 1);
           try {
-            putProject(await uploadProjectFile({ kind: kind.key, projectId: project.id, file: f, note, ...fields }));
+            putProject(await uploadProjectFile({ kind: kind.key, projectId: project.id, file: f, note, ...fields, ...fieldsFor?.(f) }));
           } catch (e) {
             if (!i) throw e;
             // the ones before it are in: keep only the rest picked, so Upload carries on from this one
@@ -369,6 +374,7 @@ export function UploadDialog({ project, kind, file: existing, onClose, extra, ch
         onFile={setPicked}
         accept={kind.accept}
         multiple={many}
+        folders={many && folders}
       />
       {extra}
       <TextField

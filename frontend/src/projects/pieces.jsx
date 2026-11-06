@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, FolderInput } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
@@ -33,10 +33,11 @@ export function Card({ testId, dataAttrs, heading, children }) {
 }
 
 // The left of a card's heading: `lead`, the icon, the name (cut short with "…", the whole of it on hover; `name` may be
-// a link), and its tags
+// a link), and its tags. It asks for room for some of the name besides the lead and tags, so in a narrow window the
+// buttons on the right go to a second line before the name is squeezed away; the tags never shrink.
 export function CardTitle({ lead, Icon, name, title, testId, tags }) {
   return (
-    <span style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px", minWidth: 0 }}>
+    <span style={{ display: "flex", alignItems: "center", gap: 8, flex: `1 1 ${lead ? 400 : 240}px`, minWidth: 0 }}>
       {lead}
       <Icon size={14} color={c.textFaint} style={{ flexShrink: 0 }} />
       {typeof name === "string" ? (
@@ -46,12 +47,13 @@ export function CardTitle({ lead, Icon, name, title, testId, tags }) {
       ) : (
         name
       )}
-      {tags}
+      {tags && <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>{tags}</span>}
     </span>
   );
 }
 
-export const nameStyle = (extra) => monoText(13, c.heading, { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...extra });
+export const nameStyle = (extra) =>
+  monoText(13, c.heading, { minWidth: "4em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...extra });
 
 // "In Models": a model or 3MF used by the project, which IS the one in the rest of Farmhand (not a copy)
 export function InModelsTag({ title }) {
@@ -102,6 +104,11 @@ export function HeadingButton({ testId, Icon, label, title, onClick }) {
       {label}
     </button>
   );
+}
+
+// An STL's Move… button: which of the project's sub-components it's in
+export function MoveButton({ testId, onClick }) {
+  return <HeadingButton testId={testId} Icon={FolderInput} label="Move…" title="Move it to another sub-component" onClick={onClick} />;
 }
 
 // Taking something out of the project (it stays where it is: nothing is deleted), asked first. `label` is the button's
