@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Box, ChevronDown, Download, ExternalLink, Folder, FolderInput, Layers, Plus, Upload, X } from "lucide-react";
 import { addProjectModel, API_BASE, deleteProjectFile, removeProjectModel, setProjectStlCounts } from "../api.js";
 import { c, fs, ui } from "../theme.js";
@@ -171,9 +171,10 @@ export function StlFiles({ project, adding, uploading, onCloseAdd, onCloseUpload
   );
 }
 
-// The STLs side by side, as many to a row as fit
+// The STLs side by side, as many to a row as fit, each tile a set width
+const TILE_WIDTH = 212;
 function TileGrid({ children }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>{children}</div>;
+  return <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, ${TILE_WIDTH}px)`, gap: 10 }}>{children}</div>;
 }
 
 // A small button on a tile: just an icon (what it does on hover), or a link when `href` is given
@@ -195,23 +196,23 @@ function TileButton({ testId, Icon, title, onClick, href, children }) {
 // and date, how many prints it has and needs, and Download, Move, Versions and `last` (a trash can, or Take out)
 function StlTile({ testId, dataAttrs, name, thumb, tag, ver, versions, haveNeed, download, onMove, onDetails, last }) {
   return (
-    <div data-testid={testId} {...dataAttrs} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
+    // two rows of the same height: the preview takes as much room as the text under it
+    <div data-testid={testId} {...dataAttrs} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden", display: "grid", gridTemplateRows: "1fr 1fr", gridTemplateColumns: "minmax(0, 1fr)", minWidth: 0 }}>
       <button
         data-testid="stl-tile-preview"
         onClick={onDetails}
         title={`${name}: show every version`}
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", aspectRatio: "4 / 3", padding: 0, border: "none", borderBottom: `1px solid ${c.border}`, background: "#FFFFFF", cursor: "pointer" }}
+        style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0, padding: 0, border: "none", borderBottom: `1px solid ${c.border}`, background: "#FFFFFF", cursor: "pointer" }}
       >
         {thumb ? (
-          <img src={thumb} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+          // filling the row, placed over it so the picture's own size never makes the row taller
+          <img src={thumb} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         ) : (
-          <Box size={36} color="#C7CACC" />
+          <Box size={28} color="#C7CACC" />
         )}
       </button>
       <div style={{ padding: "7px 8px 8px", display: "flex", flexDirection: "column", gap: 6, background: c.panelAlt, flex: 1 }}>
-        <div data-testid="stl-name" title={name} style={nameStyle({ minWidth: 0 })}>
-          {name}
-        </div>
+        <FitName name={name} />
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           {tag}
           {ver && <span style={uiText(11, c.textFaint, { whiteSpace: "nowrap" })}>v{ver.v}{ver.date ? ` · ${ver.date}` : ""}</span>}
@@ -229,6 +230,34 @@ function StlTile({ testId, dataAttrs, name, thumb, tag, ver, versions, haveNeed,
           <span style={{ marginLeft: "auto" }}>{last}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// A tile's name, its text made smaller (down to 9) until it fits on the line; one still too long is cut short with "…"
+// (the whole of it on hover)
+function FitName({ name }) {
+  const ref = useRef(null);
+  const textRef = useRef(null); // the text itself: its whole width, even where it's cut short
+  const [size, setSize] = useState(13);
+  const [fontsIn, setFontsIn] = useState(0); // the web font changes how wide the name is: measured again once it's in
+  useEffect(() => {
+    let live = true;
+    document.fonts?.ready.then(() => live && setFontsIn((n) => n + 1));
+    return () => {
+      live = false;
+    };
+  }, []);
+  useLayoutEffect(() => setSize(13), [name, fontsIn]); // a new name starts again at full size
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const text = textRef.current;
+    // a pixel to spare: widths are rounded, and one that only just fits is still cut short
+    if (el && text && size > 9 && text.getBoundingClientRect().width > el.clientWidth - 1) setSize(size - 0.5);
+  }, [size, name, fontsIn]);
+  return (
+    <div ref={ref} data-testid="stl-name" title={name} style={nameStyle({ minWidth: 0, fontSize: fs(size) })}>
+      <span ref={textRef}>{name}</span>
     </div>
   );
 }
