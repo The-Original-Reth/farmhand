@@ -91,13 +91,14 @@ function CountBox({ value, least, onSave, color, label, testId }) {
 
 // A project's own files: its documents and CAD files, and its STLs and 3MFs that aren't in Models. All work alike: a file with versions like
 // a 3MF's (the newest shown with its preview, the older ones behind a down arrow), kept in the project files folder.
-// opens: clicking a file's name opens it in a new tab; multiple: several can be uploaded at once
+// opens: clicking a file's name opens it in a new tab (a document's: shown as text only, no preview); multiple: several
+// can be uploaded at once
 export const FILE_KINDS = {
   doc: {
     opens: true,
     multiple: true,
     key: "doc", noun: "document", Icon: FileText, accept: undefined, list: (p) => p.docFiles, noteLabel: "Notes (optional)",
-    drop: "Drop the files here (any kind): one or several", previews: "Pictures get a preview.",
+    drop: "Drop the files here (any kind): one or several", previews: "",
   },
   cad: {
     key: "cad", noun: "CAD file", Icon: PenTool, accept: undefined, list: (p) => p.cadFiles,
@@ -283,7 +284,7 @@ function GcodeUpload({ project, file, ver, onClose }) {
 }
 
 // One version: its preview (drawn like an STL's where the file allows), number, date, size, what changed, and
-// Download and delete. opens: its file name opens it in a new tab (a document's)
+// Download and delete. opens: its file name opens it in a new tab, and no preview is shown (a document's)
 function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
   return (
     <div
@@ -291,9 +292,11 @@ function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
       data-version={ver.v}
       style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 16px", borderTop: `1px solid ${c.border}`, flexWrap: "wrap" }}
     >
-      <a href={ver.preview || undefined} target="_blank" rel="noreferrer" title={ver.preview ? "Open the preview" : "No preview for this kind of file"}>
-        <Thumb src={ver.preview} size={64} background="#FFFFFF" placeholderIcon />
-      </a>
+      {!opens && (
+        <a href={ver.preview || undefined} target="_blank" rel="noreferrer" title={ver.preview ? "Open the preview" : "No preview for this kind of file"}>
+          <Thumb src={ver.preview} size={64} background="#FFFFFF" placeholderIcon />
+        </a>
+      )}
       <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 30 })}>v{ver.v}</span>
       <div style={{ flex: "1 1 220px", minWidth: 0 }}>
         {opens ? (

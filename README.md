@@ -228,10 +228,13 @@ sudo docker compose down -v
 documents, CAD files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its six sections (Documents, CAD, STL
 files, BOM, 3MF files, Printers), each folding away with the arrow by its heading (remembered in this browser).
+- **Picking several files** (documents, STLs, project-only 3MFs): each pick or drop adds to the ones already picked,
+  so they can be gathered one at a time. They're listed under the drop box, each with a trash can to take it off
+  before **Upload**.
 - **Documents**: **Upload document** takes any file at all (a quote, drawings, instructions, photos, a
   spreadsheet...), one or several at once (each its own document, all with the same notes). Like CAD files, each keeps every version (**New version**, older ones behind the down
-  arrow, each with its own notes), each can be downloaded or deleted, and they're deleted with the project. A picture
-  (PNG, JPG, GIF, WebP, BMP) shows a preview of itself. Clicking a document's name (or a version's file name) opens
+  arrow, each with its own notes), each can be downloaded or deleted, and they're deleted with the project. Documents
+  are listed as text, without a preview. Clicking a document's name (or a version's file name) opens
   it in a new tab: a PDF, picture or text file shows in the browser, anything else downloads. A web page or SVG opened
   that way is shown sandboxed, so nothing in it runs. They're kept in `<project files>/<project number>/docs/`.
 - **CAD files**: **Upload CAD** takes a CAD file of any kind (Fusion, STEP, IGES, SolidWorks, OpenSCAD...), with an

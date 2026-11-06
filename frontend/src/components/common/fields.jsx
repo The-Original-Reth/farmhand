@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { Search, Upload, X } from "lucide-react";
 import { c, fs, ui } from "../../theme.js";
-import { fieldBox, uiText } from "../../styles.js";
+import { fieldBox, monoText, uiText } from "../../styles.js";
+import { formatBytes } from "../../lib/format.js";
+import { TrashButton } from "./ui.jsx";
 
 // A search box with a magnifier and a clear button. Esc clears it, or leaves it when it's already empty.
 // inputRef: for focusing it from outside (optional). style: the box's place on the page (width, margins).
@@ -80,7 +82,9 @@ async function droppedFiles(entries) {
   return out;
 }
 
-// `multiple`: several files can be picked or dropped at once, and `file` / `onFile` are a list of them instead.
+// `multiple`: several files can be picked or dropped at once, and `file` / `onFile` are a list of them instead. Each
+// pick or drop adds to the list (the same file twice is taken once), shown under the box, each with a trash can to
+// take it off again.
 // `folders` (with `multiple`): a folder can be dropped or chosen too, and every file in it and the folders inside it is
 // taken, each knowing where it was (folderPathOf).
 export function Dropzone({ label, compact = false, onFile, file, accept, multiple = false, folders = false }) {
@@ -96,6 +100,19 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
     const exts = accept.split(",").map((s) => s.trim().toLowerCase());
     const name = filename.toLowerCase();
     return exts.some((ext) => name.endsWith(ext));
+  };
+
+  // with `multiple`: these join the ones already picked
+  const add = (more) => {
+    if (!more.length) return;
+    const have = file || [];
+    const key = (f) => `${folderPathOf(f)}|${f.size}|${f.lastModified}`;
+    const seen = new Set(have.map(key));
+    onFile?.([...have, ...more.filter((f) => !seen.has(key(f)) && seen.add(key(f)))]);
+  };
+  const remove = (f) => {
+    const left = file.filter((x) => x !== f);
+    onFile?.(left.length ? left : null);
   };
 
   const handleDragOver = (e) => {
@@ -115,15 +132,11 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
     if (multiple && folders && e.dataTransfer.items?.length) {
       // read the entries now: they're gone once this event is over
       const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
-      droppedFiles(entries).then((all) => {
-        const taken = all.filter((f) => accepts(f.name));
-        if (taken.length) onFile?.(taken);
-      });
+      droppedFiles(entries).then((all) => add(all.filter((f) => accepts(f.name))));
       return;
     }
     if (multiple) {
-      const dropped = [...(e.dataTransfer.files || [])].filter((f) => accepts(f.name));
-      if (dropped.length) onFile?.(dropped);
+      add([...(e.dataTransfer.files || [])].filter((f) => accepts(f.name)));
       return;
     }
     const dropped = e.dataTransfer.files?.[0];
@@ -132,10 +145,10 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
     onFile?.(dropped);
   };
   const picked = multiple ? (file?.length ? file : null) : file;
-  const names = (list) => (list.length > 6 ? `${list.slice(0, 5).map((f) => f.name).join(", ")} and ${list.length - 5} more` : list.map((f) => f.name).join(", "));
-  const pickedName = !picked ? null : !multiple ? picked.name : picked.length === 1 ? picked[0].name : `${picked.length} files: ${names(picked)}`;
+  const pickedName = !picked ? null : !multiple ? picked.name : `${picked.length} picked: drop or click to add more`;
 
   return (
+    <>
     <div
       onClick={() => inputRef.current?.click()}
       onDragOver={handleDragOver}
@@ -166,7 +179,11 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
         type="file"
         accept={accept}
         multiple={multiple}
-        onChange={(e) => onFile?.(multiple ? [...(e.target.files || [])] : e.target.files?.[0] || null)}
+        onChange={(e) => {
+          if (multiple) add([...(e.target.files || [])]);
+          else onFile?.(e.target.files?.[0] || null);
+          e.target.value = ""; // so the same file can be picked again after it's taken off
+        }}
         style={{ display: "none" }}
       />
       {folders && (
@@ -176,8 +193,8 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
           webkitdirectory=""
           multiple
           onChange={(e) => {
-            const taken = [...(e.target.files || [])].filter((f) => accepts(f.name));
-            if (taken.length) onFile?.(taken);
+            add([...(e.target.files || [])].filter((f) => accepts(f.name)));
+            e.target.value = "";
           }}
           style={{ display: "none" }}
         />
@@ -198,6 +215,22 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
         </button>
       )}
     </div>
+    {multiple && picked && (
+      <div data-testid="dropzone-picked" style={{ marginTop: -6, marginBottom: 14, maxHeight: 220, overflowY: "auto", border: `1px solid ${c.border}`, borderRadius: 4 }}>
+        {picked.map((f, i) => (
+          <div
+            key={`${folderPathOf(f)}|${i}`}
+            data-testid="dropzone-picked-file"
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 6px 4px 10px", borderTop: i ? `1px solid ${c.border}` : "none" }}
+          >
+            <span style={monoText(12, c.textPrimary, { flex: 1, minWidth: 0, overflowWrap: "anywhere" })}>{folderPathOf(f)}</span>
+            <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap" })}>{formatBytes(f.size)}</span>
+            <TrashButton onClick={() => remove(f)} title={`Take ${f.name} off: it isn't uploaded`} />
+          </div>
+        ))}
+      </div>
+    )}
+    </>
   );
 }
 
