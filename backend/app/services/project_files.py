@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    Printer, ProjectCadFile, ProjectCadVersion, ProjectDocFile, ProjectDocVersion, ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfGcode,
-    ProjectThreemfVersion,
+    Printer, ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition, ProjectDocVersion,
+    ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfGcode, ProjectThreemfVersion,
 )
 from ..names import with_version
 from ..thumbnails.cad_preview import render_cad_preview
@@ -214,3 +214,24 @@ def send_gcode(db: Session, project_id: int, file_id: int, version: int) -> dict
     if printer is None:
         raise ValueError("This 3MF has no printer to send it to.")
     return send_file(db, printer, gcode.filename, gcode.file_path)
+
+
+def arrange(db: Session, kind: Kind, project_id: int, ids: list[int]) -> None:
+    """
+    Put a project's documents or CAD files in this order: `ids` has to be every one of them, each once (a file
+    uploaded since the list was shown makes it out of date: 422, so the page is reloaded and arranged again).
+    """
+    if kind not in (DOC, CAD):
+        raise ValueError(f"{kind.noun.capitalize()}s can't be arranged.")
+    project = require_project(db, project_id)
+    files = {f.id: f for f in (project.doc_files if kind is DOC else project.cad_files)}
+    if len(ids) != len(set(ids)) or set(ids) != set(files):
+        raise ValueError(f"The list of {kind.noun}s has changed since it was shown: reload the page and arrange them again.")
+    row_cls = ProjectDocFilePosition if kind is DOC else ProjectCadFilePosition
+    for place, file_id in enumerate(ids):
+        f = files[file_id]
+        if f.position_row is None:
+            f.position_row = row_cls(position=place)
+        else:
+            f.position_row.position = place
+    db.commit()

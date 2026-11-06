@@ -372,6 +372,18 @@ export function mockApi() {
     if (!f.versions.length) p[KIND[kind].list] = p[KIND[kind].list].filter((x) => x !== f);
     return projectOut(p);
   });
+  // a project's documents or CAD files, put in this order: every one of them, first to last
+  on("PUT", "/projects/:id/:kind/order", ({ id, kind }, body) => {
+    if (kind !== "doc" && kind !== "cad") fail404("Not found");
+    const p = project(id);
+    const list = p[KIND[kind].list] || [];
+    const ids = (body.ids || []).map(Number);
+    if (ids.length !== list.length || new Set(ids).size !== ids.length || !ids.every((i) => list.some((f) => f.id === i))) {
+      throw new HttpError(422, `The list of ${KIND[kind].noun}s has changed since it was shown: reload the page and arrange them again.`);
+    }
+    p[KIND[kind].list] = ids.map((i) => list.find((f) => f.id === i));
+    return projectOut(p);
+  });
   on("DELETE", "/projects/:id/:kind/:fid", ({ id, kind, fid }, _b, q) => {
     requireConfirm(q);
     const p = project(id);

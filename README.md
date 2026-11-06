@@ -228,6 +228,10 @@ sudo docker compose down -v
 documents, CAD files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its six sections (Documents, CAD, STL
 files, BOM, 3MF files, Printers), each folding away with the arrow by its heading (remembered in this browser).
+- **Arranging documents and CAD files**: drag one by the grip at its start to where it should go (an amber line
+  shows where it lands), or focus the grip and use the up and down arrow keys. The order is kept; a new upload goes
+  at the end. A document is one line: its version, name and date on the left; its size, versions, **New version**,
+  **Download** and trash can on the right, then the arrow that shows its older versions (they start folded away).
 - **Picking several files** (documents, STLs, project-only 3MFs): each pick or drop adds to the ones already picked,
   so they can be gathered one at a time. They're listed under the drop box, each with a trash can to take it off
   before **Upload**.

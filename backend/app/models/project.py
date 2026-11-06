@@ -74,6 +74,13 @@ class ProjectDocFile(Base):
         back_populates="file", order_by="ProjectDocVersion.version.desc()", cascade="all, delete-orphan"
     )
 
+    position_row: Mapped["ProjectDocFilePosition | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+
+    @property
+    def position(self) -> int | None:
+        """Its place in the project's list, as arranged (None: never arranged, so after those that were)"""
+        return self.position_row.position if self.position_row else None
+
 
 class ProjectDocVersion(Base):
     __tablename__ = "project_doc_versions"
@@ -104,6 +111,13 @@ class ProjectCadFile(Base):
     versions: Mapped[list["ProjectCadVersion"]] = relationship(
         back_populates="file", order_by="ProjectCadVersion.version.desc()", cascade="all, delete-orphan"
     )
+
+    position_row: Mapped["ProjectCadFilePosition | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+
+    @property
+    def position(self) -> int | None:
+        """Its place in the project's list, as arranged (None: never arranged, so after those that were)"""
+        return self.position_row.position if self.position_row else None
 
 
 class ProjectCadVersion(Base):
@@ -189,6 +203,22 @@ class ProjectSourceModel(Base):
 # Which sub-component of a project an STL is in ("Fins", or "Body/Left" for one inside another), set from the folder
 # it was uploaded from or moved by hand. Tables of their own (no row: not in one) because a column can't be added to
 # a table that's already there; each goes with its STL or model use.
+
+
+# Where a document or CAD file sits in its project's list, once they've been arranged (tables of their own: the schema
+# only ever adds tables)
+class ProjectDocFilePosition(Base):
+    __tablename__ = "project_doc_file_positions"
+
+    doc_file_id: Mapped[int] = mapped_column(ForeignKey("project_doc_files.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ProjectCadFilePosition(Base):
+    __tablename__ = "project_cad_file_positions"
+
+    cad_file_id: Mapped[int] = mapped_column(ForeignKey("project_cad_files.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class ProjectStlFileComponent(Base):

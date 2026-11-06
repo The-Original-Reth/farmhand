@@ -25,7 +25,9 @@ KEEP = object()  # set_counts: leave the sub-component as it is
 
 _LOAD = (
     selectinload(Project.doc_files).selectinload(ProjectDocFile.versions),
+    selectinload(Project.doc_files).selectinload(ProjectDocFile.position_row),
     selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),
+    selectinload(Project.cad_files).selectinload(ProjectCadFile.position_row),
     selectinload(Project.stl_files).selectinload(ProjectStlFile.versions),
     selectinload(Project.stl_files).selectinload(ProjectStlFile.component_row),
     selectinload(Project.threemf_files).selectinload(ProjectThreemfFile.versions).selectinload(ProjectThreemfVersion.gcode),
@@ -34,6 +36,11 @@ _LOAD = (
     selectinload(Project.printer_links),
     selectinload(Project.parts),
 )
+
+
+def arranged(files) -> list:
+    """Documents or CAD files in the order they were arranged; those never arranged (just uploaded) after them, oldest first"""
+    return sorted(files, key=lambda f: (f.position is None, f.position or 0, f.id))
 
 
 def _files_out(files) -> list[dict]:
@@ -66,8 +73,8 @@ def out(project: Project) -> dict:
         "id": project.id,
         "name": project.name,
         "created_at": project.created_at,
-        "doc_files": _files_out(project.doc_files),
-        "cad_files": _files_out(project.cad_files),
+        "doc_files": _files_out(arranged(project.doc_files)),
+        "cad_files": _files_out(arranged(project.cad_files)),
         "stl_files": _files_out(project.stl_files),
         "threemf_files": _files_out(project.threemf_files),
         "source_model_ids": [link.source_model_id for link in project.model_links],

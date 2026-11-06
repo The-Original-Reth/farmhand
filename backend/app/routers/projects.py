@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
-from ..schemas.project import BomOut, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
+from ..schemas.project import BomOut, FileOrder, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
 from ..services import project_files, project_parts, project_service, send_print
 from ..services.project_files import CAD, DOC, STL, THREEMF, Kind
 from ..services.project_service import out
@@ -174,6 +174,19 @@ def upload_threemf(
     with answer_errors():
         project_files.upload(db, THREEMF, project_id, file.filename, file.file, note, printer_id=printer_id)
         return out(project_service.require_project(db, project_id))
+
+
+def _order_route(kind: Kind) -> None:
+    @router.put(f"/{{project_id}}/{kind.key}/order", response_model=ProjectOut, name=f"arrange_{kind.key}")
+    def arrange(project_id: int, payload: FileOrder, db: Session = Depends(get_db)):
+        """Put the project's documents or CAD files in this order: `ids` is every one of them, first to last (422 if not)."""
+        with answer_errors():
+            project_files.arrange(db, kind, project_id, payload.ids)
+            return out(project_service.require_project(db, project_id))
+
+
+for _kind in (DOC, CAD):
+    _order_route(_kind)
 
 
 def _file_routes(kind: Kind) -> None:

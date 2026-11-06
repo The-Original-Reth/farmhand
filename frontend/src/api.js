@@ -239,6 +239,8 @@ export const uploadProjectFileVersion = ({ kind, projectId, fileId, file, note }
   request(`/projects/${projectId}/${kind}/${fileId}/versions`, formBody("POST", { file, note: note || undefined }));
 export const deleteProjectFileVersion = (kind, projectId, fileId, v) => del(`/projects/${projectId}/${kind}/${fileId}/versions/${v}`);
 export const deleteProjectFile = (kind, projectId, fileId) => del(`/projects/${projectId}/${kind}/${fileId}`);
+// A project's documents or CAD files ("doc" / "cad") put in this order: every one's id, first to last. Answers the project.
+export const arrangeProjectFiles = (kind, projectId, ids) => request(`/projects/${projectId}/${kind}/order`, jsonBody("PUT", { ids }));
 // A model from the Models page: put in a project, or taken out of it (the model itself stays)
 export const addProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "PUT" });
 export const removeProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "DELETE" });

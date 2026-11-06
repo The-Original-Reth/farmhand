@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, FileBox, FileCode, FileText, PenTool, Send, Upload } from "lucide-react";
+import { Box, ChevronDown, FileBox, FileCode, FileText, PenTool, Send, Upload } from "lucide-react";
 import {
   deleteProjectFile, deleteProjectFileVersion, errorText, sendProjectGcode, setProjectStlCounts, uploadProjectFile,
   uploadProjectFileVersion, uploadProjectGcode,
@@ -11,7 +11,7 @@ import { formatBytes } from "../lib/format.js";
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
-import { fieldBox, headerButton, monoText, uiText } from "../styles.js";
+import { fieldBox, headerButton, monoText, toolButton, uiText } from "../styles.js";
 import { Card, CardTitle, HeadingButton, MoveButton, nameStyle, OlderToggle, plural, ProjectOnlyTag } from "./pieces.jsx";
 
 // How many: "have / need", changed right there (each saved when the box is left or Enter is pressed; one out of range
@@ -117,8 +117,9 @@ export const FILE_KINDS = {
 
 // A project's own STL also has how many prints it needs and has; its own 3MF, the printer it's for and, per version,
 // its G-code (Upload G-code for the newest; Download and Send to the printer).
-// `onMove`: a Move… button, for an STL's sub-component
-export function FileCard({ project, kind, file, onNewVersion, onMove }) {
+// `onMove`: a Move… button, for an STL's sub-component; `grip`: the handle it's arranged by, at its start. A document
+// is one line (DocLine).
+export function FileCard({ project, kind, file, onNewVersion, onMove, grip }) {
   const { putProject, printers } = useData();
   const printer = file.printerId != null ? printers.find((p) => p.id === file.printerId) : null;
   const [showOlder, setShowOlder] = useState(false); // older versions start folded away
@@ -141,12 +142,46 @@ export function FileCard({ project, kind, file, onNewVersion, onMove }) {
   ) : (
     file.name
   );
+  const deleteDialog = deleting && (
+    <ConfirmDialog
+      title={deleting === "file" ? `Delete ${kind.noun}` : "Delete version"}
+      confirmLabel="Delete"
+      onClose={() => setDeleting(null)}
+      onConfirm={async () =>
+        putProject(
+          await (deleting === "file"
+            ? deleteProjectFile(kind.key, project.id, file.id)
+            : deleteProjectFileVersion(kind.key, project.id, file.id, deleting.v))
+        )
+      }
+    >
+      {deleting === "file" ? (
+        <>
+          Delete <strong>{file.name}</strong> and {file.versions.length === 1 ? "its only version" : `all ${file.versions.length} versions`}?
+        </>
+      ) : (
+        <>
+          Delete <strong>{deleting.filename}</strong> (v{deleting.v})?
+          {file.versions.length === 1 && <DeleteWarning>It's the only version, so the {kind.noun} goes too.</DeleteWarning>}
+        </>
+      )}
+      <DeleteWarning>The {deleting === "file" ? "files are" : "file is"} deleted for good.</DeleteWarning>
+    </ConfirmDialog>
+  );
+  if (kind.key === "doc") {
+    return (
+      <DocLine file={file} grip={grip} bodyId={bodyId} showOlder={showOlder} onToggleOlder={() => setShowOlder(!showOlder)} onNewVersion={onNewVersion} onDelete={setDeleting}>
+        {deleteDialog}
+      </DocLine>
+    );
+  }
   return (
     <Card
       testId={`${kind.key}-file`}
       dataAttrs={{ "data-file-id": file.id }}
       heading={
         <>
+          {grip}
           <CardTitle
             lead={
               kind.key === "stl" && (
@@ -192,33 +227,69 @@ export function FileCard({ project, kind, file, onNewVersion, onMove }) {
           ))}
       </div>
       {gcodeFor && <GcodeUpload project={project} file={file} ver={gcodeFor} onClose={() => setGcodeFor(null)} />}
-      {deleting && (
-        <ConfirmDialog
-          title={deleting === "file" ? `Delete ${kind.noun}` : "Delete version"}
-          confirmLabel="Delete"
-          onClose={() => setDeleting(null)}
-          onConfirm={async () =>
-            putProject(
-              await (deleting === "file"
-                ? deleteProjectFile(kind.key, project.id, file.id)
-                : deleteProjectFileVersion(kind.key, project.id, file.id, deleting.v))
-            )
-          }
-        >
-          {deleting === "file" ? (
-            <>
-              Delete <strong>{file.name}</strong> and {file.versions.length === 1 ? "its only version" : `all ${file.versions.length} versions`}?
-            </>
-          ) : (
-            <>
-              Delete <strong>{deleting.filename}</strong> (v{deleting.v})?
-              {file.versions.length === 1 && <DeleteWarning>It's the only version, so the {kind.noun} goes too.</DeleteWarning>}
-            </>
-          )}
-          <DeleteWarning>The {deleting === "file" ? "files are" : "file is"} deleted for good.</DeleteWarning>
-        </ConfirmDialog>
-      )}
+      {deleteDialog}
     </Card>
+  );
+}
+
+// A document, on one line: its grip, its newest version's number, file name (opens it in a new tab; its notes on hover)
+// and date on the left; its size, how many versions, New version, Download, a trash can (the whole document) and, a
+// little apart, the arrow that shows its older versions (listed under it; they start folded away) on the right.
+// onDelete("file") or onDelete(a version) asks first.
+function DocLine({ file, grip, bodyId, showOlder, onToggleOlder, onNewVersion, onDelete, children }) {
+  const [latest, ...older] = file.versions;
+  const versions = plural(file.versions.length, "version");
+  return (
+    <div data-testid="doc-file" data-file-id={file.id} style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden" }}>
+      {/* the left and right sides; in a window too narrow for one line, the right side goes under the left */}
+      <div data-testid="file-version" data-version={latest.v} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, rowGap: 4, padding: "4px 8px 4px 12px", background: c.panelAlt }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 240px", minWidth: 0 }}>
+          {grip}
+          <span style={monoText(12, c.amber, { width: 26, flexShrink: 0 })}>v{latest.v}</span>
+          <a
+            data-testid="doc-name"
+            href={latest.view}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Open ${latest.filename} in a new tab${latest.note ? `\n${latest.note}` : ""}`}
+            style={monoText(12, c.textPrimary, {
+              minWidth: "6em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3,
+            })}
+          >
+            {latest.filename}
+          </a>
+          {latest.date && (
+            <span data-testid="file-version-date" title="Uploaded" style={uiText(12, c.textFaint, { whiteSpace: "nowrap", flexShrink: 0 })}>
+              {latest.date}
+            </span>
+          )}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", gap: 10, rowGap: 4, marginLeft: "auto" }}>
+          <span data-testid="file-version-size" style={uiText(12, c.textFaint, { whiteSpace: "nowrap", flexShrink: 0 })}>
+            {formatBytes(latest.size)}
+          </span>
+          <span data-testid="doc-versions" style={uiText(12, c.textFaint, { whiteSpace: "nowrap", flexShrink: 0 })}>{versions}</span>
+          <HeadingButton testId="doc-new-version" Icon={Upload} label="New version" onClick={onNewVersion} />
+          <DownloadButton href={latest.download} />
+          <TrashButton onClick={() => onDelete("file")} title="Delete this document, every version" />
+          {/* the older versions' arrow, kept apart from the trash can (its room is kept when there are none, so the lines match) */}
+          <button
+            data-testid="doc-versions-toggle"
+            aria-expanded={showOlder}
+            aria-controls={bodyId}
+            onClick={onToggleOlder}
+            disabled={!older.length}
+            title={!older.length ? "No older versions" : showOlder ? "Hide the older versions" : `Show the ${plural(older.length, "older version")}`}
+            style={toolButton(12, { padding: "4px 6px", marginLeft: 12, flexShrink: 0, visibility: older.length ? "visible" : "hidden" })}
+          >
+            <ChevronDown size={14} style={{ transform: showOlder ? "rotate(180deg)" : "none", transition: "transform 0.12s ease" }} />
+          </button>
+        </span>
+      </div>
+      <div id={bodyId}>{showOlder && older.map((v) => <FileVersionRow key={v.v} ver={v} opens onDelete={() => onDelete(v)} />)}</div>
+      {children}
+    </div>
   );
 }
 

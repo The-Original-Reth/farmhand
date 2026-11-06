@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Box, FileBox, FileText, FolderKanban, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
-import { createProject, deleteProject, renameProject } from "../api.js";
+import { Box, FileBox, FileText, FolderKanban, GripVertical, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
+import { arrangeProjectFiles, createProject, deleteProject, renameProject } from "../api.js";
 import { c } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
@@ -250,18 +250,85 @@ const EMPTY = {
   ),
 };
 
-// The project's documents or CAD files (`kind`), each with its versions
+// The project's documents or CAD files (`kind`), each with its versions. They're arranged by dragging one by its grip
+// (or with the arrow keys on the grip), and stay in that order.
 function OwnFiles({ project, kind, uploading, onCloseUpload }) {
+  const { putProject } = useData();
   const [newVersionOf, setNewVersionOf] = useState(null);
+  const [grabbed, setGrabbed] = useState(null); // the id of the one held by its grip (it can then be dragged)
+  const [dropAt, setDropAt] = useState(null); // while dragging: { id, after } of the one it would go before or after
+  const { error, run } = useAction();
   const files = kind.list(project);
+  const ids = files.map((f) => f.id);
+  // move `id` to just before (or after) `target`, and save the new order
+  const move = (id, target, after) => {
+    const rest = ids.filter((x) => x !== id);
+    const at = rest.indexOf(target) + (after ? 1 : 0);
+    const next = [...rest.slice(0, at), id, ...rest.slice(at)];
+    if (next.join() !== ids.join()) run(async () => putProject(await arrangeProjectFiles(kind.key, project.id, next)));
+  };
+  const step = (id, by) => {
+    const i = ids.indexOf(id);
+    const j = i + by;
+    if (j >= 0 && j < ids.length) move(id, ids[j], by > 0);
+  };
+  const grip = (f) => (
+    <button
+      data-testid={`${kind.key}-grip`}
+      onMouseDown={() => setGrabbed(f.id)}
+      onMouseUp={() => setGrabbed(null)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          step(f.id, e.key === "ArrowUp" ? -1 : 1);
+        }
+      }}
+      title="Drag to arrange (or use the up and down arrow keys)"
+      aria-label={`Move ${f.name}: up and down arrow keys`}
+      style={{ display: "flex", alignItems: "center", background: "none", border: "none", padding: 0, color: c.textFaint, cursor: "grab", flexShrink: 0 }}
+    >
+      <GripVertical size={14} />
+    </button>
+  );
+  const line = (where) => <div style={{ height: 2, background: c.amber, borderRadius: 1, margin: where === "before" ? "-6px 0 4px" : "4px 0 -6px" }} />;
   return (
     <>
+      {error && <div style={uiText(12, c.amber, { marginBottom: 8 })}>{error}</div>}
       {files.length === 0 ? (
         <div style={panelBox({ padding: "7px 12px", ...uiText(13, c.textFaint, { lineHeight: 1.5 }) })}>{EMPTY[kind.key]}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div data-testid={`${kind.key}-list`} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {files.map((f) => (
-            <FileCard key={f.id} project={project} kind={kind} file={f} onNewVersion={() => setNewVersionOf(f)} />
+            <div
+              key={f.id}
+              draggable={grabbed === f.id}
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", String(f.id));
+              }}
+              onDragOver={(e) => {
+                if (grabbed == null) return; // only one of these, not a file dropped from the computer
+                e.preventDefault();
+                const r = e.currentTarget.getBoundingClientRect();
+                const after = e.clientY > r.top + r.height / 2;
+                if (dropAt?.id !== f.id || dropAt.after !== after) setDropAt({ id: f.id, after });
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (grabbed != null && dropAt && grabbed !== dropAt.id) move(grabbed, dropAt.id, dropAt.after);
+                setGrabbed(null);
+                setDropAt(null);
+              }}
+              onDragEnd={() => {
+                setGrabbed(null);
+                setDropAt(null);
+              }}
+              style={{ opacity: grabbed === f.id && dropAt ? 0.5 : 1 }}
+            >
+              {dropAt?.id === f.id && !dropAt.after && grabbed !== f.id && line("before")}
+              <FileCard project={project} kind={kind} file={f} grip={grip(f)} onNewVersion={() => setNewVersionOf(f)} />
+              {dropAt?.id === f.id && dropAt.after && grabbed !== f.id && line("after")}
+            </div>
           ))}
         </div>
       )}

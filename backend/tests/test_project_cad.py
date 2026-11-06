@@ -211,3 +211,39 @@ def test_a_document_opens_in_the_browser_and_cant_run_scripts(api):
     page = api.post(f"/projects/{pid}/doc", files={"file": ("Notes.html", io.BytesIO(b"<script>alert(1)</script>"))}).json()["doc_files"][-1]
     assert api.get(f"/projects/{pid}/doc/{page['id']}/versions/1/view").headers["content-security-policy"] == "sandbox"
     assert api.get(f"/projects/{pid}/doc/{doc['id']}/versions/9/view").status_code == 404
+
+
+# ------------------------------------------------------------------ arranging
+
+
+def _doc(api, pid, name):
+    return api.post(f"/projects/{pid}/doc", files={"file": (name, io.BytesIO(b"x"))}).json()["doc_files"][-1]["id"]
+
+
+def test_documents_are_arranged_and_stay_that_way(api):
+    pid = _project(api)
+    a, b, c = (_doc(api, pid, n) for n in ("A.txt", "B.txt", "C.txt"))
+    r = api.put(f"/projects/{pid}/doc/order", json={"ids": [c, a, b]})
+    assert r.status_code == 200 and [d["id"] for d in r.json()["doc_files"]] == [c, a, b]
+    d = _doc(api, pid, "D.txt")  # a new one goes after those arranged
+    assert [x["id"] for x in api.get(f"/projects/{pid}").json()["doc_files"]] == [c, a, b, d]
+    api.delete(f"/projects/{pid}/doc/{a}", params={"confirm": "true"})  # its place goes with it
+    assert [x["id"] for x in api.get(f"/projects/{pid}").json()["doc_files"]] == [c, b, d]
+
+
+def test_cad_files_are_arranged_on_their_own(api):
+    pid = _project(api)
+    x = _upload(api, pid, name="X.f3d").json()["cad_files"][-1]["id"]
+    y = _upload(api, pid, name="Y.f3d").json()["cad_files"][-1]["id"]
+    doc = _doc(api, pid, "Quote.pdf")
+    assert [f["id"] for f in api.put(f"/projects/{pid}/cad/order", json={"ids": [y, x]}).json()["cad_files"]] == [y, x]
+    assert [d["id"] for d in api.get(f"/projects/{pid}").json()["doc_files"]] == [doc]  # the documents are left as they were
+
+
+def test_an_out_of_date_order_is_turned_down(api):
+    pid = _project(api)
+    a, b = _doc(api, pid, "A.txt"), _doc(api, pid, "B.txt")
+    for ids in ([a], [a, b, b], [a, b, 999]):
+        r = api.put(f"/projects/{pid}/doc/order", json={"ids": ids})
+        assert r.status_code == 422 and "reload the page" in r.json()["detail"]
+    assert api.put(f"/projects/999/doc/order", json={"ids": []}).status_code == 404

@@ -44,6 +44,12 @@ class Counts(BaseModel):
     have: int | None = None
 
 
+class FileOrder(BaseModel):
+    """A project's documents or CAD files, in the order to put them: every one, first to last."""
+
+    ids: list[int]
+
+
 class StlChange(Counts):
     """An STL's counts, and the sub-component it's in ("Body/Left" for one inside another; blank or null: none).
     Only what's sent changes."""
