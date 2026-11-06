@@ -144,7 +144,8 @@ them at the end: all four should say **running**. Your data is kept. Then reload
   passwords) and every printer's and model's records are also on the NAS, kept up to date after every change.
 - **To move to a new computer, or after a lost one:** install Farmhand there (steps 1–4), add the same network
   share on the Settings page, choose the same settings folder, and pick **Use those settings**. Then type the
-  share's and PrusaLink printers' passwords in again: they are never written to the NAS.
+  shares' passwords in again: they are never written to the NAS. Printers come back with their Moonraker API keys
+  and PrusaLink passwords, ready to connect.
 
 ## Stopping and removing
 
@@ -458,9 +459,10 @@ so a print can't start twice. An address typed in is the only one used. (A Prusa
 own, so it has nothing to switch to.)
 - Moonraker: the address defaults to port 7125 of the printer's IP; an API key is only needed if Moonraker asks
   for one.
-- PrusaLink: the address defaults to the printer's IP. The username is usually `maker`, and the password is shown on the printer (Settings › Network › PrusaLink). A **Buddy3D camera IP** can be given too (see "Monitor").
-API keys and passwords are stored as-is (they're needed for every call) but never sent back to the browser or
-written to the copy on the NAS.
+- PrusaLink: the address defaults to the printer's IP. The username is usually `maker`, and the password is shown on the printer (Settings › Network › PrusaLink). **Show** beside the password box shows it, the saved one too on a printer's Edit page. A **Buddy3D camera IP** can be given too (see "Monitor").
+API keys and passwords are stored as-is (they're needed for every call). A printer's are written to its file in the
+copy on the NAS, so keep that folder private; a share's password never is. A saved PrusaLink password is sent to the
+browser only when **Show** asks for it; a Moonraker API key never is.
 
 ### Moonraker (Klipper) printers
 
@@ -658,9 +660,10 @@ order), and your storage setup (the STL, 3MF and project files folders and the n
   history, energy readings, the 1500-hour service and Farmhand-kept maintenance) and a file per model in
   `models/` (its notes, and each of its 3MF files' notes and starred version). **Restore** brings back what's
   missing and never overwrites what's already there.
-- **Passwords are never written to it** — not a share's, not a Moonraker API key, not a PrusaLink password. A
-  restored share comes back saved but not connected and says it needs its password (use **Edit** on it); a
-  restored PrusaLink printer needs its password typed in again.
+- **A printer's file holds its Moonraker API key and PrusaLink password**, so a restored printer connects straight
+  away (a printer missing its key or password gets it back from its file). Keep the settings folder private.
+  **A share's password is never written to it**: a restored share comes back saved but not connected and says it
+  needs its password (use **Edit** on it).
 - **A folder that already holds settings is never overwritten without asking.** Pointing at one
   asks: *Use those settings* (restore them), or *Replace with current settings*. Until you
   choose, nothing is changed. A damaged file can only be replaced.

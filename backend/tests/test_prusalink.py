@@ -258,26 +258,25 @@ def test_maintenance_over_the_api(client, fake):
 # ------------------------------------------------------------------ the copy on the NAS
 
 
-def test_the_nas_copy_keeps_the_prusalink_setup_and_maintenance_but_never_the_password(db_session, fake, tmp_path):
+def test_the_nas_copy_keeps_the_prusalink_setup_its_password_and_maintenance(db_session, fake, tmp_path):
     p = _core_one(db_session)
     fake.start_job(1, "x.bgcode", progress=100, time_printing=3600, state="FINISHED")
     pl.poll(db_session, p)
     mr.add_maintenance(p, name="Clean the nozzle", note="", reminder=None)
     records_service.write_all(db_session, tmp_path)
-    text = (tmp_path / "printers" / "Core One.json").read_text(encoding="utf-8")
-    assert "secret123" not in text
-    doc = json.loads(text)
+    doc = json.loads((tmp_path / "printers" / "Core One.json").read_text(encoding="utf-8"))
     assert doc["printer"]["connection_type"] == "prusalink" and doc["printer"]["prusalink_username"] == "maker"
+    assert doc["printer"]["prusalink_password"] == "secret123"
     assert doc["maintenance"][0]["entry"]["name"] == "Clean the nozzle"
 
-    # into an empty Farmhand: it comes back as a PrusaLink printer, needing its password typed in again
+    # into an empty Farmhand: it comes back as a PrusaLink printer with its password, ready to connect
     from .test_records import _fresh_session
 
     db = _fresh_session()
     out = records_service.restore_all(db, tmp_path)
     assert out["printers_added"] == ["Core One"] and out["prints_added"] == 1
     restored = printer_service.find_by_name(db, "Core One")
-    assert restored.connection_type == "prusalink" and not restored.has_prusalink_password
+    assert restored.connection_type == "prusalink" and restored.prusalink_row.password == "secret123"
     assert [r.entry["name"] for r in restored.maintenance_rows] == ["Clean the nozzle"]
     assert rs.PRINTERS_DIR == "printers"
 
@@ -358,3 +357,23 @@ def test_the_live_status_says_the_address_that_answered(api, fake, monkeypatch):
     _two_ips(monkeypatch, fake)
     out = api.get(f"/printers/{p['id']}/prusalink").json()
     assert out["reachable"] and out["prusalink_url"] == "http://10.0.6.41"
+
+
+def test_a_printer_that_lost_its_password_gets_it_back_from_the_nas_copy(db_session, fake, tmp_path):
+    p = _core_one(db_session)
+    records_service.write_all(db_session, tmp_path)
+    printer_service.update_printer(db_session, p.id, {"prusalink_password": ""})  # cleared here
+    assert not p.has_prusalink_password
+    out = records_service.restore_all(db_session, tmp_path)
+    assert out["printers_filled"] == ["Core One"] and p.prusalink_row.password == "secret123"
+
+
+def test_the_saved_password_is_shown_when_asked_for(api, fake):
+    printer = api.post("/printers", json={"name": "Core One", "wired_ip": "10.0.6.30"}).json()
+    assert api.get(f"/printers/{printer['id']}/prusalink/password").status_code == 409  # not a PrusaLink printer
+    api.patch(f"/printers/{printer['id']}", json={"connection_type": "prusalink"})
+    assert api.get(f"/printers/{printer['id']}/prusalink/password").json() == {"password": None}
+    api.patch(f"/printers/{printer['id']}", json={"prusalink_password": "secret123"})
+    assert api.get(f"/printers/{printer['id']}/prusalink/password").json() == {"password": "secret123"}
+    assert "secret123" not in api.get(f"/printers/{printer['id']}").text  # only there, not with the printer
+    assert api.get("/printers/999/prusalink/password").status_code == 404

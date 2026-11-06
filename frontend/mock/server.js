@@ -450,7 +450,7 @@ export function mockApi() {
     if (farm.printers.some((p) => p.name === body.name.trim())) throw new HttpError(409, `A printer named '${body.name}' already exists — name is the unique key, not IP`);
     const p = { id: farm.nextIds.printer++, name: body.name.trim(), kind: body.kind, wired_ip: body.wired_ip, wireless_ip: body.wireless_ip, decommissioned: false, created_at: iso(nowUnix()), moonraker: null, notes: "", serviceHoursSince: null, serviceHistory: [] };
     if (body.connection_type === "prusalink") {
-      p.prusalink = { reachable: true, firmware: "6.2.0", username: body.prusalink_username || "maker", hasPassword: !!body.prusalink_password, url: body.prusalink_url || null };
+      p.prusalink = { reachable: true, firmware: "6.2.0", username: body.prusalink_username || "maker", hasPassword: !!body.prusalink_password, password: body.prusalink_password || null, url: body.prusalink_url || null };
     } else {
       p.moonraker_url_override = body.moonraker_url || null;
       p.apiKey = body.moonraker_api_key || null;
@@ -480,7 +480,10 @@ export function mockApi() {
     if (p.prusalink) {
       if ("prusalink_url" in body) p.prusalink.url = body.prusalink_url || null;
       if (body.prusalink_username != null) p.prusalink.username = body.prusalink_username.trim() || "maker";
-      if (body.prusalink_password != null) p.prusalink.hasPassword = !!body.prusalink_password;
+      if (body.prusalink_password != null) {
+        p.prusalink.hasPassword = !!body.prusalink_password;
+        p.prusalink.password = body.prusalink_password || null;
+      }
     }
     return printerOut(p);
   });
@@ -1207,6 +1210,10 @@ export function mockApi() {
     if (!p.prusalink) throw new HttpError(409, "This printer isn't set up for PrusaLink");
     return p;
   };
+  on("GET", "/printers/:id/prusalink/password", ({ id }) => {
+    const p = prusaPrinter(id);
+    return { password: p.prusalink.password || (p.prusalink.hasPassword ? "sample-password" : null) };
+  });
   on("GET", "/printers/:id/prusalink", ({ id }) => {
     const p = prusaPrinter(id);
     const out = {

@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
-import { uiText } from "../styles.js";
-import { createPrinter, updatePrinter } from "../api.js";
+import { fieldBox, toolButton, uiText } from "../styles.js";
+import { createPrinter, errorText, getPrusaLinkPassword, updatePrinter } from "../api.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
 
@@ -26,6 +27,57 @@ const newConnection = (printer = null) => ({
   prusalinkPassword: "", // blank = keep whatever is saved
   cameraAddress: printer?.cameraAddress || "", // the Buddy3D camera's IP: a Prusa's camera has its own
 });
+// The PrusaLink password box, with Show / Hide. Showing it on a printer with one saved fetches the saved one into the box
+// (saving the form then keeps it as it is).
+function PrusaLinkPassword({ value, onChange, saved }) {
+  const [shown, setShown] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const toggle = async () => {
+    setError(null);
+    if (!shown && !value && saved?.hasPrusalinkPassword) {
+      setLoading(true);
+      try {
+        onChange((await getPrusaLinkPassword(saved.id)) || "");
+      } catch (e) {
+        setLoading(false);
+        return setError(`Couldn't fetch the saved password: ${errorText(e)}`);
+      }
+      setLoading(false);
+    }
+    setShown(!shown);
+  };
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={uiText(12, c.textFaint, { marginBottom: 5 })}>PrusaLink password</div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          data-testid="prusalink-password"
+          type={shown ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={saved?.hasPrusalinkPassword ? "A password is saved. Type a new one to replace it, or Show it." : "Shown on the printer: Settings > Network > PrusaLink"}
+          autoComplete="new-password"
+          aria-label="PrusaLink password"
+          style={{ ...fieldBox(), flex: 1, minWidth: 0, padding: "8px 10px", fontSize: fs(13), ...ui }}
+        />
+        <button
+          type="button"
+          data-testid="prusalink-password-show"
+          onClick={toggle}
+          disabled={loading}
+          title={shown ? "Hide the password" : saved?.hasPrusalinkPassword && !value ? "Show the saved password" : "Show the password"}
+          style={toolButton(12, { whiteSpace: "nowrap" })}
+        >
+          {shown ? <EyeOff size={13} /> : <Eye size={13} />}
+          {loading ? "Fetching…" : shown ? "Hide" : "Show"}
+        </button>
+      </div>
+      {error && <div style={uiText(12, c.amber, { marginTop: 5 })}>{error}</div>}
+    </div>
+  );
+}
+
 // What the API is sent for it: only the chosen kind's fields
 const connectionFields = (conn) =>
   conn.type === "prusalink"
@@ -58,13 +110,7 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
             }
           />
           <TextField label="PrusaLink username" value={conn.prusalinkUsername} onChange={set("prusalinkUsername")} placeholder="maker" />
-          <TextField
-            label="PrusaLink password"
-            type="password"
-            value={conn.prusalinkPassword}
-            onChange={set("prusalinkPassword")}
-            placeholder={saved?.hasPrusalinkPassword ? "A password is saved. Type a new one to replace it." : "Shown on the printer: Settings > Network > PrusaLink"}
-          />
+          <PrusaLinkPassword value={conn.prusalinkPassword} onChange={set("prusalinkPassword")} saved={saved} />
           <TextField
             label="Buddy3D camera IP (optional)"
             value={conn.cameraAddress}

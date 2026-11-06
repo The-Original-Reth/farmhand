@@ -42,6 +42,13 @@ def _job_out(current: dict | None) -> dict | None:
     }
 
 
+@router.get("/{printer_id}/prusalink/password")
+def saved_password(printer_id: int, db: Session = Depends(get_db)):
+    """The PrusaLink password saved for it ({"password": null} when none is), asked for on its own to be shown."""
+    printer = _printer(db, printer_id)
+    return {"password": printer.prusalink_row.password if printer.prusalink_row else None}
+
+
 @router.get("/{printer_id}/prusalink")
 def live_status(printer_id: int, db: Session = Depends(get_db)):
     """

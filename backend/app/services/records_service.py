@@ -70,7 +70,8 @@ def _job_record(j: PrintJob) -> dict:
 def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, dict]:
     """
     {file stem: document} for every printer (or just those in `only`: each holds the printer's whole print history,
-    so it's worth not building the rest). Never includes the Moonraker API key or the PrusaLink password.
+    so it's worth not building the rest). Its Moonraker API key and PrusaLink password are in it too, so a restore
+    brings back a printer that connects straight away.
     """
     out: dict[str, dict] = {}
     taken: set[str] = set()
@@ -85,13 +86,15 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
         )
         out[stem] = {
             **records_store.header(records_store.PRINTERS_DIR, p.name),
-            "note": "Written by Farmhand whenever this printer changes. Its Moonraker API key and PrusaLink password are never stored here.",
+            "note": "Written by Farmhand whenever this printer changes. It holds the printer's Moonraker API key and PrusaLink password: keep this folder private.",
             "printer": {
                 "kind": p.kind, "wired_ip": p.wired_ip, "wireless_ip": p.wireless_ip,
                 "decommissioned": p.decommissioned, "moonraker_url": p.moonraker_url_override,
                 "connection_type": p.connection_type,
                 "prusalink_url": p.prusalink_url_override, "prusalink_username": p.prusalink_username,
                 "camera_address": p.camera_address,
+                "moonraker_api_key": conn.api_key if conn else None,
+                "prusalink_password": p.prusalink_row.password if p.prusalink_row else None,
             },
             # maintenance Farmhand keeps itself (a PrusaLink printer's); a Moonraker printer's stays in Moonraker
             "maintenance": [{"key": r.key, "entry": r.entry} for r in sorted(p.maintenance_rows, key=lambda r: r.id)],
@@ -173,6 +176,20 @@ def _fill_note(row, make, text: str) -> bool:
     return True
 
 
+def _fill_secrets(printer: Printer, cfg: dict) -> bool:
+    """A printer's Moonraker API key and PrusaLink password from its file, where Farmhand has none saved."""
+    filled = False
+    key = _text(cfg.get("moonraker_api_key"), 255)
+    if key and not printer.has_moonraker_api_key:
+        ensure_connection(printer).api_key = key
+        filled = True
+    password = _text(cfg.get("prusalink_password"), 255)
+    if password and printer.prusalink_row is not None and not printer.has_prusalink_password:
+        printer.prusalink_row.password = password
+        filled = True
+    return filled
+
+
 def restore_printers(db: Session, records: list[dict]) -> dict:
     out = {"printers_added": [], "printers_filled": [], "prints_added": 0, "readings_added": 0, "warnings": []}
     for rec in records:
@@ -192,7 +209,6 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             if url.lower().startswith(("http://", "https://")):
                 printer.connection_row = PrinterConnection(printer_id=printer.id, moonraker_url=url)
             if cfg.get("connection_type") == "prusalink":
-                # comes back without its password: it has to be typed in again on the printer's Edit page
                 pl_url = _text(cfg.get("prusalink_url"), 255)
                 printer.prusalink_row = PrusaLinkConnection(
                     printer_id=printer.id, url=pl_url if pl_url.lower().startswith(("http://", "https://")) else None,
@@ -201,7 +217,7 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             camera = _text(cfg.get("camera_address"), 255)
             if camera:
                 printer.camera_row = PrinterCamera(printer_id=printer.id, address=camera)
-        filled = False
+        filled = _fill_secrets(printer, cfg)
 
         filled |= _fill_note(printer.note_row, lambda t: setattr(printer, "note_row", PrinterNote(printer_id=printer.id, body=t, revision=1)), rec.get("notes"))
         filled |= _fill_note(

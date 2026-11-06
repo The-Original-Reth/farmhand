@@ -50,7 +50,7 @@ def _printer_with_everything(db, fake, name="V2 BOG"):
 # ------------------------------------------------------------------ the files
 
 
-def test_each_printer_gets_a_file_with_everything_but_the_api_key(db_session, fake, tmp_path):
+def test_each_printer_gets_a_file_with_everything_in_it_its_api_key_too(db_session, fake, tmp_path):
     _printer_with_everything(db_session, fake)
     printer_service.create_printer(db_session, name="New/one: test", kind=None, wired_ip=None, wireless_ip=None)
     out = records_service.write_all(db_session, tmp_path)
@@ -58,14 +58,12 @@ def test_each_printer_gets_a_file_with_everything_but_the_api_key(db_session, fa
 
     files = sorted(p.name for p in (tmp_path / "printers").iterdir())
     assert files == ["New_one_ test.json", "V2 BOG.json"]
-    text = (tmp_path / "printers" / "V2 BOG.json").read_text(encoding="utf-8")
-    assert "SECRET-KEY" not in text
-    doc = json.loads(text)
+    doc = json.loads((tmp_path / "printers" / "V2 BOG.json").read_text(encoding="utf-8"))
     assert doc[rs.RECORD_MARKER] == "printers" and doc["name"] == "V2 BOG"
     assert doc["printer"] == {"kind": "Voron 2.4", "wired_ip": "192.168.10.123", "wireless_ip": None,
                               "decommissioned": False, "moonraker_url": "http://192.168.10.123:7125",
                               "connection_type": "moonraker", "prusalink_url": None, "prusalink_username": None,
-                              "camera_address": None}
+                              "camera_address": None, "moonraker_api_key": "SECRET-KEY", "prusalink_password": None}
     assert doc["notes"] == "Bed: PEI. Lives on shelf 2." and doc["service_notes"] == "Gates 6mm belts"
     assert doc["service"]["history"][0]["note"] == "new belts" and doc["service"]["interval_hours"] == 1500
     assert [j["job_id"] for j in doc["print_jobs"]] == ["0003F2", "0003F3"] and doc["print_jobs"][1]["energy_kwh"] == 3.7
@@ -194,7 +192,7 @@ def test_restoring_into_an_empty_farmhand_brings_the_printers_back_whole(db_sess
     assert out["printers_added"] == ["V2 BOG"] and out["prints_added"] == 2 and out["readings_added"] == 2 and out["warnings"] == []
     p = db.query(Printer).one()
     assert p.kind == "Voron 2.4" and p.wired_ip == "192.168.10.123" and p.moonraker_url == "http://192.168.10.123:7125"
-    assert not p.has_moonraker_api_key  # never in the file
+    assert p.connection_row.api_key == "SECRET-KEY"  # it connects straight away
     assert p.notes == "Bed: PEI. Lives on shelf 2." and p.service["notes"] == "Gates 6mm belts"
     assert p.service["last_done"]["note"] == "new belts" and p.service["state"] == "ok"
     assert db.query(PrintJob).filter_by(job_id="0003F3").one().energy_kwh == 3.7

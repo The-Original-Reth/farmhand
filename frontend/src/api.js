@@ -72,7 +72,7 @@ export const normalizePrinter = (p) => ({
   prusalinkUrl: p.prusalink_url || null, // where Farmhand reaches its PrusaLink (set, else http://<IP>)
   prusalinkUrlOverride: p.prusalink_url_override || null,
   prusalinkUsername: p.prusalink_username || "maker",
-  hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself never comes back
+  hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself only comes from getPrusaLinkPassword
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
   // its printer presets in the slicer, A to Z: [{ id, name, aliases, settingsCopiedFrom }]; settingsCopiedFrom: a copy's
   // original, whose printer settings it was copied with (null for one that isn't a copy, or got none)
@@ -445,6 +445,8 @@ export const saveSubPrinterParts = (printerId, subPrinterId, parts, removes) =>
 //   target_bed }, job: { id, state, file, progress, time_printing, time_remaining } | null, last_sync_at, totals }
 // Asking also brings Farmhand's record of its prints up to date.
 export const getPrusaLinkStatus = (printerId) => request(`/printers/${printerId}/prusalink`);
+// The PrusaLink password saved for it (null when none is): asked for only when it's to be shown
+export const getPrusaLinkPassword = async (printerId) => (await request(`/printers/${printerId}/prusalink/password`)).password;
 // A sliced .bgcode / .gcode: put on the printer's USB drive and printed. 409 while the printer is busy.
 export const sendPrint = (printerId, file) => request(`/printers/${printerId}/prusalink/print`, formBody("POST", { file }));
 
