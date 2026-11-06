@@ -185,7 +185,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
             <div style={{ minHeight: 26, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 6 : 0 }}>
               <SectionToggle open={open} onToggle={() => sections.toggle(key)} controlsId={bodyId} testId={`project-toggle-${key}`}>
                 <Icon size={14} />
-                {label}
+                <span style={{ fontWeight: 700 }}>{label}</span>
                 {count && ` (${count(project)})`}
               </SectionToggle>
               {open && actions[key]}

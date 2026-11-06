@@ -299,23 +299,29 @@ function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
       )}
       <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 30 })}>v{ver.v}</span>
       <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-        {opens ? (
-          <a
-            href={ver.view}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="file-version-open"
-            title={`Open ${ver.filename} in a new tab`}
-            style={monoText(12, c.textPrimary, { overflowWrap: "anywhere", textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
-          >
-            {ver.filename}
-          </a>
-        ) : (
-          <div style={monoText(12, c.textPrimary, { overflowWrap: "anywhere" })}>{ver.filename}</div>
-        )}
-        <div style={uiText(12, c.textFaint, { marginTop: 3 })}>
-          {[ver.date, formatBytes(ver.size), ver.note].filter(Boolean).join(" · ")}
+        {/* the file name, and the date it was uploaded to its right */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          {opens ? (
+            <a
+              href={ver.view}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="file-version-open"
+              title={`Open ${ver.filename} in a new tab`}
+              style={monoText(12, c.textPrimary, { minWidth: 0, overflowWrap: "anywhere", textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
+            >
+              {ver.filename}
+            </a>
+          ) : (
+            <span style={monoText(12, c.textPrimary, { minWidth: 0, overflowWrap: "anywhere" })}>{ver.filename}</span>
+          )}
+          {ver.date && (
+            <span data-testid="file-version-date" title="Uploaded" style={uiText(12, c.textFaint, { whiteSpace: "nowrap" })}>
+              {ver.date}
+            </span>
+          )}
         </div>
+        <div style={uiText(12, c.textFaint, { marginTop: 3 })}>{[formatBytes(ver.size), ver.note].filter(Boolean).join(" · ")}</div>
       </div>
       <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
         <DownloadButton href={ver.download} />
