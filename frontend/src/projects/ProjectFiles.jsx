@@ -283,47 +283,54 @@ function GcodeUpload({ project, file, ver, onClose }) {
   );
 }
 
-// One version: its preview (drawn like an STL's where the file allows), number, date, size, what changed, and
-// Download and delete. opens: its file name opens it in a new tab, and no preview is shown (a document's)
+// One version, on one slim line: its preview (drawn like an STL's where the file allows), number, file name, the date
+// it was uploaded, what changed (cut short, the whole of it on hover), and on the right its size, Download and delete.
+// opens: its file name opens it in a new tab, and no preview is shown (a document's)
 function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
+  const nameBox = { flexShrink: 1, minWidth: "6em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
   return (
     <div
       data-testid="file-version"
       data-version={ver.v}
-      style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 16px", borderTop: `1px solid ${c.border}`, flexWrap: "wrap" }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px 4px 12px", borderTop: `1px solid ${c.border}` }}
     >
       {!opens && (
         <a href={ver.preview || undefined} target="_blank" rel="noreferrer" title={ver.preview ? "Open the preview" : "No preview for this kind of file"}>
           <Thumb src={ver.preview} size={64} background="#FFFFFF" placeholderIcon />
         </a>
       )}
-      <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 30 })}>v{ver.v}</span>
-      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-        {/* the file name, and the date it was uploaded to its right */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          {opens ? (
-            <a
-              href={ver.view}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="file-version-open"
-              title={`Open ${ver.filename} in a new tab`}
-              style={monoText(12, c.textPrimary, { minWidth: 0, overflowWrap: "anywhere", textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
-            >
-              {ver.filename}
-            </a>
-          ) : (
-            <span style={monoText(12, c.textPrimary, { minWidth: 0, overflowWrap: "anywhere" })}>{ver.filename}</span>
-          )}
-          {ver.date && (
-            <span data-testid="file-version-date" title="Uploaded" style={uiText(12, c.textFaint, { whiteSpace: "nowrap" })}>
-              {ver.date}
-            </span>
-          )}
-        </div>
-        <div style={uiText(12, c.textFaint, { marginTop: 3 })}>{[formatBytes(ver.size), ver.note].filter(Boolean).join(" · ")}</div>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+      <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 26, flexShrink: 0 })}>v{ver.v}</span>
+      {opens ? (
+        <a
+          href={ver.view}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="file-version-open"
+          title={`Open ${ver.filename} in a new tab`}
+          style={monoText(12, c.textPrimary, { ...nameBox, textDecoration: "underline", textDecorationColor: c.borderStrong, textUnderlineOffset: 3 })}
+        >
+          {ver.filename}
+        </a>
+      ) : (
+        <span title={ver.filename} style={monoText(12, c.textPrimary, nameBox)}>
+          {ver.filename}
+        </span>
+      )}
+      {ver.date && (
+        <span data-testid="file-version-date" title="Uploaded" style={uiText(12, c.textFaint, { whiteSpace: "nowrap", flexShrink: 0 })}>
+          {ver.date}
+        </span>
+      )}
+      <span
+        data-testid="file-version-note"
+        title={ver.note || undefined}
+        style={uiText(12, c.textFaint, { flex: "1 1 0", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" })}
+      >
+        {ver.note}
+      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {/* its size, just left of Download */}
+        <span data-testid="file-version-size" style={uiText(12, c.textFaint, { whiteSpace: "nowrap" })}>{formatBytes(ver.size)}</span>
         <DownloadButton href={ver.download} />
         <TrashButton onClick={onDelete} title="Delete this version" />
       </div>
