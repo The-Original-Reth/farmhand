@@ -85,7 +85,8 @@ function ProjectsFolder() {
           )}
           {result.imported.map((p) => (
             <div key={p.projectId} data-testid="scan-imported" style={uiText(13, c.textPrimary, { lineHeight: 1.5 })}>
-              <Badge tone="green">brought in</Badge> <b style={{ color: c.heading }}>{p.name}</b>: {whatsIn(p.files)}
+              <Badge tone="green">{p.repaired ? "rebuilt from its record" : "brought in"}</Badge> <b style={{ color: c.heading }}>{p.name}</b>:{" "}
+              {whatsIn(p.files)}
               {p.warnings.map((w) => (
                 <div key={w} style={uiText(12, c.amber)}>{w}</div>
               ))}

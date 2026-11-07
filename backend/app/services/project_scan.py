@@ -376,9 +376,32 @@ def _component(value, warnings: list[str]):
         return None
 
 
+def _is_preview(path: Path) -> bool:
+    """A preview Farmhand keeps beside a file ("Fin.stl.png" beside "Fin.stl"): part of that file, not one of its own."""
+    return path.name.lower().endswith(".png") and path.with_suffix("").is_file()
+
+
+_KIND_FOLDERS = ("docs", "cad", "stl", "threemf")
+
+
+def _farmhand_layout(folder: Path) -> bool:
+    """A project folder in Farmhand's own layout (docs/12/v1/..., stl/3/v2/...): another Farmhand's, not one dropped in."""
+    for kind in _KIND_FOLDERS:
+        try:
+            for owner in os.scandir(folder / kind):
+                if owner.is_dir() and owner.name.split("-")[0].isdigit() and any(
+                    v.is_dir() and v.name.startswith("v") for v in os.scandir(owner.path)
+                ):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def _as_found(db: Session, project: Project, folder: Path, files: list[Path], warnings: list[str]) -> dict:
     """A folder dropped in by hand: its files as they are, each by its kind (see the top of this file)."""
     counts = {"doc": 0, "cad": 0, "stl": 0, "threemf": 0, "gcode": 0}
+    files = [f for f in files if not _is_preview(f)]
     threemfs: dict[tuple[Path, str], int] = {}  # (folder, stem) -> the version id of a 3MF brought in
     for path in [p for p in files if _kind_of(p.name) != "gcode"] + [p for p in files if _kind_of(p.name) == "gcode"]:
         kind_key = _kind_of(path.name)
@@ -412,6 +435,39 @@ def _as_found(db: Session, project: Project, folder: Path, files: list[Path], wa
     return counts
 
 
+def _repair(db: Session, project_id: int, folder: Path, me: str, taken: set[str]) -> dict | None:
+    """
+    A project here that came in before its records did (from another Farmhand's numbered folder, named after it: "1"),
+    whose folder now holds that Farmhand's record: rebuilt from it, named as it is there, with its files, versions,
+    notes, sub-components, counts and parts. Only this Farmhand's entries for it are replaced: no file is touched.
+    """
+    project = db.get(Project, project_id)
+    others = [r for r in project_records.read_records(folder) if r.get("instance") != me]
+    if project is None or not others or project.name != folder.name or others[0]["name"] == project.name:
+        return None
+    for rows in (project.doc_files, project.cad_files, project.stl_files, project.threemf_files, project.parts,
+                 project.model_links, project.printer_links):
+        for row in list(rows):
+            rows.remove(row)  # entries only: delete-orphan removes the rows, never the files they point at
+    db.flush()
+    warnings: list[str] = []
+    name = " ".join(str(others[0]["name"]).split())
+    if name.lower() in taken:
+        warnings.append(f"There's already a project called {name} here, so this one keeps its name.")
+    else:
+        taken.discard(project.name.lower())
+        project.name = name
+        taken.add(name.lower())
+    try:
+        counts = _from_records(db, project, folder, others, warnings)
+        db.commit()
+    except (ValueError, OSError) as e:
+        db.rollback()
+        return {"project_id": project_id, "name": project.name, "files": {}, "warnings": [f"Couldn't be rebuilt: {e}"], "repaired": True}
+    project_records.request_write(project.id)
+    return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "repaired": True}
+
+
 def import_projects_folder(db: Session, auto: bool = False) -> dict:
     """
     Scan projects: every folder in the project files folder that isn't one of this Farmhand's own projects becomes one,
@@ -422,10 +478,11 @@ def import_projects_folder(db: Session, auto: bool = False) -> dict:
     StorageUnavailableError while the project files folder isn't there.
     """
     root = storage.ready_root("project")
-    ours = set()
+    ours: dict[str, int] = {}
     for pid in db.scalars(select(Project.id)):
-        ours.add(project_folder(db, pid))  # every project here gets its folder recorded first, so it's never taken
+        ours[project_folder(db, pid)] = pid  # every project here gets its folder recorded first, so it's never taken
     db.commit()
+    me = project_records.instance_id(db)
     taken = _existing_names(db)
     imported, skipped = [], []
     try:
@@ -433,10 +490,13 @@ def import_projects_folder(db: Session, auto: bool = False) -> dict:
     except OSError as e:
         raise ValueError(f"Couldn't read {root}: {e}") from None
     for entry in entries:
-        if entry.name in ours:
-            continue
         folder = Path(entry.path)
-        records = project_records.read_records(folder)
+        if entry.name in ours:
+            repaired = _repair(db, ours[entry.name], folder, me, taken)
+            if repaired:
+                imported.append(repaired)
+            continue
+        records = [r for r in project_records.read_records(folder) if r.get("instance") != me]
         try:
             files = [f for f in _files_in(folder) if not project_records.is_record(f.name)]
         except (ValueError, OSError) as e:
@@ -445,6 +505,13 @@ def import_projects_folder(db: Session, auto: bool = False) -> dict:
         name = " ".join(str(records[0]["name"] if records else entry.name).split())
         if not files and not records:
             continue  # an empty folder: nothing to bring in
+        if not records and _farmhand_layout(folder):
+            skipped.append({
+                "name": entry.name,
+                "reason": "Another Farmhand keeps this project. It comes in, with its name and everything, once that "
+                "Farmhand has written its record there: update it to this version of Farmhand.",
+            })
+            continue
         if auto and not _quiet(folder, files):
             skipped.append({"name": name, "reason": "Still being copied in: it's brought in once it's finished."})
             continue

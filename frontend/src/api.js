@@ -262,7 +262,8 @@ export const importProjectFolder = async (path) => {
 export const scanProjectsFolder = async () => {
   const r = await request("/projects/scan-projects-folder", { method: "POST" });
   return {
-    imported: r.imported.map((p) => ({ projectId: p.project_id, name: p.name, files: p.files, warnings: p.warnings })),
+    // repaired: one here already, rebuilt from another Farmhand's record of it (it had come in as its folder's number)
+    imported: r.imported.map((p) => ({ projectId: p.project_id, name: p.name, files: p.files, warnings: p.warnings, repaired: !!p.repaired })),
     skipped: r.skipped,
   };
 };

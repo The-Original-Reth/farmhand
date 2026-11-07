@@ -257,6 +257,10 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
     keeps comes back from its records; a folder you dropped in becomes a project named after it, its files sorted by
     kind (as below). One named like a project already here is left out, and on its own it leaves a folder until
     nothing in it has changed for two minutes, so one still being copied in isn't brought in half-done.
+    Another Farmhand's numbered folder (`1`, its files in `docs/`, `stl/`...) with no record in it yet is left out
+    until that Farmhand writes one (update it), and a project that came in as its number before this is rebuilt
+    from the record once it's there: named as it is there, with its files, pictures, notes, sub-components, counts
+    and parts list (only this Farmhand's entries change, not the files).
   - **Another folder**: pick a folder your projects are in elsewhere on the NAS. Each folder inside it is listed with what it
     holds, and each one ticked becomes a project of the same name (one already in Farmhand is left out). Its files are
     copied in, sorted by kind: STL and OBJ files as the project's own STLs (the folders they're in become

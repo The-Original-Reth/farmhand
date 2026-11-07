@@ -148,3 +148,42 @@ def test_scan_projects_folder_over_the_api(api):
     r = api.post("/projects/scan-projects-folder")
     assert r.status_code == 200 and r.json()["imported"][0]["name"] == "Dragon egg"
     assert [p["name"] for p in api.get("/projects").json()] == ["Dragon egg"]
+
+
+def test_another_farmhands_folder_without_its_record_is_left_out(db_session, other_farmhand):
+    shark = _shark(db_session)
+    folder = storage.effective_root("project") / shark.folder
+    for name in os.listdir(folder):
+        if project_records.is_record(name):
+            os.remove(folder / name)  # as from a Farmhand from before records
+    out = project_scan.import_projects_folder(other_farmhand)
+    assert out["imported"] == [] and "Another Farmhand keeps this project" in out["skipped"][0]["reason"]
+    assert other_farmhand.query(Project).count() == 0
+
+
+def test_a_project_brought_in_as_its_number_is_rebuilt_from_the_record(db_session, other_farmhand):
+    from app.models import ProjectFolder
+
+    shark = _shark(db_session)  # its files have previews beside them, as Farmhand keeps them
+    folder = storage.effective_root("project") / shark.folder
+    record = next(n for n in os.listdir(folder) if project_records.is_record(n))
+    os.rename(folder / record, folder.parent / record)  # not written yet when the other Farmhand looked
+    # ...so the other brought the numbered folder in as found (as before this was fixed)
+    p = create_project(other_farmhand, shark.folder)
+    p.folder_row.folder = shark.folder
+    files = [f for f in project_scan._files_in(folder) if not project_records.is_record(f.name)]
+    project_scan._as_found(other_farmhand, p, folder, files, [])
+    other_farmhand.commit()
+    assert other_farmhand.query(Project).one().name == shark.folder
+
+    os.rename(folder.parent / record, folder / record)  # the first Farmhand writes its record
+    out = project_scan.import_projects_folder(other_farmhand)
+    assert out["imported"][0]["repaired"] and out["imported"][0]["name"] == "Shark"
+    there = other_farmhand.query(Project).one()
+    assert there.name == "Shark" and there.folder == shark.folder
+    assert [len(there.doc_files), len(there.stl_files)] == [1, 1]  # no previews taken for documents
+    assert (there.stl_files[0].component, there.stl_files[0].need) == ("Fins", 4)
+    assert there.stl_files[0].versions[0].thumbnail_path  # its picture
+    assert [x.name for x in there.parts] == ["M3 screw"]
+    assert all(os.path.isfile(v.file_path) for f in there.doc_files + there.stl_files for v in f.versions)
+    assert project_scan.import_projects_folder(other_farmhand)["imported"] == []  # once
