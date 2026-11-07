@@ -10,8 +10,8 @@ from ..database import get_db
 from ..errors import answer_errors
 from ..mounts import MountError
 from ..schemas.network_share import FolderCreate, NetworkShareCreate, NetworkShareOut, NetworkShareUpdate, SharesOut
-from ..schemas.storage import BrowseOut, MigrationResult, StorageSettingsOut, StorageSettingsUpdate
-from ..services import config_service, network_shares_service, storage_settings_service
+from ..schemas.storage import BrowseOut, MigrationResult, SaveLocationIn, StorageSettingsOut, StorageSettingsUpdate
+from ..services import config_service, network_shares_service, save_location_service, storage_settings_service
 from .common import require_confirm
 
 router = APIRouter(prefix="/settings/storage", tags=["storage"])
@@ -29,6 +29,24 @@ def update_storage_settings(payload: StorageSettingsUpdate, db: Session = Depend
         out = storage_settings_service.save(db, payload.model_dump(exclude_unset=True))
     config_service.mirror_quietly(db)  # keep the settings copy current
     return out
+
+
+@router.get("/save-location")
+def get_save_location(db: Session = Depends(get_db)):
+    """The save location as typed (null until set) and the folder each kind of file goes to: {address, folders: {stl,
+    threemf, project, farm_cost, config}}."""
+    return save_location_service.describe(db)
+
+
+@router.put("/save-location")
+def set_save_location(payload: SaveLocationIn, db: Session = Depends(get_db)):
+    """
+    One place on the NAS for everything: connects to the address (reusing the share already there), and uses or makes
+    STL, 3MF, Projects, Farm cost and Farmhand Configs inside it. 422 with the reason when it can't (the NAS refusing
+    the login, say). config_choice is set when Farmhand Configs already holds saved settings: load or replace them.
+    """
+    with _share_errors():
+        return save_location_service.set_save_location(db, payload.model_dump(exclude_unset=True))
 
 
 @router.get("/browse", response_model=BrowseOut)

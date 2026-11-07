@@ -1,6 +1,6 @@
-import { FolderDown, HardDrive, Save } from "lucide-react";
+import { HardDrive } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { monoText, panelBox, primaryButton, uiText } from "../styles.js";
+import { monoText, panelBox, uiText } from "../styles.js";
 
 import { Badge } from "../components/common/ui.jsx";
 import { fmtWhen } from "../lib/format.js";
@@ -9,9 +9,9 @@ import { fmtWhen } from "../lib/format.js";
 export const locationProblem = (status) =>
   !status.exists ? "Folder not found" : !status.writable ? "Not writable" : !status.markerOk ? "Marker missing — the share may be unmounted" : null;
 
-// Save all and Load all settings, and where Farmhand's settings are kept on the network (the server also keeps them
-// itself). saved: what the last Save all wrote, to say so.
-export function ConfigLocationCard({ info, onChoose, onSaveAll, onLoadAll, onClear, error, saving, saved }) {
+// Where Farmhand's settings are kept on the network (the server also keeps them itself), under Settings' Advanced:
+// choosing another folder, or none. (Save all and Load all settings are on the Save location card.)
+export function ConfigLocationCard({ info, onChoose, onClear, error }) {
   const btn = { ...ui, fontSize: fs(13), background: "none", color: c.textMuted, border: `1px solid ${c.borderStrong}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" };
   const set = info?.isSet;
   const status = info?.status;
@@ -21,21 +21,15 @@ export function ConfigLocationCard({ info, onChoose, onSaveAll, onLoadAll, onCle
   return (
     <div data-testid="config-card" style={panelBox({ padding: 16 })}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
-        <div style={uiText(15, c.heading, { fontWeight: 700 })}>Save and load all settings</div>
+        <div style={uiText(15, c.heading)}>Settings folder</div>
         <div style={{ display: "flex", gap: 6 }}>
           <Badge tone={set ? "teal" : "muted"}>{set ? "network folder" : "server only"}</Badge>
           {set && (problem ? <Badge tone="amber">{problem}</Badge> : <Badge tone="green">ready</Badge>)}
         </div>
       </div>
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
-        <b style={{ color: c.textMuted }}>Save all</b> writes every Farmhand setting to the settings folder on the network: the
-        look of the site, the storage folders and network shares (with their SMB locations), the farm cost records folder,
-        the Power page's electricity prices, how the Printers, Monitor and Farm cost pages are arranged, and your printers
-        (their connections, notes, 1500-hour service, print history and energy readings) and models' notes. With no folder
-        chosen yet, it uses a <span style={mono}>farmhand configs</span> folder beside the STL folder. A copy is also written
-        after every change. <b style={{ color: c.textMuted }}>Load all settings</b> brings it all back. A share's password is
-        never saved (type it again after loading); the printers' API keys and PrusaLink passwords are, so keep this folder
-        private.
+        Where Save all writes every setting, and a copy after every change; the save location's Farmhand Configs folder
+        unless another is chosen here.
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: `1px solid ${c.border}`, borderRadius: 4, background: c.panelAlt, marginBottom: 10 }}>
@@ -63,21 +57,8 @@ export function ConfigLocationCard({ info, onChoose, onSaveAll, onLoadAll, onCle
         </div>
       )}
       {error && <div style={uiText(12, c.amber, { lineHeight: 1.5, marginBottom: 10 })}>{error}</div>}
-      {saved && !error && (
-        <div data-testid="config-saved" style={uiText(12, c.green, { lineHeight: 1.5, marginBottom: 10 })}>
-          Saved all settings to {saved}.
-        </div>
-      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button data-testid="config-save-all" onClick={onSaveAll} disabled={saving} style={{ ...primaryButton(saving), display: "flex", alignItems: "center", gap: 6 }}>
-          <Save size={13} />
-          {saving ? "Saving…" : "Save all"}
-        </button>
-        <button data-testid="config-load-all" onClick={onLoadAll} style={{ ...btn, display: "flex", alignItems: "center", gap: 6 }}>
-          <FolderDown size={13} />
-          Load all settings…
-        </button>
         <button data-testid="config-choose" onClick={onChoose} style={btn}>
           {set ? "Change folder…" : "Choose folder…"}
         </button>

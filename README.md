@@ -95,13 +95,20 @@ A brand-new Farmhand is empty. Go on with the setup below.
 
 The first things to do, in this order. Everything is done in the web page; there are no files to edit.
 
-1. **Settings** (left-hand menu, called Storage before). Where STL and 3MF files are kept. Out of the box they go in Farmhand's own
-   storage on the computer it runs on. To keep them on a NAS instead, **Add network share…**, then choose the
-   **STL files** and **3MF files** folders on it (see "Network storage").
-2. **Save all**, at the top of the same page. Farmhand writes all its settings and every printer's and model's
-   records to a folder on the NAS (**farmhand configs** beside the STL folder, unless you **Choose folder…**), and
-   keeps that copy up to date, so a lost or rebuilt computer can be brought back with **Load all settings** (see
-   "Where settings and records are kept").
+1. **Settings › Save location** (left-hand menu). Type the NAS address of the one folder Farmhand should keep
+   everything in (`//192.168.1.50/share/Farmhand`) and its username and password, then **Use this location**.
+   Farmhand connects to it and uses a folder inside it for each kind of file, making the ones that aren't there:
+   **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **Farm cost** (the
+   monthly records) and **Farmhand Configs** (the settings). Folders already there are used as they are, whatever
+   their capitals. Out of the box, without a save location, everything stays in Farmhand's own storage on the
+   computer it runs on.
+2. **Save all**, on the same card. Farmhand writes all its settings and every printer's and model's records to
+   Farmhand Configs, and keeps that copy up to date, so a lost or rebuilt computer can be brought back with
+   **Load all settings** (see "Where settings and records are kept"). If Farmhand Configs already holds saved
+   settings when you set the save location, Farmhand asks whether to load them or replace them.
+
+   **Advanced** (folded away below the card) still has the network shares and each folder on its own, for a
+   farm that keeps them in different places.
 3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
    - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
      key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.
@@ -830,7 +837,9 @@ library**.
 ## Network storage
 
 Everything is done from **Settings** in the sidebar — nothing to set up on the
-computer running Farmhand, no files to edit.
+computer running Farmhand, no files to edit. The **Save location** card does it all from one address (see
+"Setting it up"): it adds the share (or uses the one already connected there, also when the address is a folder
+inside it) and sets every folder. What follows is the same by hand, under **Advanced**.
 
 1. **Add network share…** Give it a name and **paste the NAS folder's full address
    into the one address box** — Farmhand works out the type, server, share and

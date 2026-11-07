@@ -1142,6 +1142,33 @@ export function mockApi() {
     status: { exists: true, writable: true, marker_ok: true, ready: true },
   });
   on("GET", "/farm-cost/location", () => farmCostLocation());
+  // The save location: one place on the NAS for everything, as the server sets it up (connecting to the share, and
+  // using or making STL, 3MF, Projects, Farm cost and Farmhand Configs inside it). A password of "wrong" is refused, to
+  // try the error.
+  const saveLocationOut = () => ({
+    address: farm.saveLocation || null,
+    folders: {
+      stl: farm.storage.stl, threemf: farm.storage.threemf, project: farm.storage.project,
+      farm_cost: farm.farmCostFolder || FARM_COST_DEFAULT, config: farm.settingsFolder || null,
+    },
+  });
+  on("GET", "/settings/storage/save-location", () => saveLocationOut());
+  on("PUT", "/settings/storage/save-location", (_, body) => {
+    const address = String(body.address || "").trim();
+    const m = address.replace(/\\/g, "/").replace(/^(smb|cifs):\/\//i, "//").match(/^\/\/([^/]+)\/(.+?)\/*$/);
+    if (!m) throw new HttpError(422, "Type the NAS address as //server/share (a folder inside it can follow: //server/share/Farmhand).");
+    if (body.password === "wrong") {
+      throw new HttpError(422, `The NAS turned the connection down (mount error 1). Check that the username (${body.username || "guest"}) and password are right and that user may use this share.`);
+    }
+    const base = `/data/nas/${m[2].split("/")[0].toLowerCase().replace(/[^a-z0-9._-]+/g, "-")}${m[2].includes("/") ? "/" + m[2].split("/").slice(1).join("/") : ""}`;
+    farm.storage.stl = `${base}/STL`;
+    farm.storage.threemf = `${base}/3MF`;
+    farm.storage.project = `${base}/Projects`;
+    farm.farmCostFolder = `${base}/Farm cost`;
+    farm.settingsFolder = `${base}/Farmhand Configs`;
+    farm.saveLocation = address;
+    return { ...saveLocationOut(), config_choice: null };
+  });
   on("PUT", "/farm-cost/location", (_, body) => {
     farm.farmCostFolder = body.path && body.path.trim() ? body.path.trim() : null;
     return farmCostLocation();

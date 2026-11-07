@@ -1,19 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { c, fs, ui } from "../theme.js";
-import { errorText, inspectConfigFolder, restoreConfig, saveAllSettings, setConfigLocation } from "../api.js";
+import { errorText, getConfig, inspectConfigFolder, restoreConfig, saveAllSettings, setConfigLocation } from "../api.js";
 import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
-import { ConfigLocationCard, RestoreResult } from "./ConfigLocationCard.jsx";
+import { RestoreResult } from "./ConfigLocationCard.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
 
 // Farmhand's settings copy on the NAS: Save all, Load all settings, where it goes, and what to do when the folder chosen
-// already holds one. initialInfo: its location as the Storage page loaded it. shares: the connected network
-// shares, to pick a folder on. onSettingsRestored: the look and preferences came back. reloadAll: the Storage page
-// reloads (a restore can bring back shares and folders).
-export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAll }) {
+// already holds one. initialInfo: its location as the Settings page loaded it. shares: the connected network shares,
+// to pick a folder on. onSettingsRestored: the look and preferences came back. reloadAll: the Settings page reloads
+// (loading can bring back shares and folders).
+// Answers what the page shows: { info, error, saving, saved, saveAll, loadAll, choose, clear, offerFound(found),
+// reloadInfo(), result (what Load all did, to show), dialogs (to render once) }.
+export function useSettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAll }) {
   const [configInfo, setConfigInfo] = useState(initialInfo); // where the settings copy goes
+  useEffect(() => {
+    if (initialInfo) setConfigInfo(initialInfo); // the page's first load came in
+  }, [initialInfo]);
   const [configPicker, setConfigPicker] = useState(null); // null | "choose" | "load" (a folder to load settings from)
   const [saved, setSaved] = useState(null); // where the last Save all wrote everything
   const [saving, setSaving] = useState(false);
@@ -44,6 +49,13 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
       }
       setConfigFound(null);
     });
+  const reloadInfo = async () => {
+    try {
+      setConfigInfo((await getConfig()).location);
+    } catch {
+      /* leave what's shown */
+    }
+  };
   const clearConfigFolder = async () => {
     setConfigError(null);
     setConfigInfo((await setConfigLocation({ path: null })).location);
@@ -77,20 +89,8 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
     else setConfigPicker("load");
   };
 
-  return (
+  const dialogs = (
     <>
-      <ConfigLocationCard
-        info={configInfo}
-        error={configError}
-        onChoose={() => setConfigPicker("choose")}
-        onSaveAll={saveAll}
-        onLoadAll={loadAll}
-        onClear={clearConfigFolder}
-        saving={saving}
-        saved={saved}
-      />
-      {configResult && <RestoreResult result={configResult} />}
-
       {configPicker && (
         <FolderPicker
           title={configPicker === "load" ? "Choose the folder your settings were saved in" : "Choose the folder for Farmhand's settings"}
@@ -176,4 +176,18 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
       )}
     </>
   );
+  return {
+    info: configInfo,
+    error: configError,
+    saving,
+    saved,
+    saveAll,
+    loadAll,
+    choose: () => setConfigPicker("choose"),
+    clear: clearConfigFolder,
+    offerFound: (found) => setConfigFound(found), // a folder chosen elsewhere already holds settings: ask what to do
+    reloadInfo,
+    result: configResult && <RestoreResult result={configResult} />,
+    dialogs,
+  };
 }

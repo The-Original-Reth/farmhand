@@ -675,6 +675,24 @@ const normalizeShare = (s) => ({
   filesHere: s.files_here,
 });
 
+// The save location: one place on the NAS everything goes in. { address (null until set), folders: { stl, threemf,
+// project, farmCost, config } }
+const normalizeSaveLocation = (r) => ({
+  address: r.address,
+  folders: { stl: r.folders.stl, threemf: r.folders.threemf, project: r.folders.project, farmCost: r.folders.farm_cost, config: r.folders.config },
+});
+export const getSaveLocation = async () => normalizeSaveLocation(await request("/settings/storage/save-location"));
+// Connects to the address (reusing the share already there) and uses or makes STL, 3MF, Projects, Farm cost and
+// Farmhand Configs inside it. configChoice: what's in Farmhand Configs when it already holds saved settings (ask to
+// load or replace them), else null. A blank password keeps the saved one.
+export const setSaveLocation = async ({ address, username, password }) => {
+  const r = await request(
+    "/settings/storage/save-location",
+    jsonBody("PUT", { address, username: username || null, ...(password ? { password } : {}) }),
+  );
+  return { ...normalizeSaveLocation(r), configChoice: normalizeFound(r.config_choice) };
+};
+
 export const getShares = async () => {
   const r = await request("/settings/storage/shares");
   return { shares: r.shares.map(normalizeShare), capability: r.capability };

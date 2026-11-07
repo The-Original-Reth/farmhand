@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HardDrive } from "lucide-react";
+import { ChevronDown, HardDrive } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import {
   deleteShare,
@@ -17,10 +17,11 @@ import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialog
 import { Badge, SectionLabel } from "../components/common/ui.jsx";
 import { formatBytes, plural } from "../lib/format.js";
 import { FolderPicker } from "./FolderPicker.jsx";
-import { SettingsCopy } from "./SettingsCopy.jsx";
+import { useSettingsCopy } from "./useSettingsCopy.jsx";
+import { SaveLocationCard } from "./SaveLocationCard.jsx";
 import { FarmCostFolderCard } from "./FarmCostFolderCard.jsx";
 import { ShareForm, SharesCard } from "./Shares.jsx";
-import { locationProblem } from "./ConfigLocationCard.jsx";
+import { ConfigLocationCard, locationProblem } from "./ConfigLocationCard.jsx";
 
 function LocationCard({ title, blurb, location, onChange, onReset }) {
   const s = location.status;
@@ -72,6 +73,55 @@ function LocationCard({ title, blurb, location, onChange, onReset }) {
   );
 }
 
+// Files still in a folder used before (the save location or a folder changed since), and Move them now…
+function OutsideFiles({ counts: { outsideStl, outsideThreemf, outsideProject, outsideAll }, onMove }) {
+  return (
+    <div style={{ border: `1px solid ${c.borderStrong}`, borderRadius: 4, background: c.panelAlt, padding: 16 }}>
+      <div style={uiText(13, c.textPrimary, { marginBottom: 6 })}>
+        {[
+          outsideStl > 0 && plural(outsideStl, "STL version", "STL versions"),
+          outsideThreemf > 0 && plural(outsideThreemf, "3MF version", "3MF versions"),
+          outsideProject > 0 && plural(outsideProject, "project file version", "project file versions"),
+        ]
+          .filter(Boolean)
+          .join(" and ")}{" "}
+        still {outsideAll === 1 ? "has" : "have"} files in a previous location.
+      </div>
+      <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
+        They keep working where they are — only new uploads go to the save location. Moving copies each file into its
+        folder there, checks the copy, and only then removes the original.
+      </div>
+      <button
+        onClick={onMove}
+        style={{ ...ui, fontSize: fs(13), background: c.amber, color: c.onAccent, border: "none", borderRadius: 4, padding: "7px 14px", fontWeight: 600, cursor: "pointer" }}
+      >
+        Move them now…
+      </button>
+    </div>
+  );
+}
+
+// What Move them now did
+function MoveResult({ result }) {
+  return (
+    <div data-testid="move-result" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 14, ...ui, fontSize: fs(13), color: c.textMuted, lineHeight: 1.6 }}>
+      Moved {plural(result.movedStl, "STL version", "STL versions")},{" "}
+      {plural(result.movedThreemf, "3MF version", "3MF versions")} and{" "}
+      {plural(result.movedProject, "project file version", "project file versions")}.
+      {result.missing.length > 0 && (
+        <div style={{ color: c.amber, marginTop: 6 }}>
+          Not found on disk (skipped): <span style={mono}>{result.missing.join(", ")}</span>
+        </div>
+      )}
+      {result.failed.map((f) => (
+        <div key={f.name} style={{ color: c.amber, marginTop: 6 }}>
+          Couldn't move <span style={mono}>{f.name}</span>: {f.error}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function StorageSection({ onSettingsRestored }) {
   const [info, setInfo] = useState(null);
   const [error, setError] = useState(null);
@@ -85,6 +135,7 @@ export function StorageSection({ onSettingsRestored }) {
   const [shareBusy, setShareBusy] = useState(null);
   const [shareError, setShareError] = useState(null);
   const [configInfo, setConfigInfo] = useState(null); // where the settings copy goes, as first loaded
+  const [advanced, setAdvanced] = useState(false); // the shares and each folder on its own, folded away at first
 
   useEffect(() => {
     Promise.all([getStorageSettings(), getShares(), getConfig().catch(() => null)])
@@ -96,6 +147,14 @@ export function StorageSection({ onSettingsRestored }) {
       .catch((e) => setError(errorText(e)));
   }, []);
 
+  // Shares and the storage locations affect each other (a share's files, what's "ready"), so refresh both
+  const reloadAll = async () => {
+    const [storageInfo, sharesData] = await Promise.all([getStorageSettings(), getShares()]);
+    setInfo(storageInfo);
+    setSharesInfo(sharesData);
+  };
+  const copy = useSettingsCopy({ initialInfo: configInfo, shares: sharesInfo?.shares || [], onSettingsRestored, reloadAll });
+
   if (error) {
     return <div style={uiText(13, c.amber)}>Couldn't load storage settings: {error}</div>;
   }
@@ -103,12 +162,6 @@ export function StorageSection({ onSettingsRestored }) {
     return <div style={uiText(13, c.textFaint)}>Loading storage settings…</div>;
   }
 
-  // Shares and the storage locations affect each other (a share's files, what's "ready"), so refresh both
-  const reloadAll = async () => {
-    const [storageInfo, sharesData] = await Promise.all([getStorageSettings(), getShares()]);
-    setInfo(storageInfo);
-    setSharesInfo(sharesData);
-  };
   const reconnect = async (sh) => {
     setShareError(null);
     setShareBusy(sh.id);
@@ -138,112 +191,98 @@ export function StorageSection({ onSettingsRestored }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 820 }}>
-      {/* Save all and Load all settings first: the one place to save or bring back everything */}
-      <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
-
-      <SectionLabel>Where files are stored</SectionLabel>
-
-      <SharesCard
-        data={sharesInfo}
-        onAdd={() => setShareForm({})}
-        onEdit={(sh) => setShareForm({ existing: sh })}
-        onReconnect={reconnect}
-        onRemove={async (sh) => {
-          setShareError(null);
-          try {
-            const fresh = await getShares();
-            setSharesInfo(fresh);
-            setRemoving(fresh.shares.find((x) => x.id === sh.id) || sh);
-          } catch {
-            setRemoving(sh);
-          }
+      {/* The save location: one place on the NAS for everything, then Save all and Load all settings */}
+      <SaveLocationCard
+        shares={sharesInfo.shares}
+        copy={copy}
+        onSaved={async (r) => {
+          await reloadAll();
+          await copy.reloadInfo();
+          if (r.configChoice) copy.offerFound(r.configChoice); // settings already saved there: load or replace them?
         }}
-        busyId={shareBusy}
-        actionError={shareError}
       />
+      {copy.result}
 
-      <LocationCard
-        title="STL / OBJ / STEP files"
-        blurb="The source model files in the Models library."
-        location={info.stl}
-        onChange={() => setPicker("stl")}
-        onReset={() => resetLocation("stl")}
-      />
-      <LocationCard
-        title="3MF and gcode files"
-        blurb="The sliced bundles and their gcode."
-        location={info.threemf}
-        onChange={() => setPicker("threemf")}
-        onReset={() => resetLocation("threemf")}
-      />
-      <LocationCard
-        title="Project files"
-        blurb="Each project's own files (its CAD files), in a folder per project."
-        location={info.project}
-        onChange={() => setPicker("project")}
-        onReset={() => resetLocation("project")}
-      />
-      {actionError && <div style={uiText(12, c.amber)}>{actionError}</div>}
-      <FarmCostFolderCard shares={sharesInfo.shares} />
+      {outsideAll > 0 && <OutsideFiles counts={{ outsideStl, outsideThreemf, outsideProject, outsideAll }} onMove={() => setMoveOpen(true)} />}
+      {moveResult && <MoveResult result={moveResult} />}
 
-      {outsideAll > 0 && (
-        <div style={{ border: `1px solid ${c.borderStrong}`, borderRadius: 4, background: c.panelAlt, padding: 16 }}>
-          <div style={uiText(13, c.textPrimary, { marginBottom: 6 })}>
-            {[
-              outsideStl > 0 && plural(outsideStl, "STL version", "STL versions"),
-              outsideThreemf > 0 && plural(outsideThreemf, "3MF version", "3MF versions"),
-              outsideProject > 0 && plural(outsideProject, "project file version", "project file versions"),
-            ]
-              .filter(Boolean)
-              .join(" and ")}{" "}
-            still {outsideAll === 1 ? "has" : "have"} files in a previous location.
-          </div>
-          <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
-            They keep working where they are — only new uploads use the locations above. Moving copies each file into its
-            chosen location, checks the copy, and only then removes the original.
-          </div>
-          <button
-            onClick={() => setMoveOpen(true)}
-            style={{ ...ui, fontSize: fs(13), background: c.amber, color: c.onAccent, border: "none", borderRadius: 4, padding: "7px 14px", fontWeight: 600, cursor: "pointer" }}
-          >
-            Move them now…
-          </button>
-        </div>
-      )}
+      <button
+        data-testid="settings-advanced"
+        aria-expanded={advanced}
+        onClick={() => setAdvanced(!advanced)}
+        style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", ...ui, fontSize: fs(13), color: c.textMuted }}
+      >
+        <ChevronDown size={14} style={{ transform: advanced ? "none" : "rotate(-90deg)", transition: "transform 0.12s ease" }} />
+        <span style={{ fontWeight: 700 }}>Advanced</span>
+        <span style={{ color: c.textFaint }}>network shares, and each folder on its own</span>
+      </button>
 
-      {moveResult && (
-        <div data-testid="move-result" style={{ border: `1px solid ${c.border}`, borderRadius: 4, padding: 14, ...ui, fontSize: fs(13), color: c.textMuted, lineHeight: 1.6 }}>
-          Moved {plural(moveResult.movedStl, "STL version", "STL versions")},{" "}
-          {plural(moveResult.movedThreemf, "3MF version", "3MF versions")} and{" "}
-          {plural(moveResult.movedProject, "project file version", "project file versions")}.
-          {moveResult.missing.length > 0 && (
-            <div style={{ color: c.amber, marginTop: 6 }}>
-              Not found on disk (skipped): <span style={mono}>{moveResult.missing.join(", ")}</span>
+      {advanced && (
+        <>
+          <SectionLabel>Where files are stored</SectionLabel>
+
+          <SharesCard
+            data={sharesInfo}
+            onAdd={() => setShareForm({})}
+            onEdit={(sh) => setShareForm({ existing: sh })}
+            onReconnect={reconnect}
+            onRemove={async (sh) => {
+              setShareError(null);
+              try {
+                const fresh = await getShares();
+                setSharesInfo(fresh);
+                setRemoving(fresh.shares.find((x) => x.id === sh.id) || sh);
+              } catch {
+                setRemoving(sh);
+              }
+            }}
+            busyId={shareBusy}
+            actionError={shareError}
+          />
+
+          <LocationCard
+            title="STL / OBJ / STEP files"
+            blurb="The source model files in the Models library."
+            location={info.stl}
+            onChange={() => setPicker("stl")}
+            onReset={() => resetLocation("stl")}
+          />
+          <LocationCard
+            title="3MF and gcode files"
+            blurb="The sliced bundles and their gcode."
+            location={info.threemf}
+            onChange={() => setPicker("threemf")}
+            onReset={() => resetLocation("threemf")}
+          />
+          <LocationCard
+            title="Project files"
+            blurb="Each project's own files (its CAD files), in a folder per project."
+            location={info.project}
+            onChange={() => setPicker("project")}
+            onReset={() => resetLocation("project")}
+          />
+          {actionError && <div style={uiText(12, c.amber)}>{actionError}</div>}
+          <FarmCostFolderCard shares={sharesInfo.shares} />
+          <ConfigLocationCard info={copy.info} error={copy.error} onChoose={copy.choose} onClear={copy.clear} />
+
+          <div style={uiText(12, c.textFaint, { lineHeight: 1.7 })}>
+            <div>
+              <b style={{ color: c.textMuted }}>Network shares.</b> Farmhand mounts them itself, so there's nothing to set up on
+              the computer running it. To do that its container is given the SYS_ADMIN and DAC_READ_SEARCH permissions (see the README).
             </div>
-          )}
-          {moveResult.failed.map((f) => (
-            <div key={f.name} style={{ color: c.amber, marginTop: 6 }}>
-              Couldn't move <span style={mono}>{f.name}</span>: {f.error}
+            <div style={{ marginTop: 6 }}>
+              <b style={{ color: c.textMuted }}>Safety check.</b> Chosen folders get a small <span style={mono}>.farmhand-storage</span>{" "}
+              marker. If a share drops and leaves an empty folder behind, the marker is missing and uploads are refused rather
+              than silently filling the local disk.
             </div>
-          ))}
-        </div>
+            <div style={{ marginTop: 6 }}>
+              <b style={{ color: c.textMuted }}>Previews</b> are saved next to each STL, 3MF and CAD file (Frog.stl gets Frog.stl.png),
+              so they're on the NAS with their files, and only there: while a share is offline, its previews don't show.
+            </div>
+          </div>
+        </>
       )}
-
-      <div style={uiText(12, c.textFaint, { lineHeight: 1.7 })}>
-        <div>
-          <b style={{ color: c.textMuted }}>Network shares.</b> Farmhand mounts them itself, so there's nothing to set up on
-          the computer running it. To do that its container is given the SYS_ADMIN and DAC_READ_SEARCH permissions (see the README).
-        </div>
-        <div style={{ marginTop: 6 }}>
-          <b style={{ color: c.textMuted }}>Safety check.</b> Chosen folders get a small <span style={mono}>.farmhand-storage</span>{" "}
-          marker. If a share drops and leaves an empty folder behind, the marker is missing and uploads are refused rather
-          than silently filling the local disk.
-        </div>
-        <div style={{ marginTop: 6 }}>
-          <b style={{ color: c.textMuted }}>Previews</b> are saved next to each STL, 3MF and CAD file (Frog.stl gets Frog.stl.png),
-          so they're on the NAS with their files, and only there: while a share is offline, its previews don't show.
-        </div>
-      </div>
+      {copy.dialogs}
 
 
       {picker && (

@@ -68,3 +68,13 @@ class MigrationResult(BaseModel):
     moved_project: int = 0
     missing: list[str]  # versions whose file wasn't where the database said it was
     failed: list[MigrationFailure]
+
+
+class SaveLocationIn(BaseModel):
+    """The one place on the NAS everything goes: its address (//nas/share/folder, smb://..., nas:/export) and login."""
+
+    address: str
+    username: str | None = None
+    password: str | None = None  # blank keeps the one saved
+    domain: str | None = None
+    version: str | None = None
