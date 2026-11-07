@@ -17,7 +17,8 @@ from .printer_poller import poller
 from .farm_cost_recorder import recorder as farm_cost_recorder
 from .routers import bundles, config_settings, farm_cost, moonraker, printers, projects, prusalink, source_models, storage_settings
 from .services import (
-    bundle_service, config_service, previews, project_records, project_scan, storage_settings_service, sub_printer_service,
+    bundle_service, config_service, library_records, previews, project_records, project_scan, storage_settings_service,
+    sub_printer_service,
 )
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
@@ -60,8 +61,14 @@ async def keep_settings_copy_current(request: Request, call_next):
             config_service.request_mirror(scope)
         # ...and a change to a project is written to its record in its own folder (project_records)
         parts = request.url.path.strip("/").split("/")
+        one = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
         if parts[0] == "projects":
-            project_records.request_write(int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None)
+            project_records.request_write(one)
+        # ...and a model's or 3MF's to its record beside its files (library_records)
+        if parts[0] == "source-models":
+            library_records.request_write("model", one)
+        if parts[0] == "bundles" and parts[-1] != "inspect":
+            library_records.request_write("bundle", one)
     return response
 
 
@@ -120,13 +127,17 @@ def _keep_projects_folder_in() -> None:
     time.sleep(60)
     try:
         with SessionLocal() as db:
+            library_records.write_all(db)
             project_records.write_all(db)
     except Exception:  # noqa: BLE001 - this must never stop
-        logger.exception("Writing the project records failed")
+        logger.exception("Writing the records failed")
     while True:
         try:
             with SessionLocal() as db:
+                library = library_records.import_library(db)  # models and 3MFs first: projects name them
                 result = project_scan.import_projects_folder(db, auto=True)
+            for name in library["models"] + library["threemfs"]:
+                logger.info("Brought in %s from the shared folders", name)
             for p in result["imported"]:
                 logger.info("Brought in the project %s from the project files folder", p["name"])
         except storage.StorageUnavailableError:
@@ -192,6 +203,7 @@ def on_startup() -> None:
             threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
             # Projects written to their folders, and ones in the project files folder that aren't here brought in
             project_records.enable_background_writes()
+            library_records.enable_background_writes()
             threading.Thread(target=_keep_projects_folder_in, name="projects-folder", daemon=True).start()
             # 3MF versions from before printer profiles: linked to the printer preset each was sliced with, once
             threading.Thread(

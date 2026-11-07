@@ -204,7 +204,7 @@ export function mockApi() {
     const imported = Object.entries(scanFolders)
       .filter(([name]) => !farm.projects.some((p) => p.name.toLowerCase() === name.toLowerCase()))
       .map(([name, files]) => importSample(name, files));
-    return { imported, skipped: [] };
+    return { imported, skipped: [], models: [], threemfs: [], library_skipped: [] };
   });
   // One sample folder made a project, its files sorted by kind as the API sorts them: { project_id, name, files, warnings }
   function importSample(name, files) {

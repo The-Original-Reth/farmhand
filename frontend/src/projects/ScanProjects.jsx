@@ -71,8 +71,8 @@ function ProjectsFolder() {
   return (
     <div data-testid="scan-projects-folder">
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
-        Every project folder in the project files folder that isn't a project here yet comes in, its files used where they
-        are: one another Farmhand sharing the folder keeps (with its name, files, versions, notes, sub-components and parts
+        The models and 3MF files another Farmhand sharing the folders has come in first (a 3MF once its printer is here), then
+        every project folder in the project files folder that isn't a project here yet, its files used where they are: one another Farmhand sharing the folder keeps (with its name, files, versions, notes, sub-components and parts
         list), or a folder you dropped in (named after it, its files sorted by kind). It's also done on its own every few
         minutes.
       </div>
@@ -80,9 +80,23 @@ function ProjectsFolder() {
       {busy && <div style={uiText(13, c.textFaint, { marginBottom: 10 })}>Scanning the projects folder…</div>}
       {result && !busy && (
         <div data-testid="scan-projects-folder-result" style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-          {result.imported.length === 0 && result.skipped.length === 0 && (
-            <div style={uiText(13, c.textMuted)}>Nothing new: every project folder there is a project here already.</div>
+          {result.imported.length === 0 && result.skipped.length === 0 && result.models.length === 0 && result.threemfs.length === 0 && (
+            <div style={uiText(13, c.textMuted)}>Nothing new: every project, model and 3MF there is here already.</div>
           )}
+          {(result.models.length > 0 || result.threemfs.length > 0) && (
+            <div data-testid="scan-library" style={uiText(13, c.textPrimary, { lineHeight: 1.5 })}>
+              <Badge tone="green">brought in</Badge>{" "}
+              {[result.models.length && plural(result.models.length, "model"), result.threemfs.length && plural(result.threemfs.length, "3MF file")]
+                .filter(Boolean)
+                .join(" and ")}{" "}
+              from the other Farmhand: <span style={{ color: c.textMuted }}>{[...result.models, ...result.threemfs].join(", ")}</span>
+            </div>
+          )}
+          {result.librarySkipped.map((s) => (
+            <div key={`lib:${s.name}`} data-testid="scan-library-skipped" style={uiText(13, c.textMuted, { lineHeight: 1.5 })}>
+              <Badge tone="muted">left out</Badge> <b style={{ color: c.heading }}>{s.name}</b>: {s.reason}
+            </div>
+          ))}
           {result.imported.map((p) => (
             <div key={p.projectId} data-testid="scan-imported" style={uiText(13, c.textPrimary, { lineHeight: 1.5 })}>
               <Badge tone="green">{p.repaired ? "rebuilt from its record" : "brought in"}</Badge> <b style={{ color: c.heading }}>{p.name}</b>:{" "}

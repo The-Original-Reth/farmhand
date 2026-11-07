@@ -265,6 +265,10 @@ export const scanProjectsFolder = async () => {
     // repaired: one here already, rebuilt from another Farmhand's record of it (it had come in as its folder's number)
     imported: r.imported.map((p) => ({ projectId: p.project_id, name: p.name, files: p.files, warnings: p.warnings, repaired: !!p.repaired })),
     skipped: r.skipped,
+    // the models and 3MFs another Farmhand sharing the folders has, brought in first (by name), and ones left out
+    models: r.models || [],
+    threemfs: r.threemfs || [],
+    librarySkipped: r.library_skipped || [],
   };
 };
 // Every project file against the disk (changes nothing): { projects, filesChecked, root, error, problems: [{ projectId,

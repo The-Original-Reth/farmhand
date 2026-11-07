@@ -200,7 +200,12 @@ MAX_PATH_LENGTH = 500  # source_model_versions.file_path is a String(500)
 
 
 def _known_paths(db: Session) -> set[str]:
-    return {scanner.normalise(p) for p in db.scalars(select(SourceModelVersion.file_path)) if p}
+    """The model files the scan passes over: this library's, and every one another Farmhand sharing the STL folder
+    keeps (from its records), which must never be taken in and moved."""
+    from .library_records import files_kept_by_others  # (it imports the models this module serves)
+
+    mine = {scanner.normalise(p) for p in db.scalars(select(SourceModelVersion.file_path)) if p}
+    return mine | {scanner.normalise(p) for p in files_kept_by_others(db)}
 
 
 def scan_for_new_files(db: Session) -> dict:

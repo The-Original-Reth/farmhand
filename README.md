@@ -251,6 +251,13 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
   a folder of its own when the other Farmhand already has files where it would go (`v1-2` beside `v1`, a project
   folder `1-2` beside `1`). The files themselves are shared, so a file deleted in one is gone for the other too
   (**Check projects** then lists it as missing there).
+- **Models and 3MF files are kept the same way.** Beside each model's files (in the STL folder) and each 3MF's (in the
+  3MF folder) is a record (`farmhand-model-<id>.json`, `farmhand-3mf-<id>.json`): the model's name, type, notes and
+  versions; the 3MF's printer, the models it was sliced from, notes, starred version, and every version's 3MF, G-code,
+  preview, monument and slicer settings (so a version whose files were pruned comes back too). The other Farmhand
+  brings them in, its files used where they are: with **Scan projects**, and on its own every few minutes. A 3MF comes
+  in once its printer (by name) is there too: add it, or **Load all settings**. The Models page's scan never offers a
+  file another Farmhand keeps, so it can't take one in and move it.
 - **Scan projects** (beside **New project** on the Projects page) has three parts:
   - **Projects folder**, done as soon as it opens (and on its own every few minutes): every project folder in the
     project files folder that isn't a project here yet comes in, its files used where they are. One another Farmhand

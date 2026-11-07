@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import answer_errors
 from ..schemas.project import BomOut, FileOrder, FolderIn, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
-from ..services import project_files, project_parts, project_scan, project_service, send_print
+from ..services import library_records, project_files, project_parts, project_scan, project_service, send_print
 from ..services.project_files import CAD, DOC, STL, THREEMF, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
@@ -58,7 +58,9 @@ def scan_projects_folder(db: Session = Depends(get_db)):
     reason}]}. 503 while the project files folder isn't there.
     """
     with answer_errors():
-        return project_scan.import_projects_folder(db)
+        library = library_records.import_library(db)  # the models and 3MFs another Farmhand has, first: projects name them
+        result = project_scan.import_projects_folder(db)
+    return {**result, "models": library["models"], "threemfs": library["threemfs"], "library_skipped": library["skipped"]}
 
 
 @router.get("/check")
