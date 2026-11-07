@@ -8,7 +8,7 @@ import { Badge } from "../components/common/ui.jsx";
 import { locationProblem } from "./ConfigLocationCard.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
 
-// Where each month's Farm cost record is saved once the month is over: by default a "farm cost" folder in the folder
+// Where each month's Farm cost record is saved once the month is over: by default a "farm-cost" folder in the folder
 // above the STL / OBJ / STEP folder, or one chosen here (it gets Farmhand's marker, so a share that isn't mounted is
 // never written under). Records already saved stay where they are.
 export function FarmCostFolderCard({ shares }) {
@@ -43,7 +43,7 @@ export function FarmCostFolderCard({ shares }) {
       </div>
       <div style={uiText(12, c.textFaint, { marginBottom: 12, lineHeight: 1.5 })}>
         When a month ends, its Farm cost table is saved here as a CSV (e.g. "farmhand - farm cost - oct 2026.csv").
-        {info.isDefault ? " By default: a \"farm cost\" folder in the folder above the STL / OBJ / STEP folder." : ""}
+        {info.isDefault ? " By default: a \"farm-cost\" folder in the folder above the STL / OBJ / STEP folder." : ""}
         {" "}Records already saved stay where they are when this changes.
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: `1px solid ${c.border}`, borderRadius: 4, background: c.panelAlt, marginBottom: 12 }}>

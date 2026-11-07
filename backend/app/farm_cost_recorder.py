@@ -2,7 +2,7 @@
 Saves each month's Farm cost record once the month is over, without anyone opening the page.
 
 A background thread looks once an hour (and soon after start-up, so a month that ended while Farmhand was off is
-caught up): if last month's record isn't in the "farm cost" folder yet, it's written (services/farm_cost.py). A
+caught up): if last month's record isn't in the "farm-cost" folder yet, it's written (services/farm_cost.py). A
 folder that can't be written right now (a network share that isn't mounted) is just tried again the next hour;
 nothing here ever stops the thread.
 

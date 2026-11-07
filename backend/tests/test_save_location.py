@@ -23,12 +23,12 @@ def test_a_new_address_connects_and_makes_every_folder(db_session, nas):
     row = db_session.query(NetworkShare).one()
     assert (row.name, row.share, row.username, row.password) == ("Farmhand", "prints/Farmhand", "alice", "s3cret!")
     base = mounts.mount_point_for("Farmhand")
-    for name in ("STL", "3MF", "Projects", "Farm cost", "Farmhand Configs"):
+    for name in ("STL", "3MF", "Projects", "farm-cost", "farmhand-configs"):
         assert (base / name).is_dir()
     assert storage.custom_path("stl") == _real(base / "STL") and storage.custom_path("project") == _real(base / "Projects")
-    assert farm_cost.location_info(db_session)["path"] == _real(base / "Farm cost")
-    assert config_service.location_path(db_session) == _real(base / "Farmhand Configs")
-    assert (base / "Farmhand Configs" / config_store.CONFIG_FILENAME).is_file()  # the settings copy written there
+    assert farm_cost.location_info(db_session)["path"] == _real(base / "farm-cost")
+    assert config_service.location_path(db_session) == _real(base / "farmhand-configs")
+    assert (base / "farmhand-configs" / config_store.CONFIG_FILENAME).is_file()  # the settings copy written there
     assert out["address"] == "//10.0.0.5/prints/Farmhand" and out["config_choice"] is None
     assert out["folders"]["threemf"] == _real(base / "3MF")
 
@@ -38,10 +38,13 @@ def test_the_share_already_there_and_its_folders_are_reused(db_session, nas):
     base = mounts.mount_point_for("TrueNas")
     (base / "stl").mkdir()
     (base / "farm cost").mkdir()
+    (base / "farm cost" / "farmhand - farm cost - oct 2026.csv").write_text("Period")
     svc.set_save_location(db_session, {"address": "smb://10.0.0.5/farmhand"})
     assert db_session.query(NetworkShare).count() == 1  # no second share for the same place
     assert storage.custom_path("stl") == _real(base / "stl")  # its own capitals kept, not a second "STL"
-    assert farm_cost.location_info(db_session)["path"] == _real(base / "farm cost")
+    # the old "farm cost" folder renamed to "farm-cost", what's in it kept
+    assert farm_cost.location_info(db_session)["path"] == _real(base / "farm-cost")
+    assert not (base / "farm cost").exists() and (base / "farm-cost" / "farmhand - farm cost - oct 2026.csv").is_file()
     assert (base / "3MF").is_dir() and [n for n in os.listdir(base) if n.lower() == "stl"] == ["stl"]
 
 
@@ -55,11 +58,12 @@ def test_a_folder_inside_a_connected_share(db_session, nas):
 
 def test_settings_already_saved_there_are_never_replaced_without_asking(db_session, nas):
     shares.create_share(db_session, {**SMB, "name": "TrueNas"})
-    configs = mounts.mount_point_for("TrueNas") / "Farmhand Configs"
-    configs.mkdir()
+    old = mounts.mount_point_for("TrueNas") / "Farmhand Configs"  # by its old name
+    old.mkdir()
     doc = config_store.build_document(config_store.normalize_config({"appearance": {"scheme": "violet"}}), None, None, [])
-    config_store.write_document(configs, doc)
+    config_store.write_document(old, doc)
     out = svc.set_save_location(db_session, {"address": "//10.0.0.5/farmhand"})
+    configs = mounts.mount_point_for("TrueNas") / "farmhand-configs"  # renamed, the saved settings in it
     assert out["config_choice"]["file_exists"] and out["config_choice"]["path"] == _real(configs)
     assert config_service.location_path(db_session) is None  # not chosen until the person says what to do
     assert config_store.read_document(configs)["appearance"]["scheme"] == "violet"
@@ -92,3 +96,35 @@ def test_the_save_location_says_how_its_share_is_and_takes_its_version(db_sessio
     svc.set_save_location(db_session, {"address": "//10.0.0.5/prints/Farmhand", "username": "alice", "version": "3.0", "domain": "WORKGROUP"})
     row = db_session.query(NetworkShare).one()
     assert (row.version, row.domain, row.password) == ("3.0", "WORKGROUP", "s3cret!")  # the password kept
+
+
+def test_a_folder_saved_by_its_old_name_follows_its_rename(db_session, nas):
+    """Another Farmhand sharing the folders renamed them: this one finds them by their new names by itself."""
+    from app.services import app_settings
+
+    base = mounts.mount_point_for("TrueNas")
+    for old in ("Farmhand Configs", "farm cost"):
+        (base / old).mkdir(parents=True)
+        storage.mark_location(base / old)
+    app_settings.put(db_session, config_service.KEY_LOCATION, str(base / "Farmhand Configs"))
+    app_settings.put(db_session, farm_cost.KEY_LOCATION, str(base / "farm cost"))
+    db_session.commit()
+    os.rename(base / "Farmhand Configs", base / "farmhand-configs")  # done by the other Farmhand
+    os.rename(base / "farm cost", base / "farm-cost")
+    assert config_service.location_path(db_session) == str(base / "farmhand-configs")
+    assert farm_cost.location_info(db_session)["path"] == str(base / "farm-cost")
+    assert app_settings.get(db_session, config_service.KEY_LOCATION) == str(base / "farmhand-configs")  # saved so
+
+
+def test_the_settings_folder_is_renamed_when_written_to(db_session, nas):
+    from app.services import app_settings
+
+    old = mounts.mount_point_for("TrueNas") / "Farmhand Configs"
+    old.mkdir(parents=True)
+    storage.mark_location(old)
+    app_settings.put(db_session, config_service.KEY_LOCATION, str(old))
+    db_session.commit()
+    assert config_service.mirror(db_session)["ok"]
+    new = mounts.mount_point_for("TrueNas") / "farmhand-configs"
+    assert not old.exists() and (new / config_store.CONFIG_FILENAME).is_file()
+    assert config_service.location_path(db_session) == str(new)

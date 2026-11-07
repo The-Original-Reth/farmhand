@@ -4,7 +4,7 @@ copy of the histories that used filament, each in the month it started (in the v
 and cost worked out as its print history row does (services/filament_cost.py).
 
 And the record of each month: once a month is over, its Farm cost table is saved as a CSV (the page's Download CSV
-for that month) in the farm cost folder: one chosen in Settings, or by default a "farm cost" folder in the folder
+for that month) in the farm cost folder: one chosen in Settings, or by default a "farm-cost" folder in the folder
 above the STL / OBJ / STEP folder. See record_last_month.
 """
 from __future__ import annotations
@@ -124,7 +124,7 @@ def _newest_first(rows: dict[str, dict]) -> list[dict]:
 
 # ------------------------------------------------------------------ the record saved after each month
 
-RECORDS_FOLDER = "farm cost"  # the default: in the folder above the STL / OBJ / STEP folder
+RECORDS_FOLDER = "farm-cost"  # the default: in the folder above the STL / OBJ / STEP folder ("farm cost" before)
 KEY_LOCATION = "farm_cost_dir"  # the folder chosen in Settings (AppSetting); none = the default
 _MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 CSV_HEAD = (
@@ -135,8 +135,20 @@ _QUOTE = '"'
 
 
 def default_folder() -> Path:
-    """The farm cost folder when none is chosen: "farm cost" in the folder above the STL / OBJ / STEP folder."""
-    return storage.effective_root("stl").parent / RECORDS_FOLDER
+    """The farm cost folder when none is chosen: "farm-cost" in the folder above the STL / OBJ / STEP folder (one still
+    called "farm cost" there until it's renamed when next written to)."""
+    return storage.named_folder(storage.effective_root("stl").parent, RECORDS_FOLDER)
+
+
+def _chosen(db: Session, rename: bool = False) -> str | None:
+    """The folder chosen in Settings, where it is now: one saved by its old name follows its rename (renamed now when
+    `rename`), and is saved by its new one."""
+    chosen = app_settings.get(db, KEY_LOCATION)
+    now = storage.current_folder(chosen, rename=rename)
+    if now != chosen:
+        app_settings.put(db, KEY_LOCATION, now)
+        db.commit()
+    return now
 
 
 def records_folder(db: Session) -> Path:
@@ -145,15 +157,15 @@ def records_folder(db: Session) -> Path:
     can be written: a chosen folder still has its marker, the default's STL folder is ready. So an unmounted share
     never gets a record on the local disk underneath it: StorageUnavailableError otherwise.
     """
-    chosen = app_settings.get(db, KEY_LOCATION)
+    chosen = _chosen(db, rename=True)
     if chosen:
         return storage.ensure_ready_folder(chosen, "farm cost folder")
-    return storage.ready_root("stl").parent / RECORDS_FOLDER
+    return storage.named_folder(storage.ready_root("stl").parent, RECORDS_FOLDER, rename=True)
 
 
 def location_info(db: Session) -> dict:
     """For Settings: {path, is_default, default_path, status: {exists, writable, marker_ok, ready}}."""
-    chosen = app_settings.get(db, KEY_LOCATION)
+    chosen = _chosen(db)
     default = default_folder()
     if chosen:
         return {"path": chosen, "is_default": False, "default_path": str(default), "status": storage.folder_status(Path(chosen))}

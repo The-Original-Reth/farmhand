@@ -8,8 +8,8 @@ reusing one already there whatever its capitals, and making the rest:
     STL               the source model files (the Models library)
     3MF               the sliced 3MF files and their G-code
     Projects          each project's own files
-    Farm cost         the monthly farm cost records
-    Farmhand Configs  the settings copy (Save all / Load all settings)
+    farm-cost         the monthly farm cost records ("farm cost" before: renamed)
+    farmhand-configs  the settings copy (Save all / Load all settings) ("Farmhand Configs" before: renamed)
 
 Files already saved elsewhere stay where they are (Settings offers to move them); only new ones go to the new folders.
 A settings folder that already holds saved settings is never written over without asking.
@@ -27,7 +27,7 @@ from ..models import NetworkShare
 from . import app_settings, config_service, farm_cost, network_shares_service, storage_settings_service
 
 KEY = "save_location"  # the address as typed
-FOLDERS = {"stl": "STL", "threemf": "3MF", "project": "Projects", "farm_cost": "Farm cost", "config": "Farmhand Configs"}
+FOLDERS = {"stl": "STL", "threemf": "3MF", "project": "Projects", "farm_cost": "farm-cost", "config": "farmhand-configs"}
 
 
 def _same(a: str, b: str) -> bool:
@@ -58,14 +58,13 @@ def _new_name(db: Session, share: str) -> str:
 
 
 def _folder(base: Path, name: str) -> Path:
-    """The folder of that name inside base: one already there (whatever its capitals), else a new one."""
-    try:
-        for entry in os.scandir(base):
-            if entry.is_dir() and entry.name.lower() == name.lower():
-                return Path(entry.path)
-    except OSError as e:
-        raise ValueError(f"Couldn't look inside {base}: {e}") from None
-    path = base / name
+    """The folder of that name inside base: one already there (whatever its capitals), or one with its old name renamed
+    to it (storage.FOLDER_RENAMES), else a new one."""
+    if not base.is_dir():
+        raise ValueError(f"Couldn't look inside {base}: it isn't there.")
+    path = storage.named_folder(base, name, rename=True)
+    if path.is_dir():
+        return path
     try:
         path.mkdir(exist_ok=True)
     except OSError as e:
@@ -110,7 +109,7 @@ def set_save_location(db: Session, data: dict) -> dict:
     """
     Use the address typed (and its login, for SMB) as the place everything goes. ValueError says why it can't be
     (a bad address, the NAS refusing the login, a folder that can't be made). Answers describe(), plus config_choice:
-    what's in the Farmhand Configs folder when it already holds saved settings that need a choice (Load them, or
+    what's in the farmhand-configs folder when it already holds saved settings that need a choice (Load them, or
     replace them with these), else null.
     """
     address = (data.get("address") or "").strip()

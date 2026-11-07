@@ -12,8 +12,8 @@ const FOLDERS = [
   ["stl", "STL", "STL / OBJ / STEP files"],
   ["threemf", "3MF", "3MF and G-code files"],
   ["project", "Projects", "Project files"],
-  ["farmCost", "Farm cost", "Farm cost records"],
-  ["config", "Farmhand Configs", "Settings (Save all)"],
+  ["farmCost", "farm-cost", "Farm cost records"],
+  ["config", "farmhand-configs", "Settings (Save all)"],
 ];
 
 // A folder picked on a connected share, as its NAS address and that share: /data/nas/truenas/Farmhand on //nas/share
@@ -252,7 +252,7 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
         </button>
       </div>
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginTop: 10 })}>
-        <b style={{ color: c.textMuted }}>Save all</b> writes every setting to the Farmhand Configs folder: the look, the storage
+        <b style={{ color: c.textMuted }}>Save all</b> writes every setting to the farmhand-configs folder: the look, the storage
         and share setup, the farm cost folder, the Power page's prices, how the Printers, Monitor and Farm cost pages are
         arranged, and your printers and models. <b style={{ color: c.textMuted }}>Load all settings</b> brings it back. A share's
         password is never saved; the printers' API keys and PrusaLink passwords are, so keep the folder private.

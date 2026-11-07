@@ -60,7 +60,7 @@ export function useSettingsCopy({ initialInfo, shares, onSettingsRestored, reloa
     setConfigError(null);
     setConfigInfo((await setConfigLocation({ path: null })).location);
   };
-  // Save all: everything written to the settings folder now (Farmhand picks "farmhand configs" when none is chosen)
+  // Save all: everything written to the settings folder now (Farmhand picks "farmhand-configs" when none is chosen)
   const saveAll = async () => {
     setConfigError(null);
     setSaved(null);

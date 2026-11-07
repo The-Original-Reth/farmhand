@@ -100,13 +100,13 @@ The first things to do, in this order. Everything is done in the web page; there
    Or press **Browse…** to pick the folder on a share that's already connected: it's used straight away, with that
    share's own login.
    Farmhand connects to it and uses a folder inside it for each kind of file, making the ones that aren't there:
-   **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **Farm cost** (the
-   monthly records) and **Farmhand Configs** (the settings). Folders already there are used as they are, whatever
+   **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **farm-cost** (the
+   monthly records) and **farmhand-configs** (the settings). Folders already there are used as they are, whatever
    their capitals. Out of the box, without a save location, everything stays in Farmhand's own storage on the
    computer it runs on.
 2. **Save all**, on the same card. Farmhand writes all its settings and every printer's and model's records to
-   Farmhand Configs, and keeps that copy up to date, so a lost or rebuilt computer can be brought back with
-   **Load all settings** (see "Where settings and records are kept"). If Farmhand Configs already holds saved
+   farmhand-configs, and keeps that copy up to date, so a lost or rebuilt computer can be brought back with
+   **Load all settings** (see "Where settings and records are kept"). If farmhand-configs already holds saved
    settings when you set the save location, Farmhand asks whether to load them or replace them.
 
    The card's own **Advanced** has the network share's settings: whether it's connected (and why not), **Reconnect**,
@@ -717,7 +717,7 @@ locations).
 - **On the server, always.** They're kept in Farmhand's database, so every browser and device
   shows the same look and order — change it on one, it changes on all.
 - **Plus a copy on the network folder you choose.** At the top of the Settings page, under **Save and load all
-  settings**, press **Save all**: with no folder chosen yet, Farmhand uses a **farmhand configs** folder beside
+  settings**, press **Save all**: with no folder chosen yet, Farmhand uses a **farmhand-configs** folder beside
   the STL folder (or press **Choose folder…**, jump to a share and pick or make one). Farmhand writes
   `farmhand-config.json` there, with the printers' and models' files beside it, and again **after every change**,
   so the settings survive a rebuild or a lost database. **Save all** writes all of it again whenever you like.
@@ -883,7 +883,7 @@ inside it) and sets every folder.
    connects straight away and **only saves the share if that works** — if not, it says why (can't reach it, wrong
    password, no share by that name, …). The domain or workgroup and the SMB / NFS version are under the card's
    **Advanced**; a change there is tried on a test connection first.
-2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, Farm cost, Farmhand Configs). With no
+2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, farmhand-configs). With no
    project files folder chosen, project files go in a **Projects** folder beside the STL folder (a `projects` folder
    already there is used), so they're on the NAS too; only while the STL folder is Farmhand's own do they stay in
    its storage. To keep one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want
@@ -946,7 +946,7 @@ share.
 | GET | `/settings/config/location/inspect?path=` | Look at a folder before choosing it: usable? already holds settings? |
 | PUT | `/settings/config/location` | Choose the network folder (`null` = none); `if_exists`: `ask` (default), `restore`, `overwrite` |
 | POST | `/settings/config/save-now` | Write the copy again now |
-| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now; with none chosen, `farmhand configs` beside the STL folder (`if_exists` as above when it already holds settings) |
+| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now; with none chosen, `farmhand-configs` beside the STL folder (`if_exists` as above when it already holds settings) |
 | POST | `/settings/config/restore` | Load the settings file (and printer and model records) in the chosen folder |
 
 The full API, with every route, is described at **http://localhost:4545/docs**.

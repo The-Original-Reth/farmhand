@@ -1142,20 +1142,20 @@ export function mockApi() {
       const list = Object.values(months).map((m) => ({ ...m, grams: Math.round(m.grams * 10) / 10, filament_cost: Math.round(m.filament_cost * 100) / 100 }));
       return { printer_id: p.id, months: list.sort((a, b) => (a.key < b.key ? 1 : -1)) };
     }),
-    // where the server keeps each month's record: the folder chosen in Settings, else "farm cost" above the STL folder
+    // where the server keeps each month's record: the folder chosen in Settings, else "farm-cost" above the STL folder
     records: {
       folder: farm.farmCostFolder || FARM_COST_DEFAULT, problem: null,
       saved: ["farmhand - farm cost - oct 2026.csv", "farmhand - farm cost - sep 2026.csv"],
     },
   }));
-  const FARM_COST_DEFAULT = "/data/nas/farm-nas/farm cost";
+  const FARM_COST_DEFAULT = "/data/nas/farm-nas/farm-cost";
   const farmCostLocation = () => ({
     path: farm.farmCostFolder || FARM_COST_DEFAULT, is_default: !farm.farmCostFolder, default_path: FARM_COST_DEFAULT,
     status: { exists: true, writable: true, marker_ok: true, ready: true },
   });
   on("GET", "/farm-cost/location", () => farmCostLocation());
   // The save location: one place on the NAS for everything, as the server sets it up (connecting to the share, and
-  // using or making STL, 3MF, Projects, Farm cost and Farmhand Configs inside it). A password of "wrong" is refused, to
+  // using or making STL, 3MF, Projects, farm-cost and farmhand-configs inside it). A password of "wrong" is refused, to
   // try the error.
   // the share the save location is on: the one whose server and share the address starts with
   const saveLocationShare = () => {
@@ -1183,8 +1183,8 @@ export function mockApi() {
     farm.storage.stl = `${base}/STL`;
     farm.storage.threemf = `${base}/3MF`;
     farm.storage.project = `${base}/Projects`;
-    farm.farmCostFolder = `${base}/Farm cost`;
-    farm.settingsFolder = `${base}/Farmhand Configs`;
+    farm.farmCostFolder = `${base}/farm-cost`;
+    farm.settingsFolder = `${base}/farmhand-configs`;
     farm.saveLocation = address;
     let share = saveLocationShare();
     if (!share) {
@@ -1465,9 +1465,9 @@ export function mockApi() {
     return { saved: true, needs_choice: false, found: null, restored: null, location: configLocation() };
   });
   on("POST", "/settings/config/save-now", () => ({ ok: true, skipped: false, path: farm.settingsFolder, error: null }));
-  // Save all: with no folder chosen, "farmhand configs" beside the STL folder (as the server does)
+  // Save all: with no folder chosen, "farmhand-configs" beside the STL folder (as the server does)
   on("POST", "/settings/config/save-all", () => {
-    if (!farm.settingsFolder) farm.settingsFolder = farm.storage.stl.replace(/\/[^/]*$/, "") + "/farmhand configs";
+    if (!farm.settingsFolder) farm.settingsFolder = farm.storage.stl.replace(/\/[^/]*$/, "") + "/farmhand-configs";
     return {
       saved: true, needs_choice: false, found: null, restored: null, location: configLocation(),
       mirror: { ok: true, skipped: false, path: farm.settingsFolder, error: null },

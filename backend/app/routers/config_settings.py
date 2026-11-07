@@ -56,7 +56,7 @@ def save_now(db: Session = Depends(get_db)):
 def save_all(payload: SaveAllIn, db: Session = Depends(get_db)):
     """
     Save all: every setting, printer and model file written to the settings folder now. With no folder chosen,
-    "farmhand configs" beside the STL folder is used; one already holding settings is never overwritten unless
+    "farmhand-configs" beside the STL folder is used; one already holding settings is never overwritten unless
     if_exists says so (needs_choice comes back instead, with what's there). 503 while the STL share is away.
     """
     with answer_errors():

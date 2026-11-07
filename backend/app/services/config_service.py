@@ -77,8 +77,15 @@ def _new_price_history(current: dict, prefs: dict) -> list[dict]:
 
 # ------------------------------------------------------------------ the copy on the network folder
 
-def location_path(db: Session) -> str | None:
-    return app_settings.get(db, KEY_LOCATION)
+def location_path(db: Session, rename: bool = False) -> str | None:
+    """The settings folder, where it is now: one saved by its old name ("Farmhand Configs") follows its rename to
+    "farmhand-configs" (here or by another Farmhand sharing it; renamed now when `rename`), and is saved by the new one."""
+    saved = app_settings.get(db, KEY_LOCATION)
+    now = storage.current_folder(saved, rename=rename)
+    if now != saved:
+        app_settings.put(db, KEY_LOCATION, now)
+        db.commit()
+    return now
 
 
 def _share_entries(db: Session) -> list[dict]:
@@ -121,7 +128,7 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
     them, each checked against what's there (scope None), or only what a change touched. Never raises: everything
     is safe on the server whatever happens to the share.
     """
-    path = location_path(db)
+    path = location_path(db, rename=True)  # one still called "Farmhand Configs" is renamed as it's written to
     if not path:
         return {"ok": True, "skipped": True, "path": None, "error": None}
     try:
@@ -262,17 +269,18 @@ def set_location(db: Session, raw: str | None, if_exists: str = "ask") -> dict:
     return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db)}
 
 
-DEFAULT_FOLDER = "farmhand configs"  # Save all with no settings folder chosen: this one, beside the STL folder
+DEFAULT_FOLDER = "farmhand-configs"  # Save all with no settings folder chosen: this one, beside the STL folder
 
 
 def save_all(db: Session, if_exists: str = "ask") -> dict:
     """
     Save all: everything written to the settings folder now (farmhand-config.json, and every printer's and model's
-    file). With no folder chosen yet, "farmhand configs" beside the STL folder is chosen for it, made if need be; one
+    file). With no folder chosen yet, "farmhand-configs" beside the STL folder is chosen for it, made if need be; one
     that already holds settings is never overwritten without asking (if_exists, as set_location's).
     """
     if not location_path(db):
-        folder = storage.ready_root("stl").parent / DEFAULT_FOLDER  # StorageUnavailableError while the STL share is away
+        # StorageUnavailableError while the STL share is away; one still called "farmhand configs" is renamed
+        folder = storage.named_folder(storage.ready_root("stl").parent, DEFAULT_FOLDER, rename=True)
         folder.mkdir(exist_ok=True)
         chosen = set_location(db, str(folder), if_exists)
         if not chosen["saved"]:
@@ -302,7 +310,7 @@ def restore(db: Session) -> dict:
     result["restored"] += applied
     result["warnings"] += warnings
 
-    farm_cost_path = doc["farm_cost"]["records_path"]
+    farm_cost_path = storage.current_folder(doc["farm_cost"]["records_path"])  # saved by its old name: where it is now
     if farm_cost_path and farm_cost_path != app_settings.get(db, FARM_COST_LOCATION):
         from .farm_cost import set_location as set_farm_cost_location  # (farm_cost reads these settings itself)
 

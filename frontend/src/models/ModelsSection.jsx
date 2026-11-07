@@ -164,6 +164,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
             </button>
             <span data-testid="model-count" style={uiText(12, c.textFaint, { marginLeft: 6 })}>
               {searching ? `${sorted.length} of ${rows.length}` : sorted.length} {(searching ? rows.length : sorted.length) === 1 ? "model" : "models"}
+              {/* and every 3MF in the library: "39 models / 79 3MF" */} / {bundles.length} 3MF
             </span>
             <button
               onClick={() => setUploadModal("redraw")}

@@ -42,8 +42,8 @@ def get_save_location(db: Session = Depends(get_db)):
 def set_save_location(payload: SaveLocationIn, db: Session = Depends(get_db)):
     """
     One place on the NAS for everything: connects to the address (reusing the share already there), and uses or makes
-    STL, 3MF, Projects, Farm cost and Farmhand Configs inside it. 422 with the reason when it can't (the NAS refusing
-    the login, say). config_choice is set when Farmhand Configs already holds saved settings: load or replace them.
+    STL, 3MF, Projects, farm-cost and farmhand-configs inside it. 422 with the reason when it can't (the NAS refusing
+    the login, say). config_choice is set when farmhand-configs already holds saved settings: load or replace them.
     """
     with _share_errors():
         return save_location_service.set_save_location(db, payload.model_dump(exclude_unset=True))

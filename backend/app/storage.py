@@ -81,6 +81,57 @@ def local_root() -> Path:
 
 PROJECTS_FOLDER = "Projects"  # the project files' default when the STL folder is chosen: beside it
 
+# Folders Farmhand names itself, and what each was called before: one with its old name is renamed when it's next used
+# (named_folder), and a folder saved by its old name follows the rename (current_folder): also when another Farmhand
+# sharing the folders renamed it.
+FOLDER_RENAMES = {"farm-cost": ("farm cost",), "farmhand-configs": ("farmhand configs",)}
+
+
+def _dir_named(parent: Path, names) -> Path | None:
+    """The folder in parent with one of these names, whatever its capitals (the first name found first)."""
+    wanted = [n.lower() for n in names]
+    try:
+        found = {e.name.lower(): Path(e.path) for e in os.scandir(parent) if e.is_dir()}
+    except OSError:
+        return None
+    return next((found[n] for n in wanted if n in found), None)
+
+
+def named_folder(parent: Path, name: str, rename: bool = False) -> Path:
+    """
+    The folder Farmhand calls `name` in parent: one already there (whatever its capitals); else one with its old name
+    (FOLDER_RENAMES), renamed to `name` when `rename` (it stays as it was if it can't be); else parent / name, not made.
+    """
+    found = _dir_named(parent, [name])
+    if found is not None:
+        return found
+    old = _dir_named(parent, FOLDER_RENAMES.get(name, ()))
+    if old is None:
+        return parent / name
+    if not rename:
+        return old
+    try:
+        os.rename(old, parent / name)
+        return parent / name
+    except OSError:
+        return old
+
+
+def current_folder(path: str | None, rename: bool = False) -> str | None:
+    """
+    A folder saved by one of its old names ("…/farm cost"): where it is now ("…/farm-cost") when it's been renamed
+    (here or by another Farmhand sharing it), renamed now when `rename`. Anything else as it is.
+    """
+    if not path:
+        return path
+    p = Path(path)
+    for new, olds in FOLDER_RENAMES.items():
+        if p.name.lower() in olds and (rename or not p.is_dir()):
+            now = named_folder(p.parent, new, rename=rename)
+            if now.is_dir():
+                return str(now)
+    return path
+
 
 def _projects_beside_stl() -> Path | None:
     """With an STL folder chosen (on the NAS, say), the project files' default: "Projects" beside it, or a folder of

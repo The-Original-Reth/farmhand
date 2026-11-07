@@ -28,7 +28,7 @@ export function ConfigLocationCard({ info, onChoose, onClear, error }) {
         </div>
       </div>
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
-        Where Save all writes every setting, and a copy after every change; the save location's Farmhand Configs folder
+        Where Save all writes every setting, and a copy after every change; the save location's farmhand-configs folder
         unless another is chosen here.
       </div>
 

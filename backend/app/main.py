@@ -195,7 +195,7 @@ def on_startup() -> None:
             supervisor.start()
             # Sync every printer's history and power meter now and then, so energy figures build up on their own
             poller.start()
-            # Once a month is over, its Farm cost table is saved as a record in the "farm cost" folder
+            # Once a month is over, its Farm cost table is saved as a record in the "farm-cost" folder
             farm_cost_recorder.start()
             # Changes to printers and models get copied to the settings folder in the background, and once now
             config_service.enable_background_mirror()

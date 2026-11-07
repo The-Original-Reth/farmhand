@@ -112,7 +112,7 @@ def test_last_months_record_is_saved_once_beside_the_model_folder(farm, tmp_path
     c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.2, "energy_price_from": "2026-10", "time_zone": "UTC"}})
 
     written = farm_cost.record_last_month(_db(), now=dt.datetime(2026, 11, 3, tzinfo=dt.timezone.utc))
-    assert written == storage.effective_root("stl").parent / "farm cost" / "farmhand - farm cost - oct 2026.csv"
+    assert written == storage.effective_root("stl").parent / "farm-cost" / "farmhand - farm cost - oct 2026.csv"
     text = written.read_bytes().decode("utf-8")
     assert "\r\n" in text and "\r\r" not in text  # Excel's line ends, exactly
     lines = text.lstrip("﻿").splitlines()
@@ -145,7 +145,7 @@ def test_no_record_is_written_while_the_model_folder_is_unavailable(farm, tmp_pa
     storage.configure(stl_path=str(unmounted))
     with pytest.raises(storage.StorageUnavailableError):
         farm_cost.record_last_month(_db(), now=dt.datetime(2026, 11, 3, tzinfo=dt.timezone.utc))
-    assert not (tmp_path / "nas" / "farm cost").exists()
+    assert not (tmp_path / "nas" / "farm-cost").exists()
     records = c.get("/farm-cost").json()["records"]
     assert records["folder"] is None and "marker" in records["problem"]
 
@@ -167,7 +167,7 @@ def test_the_records_folder_can_be_chosen_in_settings(farm, tmp_path):
 
     c, *_ = farm
     loc = c.get("/farm-cost/location").json()
-    assert loc["is_default"] and loc["path"] == str(storage.effective_root("stl").parent / "farm cost")
+    assert loc["is_default"] and loc["path"] == str(storage.effective_root("stl").parent / "farm-cost")
 
     chosen = storage.local_root() / "accounts"  # inside Farmhand's own storage: a folder that lasts
     chosen.mkdir()

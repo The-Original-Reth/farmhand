@@ -701,7 +701,7 @@ const normalizeSaveLocation = (r) => ({
 });
 export const getSaveLocation = async () => normalizeSaveLocation(await request("/settings/storage/save-location"));
 // Connects to the address (reusing the share already there) and uses or makes STL, 3MF, Projects, Farm cost and
-// Farmhand Configs inside it. configChoice: what's in Farmhand Configs when it already holds saved settings (ask to
+// farmhand-configs inside it. configChoice: what's in farmhand-configs when it already holds saved settings (ask to
 // load or replace them), else null. A blank password keeps the saved one.
 // domain and version (Advanced): the workgroup, and the SMB / NFS version ("" = worked out by itself); left out, the
 // share's stay as they are
@@ -824,7 +824,7 @@ export const saveConfigOnExit = (patch) => {
 
 export const saveConfigNow = () => post("/settings/config/save-now");
 // Save all: every setting, printer and model written to the settings folder now. With no folder chosen, Farmhand picks
-// "farmhand configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
+// "farmhand-configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
 // answered with setConfigLocation({ path: found.path, ifExists }).
 export const saveAllSettings = async (ifExists = "ask") => {
   const r = await request("/settings/config/save-all", jsonBody("POST", { if_exists: ifExists }));
