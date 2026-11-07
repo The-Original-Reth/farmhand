@@ -84,7 +84,7 @@ def add_source_model_version(
     model = _require_model(db, source_model_id)
 
     next_version = (model.latest_version.version + 1) if model.latest_version else 1
-    dest_dir = storage.source_model_version_dir(source_model_id, next_version)
+    dest_dir = storage.source_model_version_dir(source_model_id, next_version, fresh=True)
     file_path = storage.save_upload(dest_dir, filename, file_obj)
 
     thumbnail_path = None
@@ -274,7 +274,7 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
     dest_dir: Path | None = None
     moved_to: str | None = None
     try:
-        dest_dir = storage.source_model_version_dir(model.id, 1)
+        dest_dir = storage.source_model_version_dir(model.id, 1, fresh=True)
         if len(str(dest_dir / name)) > MAX_PATH_LENGTH:
             raise ValueError(
                 f"The file's name is too long for Farmhand to store it ({len(str(dest_dir / name))} characters in its path; "

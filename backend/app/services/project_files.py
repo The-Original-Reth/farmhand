@@ -21,7 +21,7 @@ from ..models import (
 )
 from ..names import with_version
 from ..thumbnails.cad_preview import render_cad_preview
-from .project_service import link_printer, require_project
+from .project_service import link_printer, project_folder, require_project
 
 MAX_NOTE_LENGTH = 2000
 
@@ -90,7 +90,8 @@ def _files_of(v) -> list[str | None]:
 def _add_version(db: Session, kind: Kind, f, number: int, filename: str, file_obj, note: str | None) -> None:
     """Write the file (and its preview) and record it. A record that can't be saved takes its files back out."""
     name = with_version(Path(filename or "").name or kind.noun, number)
-    path = storage.save_upload(storage.project_file_dir(f.project_id, kind.folder, f.id, number), name, file_obj)
+    folder = project_folder(db, f.project_id)  # its own folder in the project files folder, chosen now if it has none
+    path = storage.save_upload(storage.project_file_dir(folder, kind.folder, f.id, number, fresh=True), name, file_obj)
     png = render_cad_preview(path)
     thumb = storage.save_preview_beside(path, png) if png else None
     try:

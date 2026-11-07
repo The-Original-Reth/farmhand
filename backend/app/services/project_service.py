@@ -6,6 +6,7 @@ And its parts list (project_parts.py).
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectDocFile, ProjectModelComponent, ProjectPrinter,
+    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectDocFile, ProjectFolder, ProjectModelComponent, ProjectPrinter,
     ProjectSourceModel, ProjectStlFile, ProjectStlFileComponent, ProjectThreemfFile, ProjectThreemfVersion, SourceFileType,
     SourceModel,
 )
@@ -120,6 +121,11 @@ def create_project(db: Session, name: str) -> Project:
     project = Project(name=_clean_name(db, name))
     db.add(project)
     db.commit()
+    try:
+        project_folder(db, project.id)  # its folder chosen now, so no other Farmhand's is ever taken for it
+        db.commit()
+    except storage.StorageUnavailableError:
+        db.rollback()  # chosen with its first file instead
     return require_project(db, project.id)
 
 
@@ -131,16 +137,45 @@ def rename_project(db: Session, project_id: int, name: str) -> Project:
 
 
 def delete_project(db: Session, project_id: int) -> None:
-    """Delete the project and its own files (rows first, then files, then its folder if that's left empty). The models,
-    3MFs and printers it used stay where they are."""
+    """Delete the project and its own files (rows first, then files, then this Farmhand's record of it, then its folder if
+    that's left empty). The models, 3MFs and printers it used stay where they are."""
     from .project_files import files_of_project  # (it imports this module)
+    from .project_records import record_path  # (it imports this module)
 
     project = require_project(db, project_id)
+    folder = project.folder
     paths = files_of_project(db, project_id)
     db.delete(project)
     db.commit()
     storage.delete_files(paths)
-    storage.tidy_project_folder(project_id)
+    storage.delete_files([str(record_path(db, folder))], prune=False)
+    storage.tidy_project_folder(folder)
+
+
+def project_folder(db: Session, project_id: int) -> str:
+    """
+    The project's folder in the project files folder, for its files: the one recorded, else its id, recorded now. When
+    another Farmhand sharing the folder already has files in a folder of that name, the next free "12-2", "12-3"...
+    StorageUnavailableError while the project files folder isn't there.
+    """
+    project = require_project(db, project_id)
+    if project.folder_row:
+        return project.folder_row.folder
+    root = storage.ready_root("project")
+    name, k = str(project.id), 2
+    while (root / name).exists() and not _files_already_in(db, project, root / name):
+        name, k = f"{project.id}-{k}", k + 1
+    project.folder_row = ProjectFolder(project_id=project.id, folder=name)
+    db.flush()
+    return name
+
+
+def _files_already_in(db: Session, project: Project, folder) -> bool:
+    """Has this project files of its own in that folder already (one from before folders were recorded)?"""
+    from .project_files import files_of_project
+
+    inside = str(folder) + os.sep
+    return any(p and os.path.abspath(p).startswith(os.path.abspath(inside)) for p in files_of_project(db, project.id))
 
 
 # ---- models from the Models page ----

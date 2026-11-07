@@ -196,6 +196,18 @@ export function mockApi() {
     if (farm.projects.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
       throw new HttpError(409, `There's already a project called ${name}: it isn't brought in again.`);
     }
+    return [201, importSample(name, files)];
+  });
+  // Scan projects' projects folder: every sample folder that isn't a project yet comes in (as the server does with the
+  // project files folder's folders)
+  on("POST", "/projects/scan-projects-folder", () => {
+    const imported = Object.entries(scanFolders)
+      .filter(([name]) => !farm.projects.some((p) => p.name.toLowerCase() === name.toLowerCase()))
+      .map(([name, files]) => importSample(name, files));
+    return { imported, skipped: [] };
+  });
+  // One sample folder made a project, its files sorted by kind as the API sorts them: { project_id, name, files, warnings }
+  function importSample(name, files) {
     const p = {
       id: farm.nextIds.project++, name, created_at: iso(nowUnix()),
       doc_files: [], cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [], bundle_ids: [], printer_ids: [], parts: [],
@@ -227,8 +239,8 @@ export function mockApi() {
       }
     }
     farm.projects.push(p);
-    return [201, { project_id: p.id, name, files: counts, warnings: [] }];
-  });
+    return { project_id: p.id, name, files: counts, warnings: [] };
+  }
   on("GET", "/projects/check", () => {
     // the mockup keeps no files, so it reports a sample: the first project's first document as missing, one stray file
     const kinds = ["doc_files", "cad_files", "stl_files", "threemf_files"];

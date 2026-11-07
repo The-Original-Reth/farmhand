@@ -15,6 +15,7 @@ the project files folder that isn't on record.
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 from pathlib import Path
 
@@ -22,11 +23,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import storage
-from ..models import Project
+from ..models import Printer, Project, ProjectFolder, ProjectPart, ProjectThreemfGcode, SourceModel
 from ..parsers import parse_3mf
-from . import printer_service, project_files
+from ..thumbnails.cad_preview import render_cad_preview
+from . import printer_service, project_files, project_records
 from .project_files import CAD, DOC, STL, THREEMF
-from .project_service import clean_component, create_project, set_counts
+from .project_service import add_model, clean_component, create_project, link_printer, project_folder, set_counts
 
 CAD_EXTENSIONS = {
     ".step", ".stp", ".iges", ".igs", ".brep", ".brp", ".f3d", ".f3z", ".sldprt", ".sldasm", ".slddrw", ".scad",
@@ -249,7 +251,7 @@ def check_files(db: Session) -> dict:
         for here, dirs, files in os.walk(root):
             dirs[:] = [d for d in dirs if not d.startswith(".")]
             for name in files:
-                if name.startswith(".") or name.lower() in SKIPPED_NAMES:
+                if name.startswith(".") or name.lower() in SKIPPED_NAMES or project_records.is_record(name):
                     continue
                 path = os.path.realpath(os.path.join(here, name))
                 if path not in known:
@@ -260,3 +262,214 @@ def check_files(db: Session) -> dict:
         "problems": problems[:MAX_LISTED], "problems_total": len(problems),
         "unknown": unknown[:MAX_LISTED], "unknown_total": len(unknown),
     }
+
+# ------------------------------------------------------------------ the project files folder, brought in as it is
+
+QUIET_SECONDS = 120  # on its own (not asked for), a folder is brought in only once nothing in it has changed for this long
+
+
+def _quiet(folder: Path, files: list[Path]) -> bool:
+    """Nothing in the folder changed lately: it isn't still being copied in."""
+    now = dt.datetime.now().timestamp()
+    try:
+        newest = max([folder.stat().st_mtime, *(f.stat().st_mtime for f in files)])
+    except OSError:
+        return False
+    return now - newest >= QUIET_SECONDS
+
+
+def _version_row(kind, f, number: int, path: Path, filename: str, note=None, uploaded_at=None):
+    preview = storage.preview_beside(str(path))
+    if not os.path.exists(preview):
+        png = render_cad_preview(str(path))  # fails soft: no preview is better than no project
+        preview = storage.save_preview_beside(str(path), png) if png else None
+    return kind.version_cls(
+        **{kind.file_fk: f.id}, version=number, filename=filename, file_path=str(path), thumbnail_path=preview,
+        size_bytes=os.path.getsize(path), note=note, **({"uploaded_at": uploaded_at} if uploaded_at else {}),
+    )
+
+
+def _at(base: Path, where: str | None) -> Path | None:
+    """A file named in a record: relative to the project's folder, or as it was written."""
+    if not where:
+        return None
+    p = Path(where)
+    return p if p.is_absolute() else base / p
+
+
+def _from_records(db: Session, project: Project, base: Path, records: list[dict], warnings: list[str]) -> dict:
+    """The project's files, parts, models and printers as the records in its folder have them (every Farmhand's
+    together: a file in any of them comes in once). Files that aren't there any more are left out."""
+    counts = {"doc": 0, "cad": 0, "stl": 0, "threemf": 0, "gcode": 0}
+    kinds = {"doc": DOC, "cad": CAD, "stl": STL, "threemf": THREEMF}
+    seen: set[str] = set()
+    for record in records:
+        for entry in record.get("files") or []:
+            kind = kinds.get(entry.get("kind")) if isinstance(entry, dict) else None
+            versions = [v for v in (entry.get("versions") or []) if isinstance(v, dict)] if kind else []
+            here = [(v, _at(base, v.get("path"))) for v in sorted(versions, key=lambda v: v.get("version") or 0)]
+            here = [(v, p) for v, p in here if p and p.is_file()]
+            if not here or str(here[-1][1]) in seen:
+                continue
+            seen.update(str(p) for _, p in here)
+            f = kind.file_cls(project_id=project.id)
+            if kind is THREEMF and entry.get("printer"):
+                printer = db.scalar(select(Printer).where(Printer.name == entry["printer"]))
+                f.printer_id = printer.id if printer else None
+            db.add(f)
+            db.flush()
+            for n, (v, path) in enumerate(here, start=1):
+                row = _version_row(kind, f, n, path, str(v.get("filename") or path.name)[:255], v.get("note"), _when(v.get("uploaded_at")))
+                db.add(row)
+                gcode = v.get("gcode") if kind is THREEMF and isinstance(v.get("gcode"), dict) else None
+                gpath = _at(base, gcode.get("path")) if gcode else None
+                if gpath and gpath.is_file():
+                    db.flush()
+                    db.add(ProjectThreemfGcode(version_id=row.id, filename=str(gcode.get("filename") or gpath.name)[:255], file_path=str(gpath)))
+                    counts["gcode"] += 1
+            db.flush()
+            if kind is STL:
+                set_counts(db, project.id, "stl", f.id, need=entry.get("need") or 1, have=entry.get("have") or 0,
+                           component=_component(entry.get("component"), warnings))
+            if kind is THREEMF and f.printer_id:
+                link_printer(db, project.id, f.printer_id)
+            counts[kind.key] += 1
+    latest = records[0]
+    for part in latest.get("parts") or []:
+        if isinstance(part, dict) and str(part.get("name") or "").strip():
+            db.add(ProjectPart(
+                project_id=project.id, name=str(part["name"]).strip()[:200], need=_whole(part.get("need"), 1),
+                have=_whole(part.get("have"), 0), link=part.get("link") or None, note=part.get("note") or None,
+            ))
+    for use in latest.get("models") or []:
+        model = db.scalar(select(SourceModel).where(SourceModel.name == use.get("name"))) if isinstance(use, dict) else None
+        if model is None:
+            if isinstance(use, dict) and use.get("name"):
+                warnings.append(f"The model {use['name']} isn't in Models here, so it isn't in the project.")
+            continue
+        add_model(db, project.id, model.id)
+        set_counts(db, project.id, "model", model.id, need=use.get("need") or 1, have=use.get("have") or 0,
+                   component=_component(use.get("component"), warnings))
+    for name in latest.get("printers") or []:
+        printer = db.scalar(select(Printer).where(Printer.name == name))
+        if printer:
+            link_printer(db, project.id, printer.id)
+    return counts
+
+
+def _whole(value, default: int) -> int:
+    return value if type(value) is int and value >= 0 else default
+
+
+def _when(value):
+    try:
+        return dt.datetime.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def _component(value, warnings: list[str]):
+    try:
+        return clean_component(value) if isinstance(value, str) else None
+    except ValueError as e:
+        warnings.append(str(e))
+        return None
+
+
+def _as_found(db: Session, project: Project, folder: Path, files: list[Path], warnings: list[str]) -> dict:
+    """A folder dropped in by hand: its files as they are, each by its kind (see the top of this file)."""
+    counts = {"doc": 0, "cad": 0, "stl": 0, "threemf": 0, "gcode": 0}
+    threemfs: dict[tuple[Path, str], int] = {}  # (folder, stem) -> the version id of a 3MF brought in
+    for path in [p for p in files if _kind_of(p.name) != "gcode"] + [p for p in files if _kind_of(p.name) == "gcode"]:
+        kind_key = _kind_of(path.name)
+        try:
+            if kind_key == "gcode":
+                version_id = threemfs.get((path.parent, Path(path.stem).stem.lower())) or threemfs.get((path.parent, path.stem.lower()))
+                if version_id:
+                    db.add(ProjectThreemfGcode(version_id=version_id, filename=path.name[:255], file_path=str(path)))
+                    counts["gcode"] += 1
+                    continue
+                kind_key = "doc"  # no 3MF of its name: a document
+            kind = {"doc": DOC, "cad": CAD, "stl": STL, "threemf": THREEMF}[kind_key]
+            f = kind.file_cls(project_id=project.id)
+            if kind is THREEMF:
+                printer = _printer_for(db, path)
+                f.printer_id = printer.id if printer else None
+            db.add(f)
+            db.flush()
+            row = _version_row(kind, f, 1, path, path.name[:255])
+            db.add(row)
+            db.flush()
+            if kind is STL and path.parent != folder:
+                set_counts(db, project.id, "stl", f.id, component=_component(path.parent.relative_to(folder).as_posix(), warnings))
+            if kind is THREEMF:
+                threemfs[(path.parent, path.stem.lower())] = row.id
+                if f.printer_id:
+                    link_printer(db, project.id, f.printer_id)
+            counts[kind_key] += 1
+        except (ValueError, OSError) as e:
+            warnings.append(f"{path.relative_to(folder).as_posix()} wasn't brought in: {e}")
+    return counts
+
+
+def import_projects_folder(db: Session, auto: bool = False) -> dict:
+    """
+    Scan projects: every folder in the project files folder that isn't one of this Farmhand's own projects becomes one,
+    its files used where they are (nothing is copied): a folder another Farmhand keeps (sharing the folders, or from
+    before this computer) comes back from its records; a folder dropped in by hand as found. One named like a project
+    already here is left out. auto: run on its own, so a folder still being copied in is left until next time.
+    Answers {imported: [{project_id, name, files, warnings}], skipped: [{name, reason}]}.
+    StorageUnavailableError while the project files folder isn't there.
+    """
+    root = storage.ready_root("project")
+    ours = set()
+    for pid in db.scalars(select(Project.id)):
+        ours.add(project_folder(db, pid))  # every project here gets its folder recorded first, so it's never taken
+    db.commit()
+    taken = _existing_names(db)
+    imported, skipped = [], []
+    try:
+        entries = sorted((e for e in os.scandir(root) if e.is_dir() and not e.name.startswith(".")), key=lambda e: e.name.lower())
+    except OSError as e:
+        raise ValueError(f"Couldn't read {root}: {e}") from None
+    for entry in entries:
+        if entry.name in ours:
+            continue
+        folder = Path(entry.path)
+        records = project_records.read_records(folder)
+        try:
+            files = [f for f in _files_in(folder) if not project_records.is_record(f.name)]
+        except (ValueError, OSError) as e:
+            skipped.append({"name": entry.name, "reason": str(e)})
+            continue
+        name = " ".join(str(records[0]["name"] if records else entry.name).split())
+        if not files and not records:
+            continue  # an empty folder: nothing to bring in
+        if auto and not _quiet(folder, files):
+            skipped.append({"name": name, "reason": "Still being copied in: it's brought in once it's finished."})
+            continue
+        if name.lower() in taken:
+            skipped.append({"name": name, "reason": f"There's already a project called {name} here."})
+            continue
+        warnings: list[str] = []
+        project = None
+        try:
+            project = create_project(db, name)
+            if project.folder_row:
+                project.folder_row.folder = entry.name  # its files are where they were found
+            else:
+                project.folder_row = ProjectFolder(project_id=project.id, folder=entry.name)
+            db.flush()
+            counts = _from_records(db, project, folder, records, warnings) if records else _as_found(db, project, folder, files, warnings)
+            db.commit()
+        except (ValueError, OSError) as e:
+            db.rollback()
+            if project is not None and db.get(Project, project.id) is not None:
+                db.delete(db.get(Project, project.id))  # not half brought in: tried again next time
+                db.commit()
+            skipped.append({"name": name, "reason": str(e)})
+            continue
+        taken.add(name.lower())
+        project_records.request_write(project.id)
+        imported.append({"project_id": project.id, "name": name, "files": counts, "warnings": warnings})
+    return {"imported": imported, "skipped": skipped}

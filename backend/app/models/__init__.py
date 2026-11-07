@@ -18,7 +18,7 @@ from .printer_camera import PrinterCamera
 from .printer_note import PrinterNote
 from .project import (
     Project, ProjectBundle, ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition,
-    ProjectDocVersion, ProjectModelComponent,
+    ProjectDocVersion, ProjectFolder, ProjectModelComponent,
     ProjectPart, ProjectPrinter, ProjectSourceModel, ProjectStlFile, ProjectStlFileComponent, ProjectStlVersion,
     ProjectThreemfFile, ProjectThreemfGcode, ProjectThreemfVersion,
 )
@@ -53,6 +53,7 @@ __all__ = [
     "ProjectDocFile",
     "ProjectDocFilePosition",
     "ProjectDocVersion",
+    "ProjectFolder",
     "ProjectModelComponent",
     "ProjectPart",
     "ProjectPrinter",

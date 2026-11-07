@@ -241,8 +241,23 @@ sudo docker compose down -v
 documents, CAD files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its six sections (Documents, CAD, STL
 files, BOM, 3MF files, Printers), each folding away with the arrow by its heading (remembered in this browser).
-- **Scan projects** (beside **New project** on the Projects page) has two parts:
-  - **Import folders**: pick the folder your projects are in on the NAS. Each folder inside it is listed with what it
+- **Each project is kept on the NAS, with what it is.** Its files are in its own folder in the project files folder
+  (the **Projects** folder of the save location), and beside them a record of the project (`farmhand-project-<id>.json`:
+  its name, files and versions, notes, sub-components, counts, parts list, and the models and printers it uses),
+  rewritten after every change. So a project isn't only in Farmhand's database: if the computer running Farmhand is
+  replaced, a new Farmhand pointed at the same save location brings every project back with **Scan projects**.
+- **Two Farmhands can share the same NAS folders** (testing on two computers, say). Each writes its own record of a
+  project, and each brings in the projects the other has. Nothing is ever written over: a new file or version goes in
+  a folder of its own when the other Farmhand already has files where it would go (`v1-2` beside `v1`, a project
+  folder `1-2` beside `1`). The files themselves are shared, so a file deleted in one is gone for the other too
+  (**Check projects** then lists it as missing there).
+- **Scan projects** (beside **New project** on the Projects page) has three parts:
+  - **Projects folder**, done as soon as it opens (and on its own every few minutes): every project folder in the
+    project files folder that isn't a project here yet comes in, its files used where they are. One another Farmhand
+    keeps comes back from its records; a folder you dropped in becomes a project named after it, its files sorted by
+    kind (as below). One named like a project already here is left out, and on its own it leaves a folder until
+    nothing in it has changed for two minutes, so one still being copied in isn't brought in half-done.
+  - **Another folder**: pick a folder your projects are in elsewhere on the NAS. Each folder inside it is listed with what it
     holds, and each one ticked becomes a project of the same name (one already in Farmhand is left out). Its files are
     copied in, sorted by kind: STL and OBJ files as the project's own STLs (the folders they're in become
     sub-components), 3MF files (for the printer they were sliced for, when that's a printer here), a G-code beside a 3MF

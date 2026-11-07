@@ -49,6 +49,18 @@ def import_folder(payload: FolderIn, db: Session = Depends(get_db)):
             raise HTTPException(status_code=409, detail=str(e)) from None
 
 
+@router.post("/scan-projects-folder")
+def scan_projects_folder(db: Session = Depends(get_db)):
+    """
+    Scan projects: every folder in the project files folder that isn't one of this Farmhand's projects becomes one,
+    its files used where they are: another Farmhand's (from the records in it) or one dropped in by hand. One named
+    like a project already here is left out. {imported: [{project_id, name, files, warnings}], skipped: [{name,
+    reason}]}. 503 while the project files folder isn't there.
+    """
+    with answer_errors():
+        return project_scan.import_projects_folder(db)
+
+
 @router.get("/check")
 def check_files(db: Session = Depends(get_db)):
     """Every project file against the disk: {projects, files_checked, root, error, problems: [...], problems_total,

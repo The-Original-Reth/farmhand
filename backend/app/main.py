@@ -16,7 +16,9 @@ from .notes import NotesConflict, conflict_response
 from .printer_poller import poller
 from .farm_cost_recorder import recorder as farm_cost_recorder
 from .routers import bundles, config_settings, farm_cost, moonraker, printers, projects, prusalink, source_models, storage_settings
-from .services import bundle_service, config_service, previews, storage_settings_service, sub_printer_service
+from .services import (
+    bundle_service, config_service, previews, project_records, project_scan, storage_settings_service, sub_printer_service,
+)
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
 
@@ -56,6 +58,10 @@ async def keep_settings_copy_current(request: Request, call_next):
         scope = _what_changed(request.url.path)
         if scope is not None:
             config_service.request_mirror(scope)
+        # ...and a change to a project is written to its record in its own folder (project_records)
+        parts = request.url.path.strip("/").split("/")
+        if parts[0] == "projects":
+            project_records.request_write(int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None)
     return response
 
 
@@ -103,6 +109,31 @@ async def printer_error_handler(request: Request, exc: MoonrakerError | PrusaLin
 async def storage_unavailable_handler(request: Request, exc: storage.StorageUnavailableError):
     # e.g. a network share that isn't mounted right now: a clear 503, not a generic 500
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+def _keep_projects_folder_in() -> None:
+    """
+    Each project's record written to its folder once (a minute after starting, when the shares are mounted), then the
+    project files folder scanned every few minutes: projects another Farmhand sharing it has (or project folders
+    dropped in) come in on their own.
+    """
+    time.sleep(60)
+    try:
+        with SessionLocal() as db:
+            project_records.write_all(db)
+    except Exception:  # noqa: BLE001 - this must never stop
+        logger.exception("Writing the project records failed")
+    while True:
+        try:
+            with SessionLocal() as db:
+                result = project_scan.import_projects_folder(db, auto=True)
+            for p in result["imported"]:
+                logger.info("Brought in the project %s from the project files folder", p["name"])
+        except storage.StorageUnavailableError:
+            pass  # the folder is away: next time
+        except Exception:  # noqa: BLE001 - this must never stop; it tries again in a few minutes
+            logger.exception("Scanning the project files folder failed")
+        time.sleep(300)
 
 
 def _keep_previews_beside_models() -> None:
@@ -159,6 +190,9 @@ def on_startup() -> None:
             config_service.enable_background_mirror()
             config_service.request_mirror()
             threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
+            # Projects written to their folders, and ones in the project files folder that aren't here brought in
+            project_records.enable_background_writes()
+            threading.Thread(target=_keep_projects_folder_in, name="projects-folder", daemon=True).start()
             # 3MF versions from before printer profiles: linked to the printer preset each was sliced with, once
             threading.Thread(
                 target=sub_printer_service.run_link_missing, args=(SessionLocal,), name="sub-printers", daemon=True

@@ -52,6 +52,26 @@ class Project(Base):
     parts: Mapped[list["ProjectPart"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="ProjectPart.id"
     )
+    # the folder its own files are in, inside the project files folder (see ProjectFolder)
+    folder_row: Mapped["ProjectFolder | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+
+    @property
+    def folder(self) -> str:
+        """Its folder's name in the project files folder: its id, unless another was recorded for it."""
+        return self.folder_row.folder if self.folder_row else str(self.id)
+
+
+class ProjectFolder(Base):
+    """
+    The folder a project's own files are in, inside the project files folder: its id for most ("12"), but "12-2" when
+    another Farmhand sharing the folder already has a "12", and the folder it was found in for a project brought in
+    by Scan projects. (A table of its own: the schema only ever adds tables.)
+    """
+
+    __tablename__ = "project_folders"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    folder: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
 # A project's own files, documents, CAD, STL or 3MF, each kind in tables of its own but alike: a file with numbered versions, each kept

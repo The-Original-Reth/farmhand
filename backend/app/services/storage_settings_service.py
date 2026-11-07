@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..models import BundleVersion, SourceModelVersion
-from . import app_settings, project_files
+from . import app_settings, project_files, project_service
 
 KEYS = {"stl": "stl_storage_dir", "threemf": "threemf_storage_dir", "project": "project_storage_dir"}
 
@@ -270,12 +270,12 @@ def migrate(db: Session) -> dict:
     for v in list(project_files.all_versions(db)):
         label = f"{v.filename} v{v.version}"
         folder = next(k.folder for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
-        pid, cid, ver = v.file.project_id, v.file.id, v.version
+        pfolder, cid, ver = project_service.project_folder(db, v.file.project_id), v.file.id, v.version
         copies = []
         try:
             if v.file_path and not storage.is_inside(v.file_path, project_root) and not os.path.exists(v.file_path):
                 result["missing"].append(label)
-            new_file, old_file = relocate(v.file_path, project_root, lambda: storage.project_file_dir(pid, folder, cid, ver), copies)
+            new_file, old_file = relocate(v.file_path, project_root, lambda: storage.project_file_dir(pfolder, folder, cid, ver), copies)
             if new_file:
                 v.file_path = new_file
                 stale = [old_file]

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FolderOpen } from "lucide-react";
-import { checkProjectFiles, errorText, importProjectFolder, scanProjectFolder } from "../api.js";
+import { checkProjectFiles, errorText, importProjectFolder, scanProjectFolder, scanProjectsFolder } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
 import { readStored, writeStored } from "../lib/storage.js";
@@ -11,8 +11,9 @@ import { FolderPicker } from "../storage/FolderPicker.jsx";
 import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
 import { plural } from "./pieces.jsx";
 
-// Scan projects: bringing in project folders from the NAS (each subfolder of the folder picked becomes a project, its
-// files copied in by kind), and checking the project files Farmhand keeps against what's on the disk.
+// Scan projects: the project files folder scanned at once (every project folder there that isn't one of this Farmhand's
+// projects brought in: another Farmhand's sharing it, or one dropped in by hand), another folder's project folders
+// brought in (copied), and checking the project files Farmhand keeps against what's on the disk.
 
 const FOLDER_KEY = "farmhand.projectScanFolder"; // the folder last scanned, remembered in this browser
 
@@ -24,19 +25,83 @@ const whatsIn = (files) =>
   KIND_WORDS.filter(([k]) => files[k]).map(([k, word]) => plural(files[k], word)).join(", ") || "no files";
 
 export function ScanProjectsDialog({ onClose }) {
-  const [part, setPart] = useState("import");
+  const [part, setPart] = useState("folder");
   return (
     <Modal title="Scan projects" width={680} onClose={onClose}>
       <SegmentedToggle
         options={[
-          { value: "import", label: "Import folders" },
+          { value: "folder", label: "Projects folder" },
+          { value: "import", label: "Another folder" },
           { value: "check", label: "Check projects" },
         ]}
         value={part}
         onChange={setPart}
       />
-      {part === "import" ? <ImportFolders /> : <CheckProjects />}
+      {part === "folder" ? <ProjectsFolder /> : part === "import" ? <ImportFolders /> : <CheckProjects />}
     </Modal>
+  );
+}
+
+// The project files folder, scanned as soon as the dialog opens: every project folder in it that isn't one of this
+// Farmhand's projects comes in, its files used where they are. (It's also scanned on its own every few minutes.)
+function ProjectsFolder() {
+  const { refresh } = useData();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await scanProjectsFolder();
+      setResult(r);
+      if (r.imported.length) await refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const started = useRef(false); // once, when the dialog opens (React runs this twice in development)
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    run();
+  }, []);
+  return (
+    <div data-testid="scan-projects-folder">
+      <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
+        Every project folder in the project files folder that isn't a project here yet comes in, its files used where they
+        are: one another Farmhand sharing the folder keeps (with its name, files, versions, notes, sub-components and parts
+        list), or a folder you dropped in (named after it, its files sorted by kind). It's also done on its own every few
+        minutes.
+      </div>
+      {error && <div style={uiText(12, c.amber, { lineHeight: 1.5, marginBottom: 10 })}>{error}</div>}
+      {busy && <div style={uiText(13, c.textFaint, { marginBottom: 10 })}>Scanning the projects folder…</div>}
+      {result && !busy && (
+        <div data-testid="scan-projects-folder-result" style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          {result.imported.length === 0 && result.skipped.length === 0 && (
+            <div style={uiText(13, c.textMuted)}>Nothing new: every project folder there is a project here already.</div>
+          )}
+          {result.imported.map((p) => (
+            <div key={p.projectId} data-testid="scan-imported" style={uiText(13, c.textPrimary, { lineHeight: 1.5 })}>
+              <Badge tone="green">brought in</Badge> <b style={{ color: c.heading }}>{p.name}</b>: {whatsIn(p.files)}
+              {p.warnings.map((w) => (
+                <div key={w} style={uiText(12, c.amber)}>{w}</div>
+              ))}
+            </div>
+          ))}
+          {result.skipped.map((s) => (
+            <div key={s.name} data-testid="scan-skipped" style={uiText(13, c.textMuted, { lineHeight: 1.5 })}>
+              <Badge tone="muted">left out</Badge> <b style={{ color: c.heading }}>{s.name}</b>: {s.reason}
+            </div>
+          ))}
+        </div>
+      )}
+      <button data-testid="scan-projects-folder-go" onClick={run} disabled={busy} style={primaryButton(busy)}>
+        {busy ? "Scanning…" : "Scan again"}
+      </button>
+    </div>
   );
 }
 

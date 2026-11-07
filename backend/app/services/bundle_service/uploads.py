@@ -239,7 +239,7 @@ def _store_version(
     written: list[str] = []  # everything put on disk so far, to undo if a later step fails
     try:
         # May raise StorageUnavailableError if the chosen 3MF folder looks unmounted
-        dest_dir = storage.bundle_version_dir(bundle.id, version_number)
+        dest_dir = storage.bundle_version_dir(bundle.id, version_number, fresh=True)
 
         threemf_path = storage.copy_verified(tmp_threemf_path, dest_dir, name=threemf_filename)
         written.append(threemf_path)

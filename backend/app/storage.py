@@ -169,24 +169,35 @@ def ensure_ready_folder(path: str, noun: str) -> Path:
     return root
 
 
-def _version_dir(base: Path, owner_id: int, version: int) -> Path:
-    """{base}/{id}/v{n}, made if it isn't there yet."""
+def _version_dir(base: Path, owner_id: int, version: int, fresh: bool = False) -> Path:
+    """
+    {base}/{id}/v{n}, made if it isn't there yet. fresh: for a version being saved now, a folder no other Farmhand
+    has files in: two Farmhands sharing the same folders each number their own models, 3MFs and files, so their
+    {id}/v{n} can be the same folder. Then it's {id}/v{n}-2 (-3...) instead, and nothing is ever written over.
+    """
     d = base / str(owner_id) / f"v{version}"
+    k = 2
+    while fresh and d.is_dir() and any(d.iterdir()):
+        d = base / str(owner_id) / f"v{version}-{k}"
+        k += 1
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def source_model_version_dir(source_model_id: int, version: int) -> Path:
-    return _version_dir(ready_root("stl"), source_model_id, version)
+def source_model_version_dir(source_model_id: int, version: int, fresh: bool = False) -> Path:
+    return _version_dir(ready_root("stl"), source_model_id, version, fresh)
 
 
-def bundle_version_dir(bundle_id: int, version: int) -> Path:
-    return _version_dir(ready_root("threemf"), bundle_id, version)
+def bundle_version_dir(bundle_id: int, version: int, fresh: bool = False) -> Path:
+    return _version_dir(ready_root("threemf"), bundle_id, version, fresh)
 
 
-def project_file_dir(project_id: int, folder: str, file_id: int, version: int) -> Path:
-    """A version of a project's own file: {project files}/{project id}/{folder: docs, cad, stl or threemf}/{file id}/v{n}"""
-    return _version_dir(ready_root("project") / str(project_id) / folder, file_id, version)
+def project_file_dir(project_folder: str, folder: str, file_id: int, version: int, fresh: bool = False) -> Path:
+    """
+    A version of a project's own file: {project files}/{the project's folder}/{folder: docs, cad, stl or threemf}/
+    {file id}/v{n}. The project's folder is its id ("12"), or another name when that was taken (project_service).
+    """
+    return _version_dir(ready_root("project") / project_folder / folder, file_id, version, fresh)
 
 
 # ------------------------------------------------------------------ writing
@@ -312,7 +323,7 @@ def move_file(src: str | os.PathLike, dest_dir: str | os.PathLike, name: str | N
 
 # ------------------------------------------------------------------ deleting
 
-_VERSION_DIR = re.compile(r"^v\d+$")
+_VERSION_DIR = re.compile(r"^v\d+(-\d+)?$")  # v3, or v3-2 beside another Farmhand's v3
 _ID_DIR = re.compile(r"^\d+$")
 
 
@@ -334,7 +345,8 @@ def is_managed_layout(path: str | None, owner_id: int, version: int) -> bool:
     if not path:
         return False
     parent = Path(path).parent
-    return parent.name == f"v{version}" and parent.parent.name == str(owner_id)
+    in_version = parent.name == f"v{version}" or re.fullmatch(rf"v{version}-\d+", parent.name) is not None
+    return in_version and parent.parent.name == str(owner_id)
 
 
 def delete_files(paths: Iterable[str | None], prune: bool = True) -> None:
@@ -360,10 +372,10 @@ def _delete_quietly(path: Path) -> Path:
     return path.parent
 
 
-def tidy_project_folder(project_id: int) -> None:
+def tidy_project_folder(project_folder: str) -> None:
     """After a project's files were deleted: its docs/, cad/, stl/ and threemf/ folders and its own folder go if they're
     empty (nothing else)."""
-    root = effective_root("project") / str(project_id)
+    root = effective_root("project") / project_folder
     for d in (root / "docs", root / "cad", root / "stl", root / "threemf", root):
         if d.is_dir():
             _rmdir_if_empty(d)

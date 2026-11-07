@@ -256,6 +256,16 @@ export const importProjectFolder = async (path) => {
   const r = await request("/projects/import", jsonBody("POST", { path }));
   return { projectId: r.project_id, name: r.name, files: r.files, warnings: r.warnings };
 };
+// Scan projects: every folder in the project files folder that isn't one of this Farmhand's projects brought in, its files
+// used where they are (another Farmhand's, from its records, or one dropped in by hand):
+// { imported: [{ projectId, name, files, warnings }], skipped: [{ name, reason }] }
+export const scanProjectsFolder = async () => {
+  const r = await request("/projects/scan-projects-folder", { method: "POST" });
+  return {
+    imported: r.imported.map((p) => ({ projectId: p.project_id, name: p.name, files: p.files, warnings: p.warnings })),
+    skipped: r.skipped,
+  };
+};
 // Every project file against the disk (changes nothing): { projects, filesChecked, root, error, problems: [{ projectId,
 // project, kind, fileId, version, filename, path, problem }], problemsTotal, unknown: [paths], unknownTotal }
 export const checkProjectFiles = async () => {
