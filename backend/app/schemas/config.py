@@ -123,7 +123,7 @@ class RestoreOut(BaseModel):
     shares_kept: list[str]
     needs_password: list[str]
     warnings: list[str]
-    # From the printers/ and models/ files: printers_added, printers_filled, prints_added, readings_added,
+    # From the printers/ and models/ files: printers_added, printers_filled, prints_added, readings_added, prices_added,
     # model_notes, threemf_notes, stars, models_missing
     records: dict | None = None
 

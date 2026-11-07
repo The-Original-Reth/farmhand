@@ -6,7 +6,9 @@ monument and slicer settings (so a version whose files were pruned comes back to
 
 So the library isn't only in this Farmhand's database: another Farmhand sharing the folders (or a new one after this
 computer is gone) brings every model and 3MF in from them, its files used where they are. Each Farmhand writes its own
-record (farmhand-model-<its id>.json, farmhand-3mf-<its id>.json), so two never write over each other's.
+record (farmhand-model-<its id>.json, farmhand-3mf-<its id>.json), so two never write over each other's: for every
+model and 3MF it has, in the folder its files are in (its own, or one another Farmhand filed them in). Where two
+Farmhands' records describe the same files, the one saved last is the one brought in.
 """
 from __future__ import annotations
 
@@ -22,9 +24,10 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..models import (
-    Bundle, BundleNote, BundleSourceModel, BundleStar, BundleVersion, Printer, ProjectSourceModel, SourceFileType,
-    SourceModel, SourceModelNote, SourceModelVersion,
+    Bundle, BundleNote, BundleSourceModel, BundleStar, BundleVersion, BundleVersionSubPrinter, Printer, ProjectSourceModel,
+    SourceFileType, SourceModel, SourceModelNote, SourceModelVersion, SubPrinter,
 )
+from . import sub_printer_service
 from .project_records import instance_id
 
 log = logging.getLogger("farmhand.library_records")
@@ -67,12 +70,21 @@ def _at(root: Path, where) -> Path | None:
     return p if p.is_absolute() else root / p
 
 
-def _own_folder(paths: list[tuple[str | None, int]], owner_id: int) -> Path | None:
-    """The {id} folder this Farmhand keeps an owner's versions in ({root}/{id}/v{n}/...), or None for files it was given
-    where they sat (another Farmhand's, or imported from where they were): those get no record from it."""
+def _record_folder(paths: list[tuple[str | None, int]], owner_id: int, root: Path) -> Path | None:
+    """Where an owner's record goes: the {id} folder this Farmhand keeps its versions in ({root}/{id}/v{n}/...), else
+    the folder of the STL / 3MF folder its files are in (another Farmhand filed them there, or they were brought in
+    where they sat). None for files loose at the top of it or outside it: records are only looked for one folder down."""
     for path, version in paths:
         if path and storage.is_managed_layout(path, owner_id, version):
             return Path(path).parent.parent
+    base = root.resolve()
+    for path, _ in paths:
+        try:
+            parts = Path(path).resolve().relative_to(base).parts if path else ()
+        except (OSError, ValueError):
+            continue
+        if len(parts) >= 2 and not parts[0].startswith("."):
+            return base / parts[0]
     return None
 
 
@@ -87,10 +99,10 @@ def write_model(db: Session, model_id: int) -> bool:
     model = db.get(SourceModel, model_id)
     if model is None:
         return False
-    folder = _own_folder([(v.file_path, v.version) for v in model.versions], model.id)
+    root = storage.effective_root("stl")
+    folder = _record_folder([(v.file_path, v.version) for v in model.versions], model.id, root)
     if folder is None:
         return False
-    root = storage.effective_root("stl")
     me = instance_id(db)
     _write(folder, MODEL_PREFIX, {
         "farmhand_model": FORMAT, "instance": me, "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -109,10 +121,10 @@ def write_bundle(db: Session, bundle_id: int) -> bool:
     bundle = db.get(Bundle, bundle_id)
     if bundle is None:
         return False
-    folder = _own_folder([(v.threemf_path or v.thumbnail_path, v.version) for v in bundle.versions], bundle.id)
+    root = storage.effective_root("threemf")
+    folder = _record_folder([(v.threemf_path or v.thumbnail_path, v.version) for v in bundle.versions], bundle.id, root)
     if folder is None:
         return False
-    root = storage.effective_root("threemf")
     me = instance_id(db)
     star = bundle.star_row.version.version if bundle.star_row and bundle.star_row.version else None
     _write(folder, THREEMF_PREFIX, {
@@ -127,6 +139,7 @@ def write_bundle(db: Session, bundle_id: int) -> bool:
                 "preview": _rel(v.thumbnail_path, root), "uploaded_at": _when(v.uploaded_at), "monument": v.monument,
                 "monument_note": v.monument_note, "slicer_family": v.slicer_family, "slicer_display_name": v.slicer_display_name,
                 "printer_profile_name": v.printer_profile_name, "settings": v.settings,
+                "sub_printer": v.sub_printer_name,  # the printer's preset it was sliced with, as chosen here
             }
             for v in sorted(bundle.versions, key=lambda v: v.version)
         ],
@@ -205,6 +218,8 @@ def _records(root: Path, prefix: str, marker: str) -> list[tuple[Path, dict]]:
                 continue
             if isinstance(doc, dict) and doc.get(marker) == FORMAT:
                 out.append((folder, doc))
+    # newest first: where two Farmhands' records describe the same files, the one saved last is brought in
+    out.sort(key=lambda r: r[1].get("saved_at") if isinstance(r[1].get("saved_at"), str) else "", reverse=True)
     return out
 
 
@@ -312,6 +327,7 @@ def import_bundles(db: Session) -> dict:
             )
             db.add(row)
             db.flush()
+            _link_sub_printer(db, printer, row, v)
             if v.get("version") == doc.get("starred_version"):
                 starred = row
         if starred is not None:
@@ -322,6 +338,46 @@ def import_bundles(db: Session) -> dict:
         known.update(os.path.realpath(p) for p in found)
         brought.append(label)
     return {"brought": brought, "skipped": skipped}
+
+
+def _link_sub_printer(db: Session, printer: Printer, row: BundleVersion, v: dict) -> bool:
+    """A version brought in gets the printer's preset its record names (they come back with the printer's settings),
+    else the one its slicer preset is known as here. Answers whether it got one."""
+    name = v.get("sub_printer")
+    sub = db.scalar(select(SubPrinter).where(SubPrinter.printer_id == printer.id, SubPrinter.name == name)) if isinstance(name, str) and name else None
+    if sub is None and row.printer_profile_name:
+        sub = sub_printer_service.known_as(db, printer.id, row.printer_profile_name)
+    if sub is None:
+        return False
+    if row.sub_printer_link is None:
+        row.sub_printer_link = BundleVersionSubPrinter(bundle_version_id=row.id, sub_printer_id=sub.id)
+    else:
+        row.sub_printer_link.sub_printer_id = sub.id
+    return True
+
+
+def fill_sub_printers(db: Session) -> int:
+    """3MF versions brought in from records before they said the printer's preset (or before the printer had its
+    presets back): given the one the newest record of their 3MF file names, where they have none. Answers how many."""
+    root = storage.ready_root("threemf")
+    named: dict[str, str] = {}
+    for _, doc in _records(root, THREEMF_PREFIX, "farmhand_3mf"):
+        for v in doc.get("versions") or []:
+            p = _at(root, v.get("threemf")) if isinstance(v, dict) else None
+            if p and isinstance(v.get("sub_printer"), str) and v["sub_printer"]:
+                named.setdefault(os.path.realpath(p), v["sub_printer"])
+    if not named:
+        return 0
+    filled = 0
+    for row in db.scalars(select(BundleVersion).where(BundleVersion.threemf_path.isnot(None))):
+        if row.sub_printer_id is not None:
+            continue
+        name = named.get(os.path.realpath(row.threemf_path))
+        if name and row.bundle.printer and _link_sub_printer(db, row.bundle.printer, row, {"sub_printer": name}):
+            filled += 1
+    if filled:
+        db.commit()
+    return filled
 
 
 # ------------------------------------------------------------------ files another Farmhand moved
@@ -420,6 +476,7 @@ def import_library(db: Session) -> dict:
     try:
         r = import_bundles(db)
         out["threemfs"], out["skipped"] = r["brought"], out["skipped"] + r["skipped"]
+        fill_sub_printers(db)
     except storage.StorageUnavailableError:
         pass
     return out

@@ -160,3 +160,70 @@ def test_a_model_used_by_a_3mf_is_never_taken_out_as_a_double(db_session):
     db_session.commit()
     assert library_records.drop_doubles(db_session) == []  # b is used: kept
     assert db_session.query(SourceModel).count() == 2
+
+
+def _fresh_farmhand():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine, future=True)()
+
+
+def test_a_3mf_comes_in_with_the_printers_preset_it_was_sliced_with(db_session, other_farmhand):
+    from app.services import sub_printer_service
+    _, bundle = _goldfish(db_session)
+    printer = sub_printer_service.add(db_session, bundle.printer_id, "BOG Rapido 0.5")
+    v2 = next(v for v in bundle.versions if v.version == 2)
+    from app.models import BundleVersionSubPrinter
+    v2.sub_printer_link = BundleVersionSubPrinter(bundle_version_id=v2.id, sub_printer_id=printer.sub_printers[-1].id)
+    db_session.commit()
+    library_records.write_bundle(db_session, bundle.id)
+
+    there = printer_service.create_printer(other_farmhand, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    sub_printer_service.add(other_farmhand, there.id, "BOG Rapido 0.5")  # (as Load all brings the printer back)
+    library_records.import_library(other_farmhand)
+    got = {v.version: v.sub_printer_name for v in other_farmhand.query(BundleVersion)}
+    assert got[2] == "BOG Rapido 0.5"
+
+
+def test_a_3mf_brought_in_before_its_printer_had_presets_gets_its_preset_later(db_session, other_farmhand):
+    from app.models import BundleVersionSubPrinter
+    from app.services import sub_printer_service
+    _, bundle = _goldfish(db_session)
+    sub = sub_printer_service.add(db_session, bundle.printer_id, "BOG Rapido 0.5").sub_printers[-1]
+    for v in bundle.versions:
+        v.sub_printer_link = BundleVersionSubPrinter(bundle_version_id=v.id, sub_printer_id=sub.id)
+    db_session.commit()
+    library_records.write_bundle(db_session, bundle.id)
+
+    there = printer_service.create_printer(other_farmhand, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    library_records.import_library(other_farmhand)
+    assert {v.sub_printer_name for v in other_farmhand.query(BundleVersion)} == {None}
+    sub_printer_service.add(other_farmhand, there.id, "BOG Rapido 0.5")
+    library_records.import_library(other_farmhand)
+    assert {v.sub_printer_name for v in other_farmhand.query(BundleVersion)} == {"BOG Rapido 0.5"}
+
+
+def test_a_fresh_farmhand_gets_each_model_as_the_farmhand_that_saved_it_last_has_it(db_session, other_farmhand):
+    """The Pi's models sit in folders the other Farmhand filed them in: the Pi writes its record there too, and a new
+    Farmhand brings each one in as the Pi has it, not as the other one does."""
+    import json
+
+    model = source_model_service.create_source_model(db_session, name="Flexi-Rex.stl", file_type=SourceFileType.stl, file_obj=io.BytesIO(_stl()))
+    source_model_service.set_notes(db_session, model.id, "Print it standing up", 0)
+    for v in list(model.versions):
+        source_model_service.import_scanned_file(other_farmhand, v.file_path)  # moved into the other's folders
+    for m in other_farmhand.query(SourceModel):
+        library_records.write_model(other_farmhand, m.id)
+        m.note_row = None
+    library_records.import_library(db_session)  # the Pi finds its files again
+    for path in storage.effective_root("stl").rglob("farmhand-model-*.json"):  # the other's record: saved earlier
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if doc["instance"] != library_records.instance_id(db_session):
+            doc["saved_at"] = "2020-01-01T00:00:00+00:00"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+    assert library_records.write_model(db_session, model.id)  # beside the files, in the other's folder
+
+    fresh = _fresh_farmhand()
+    assert library_records.import_library(fresh)["models"] == ["Flexi-Rex.stl"]
+    [m] = fresh.query(SourceModel).all()
+    assert m.notes == "Print it standing up" and [v.note for v in m.versions] == [None]

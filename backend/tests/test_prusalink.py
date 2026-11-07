@@ -110,6 +110,37 @@ def test_a_print_whose_end_was_missed_is_closed_by_how_far_it_got(db_session, fa
     assert p.prusalink_row.current_print_id is None
 
 
+def _restored_running(db, printer_id, number=475, filename="sloth.bgcode"):
+    """A print another Farmhand was watching, as Load all brings it in: still running, started at 05:31."""
+    import datetime as dt
+    row = PrintJob(printer_id=printer_id, job_id=f"{number}@20261107T053108", filename=filename, status="in_progress",
+                   start_time=dt.datetime(2026, 11, 7, 5, 31, 8, tzinfo=dt.timezone.utc), print_duration=27000)
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_a_print_brought_in_by_load_all_is_carried_on_not_counted_twice(db_session, fake):
+    p = _core_one(db_session)
+    restored = _restored_running(db_session, p.id)
+    fake.start_job(475, "sloth.bgcode", progress=90, time_printing=28500)
+    pl.poll(db_session, p)
+    [job] = _jobs(db_session, p.id)
+    assert job.id == restored.id and job.job_id == "475@20261107T053108" and job.print_duration == 28500
+    assert p.connection_row.totals["total_print_time"] == 28500
+
+
+def test_a_print_brought_in_by_load_all_that_has_since_ended_is_closed(db_session, fake):
+    p = _core_one(db_session)
+    _restored_running(db_session, p.id)
+    pl.poll(db_session, p)  # the printer is idle now
+    [job] = _jobs(db_session, p.id)
+    assert job.status == "unknown" and job.end_time is not None
+    fake.start_job(476, "next.bgcode", progress=1, time_printing=10)
+    pl.poll(db_session, p)  # a different print is a new record
+    assert [j.job_id.split("@")[0] for j in _jobs(db_session, p.id)] == ["475", "476"]
+
+
 def test_a_new_job_closes_the_one_before(db_session, fake):
     p = _core_one(db_session)
     fake.start_job(3, "one.bgcode", progress=50, time_printing=100)

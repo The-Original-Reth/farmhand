@@ -21,6 +21,7 @@ from ..models import (
     BundleNote,
     BundleSourceModel,
     BundleStar,
+    GcodeFilament,
     MaintenanceEntry,
     Printer,
     PrinterCamera,
@@ -84,6 +85,9 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
         readings = db.scalars(
             select(PrinterEnergyReading).where(PrinterEnergyReading.printer_id == p.id).order_by(PrinterEnergyReading.taken_at)
         )
+        gcodes = db.scalars(
+            select(GcodeFilament).where(GcodeFilament.printer_id == p.id).order_by(GcodeFilament.filename, GcodeFilament.modified)
+        )
         out[stem] = {
             **records_store.header(records_store.PRINTERS_DIR, p.name),
             "note": "Written by Farmhand whenever this printer changes. It holds the printer's Moonraker API key and PrusaLink password: keep this folder private.",
@@ -109,6 +113,13 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
             "auxiliary_totals": conn.auxiliary_totals if conn else None,
             "print_jobs": [_job_record(j) for j in jobs],
             "energy_readings": [[utc_iso(r.taken_at), r.sensor, r.energy_kwh] for r in readings],
+            # the filament price read from each print's G-code (Farm cost's filament cost): the files are often gone
+            # from the printer by the time another Farmhand could read them again
+            "gcode_filaments": [
+                {"filename": g.filename, "modified": g.modified, "cost_per_kg": g.cost_per_kg, "density": g.density,
+                 "diameter": g.diameter, "problem": g.problem}
+                for g in gcodes
+            ],
         }
     return out
 
@@ -191,7 +202,7 @@ def _fill_secrets(printer: Printer, cfg: dict) -> bool:
 
 
 def restore_printers(db: Session, records: list[dict]) -> dict:
-    out = {"printers_added": [], "printers_filled": [], "prints_added": 0, "readings_added": 0, "warnings": []}
+    out = {"printers_added": [], "printers_filled": [], "prints_added": 0, "readings_added": 0, "prices_added": 0, "warnings": []}
     for rec in records:
         name = rec["name"].strip()[:120]
         cfg = rec.get("printer") if isinstance(rec.get("printer"), dict) else {}
@@ -281,12 +292,37 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             out["readings_added"] += 1
             filled = True
 
+        prices = _restore_gcode_filaments(db, printer, rec.get("gcode_filaments"))
+        out["prices_added"] += prices
+        filled |= bool(prices)
+
         db.commit()
         if added:
             out["printers_added"].append(name)
         elif filled:
             out["printers_filled"].append(name)
     return out
+
+
+def _restore_gcode_filaments(db: Session, printer: Printer, entries) -> int:
+    """The G-code filament prices from the file that Farmhand hasn't read itself, or read without finding one (the
+    file was gone from the printer by then). Answers how many were added or filled."""
+    have = {(g.filename, g.modified): g for g in db.scalars(select(GcodeFilament).where(GcodeFilament.printer_id == printer.id))}
+    count = 0
+    for e in entries if isinstance(entries, list) else []:
+        if not isinstance(e, dict) or not isinstance(e.get("filename"), str) or not e["filename"]:
+            continue
+        key = (e["filename"][:500], _num(e.get("modified"), 0.0))
+        price = {"cost_per_kg": _num(e.get("cost_per_kg")), "density": _num(e.get("density")), "diameter": _num(e.get("diameter"))}
+        row = have.get(key)
+        if row is None:
+            row = have[key] = GcodeFilament(printer_id=printer.id, filename=key[0], modified=key[1], problem=_text(e.get("problem"), 2000) or None, **price)
+            db.add(row)
+            count += 1
+        elif row.cost_per_kg is None and price["cost_per_kg"] is not None and price["density"] is not None:
+            row.cost_per_kg, row.density, row.diameter, row.problem = price["cost_per_kg"], price["density"], price["diameter"], None
+            count += 1
+    return count
 
 
 def restore_models(db: Session, records: list[dict]) -> dict:

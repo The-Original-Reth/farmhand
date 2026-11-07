@@ -56,18 +56,25 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
         link.current_job_id = link.current_print_id = link.last_progress = None
         row = None
     if current is None:
+        _close_left_open(db, printer.id, None, now)
         return
 
+    file = current.get("file") or {}
+    if row is None:
+        # the same print already on record but not followed here (brought in by Load all from the Farmhand that was
+        # watching it): carried on, not counted a second time. Its start can't be worked out again from the printer,
+        # which only says how long it has been printing, not how long it was paused.
+        row = _open_record(db, printer.id, job_id, file.get("display_name") or file.get("name"))
     if row is None:
         start = now - dt.timedelta(seconds=float(current.get("time_printing") or 0))
         row = PrintJob(printer_id=printer.id, job_id=f"{job_id}@{start:%Y%m%dT%H%M%S}", filename="", status=status, start_time=start)
         db.add(row)
         db.flush()
-        link.current_job_id, link.current_print_id = job_id, row.id
+    link.current_job_id, link.current_print_id = job_id, row.id
+    _close_left_open(db, printer.id, row.id, now)
     if row.end_time is not None:
         return  # over, and the printer is still showing it until someone clears it
 
-    file = current.get("file") or {}
     meta = file.get("meta") if isinstance(file.get("meta"), dict) else {}
     remaining = current.get("time_remaining")
     row.filename = file.get("display_name") or file.get("name") or row.filename or "(unnamed)"
@@ -83,6 +90,27 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
     link.last_progress = current.get("progress")
     if status != "in_progress":
         row.end_time = now
+
+
+def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> PrintJob | None:
+    """The newest print on record for this printer that hasn't ended, with PrusaLink's job number `job_id` (and the
+    same file, when both say one)."""
+    if job_id is None:
+        return None
+    rows = db.scalars(
+        select(PrintJob).where(
+            PrintJob.printer_id == printer_id, PrintJob.end_time.is_(None), PrintJob.job_id.like(f"{job_id}@%"),
+        ).order_by(PrintJob.start_time.desc())
+    )
+    return next((r for r in rows if not filename or not r.filename or r.filename == filename), None)
+
+
+def _close_left_open(db: Session, printer_id: int, keep: int | None, now: dt.datetime) -> None:
+    """A PrusaLink printer runs one print at a time: any other print on record as still running (one brought in by
+    Load all that ended before this Farmhand saw it) is over, and closed as "unknown"."""
+    for row in db.scalars(select(PrintJob).where(PrintJob.printer_id == printer_id, PrintJob.end_time.is_(None))):
+        if row.id != keep:
+            row.status, row.end_time = "unknown", now
 
 
 def totals(db: Session, printer_id: int) -> dict:

@@ -202,6 +202,32 @@ def test_restoring_into_an_empty_farmhand_brings_the_printers_back_whole(db_sess
     assert again["printers_added"] == [] and again["printers_filled"] == [] and again["prints_added"] == 0
 
 
+def test_the_filament_prices_read_from_gcodes_come_back_for_farm_cost(db_session, tmp_path):
+    from app.models import GcodeFilament
+    p = printer_service.create_printer(db_session, name="VT 796", kind=None, wired_ip=None, wireless_ip=None)
+    db_session.query(GcodeFilament).filter_by(printer_id=p.id).delete()
+    db_session.add_all([
+        GcodeFilament(printer_id=p.id, filename="frog.gcode", modified=1700000000.5, cost_per_kg=17.0, density=1.24, diameter=1.75),
+        GcodeFilament(printer_id=p.id, filename="old.gcode", modified=0, problem="The file is gone from the printer."),
+    ])
+    db_session.commit()
+    records_service.write_all(db_session, tmp_path)
+
+    db = _fresh_session()
+    printer = Printer(name="VT 796")
+    db.add(printer)
+    db.flush()
+    # this Farmhand already looked for frog.gcode, after it was gone from the printer: the saved price fills it
+    db.add(GcodeFilament(printer_id=printer.id, filename="frog.gcode", modified=1700000000.5, problem="The file is gone from the printer."))
+    db.commit()
+    out = records_service.restore_all(db, tmp_path)
+    assert out["prices_added"] == 2
+    rows = {g.filename: g for g in db.query(GcodeFilament)}
+    assert (rows["frog.gcode"].cost_per_kg, rows["frog.gcode"].density, rows["frog.gcode"].problem) == (17.0, 1.24, None)
+    assert rows["old.gcode"].cost_per_kg is None and rows["old.gcode"].problem
+    assert records_service.restore_all(db, tmp_path)["prices_added"] == 0  # a second restore adds nothing
+
+
 def test_restoring_never_overwrites_what_farmhand_already_has(db_session, fake, tmp_path):
     _printer_with_everything(db_session, fake)
     records_service.write_all(db_session, tmp_path)

@@ -182,6 +182,28 @@ def test_restore_keeps_a_share_that_is_already_there(db_session, share):
     assert db_session.query(NetworkShare).count() == 1
 
 
+def test_restore_takes_a_share_reaching_the_same_nas_folder_as_the_one_here(db_session, share):
+    """A new Farmhand whose Save location was typed in (its share "Lab"), loading the old one's settings, which reached
+    the same NAS folder through a share it called "TrueNas": its folders are taken as on Lab, no second share."""
+    db_session.add(NetworkShare(name="Lab", protocol="smb", server="10.0.0.5", share="Elves/Farmhand", username="alice"))
+    folder = _folder(share)
+    nas = share.parent
+    cs.write_document(folder, cs.build_document(
+        cs.normalize_config({}), str(nas / "truenas" / "STL"), str(nas / "truenas" / "3MF"),
+        [{"name": "TrueNas", "protocol": "smb", "server": "10.0.0.5", "share": "elves/farmhand/", "username": "alice"}],
+        project_path=str(nas / "truenas" / "Projects"), farm_cost_path=str(nas / "truenas" / "farm-cost"),
+    ))
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+
+    out = svc.restore(db_session)
+
+    assert out["shares_added"] == [] and out["needs_password"] == [] and out["shares_kept"] == ["TrueNas (the same NAS folder as Lab)"]
+    assert [s.name for s in db_session.query(NetworkShare)] == ["Lab"]
+    for kind, name in (("stl", "STL"), ("threemf", "3MF"), ("project", "Projects")):
+        assert storage.custom_path(kind) == str((share / name).resolve())
+
+
 def test_restore_puts_folders_back_even_when_their_share_is_not_connected_yet(db_session, share):
     folder = _folder(share)
     gone = share / "stl-not-here-yet"  # does not exist right now

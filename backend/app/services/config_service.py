@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import config_store, storage
+from .. import config_store, mounts, storage
 from ..models import NetworkShare, Printer
 from . import app_settings, network_shares_service, records_service, storage_settings_service
 
@@ -316,6 +316,46 @@ def save_all(db: Session, if_exists: str = "ask") -> dict:
     return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db), "mirror": written}
 
 
+def _same_place(a: dict, b: NetworkShare) -> bool:
+    """Does a share in the settings file reach the same folder on the same NAS as one here?"""
+    def where(protocol, server, share):
+        share = (share or "").strip().strip("/\\").replace("\\", "/")
+        same_case = protocol == "nfs"  # SMB ignores case; an NFS export is a path
+        return protocol, (server or "").strip().lower(), share if same_case else share.lower()
+    return where(a.get("protocol"), a.get("server"), a.get("share")) == where(b.protocol, b.server, b.share)
+
+
+def _shares_here(db: Session, entries: list[dict]) -> dict[str, NetworkShare]:
+    """
+    The settings file's shares that reach a NAS folder a share here already does, under another name (the one typed
+    as the Save location on a new Farmhand, say): {its name: the share here}. Those aren't added a second time (it
+    would only wait for a password, and the folders on it with it): the folders on them are taken as on the one here.
+    """
+    here = list(db.scalars(select(NetworkShare)))
+    out = {}
+    for entry in entries:
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        match = next((row for row in here if _same_place(entry, row)), None)
+        if match is not None and mounts.slug(match.name) != mounts.slug(name):
+            out[name] = match
+    return out
+
+
+def _moved_onto(path: str | None, shares: dict[str, NetworkShare]) -> str | None:
+    """A folder from the settings file, on the share here that reaches the same place (see _shares_here)."""
+    if not path:
+        return path
+    for name, row in shares.items():
+        try:
+            rest = Path(path).relative_to(mounts.mount_point_for(name))
+        except ValueError:
+            continue
+        return str(mounts.mount_point_for(row.name) / rest)
+    return path
+
+
 def restore(db: Session) -> dict:
     """Load the settings file in the chosen folder into Farmhand."""
     path = location_path(db)
@@ -328,13 +368,14 @@ def restore(db: Session) -> dict:
     result = {"restored": ["appearance", "display preferences"], "shares_added": [], "shares_kept": [], "needs_password": [], "warnings": []}
     save_config(db, {"appearance": doc["appearance"], "preferences": _orders_here(db, doc["preferences"], doc["printer_names"])})
 
+    same = _shares_here(db, doc["shares"])
     applied, warnings = storage_settings_service.restore_locations(
-        db, doc["storage"]["stl_path"], doc["storage"]["threemf_path"], doc["storage"]["project_path"]
+        db, *(_moved_onto(doc["storage"][k], same) for k in ("stl_path", "threemf_path", "project_path"))
     )
     result["restored"] += applied
     result["warnings"] += warnings
 
-    farm_cost_path = storage.current_folder(doc["farm_cost"]["records_path"])  # saved by its old name: where it is now
+    farm_cost_path = storage.current_folder(_moved_onto(doc["farm_cost"]["records_path"], same))  # saved by its old name: where it is now
     if farm_cost_path and farm_cost_path != app_settings.get(db, FARM_COST_LOCATION):
         from .farm_cost import set_location as set_farm_cost_location  # (farm_cost reads these settings itself)
 
@@ -346,6 +387,9 @@ def restore(db: Session) -> dict:
 
     for entry in doc["shares"]:
         label = entry.get("name") or "(unnamed)"
+        if label in same:
+            result["shares_kept"].append(f"{label} (the same NAS folder as {same[label].name})")
+            continue
         try:
             outcome = network_shares_service.restore_share(db, entry)
         except ValueError as e:
