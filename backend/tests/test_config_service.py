@@ -307,3 +307,73 @@ def test_the_farm_cost_folder_is_saved_and_loaded_back(db_session, share):
     out = svc.restore(db_session)  # ...and Load all puts the saved one back
     assert "farm cost folder" in out["restored"]
     assert farm_cost.location_info(db_session)["path"] == str(records.resolve())
+
+
+# ------------------------------------------------------------------ orders kept across Farmhands
+
+
+def test_printer_orders_come_back_by_name_on_a_farmhand_that_numbers_them_differently(db_session, share):
+    from app.services import printer_service
+
+    for name in ("Lulzbot", "Prusa_2", "VT 1026"):  # here: 1, 2, 3
+        printer_service.create_printer(db_session, name=name, kind=None, wired_ip=None, wireless_ip=None)
+    folder = _folder(share)
+    # written by a Farmhand where VT 1026 was 7, Prusa_2 was 1 and Lulzbot was 5 (and one this Farmhand hasn't got)
+    prefs = {"farm_cost_order": [7, 1, 5, 9], "monitor_order": ["7:Front", "1:top", "9:Chamber", "5:rear"],
+             "tool_links": [{"name": "Zebra", "url": "https://z.example"}, {"name": "Apple", "url": "https://a.example"}]}
+    names = {7: "VT 1026", 1: "Prusa_2", 5: "Lulzbot", 9: "Gone printer"}
+    cs.write_document(folder, cs.build_document(cs.normalize_config({"preferences": prefs}), None, None, [], printer_names=names))
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+
+    svc.restore(db_session)
+    got = svc.get_config(db_session)["preferences"]
+    assert got["farm_cost_order"] == [3, 2, 1]  # VT 1026, Prusa_2, Lulzbot, in this Farmhand's numbers
+    assert got["monitor_order"] == ["3:Front", "2:top", "1:rear"]
+    assert [link["name"] for link in got["tool_links"]] == ["Zebra", "Apple"]  # the Tools page's order, as it was
+
+
+def test_the_settings_file_names_each_printer(db_session, share):
+    from app.services import printer_service
+
+    p = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    assert _file(folder)["printer_names"] == {str(p.id): "V2 BOG"}
+
+
+def test_an_older_settings_file_keeps_its_orders_as_they_are(db_session, share):
+    folder = _folder(share)
+    doc = cs.build_document(cs.normalize_config({"preferences": {"farm_cost_order": [4, 2]}}), None, None, [])
+    doc.pop("printer_names")
+    cs.write_document(folder, doc)
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+    svc.restore(db_session)
+    assert svc.get_config(db_session)["preferences"]["farm_cost_order"] == [4, 2]
+
+
+def test_on_a_new_farmhand_the_orders_wait_for_the_printers_brought_back(db_session, share):
+    """Load all on a Farmhand with no printers yet: they come back from the printers/ files, and the orders with them."""
+    from app import records_store
+    from app.services import records_service
+
+    folder = _folder(share)
+    prefs = {"farm_cost_order": [7, 1], "monitor_order": ["7:Front", "1:top"]}
+    cs.write_document(folder, cs.build_document(cs.normalize_config({"preferences": prefs}), None, None, [],
+                                                printer_names={7: "VT 1026", 1: "Prusa_2"}))
+    docs = {  # their records, as the other Farmhand wrote them
+        records_store.file_stem(name, set()): {**records_store.header(records_store.PRINTERS_DIR, name), "printer": {"connection_type": "moonraker"}}
+        for name in ("Prusa_2", "VT 1026")
+    }
+    records_store.write_records(folder, records_store.PRINTERS_DIR, docs)
+    app_settings.put(db_session, svc.KEY_LOCATION, str(folder))
+    db_session.commit()
+
+    svc.restore(db_session)
+    from app.models import Printer
+
+    ids = {p.name: p.id for p in db_session.query(Printer)}
+    got = svc.get_config(db_session)["preferences"]
+    assert got["farm_cost_order"] == [ids["VT 1026"], ids["Prusa_2"]]
+    assert got["monitor_order"] == [f"{ids['VT 1026']}:Front", f"{ids['Prusa_2']}:top"]

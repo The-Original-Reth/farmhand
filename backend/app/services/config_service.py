@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import config_store, storage
-from ..models import NetworkShare
+from ..models import NetworkShare, Printer
 from . import app_settings, network_shares_service, records_service, storage_settings_service
 
 log = logging.getLogger("farmhand.settings")
@@ -100,7 +100,31 @@ def build_document(db: Session) -> dict:
     return config_store.build_document(
         get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
         project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
+        printer_names={p.id: p.name for p in db.scalars(select(Printer))},
     )
+
+
+def _orders_here(db: Session, prefs: dict, printer_names: dict[str, str]) -> dict:
+    """
+    The orders kept by printer number (Farm cost's printers, Monitor's "number:camera"), in this Farmhand's numbers:
+    the file says which printer each of its numbers was, and they're matched here by name (one not here is left out).
+    A file from before it said leaves them as they are.
+    """
+    if not printer_names:
+        return prefs
+    here = {p.name: p.id for p in db.scalars(select(Printer))}
+
+    def local(number) -> int | None:
+        return here.get(printer_names.get(str(number), ""))
+
+    farm = [local(n) for n in prefs.get("farm_cost_order") or []]
+    monitor = []
+    for key in prefs.get("monitor_order") or []:
+        number, sep, camera = str(key).partition(":")
+        mapped = local(number) if number.isdigit() and sep else None
+        if mapped is not None:
+            monitor.append(f"{mapped}:{camera}")
+    return {**prefs, "farm_cost_order": [n for n in farm if n is not None], "monitor_order": monitor}
 
 
 @dataclass
@@ -302,7 +326,7 @@ def restore(db: Session) -> dict:
         raise ValueError("There's no settings file in that folder yet.")
 
     result = {"restored": ["appearance", "display preferences"], "shares_added": [], "shares_kept": [], "needs_password": [], "warnings": []}
-    save_config(db, {"appearance": doc["appearance"], "preferences": doc["preferences"]})
+    save_config(db, {"appearance": doc["appearance"], "preferences": _orders_here(db, doc["preferences"], doc["printer_names"])})
 
     applied, warnings = storage_settings_service.restore_locations(
         db, doc["storage"]["stl_path"], doc["storage"]["threemf_path"], doc["storage"]["project_path"]
@@ -342,4 +366,7 @@ def restore(db: Session) -> dict:
     if records["model_notes"] or records["threemf_notes"] or records["stars"]:
         result["restored"].append("notes and stars")
     result["records"] = records
+    # the printer orders once more, now the printers from the printers/ files are here too (a new Farmhand had none)
+    ordered = _orders_here(db, doc["preferences"], doc["printer_names"])
+    save_config(db, {"preferences": {k: ordered[k] for k in ("farm_cost_order", "monitor_order") if k in ordered}})
     return result

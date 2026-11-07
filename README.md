@@ -736,7 +736,9 @@ locations).
   folder you pick where they were saved): the look, the display preferences and arrangements, the electricity
   prices, the STL/3MF/project folders (even if their share hasn't reconnected yet — uploads stay refused until it's
   really there), the farm cost records folder, any shares not already present, and the printer and model records.
-  It's safe to run twice.
+  It's safe to run twice. The Farm cost page's printer order and the Monitor page's camera order are matched by
+  printer name, so they come back right on a Farmhand that numbers its printers differently (another computer, or a
+  fresh install); a printer that isn't there is left out. The Tools page's links come back in the order you put them.
 - **If the share is down** the settings are still saved on the server, the page says the copy
   couldn't be updated and why, and nothing is written into the empty folder underneath. **Save all**
   catches it up once the share is back.

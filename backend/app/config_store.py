@@ -248,9 +248,11 @@ def _path_or_none(value) -> str | None:
 
 def build_document(
     config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
-    farm_cost_path: str | None = None,
+    farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None,
 ) -> dict:
-    """What gets written. Share entries are cut down to the fields in _SHARE_FIELDS — never a password."""
+    """What gets written. Share entries are cut down to the fields in _SHARE_FIELDS — never a password. printer_names:
+    each printer's number here and its name, so the orders kept by number (Farm cost, Monitor) come back in the right
+    order on a Farmhand that numbers its printers differently."""
     return {
         FORMAT_MARKER: FORMAT_VERSION,
         "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -260,6 +262,7 @@ def build_document(
         "storage": {"stl_path": stl_path, "threemf_path": threemf_path, "project_path": project_path},
         "shares": [{k: s.get(k) for k in _SHARE_FIELDS} for s in shares],
         "farm_cost": {"records_path": farm_cost_path},  # the folder chosen for the monthly records (null: the default)
+        "printer_names": {str(k): v for k, v in (printer_names or {}).items()},
     }
 
 
@@ -317,4 +320,9 @@ def read_document(folder: str | os.PathLike) -> dict | None:
         },
         "shares": shares,
         "farm_cost": {"records_path": _path_or_none(farm_cost.get("records_path"))},
+        # files from before it have none: their orders are taken as they are
+        "printer_names": {
+            k: v for k, v in (raw.get("printer_names") if isinstance(raw.get("printer_names"), dict) else {}).items()
+            if isinstance(k, str) and k.isdigit() and isinstance(v, str) and v
+        },
     }
