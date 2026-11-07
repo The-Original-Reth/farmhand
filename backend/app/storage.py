@@ -79,12 +79,45 @@ def local_root() -> Path:
     return p
 
 
+PROJECTS_FOLDER = "Projects"  # the project files' default when the STL folder is chosen: beside it
+
+
+def _projects_beside_stl() -> Path | None:
+    """With an STL folder chosen (on the NAS, say), the project files' default: "Projects" beside it, or a folder of
+    that name already there whatever its capitals. None while the STL folder is Farmhand's own."""
+    stl = _custom["stl"]
+    if not stl:
+        return None
+    parent = Path(stl).parent
+    try:
+        for entry in os.scandir(parent):
+            if entry.name.lower() == PROJECTS_FOLDER.lower() and entry.is_dir():
+                return Path(entry.path)
+    except OSError:
+        pass  # the share is away: the name it will have
+    return parent / PROJECTS_FOLDER
+
+
 def default_root(kind: str) -> Path:
+    """
+    Where this kind goes when no folder is chosen for it: Farmhand's own storage, except project files, which go
+    beside the STL folder once one is chosen (so they're on the NAS with everything else).
+    """
+    if kind == "project":
+        beside = _projects_beside_stl()
+        if beside is not None:
+            return beside
     return local_root() / {"stl": "source_models", "threemf": "bundles", "project": "projects"}[kind]
 
 
 def _made_default_root(kind: str) -> Path:
-    """The default folder for this kind, made if it isn't there yet (it's the app's own, so that's always safe)."""
+    """
+    The default folder for this kind, made if it isn't there yet. Farmhand's own are always safe to make; the project
+    files beside a chosen STL folder only while that folder is really there (else StorageUnavailableError, so an
+    unmounted share never gets files on the local disk underneath it).
+    """
+    if kind == "project" and _custom["stl"]:
+        ready_root("stl")
     root = default_root(kind)
     root.mkdir(parents=True, exist_ok=True)
     return root

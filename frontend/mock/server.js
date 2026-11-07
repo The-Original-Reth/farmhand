@@ -1402,9 +1402,12 @@ export function mockApi() {
 
   // ------------------------------------------------------------------ settings, storage, shares
   const location = (path) => ({
-    path, default_path: path.includes("models") ? "/data/storage/source_models" : path.includes("projects") ? "/data/storage/projects" : "/data/storage/bundles", is_default: false,
+    path, default_path: path.includes("models") ? "/data/storage/source_models" : /projects$/i.test(path) ? projectsDefault() : "/data/storage/bundles", is_default: false,
     status: { exists: true, writable: true, marker_ok: true, ready: true, free_bytes: 2.1e12, total_bytes: 4e12, separate_volume: true },
   });
+  // project files with none chosen: "Projects" beside the STL folder once that's on the NAS (as the server does)
+  const projectsDefault = () =>
+    farm.storage.stl.startsWith("/data/storage/") ? "/data/storage/projects" : farm.storage.stl.replace(/\/[^/]*$/, "") + "/Projects";
   const storageOut = () => ({ browse_root: "/data", stl: location(farm.storage.stl), threemf: location(farm.storage.threemf), project: location(farm.storage.project), outside: { stl: 0, threemf: 0, project: 0 } });
   const configLocation = () => ({
     path: farm.settingsFolder, is_set: !!farm.settingsFolder,
@@ -1464,7 +1467,7 @@ export function mockApi() {
   on("PUT", "/settings/storage", (_, body) => {
     if ("stl_path" in body) farm.storage.stl = body.stl_path || "/data/storage/source_models";
     if ("threemf_path" in body) farm.storage.threemf = body.threemf_path || "/data/storage/bundles";
-    if ("project_path" in body) farm.storage.project = body.project_path || "/data/storage/projects";
+    if ("project_path" in body) farm.storage.project = body.project_path || projectsDefault();
     return storageOut();
   });
   on("GET", "/settings/storage/browse", (_, _b, q) => {

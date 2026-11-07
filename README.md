@@ -857,8 +857,10 @@ inside it) and sets every folder.
    connects straight away and **only saves the share if that works** — if not, it says why (can't reach it, wrong
    password, no share by that name, …). The domain or workgroup and the SMB / NFS version are under the card's
    **Advanced**; a change there is tried on a test connection first.
-2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, Farm cost, Farmhand Configs). To keep
-   one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want
+2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, Farm cost, Farmhand Configs). With no
+   project files folder chosen, project files go in a **Projects** folder beside the STL folder (a `projects` folder
+   already there is used), so they're on the NAS too; only while the STL folder is Farmhand's own do they stay in
+   its storage. To keep one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want
    (or make one with **New folder**) and press **Use this folder**.
 3. Files you already have stay where they are and keep working. The page shows
    how many are in a previous location and offers **Move them now** (copy → check
