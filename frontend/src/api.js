@@ -779,6 +779,20 @@ export const importScannedFiles = async (paths) => {
     results: r.results.map((x) => ({ path: x.path, ok: x.ok, error: x.error, sourceModelId: x.source_model_id })),
   };
 };
+// Save all: every setting, printer and model written to the settings folder now. With no folder chosen, Farmhand picks
+// "farmhand configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
+// answered with setConfigLocation({ path: found.path, ifExists }).
+export const saveAllSettings = async (ifExists = "ask") => {
+  const r = await request("/settings/config/save-all", jsonBody("POST", { if_exists: ifExists }));
+  return {
+    saved: r.saved,
+    needsChoice: r.needs_choice,
+    found: normalizeFound(r.found),
+    restored: normalizeRestore(r.restored),
+    location: normalizeConfigLocation(r.location),
+    mirror: r.mirror,
+  };
+};
 
 // ---- download URLs (plain links; the browser handles the download) ----
 

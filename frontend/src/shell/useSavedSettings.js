@@ -4,6 +4,7 @@ import { applyAppearance, loadAppearance, normalizeAppearance, saveAppearance } 
 import { thisMonth, withNewAverage } from "../lib/energyPrice.js";
 import { readStored, writeStored } from "../lib/storage.js";
 import { loadModelSort, normalizeModelSort, saveModelSort } from "../models/modelSort.js";
+import { DEFAULT_PRINTER_SORT, loadPrinterSort, normalizePrinterSort, savePrinterSort } from "../printers/printerSort.js";
 
 const PENDING_CONFIG_KEY = "farmhand.configPending"; // changes not yet confirmed by the server
 const NO_ENERGY_PRICES = { current: null, history: [], months: {} };
@@ -41,7 +42,7 @@ const energyPricesOf = (prefs) => ({
 const sameLook = (a, b) =>
   a.scheme === b.scheme && a.contrast === b.contrast && a.font === b.font && a.size === b.size && a.file_name_color === b.file_name_color;
 
-// The settings the server keeps for every browser: the look, the models' sort order, Monitor's layout and zoom, the
+// The settings the server keeps for every browser: the look, the models' and printers' sort orders, Monitor's layout and zoom, the
 // order of Farm cost's printers, the Tools page's links and the price of electricity. Each change shows at once and is sent to the server; most wait a
 // moment so a slider dragged through many values is sent once (queueSave). The server also copies them to the
 // network folder chosen in Settings.
@@ -53,6 +54,7 @@ export function useSavedSettings() {
   const [appearance, setAppearance] = useState(loadAppearance); // the SAVED look
   const [preview, setPreview] = useState(null); // a look being tried on the Appearance page, not saved yet (null = none)
   const [modelSort, setModelSort] = useState(loadModelSort);
+  const [printerSort, setPrinterSort] = useState(loadPrinterSort);
   const [monitorOrder, setMonitorOrder] = useState([]); // the Monitor page's cameras as dragged into order
   const [monitorMaxZoom, setMonitorMaxZoom] = useState(4); // how far in a Monitor camera can be zoomed
   const [farmCostOrder, setFarmCostOrder] = useState([]); // the Farm cost page's printers as dragged into order (ids)
@@ -71,6 +73,17 @@ export function useSavedSettings() {
     saveAppearance(a);
     setModelSort(sort);
     saveModelSort(sort);
+    // The Printers page's order: the server's. One chosen in this browser before the server kept it goes up once.
+    const local = loadPrinterSort();
+    const serverSort = normalizePrinterSort(prefs.printer_sort);
+    const isDefault = (s) => s.key === DEFAULT_PRINTER_SORT.key && s.dir === DEFAULT_PRINTER_SORT.dir;
+    if (isDefault(serverSort) && !isDefault(local)) {
+      setPrinterSort(local);
+      queueSave({ preferences: { printer_sort: local } });
+    } else {
+      setPrinterSort(serverSort);
+      savePrinterSort(serverSort);
+    }
     setMonitorOrder(listOr(prefs.monitor_order));
     setMonitorMaxZoom(prefs.monitor_max_zoom || 4);
     setFarmCostOrder(listOr(prefs.farm_cost_order));
@@ -144,6 +157,11 @@ export function useSavedSettings() {
     setPreview(null);
     queueSave({ appearance: next }, { immediate: true });
   };
+  const changePrinterSort = (next) => {
+    setPrinterSort(next);
+    savePrinterSort(next);
+    queueSave({ preferences: { printer_sort: next } }, { immediate: true });
+  };
   const changeModelSort = (next) => {
     setModelSort(next);
     saveModelSort(next);
@@ -189,6 +207,7 @@ export function useSavedSettings() {
     loadServerConfig,
     appearance: { saved: appearance, shown: preview || appearance, change: changeAppearance, save: commitAppearance, discard: discardAppearance },
     modelSort: { value: modelSort, change: changeModelSort },
+    printerSort: { value: printerSort, change: changePrinterSort },
     monitor: { order: monitorOrder, saveOrder: saveMonitorOrder, maxZoom: monitorMaxZoom, changeMaxZoom: changeMonitorMaxZoom },
     farmCost: { order: farmCostOrder, changeOrder: changeFarmCostOrder },
     tools: { links: toolLinks, save: saveToolLinks },

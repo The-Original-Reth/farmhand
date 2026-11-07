@@ -2,7 +2,7 @@ import { PrinterList } from "./PrinterList.jsx";
 import { PrinterPage } from "./PrinterPage.jsx";
 
 // The Printers page: the list of printers, or one printer's own page
-export function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect }) {
+export function PrintersSection({ path, setPath, compareSelection, toggleCompareSelect, sort, onSortChange }) {
   const view = path[1]; // {printerId}
   return view ? (
     <PrinterPage
@@ -12,6 +12,6 @@ export function PrintersSection({ path, setPath, compareSelection, toggleCompare
       onDeleted={() => setPath([path[0]])} // back to the list
     />
   ) : (
-    <PrinterList setPath={setPath} />
+    <PrinterList setPath={setPath} sort={sort} onSortChange={onSortChange} />
   );
 }

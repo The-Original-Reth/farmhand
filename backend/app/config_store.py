@@ -2,12 +2,15 @@
 Farmhand's settings, and the file they're copied to on the network storage the person chose.
 
 What counts as a setting: how the site looks (colour scheme, text brightness, font, size), display
-preferences (the Models sort order), and the storage setup (the STL and 3MF folders, and which network
-shares exist). The server keeps these in its database. When a settings folder is chosen, a copy is written
-there after every change, so the settings survive a rebuild and can be put back with Restore.
+preferences (the Models and Printers sort orders, the Monitor and Farm cost arrangements, the Power page's
+electricity prices...), the storage setup (the STL, 3MF and project folders, the farm cost records folder, and
+which network shares exist). The server keeps these in its database. When a settings folder is chosen, a copy
+is written there after every change (and all of it with Save all), so the settings survive a rebuild and can be
+put back with Load all.
 
-The file NEVER contains passwords. A share's login has to be known before the share can be mounted, so it
-couldn't live only on the share anyway; restoring brings a share back "needing its password".
+This file never contains a share's password. A share's login has to be known before the share can be mounted, so
+it couldn't live only on the share anyway; loading brings a share back "needing its password". (The printers'
+own files beside it, in printers/, do hold their Moonraker API keys and PrusaLink passwords.)
 
 This module is the format and the file handling. No database, so it's easy to test.
 """
@@ -56,11 +59,13 @@ DEFAULT_TOOL_LINKS = [
 #     from its month on (the first one for every month before it too), so changing it never changes a past month
 #   energy_price_months: {"2026-03": 0.14}: a month's own price, typed in its row; it wins over the history
 DEFAULT_PREFERENCES = {
-    "model_sort": {"key": "name", "dir": "asc"}, "monitor_order": [], "monitor_max_zoom": 4, "farm_cost_order": [],
+    "model_sort": {"key": "name", "dir": "asc"}, "printer_sort": {"key": "name", "dir": "asc"}, "monitor_order": [],
+    "monitor_max_zoom": 4, "farm_cost_order": [],
     "tool_links": DEFAULT_TOOL_LINKS,
     "energy_price_per_kwh": None, "energy_price_history": [], "energy_price_months": {},
     "time_zone": None,
 }
+# printer_sort: the Printers page's list, by a column ("name", "kind", "wired", "wireless") and "asc" | "desc"
 # time_zone: the farm's time zone ("America/New_York"), as its browser last said: when a month ends for the monthly
 # Farm cost record; None = not known yet (UTC is used)
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -110,6 +115,7 @@ def normalize_preferences(raw) -> dict:
             "key": _id(sort.get("key"), DEFAULT_PREFERENCES["model_sort"]["key"]),
             "dir": sort.get("dir") if sort.get("dir") in ("asc", "desc") else DEFAULT_PREFERENCES["model_sort"]["dir"],
         },
+        "printer_sort": _sort(p.get("printer_sort"), DEFAULT_PREFERENCES["printer_sort"]),
         "monitor_order": _camera_keys(p.get("monitor_order")),
         "monitor_max_zoom": p["monitor_max_zoom"] if type(p.get("monitor_max_zoom")) is int and p["monitor_max_zoom"] in MONITOR_ZOOMS
         else DEFAULT_PREFERENCES["monitor_max_zoom"],
@@ -202,6 +208,11 @@ def _tool_links(raw) -> list[dict]:
     return out
 
 
+def _sort(raw, default: dict) -> dict:
+    s = raw if isinstance(raw, dict) else {}
+    return {"key": _id(s.get("key"), default["key"]), "dir": s.get("dir") if s.get("dir") in ("asc", "desc") else default["dir"]}
+
+
 def _camera_keys(raw) -> list[str]:
     """The Monitor order: short strings only, each once, in the order given."""
     keys = raw if isinstance(raw, list) else []
@@ -236,17 +247,19 @@ def _path_or_none(value) -> str | None:
 
 
 def build_document(
-    config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None
+    config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
+    farm_cost_path: str | None = None,
 ) -> dict:
     """What gets written. Share entries are cut down to the fields in _SHARE_FIELDS — never a password."""
     return {
         FORMAT_MARKER: FORMAT_VERSION,
         "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "note": "Written by Farmhand after every settings change. Passwords are never stored in this file.",
+        "note": "Written by Farmhand after every settings change. A share's login is kept here without its secret.",
         "appearance": config["appearance"],
         "preferences": config["preferences"],
         "storage": {"stl_path": stl_path, "threemf_path": threemf_path, "project_path": project_path},
         "shares": [{k: s.get(k) for k in _SHARE_FIELDS} for s in shares],
+        "farm_cost": {"records_path": farm_cost_path},  # the folder chosen for the monthly records (null: the default)
     }
 
 
@@ -289,6 +302,7 @@ def read_document(folder: str | os.PathLike) -> dict | None:
         raise ConfigFileError("That settings file was written by a newer Farmhand than this one.")
 
     storage = raw.get("storage") if isinstance(raw.get("storage"), dict) else {}
+    farm_cost = raw.get("farm_cost") if isinstance(raw.get("farm_cost"), dict) else {}  # files from before it have none
     shares = []
     for entry in (raw.get("shares") if isinstance(raw.get("shares"), list) else [])[:100]:
         if isinstance(entry, dict):
@@ -302,4 +316,5 @@ def read_document(folder: str | os.PathLike) -> dict | None:
             "project_path": _path_or_none(storage.get("project_path")),  # files from before project files have none
         },
         "shares": shares,
+        "farm_cost": {"records_path": _path_or_none(farm_cost.get("records_path"))},
     }

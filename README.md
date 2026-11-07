@@ -98,9 +98,10 @@ The first things to do, in this order. Everything is done in the web page; there
 1. **Settings** (left-hand menu, called Storage before). Where STL and 3MF files are kept. Out of the box they go in Farmhand's own
    storage on the computer it runs on. To keep them on a NAS instead, **Add network share…**, then choose the
    **STL files** and **3MF files** folders on it (see "Network storage").
-2. **Settings location**, on the same page. Choose a folder on the NAS: Farmhand keeps a copy of its settings
-   and of every printer's and model's records there, so a lost or rebuilt computer can be brought back with
-   **Restore** (see "Where settings and records are kept").
+2. **Save all**, at the top of the same page. Farmhand writes all its settings and every printer's and model's
+   records to a folder on the NAS (**farmhand configs** beside the STL folder, unless you **Choose folder…**), and
+   keeps that copy up to date, so a lost or rebuilt computer can be brought back with **Load all settings** (see
+   "Where settings and records are kept").
 3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
    - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
      key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.
@@ -140,10 +141,12 @@ them at the end: all four should say **running**. Your data is kept. Then reload
 
 - Everything Farmhand knows is in two Docker volumes on its computer: the database (`db_data`) and its own file
   storage (`storage_data`). Files kept on a NAS are on the NAS.
-- With a **Settings location** chosen (see "Setting it up"), the settings, the network shares (without their
-  passwords) and every printer's and model's records are also on the NAS, kept up to date after every change.
+- With a settings folder chosen (see "Setting it up"), the settings, the network shares (without their
+  passwords) and every printer's and model's records are also on the NAS, kept up to date after every change;
+  **Save all** writes all of it again at once.
 - **To move to a new computer, or after a lost one:** install Farmhand there (steps 1–4), add the same network
-  share on the Settings page, choose the same settings folder, and pick **Use those settings**. Then type the
+  share on the Settings page, then **Load all settings…** and pick the settings folder (or choose the same
+  settings folder and pick **Use those settings**). Then type the
   shares' passwords in again: they are never written to the NAS. Printers come back with their Moonraker API keys
   and PrusaLink passwords, ready to connect.
 
@@ -658,18 +661,22 @@ measures about 2.6:1, which is why the default changed. The colours live in
 
 ### Where settings and records are kept
 
-Farmhand's settings are: the look of the site (above), display preferences (the Models sort
-order), and your storage setup (the STL, 3MF and project files folders and the network shares).
+Farmhand's settings are: the look of the site (above); display preferences (the Models and Printers sort
+orders, the Monitor layout and zoom, the Farm cost page's printer order, the Tools page's links, and the Power
+page's electricity prices: the average cost, its history and each month's own price); and your storage setup (the
+STL, 3MF and project files folders, the farm cost records folder, and the network shares with their SMB or NFS
+locations).
 
 - **On the server, always.** They're kept in Farmhand's database, so every browser and device
   shows the same look and order — change it on one, it changes on all.
-- **Plus a copy on the network folder you choose.** Under **Settings location**, press **Choose
-  folder…**, jump to a share and pick (or make) a folder. Farmhand writes
-  `farmhand-config.json` there straight away and **after every change**, so the settings
-  survive a rebuild or a lost database.
+- **Plus a copy on the network folder you choose.** At the top of the Settings page, under **Save and load all
+  settings**, press **Save all**: with no folder chosen yet, Farmhand uses a **farmhand configs** folder beside
+  the STL folder (or press **Choose folder…**, jump to a share and pick or make one). Farmhand writes
+  `farmhand-config.json` there, with the printers' and models' files beside it, and again **after every change**,
+  so the settings survive a rebuild or a lost database. **Save all** writes all of it again whenever you like.
 - **Printers and models are copied there too:** a file per printer in `printers/` (its setup, notes, print
   history, energy readings, the 1500-hour service and Farmhand-kept maintenance) and a file per model in
-  `models/` (its notes, and each of its 3MF files' notes and starred version). **Restore** brings back what's
+  `models/` (its notes, and each of its 3MF files' notes and starred version). **Load all settings** brings back what's
   missing and never overwrites what's already there.
 - **A printer's file holds its Moonraker API key and PrusaLink password**, so a restored printer connects straight
   away (a printer missing its key or password gets it back from its file). Keep the settings folder private.
@@ -678,13 +685,14 @@ order), and your storage setup (the STL, 3MF and project files folders and the n
 - **A folder that already holds settings is never overwritten without asking.** Pointing at one
   asks: *Use those settings* (restore them), or *Replace with current settings*. Until you
   choose, nothing is changed. A damaged file can only be replaced.
-- **Restore** (also offered as a button once a folder is chosen) loads the file back: the look,
-  the display preferences, the STL/3MF folders (even if their share hasn't reconnected yet — uploads
-  stay refused until it's really there), any shares not already present, and the printer and model records.
+- **Load all settings…** loads the file back (from the settings folder, asked first; with none chosen, from a
+  folder you pick where they were saved): the look, the display preferences and arrangements, the electricity
+  prices, the STL/3MF/project folders (even if their share hasn't reconnected yet — uploads stay refused until it's
+  really there), the farm cost records folder, any shares not already present, and the printer and model records.
   It's safe to run twice.
 - **If the share is down** the settings are still saved on the server, the page says the copy
-  couldn't be updated and why, and nothing is written into the empty folder underneath. **Save a
-  copy now** catches it up once the share is back.
+  couldn't be updated and why, and nothing is written into the empty folder underneath. **Save all**
+  catches it up once the share is back.
 - **Use the server only** stops the copying; nothing on the network is ever deleted.
 
 The folder must be on a connected share or in Farmhand's own storage — the same rule as the file
@@ -901,6 +909,7 @@ The full API, with every route, is described at **http://localhost:4545/docs**.
   over lives in the container's throwaway filesystem, and is refused.
 - Chosen folders get a small `.farmhand-storage` marker. If a share drops and
   leaves an empty folder behind, the marker is missing and uploads are refused
+| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now; with none chosen, `farmhand configs` beside the STL folder (`if_exists` as above when it already holds settings) |
   with a clear message instead of quietly filling the local disk.
 - Browsing keeps working while the NAS is off, but without previews: they're only kept on the NAS, next to their
   files. Previews, downloads, new uploads and sending G-code need it online.

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
-from ..services import farm_cost
+from ..services import config_service, farm_cost
 
 # The Farm cost page: the filament every printer used and what it cost, by month. Read only. Its electricity comes
 # from each printer's /energy, priced on the page with the Power page's prices.
@@ -36,4 +36,6 @@ def records_location(db: Session = Depends(get_db)):
 def choose_records_location(payload: LocationIn, db: Session = Depends(get_db)):
     """Choose the folder each month's record is saved in, or go back to the default (path null). 422 says why not."""
     with answer_errors():
-        return farm_cost.set_location(db, payload.path)
+        out = farm_cost.set_location(db, payload.path)
+    config_service.mirror_quietly(db)  # the settings copy holds which folder it is
+    return out

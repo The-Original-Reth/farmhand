@@ -251,3 +251,59 @@ def test_changing_storage_folders_or_shares_refreshes_the_copy(db_session, share
     sss.save(db_session, {"stl_path": str(stl)})
     svc.mirror(db_session)
     assert _file(folder)["storage"]["stl_path"] == str(stl.resolve())
+
+
+# ------------------------------------------------------------------ Save all
+
+
+def _stl_on_share(share):
+    """The STL folder on the share, ready (its marker in place), as chosen in Settings."""
+    stl = _folder(share, "STL")
+    storage.mark_location(stl)
+    storage.configure(stl_path=str(stl.resolve()))
+    return stl
+
+
+def test_save_all_with_no_folder_chosen_uses_farmhand_configs_beside_the_stl_folder(db_session, share):
+    _stl_on_share(share)
+    svc.save_config(db_session, {"preferences": {"farm_cost_order": [3, 1], "printer_sort": {"key": "wired", "dir": "desc"}}})
+    out = svc.save_all(db_session)
+    folder = share / svc.DEFAULT_FOLDER
+    assert out["saved"] and out["mirror"]["ok"] and svc.location_path(db_session) == str(folder.resolve())
+    prefs = _file(folder)["preferences"]
+    assert prefs["farm_cost_order"] == [3, 1] and prefs["printer_sort"] == {"key": "wired", "dir": "desc"}
+    assert out["location"]["file"]["exists"]
+
+
+def test_save_all_asks_before_replacing_settings_already_in_farmhand_configs(db_session, share):
+    _stl_on_share(share)
+    folder = _folder(share, svc.DEFAULT_FOLDER)
+    _existing_file(folder, scheme="violet")
+    out = svc.save_all(db_session)
+    assert not out["saved"] and out["needs_choice"] and out["mirror"] is None
+    assert _file(folder)["appearance"]["scheme"] == "violet" and svc.location_path(db_session) is None  # nothing changed
+    out = svc.save_all(db_session, "overwrite")
+    assert out["saved"] and _file(folder)["appearance"]["scheme"] == "farmhand"
+
+
+def test_save_all_writes_to_the_folder_already_chosen(db_session, share):
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    os.remove(folder / cs.CONFIG_FILENAME)
+    out = svc.save_all(db_session)
+    assert out["saved"] and (folder / cs.CONFIG_FILENAME).is_file()
+
+
+def test_the_farm_cost_folder_is_saved_and_loaded_back(db_session, share):
+    from app.services import farm_cost
+
+    records = _folder(share, "farm cost records")
+    farm_cost.set_location(db_session, str(records))
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    assert _file(folder)["farm_cost"] == {"records_path": str(records.resolve())}
+
+    farm_cost.set_location(db_session, None)  # back to the default here...
+    out = svc.restore(db_session)  # ...and Load all puts the saved one back
+    assert "farm cost folder" in out["restored"]
+    assert farm_cost.location_info(db_session)["path"] == str(records.resolve())

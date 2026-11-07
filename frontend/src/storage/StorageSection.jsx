@@ -138,6 +138,9 @@ export function StorageSection({ onSettingsRestored }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 820 }}>
+      {/* Save all and Load all settings first: the one place to save or bring back everything */}
+      <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
+
       <SectionLabel>Where files are stored</SectionLabel>
 
       <SharesCard
@@ -182,7 +185,6 @@ export function StorageSection({ onSettingsRestored }) {
       />
       {actionError && <div style={uiText(12, c.amber)}>{actionError}</div>}
       <FarmCostFolderCard shares={sharesInfo.shares} />
-      <SettingsCopy initialInfo={configInfo} shares={sharesInfo.shares} onSettingsRestored={onSettingsRestored} reloadAll={reloadAll} />
 
       {outsideAll > 0 && (
         <div style={{ border: `1px solid ${c.borderStrong}`, borderRadius: 4, background: c.panelAlt, padding: 16 }}>

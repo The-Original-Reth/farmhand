@@ -32,6 +32,7 @@ class EnergyPriceData(BaseModel):
 
 class PreferencesData(BaseModel):
     model_sort: SortData
+    printer_sort: SortData = SortData(key="name", dir="asc")  # the Printers page's list
     monitor_order: list[str] = []
     monitor_max_zoom: int = 4
     farm_cost_order: list[int] = []  # the Farm cost page's printers as dragged into order (printer ids)
@@ -71,6 +72,10 @@ class LastWrite(BaseModel):
     ok: bool | None
     error: str | None
     at: str | None
+
+
+class SaveAllIn(BaseModel):
+    if_exists: Literal["ask", "restore", "overwrite"] = "ask"  # only matters when Save all chooses the folder
 
 
 class LocationOut(BaseModel):
@@ -129,3 +134,9 @@ class LocationResult(BaseModel):
     found: InspectOut | None
     restored: RestoreOut | None
     location: LocationOut
+
+
+class SaveAllOut(LocationResult):
+    """What Save all did: as choosing the folder answers, and the copy it wrote (null when a choice is needed first)."""
+
+    mirror: MirrorOut | None

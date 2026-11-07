@@ -1402,6 +1402,14 @@ export function mockApi() {
           // an upload: only the names of the files sent, and its text fields, are kept (the mockup doesn't store files)
           if ((req.headers["content-type"] || "").includes("multipart/form-data")) {
             body = {
+  // Save all: with no folder chosen, "farmhand configs" beside the STL folder (as the server does)
+  on("POST", "/settings/config/save-all", () => {
+    if (!farm.settingsFolder) farm.settingsFolder = farm.storage.stl.replace(/\/[^/]*$/, "") + "/farmhand configs";
+    return {
+      saved: true, needs_choice: false, found: null, restored: null, location: configLocation(),
+      mirror: { ok: true, skipped: false, path: farm.settingsFolder, error: null },
+    };
+  });
               files: [...raw.matchAll(/filename="([^"]*)"/g)].map((m) => m[1]),
               fields: Object.fromEntries([...raw.matchAll(/name="([^"]+)"\r\n\r\n([^\r]*)\r\n/g)].map((m) => [m[1], m[2]])),
             };

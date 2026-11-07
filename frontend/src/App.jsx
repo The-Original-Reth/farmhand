@@ -24,11 +24,13 @@ import { useSavedSettings } from "./shell/useSavedSettings.js";
 
 // The page of the section open now
 function SectionPage({ section, nav, compare, settings }) {
-  const { appearance, energy, farmCost, monitor, modelSort, saveState, tools } = settings;
+  const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
   switch (section) {
     case "printers":
-      return <PrintersSection path={nav.printers.path} setPath={nav.printers.setPath} {...comparing} />;
+      return (
+        <PrintersSection path={nav.printers.path} setPath={nav.printers.setPath} {...comparing} sort={printerSort.value} onSortChange={printerSort.change} />
+      );
     case "models":
       return (
         <ModelsSection path={nav.models.path} setPath={nav.models.setPath} {...comparing} sort={modelSort.value} onSortChange={modelSort.change} />

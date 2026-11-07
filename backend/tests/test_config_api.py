@@ -183,3 +183,21 @@ def test_a_price_set_before_there_was_a_history_keeps_counting_for_the_months_be
     c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.15, "energy_price_history": []}})
     p = _prefs(c.put("/settings/config", json={"preferences": {"energy_price_per_kwh": 0.2, "energy_price_from": "2026-11"}}))
     assert p["energy_price_history"] == [{"from": "0001-01", "price": 0.15}, {"from": "2026-11", "price": 0.2}]
+
+
+def test_the_printers_page_sort_is_kept_and_cleaned(client):
+    client, _ = client
+    assert _prefs(client.get("/settings/config"))["printer_sort"] == {"key": "name", "dir": "asc"}
+    r = client.put("/settings/config", json={"preferences": {"printer_sort": {"key": "wireless", "dir": "desc"}}})
+    assert _prefs(r)["printer_sort"] == {"key": "wireless", "dir": "desc"}
+    r = client.put("/settings/config", json={"preferences": {"printer_sort": {"key": "no spaces!", "dir": "up"}}})
+    assert _prefs(r)["printer_sort"] == {"key": "name", "dir": "asc"}
+
+
+def test_save_all_over_the_api(client):
+    client, _ = client
+    r = client.post("/settings/config/save-all", json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body) >= {"saved", "needs_choice", "found", "restored", "location", "mirror"}
+    assert client.post("/settings/config/save-all", json={"if_exists": "sometimes"}).status_code == 422

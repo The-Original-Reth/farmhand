@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { c, fs, ui } from "../theme.js";
-import { errorText, getConfig, inspectConfigFolder, restoreConfig, saveConfigNow, setConfigLocation } from "../api.js";
+import { errorText, inspectConfigFolder, restoreConfig, saveAllSettings, setConfigLocation } from "../api.js";
 import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 
@@ -8,32 +8,29 @@ import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { ConfigLocationCard, RestoreResult } from "./ConfigLocationCard.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
 
-// Farmhand's settings copy on the NAS: where it goes, saving it now, restoring from it, and what to do when the folder
-// chosen already holds one. initialInfo: its location as the Storage page loaded it. shares: the connected network
+// Farmhand's settings copy on the NAS: Save all, Load all settings, where it goes, and what to do when the folder chosen
+// already holds one. initialInfo: its location as the Storage page loaded it. shares: the connected network
 // shares, to pick a folder on. onSettingsRestored: the look and preferences came back. reloadAll: the Storage page
 // reloads (a restore can bring back shares and folders).
 export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAll }) {
   const [configInfo, setConfigInfo] = useState(initialInfo); // where the settings copy goes
-  const [configPicker, setConfigPicker] = useState(false);
+  const [configPicker, setConfigPicker] = useState(null); // null | "choose" | "load" (a folder to load settings from)
+  const [saved, setSaved] = useState(null); // where the last Save all wrote everything
+  const [saving, setSaving] = useState(false);
   const [configFound, setConfigFound] = useState(null); // the folder just chosen already holds a settings file
   const [configRestoreOpen, setConfigRestoreOpen] = useState(false);
   const [configResult, setConfigResult] = useState(null);
   const { busy: configBusy, error: configError, setError: setConfigError, run } = useAction();
 
-  const refreshConfigInfo = async () => {
-    try {
-      setConfigInfo((await getConfig()).location);
-    } catch {
-      /* leave what's shown */
-    }
-  };
   const chooseConfigFolder = async (path) => {
     setConfigError(null);
+    setSaved(null);
     const found = await inspectConfigFolder(path); // refuses (with the reason) a folder that can't be used
     if (found.fileExists) {
       setConfigFound(found); // never overwrite settings that are already there without being told to
       return;
     }
+    if (configPicker === "load") throw new Error("There are no saved Farmhand settings in that folder. Pick the folder they were saved in.");
     setConfigInfo((await setConfigLocation({ path })).location);
   };
   const resolveFound = (choice) =>
@@ -51,15 +48,33 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
     setConfigError(null);
     setConfigInfo((await setConfigLocation({ path: null })).location);
   };
-  const saveConfigCopyNow = async () => {
+  // Save all: everything written to the settings folder now (Farmhand picks "farmhand configs" when none is chosen)
+  const saveAll = async () => {
     setConfigError(null);
+    setSaved(null);
+    setSaving(true);
     try {
-      const r = await saveConfigNow();
-      if (!r.ok) setConfigError(r.error);
+      const r = await saveAllSettings();
+      if (r.needsChoice) {
+        setConfigFound(r.found); // that folder already has settings: ask before replacing them
+      } else {
+        setConfigInfo(r.location);
+        if (r.mirror && !r.mirror.ok) setConfigError(r.mirror.error);
+        else setSaved(r.location.path);
+      }
     } catch (e) {
       setConfigError(errorText(e));
+    } finally {
+      setSaving(false);
     }
-    await refreshConfigInfo();
+  };
+  // Load all settings: from the settings folder (asked first), or, with none chosen or nothing saved there yet, from
+  // a folder picked where they were saved
+  const loadAll = () => {
+    setConfigError(null);
+    setSaved(null);
+    if (configInfo?.isSet && configInfo.file?.exists) setConfigRestoreOpen(true);
+    else setConfigPicker("load");
   };
 
   return (
@@ -67,20 +82,22 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
       <ConfigLocationCard
         info={configInfo}
         error={configError}
-        onChoose={() => setConfigPicker(true)}
-        onSaveNow={saveConfigCopyNow}
-        onRestore={() => setConfigRestoreOpen(true)}
+        onChoose={() => setConfigPicker("choose")}
+        onSaveAll={saveAll}
+        onLoadAll={loadAll}
         onClear={clearConfigFolder}
+        saving={saving}
+        saved={saved}
       />
       {configResult && <RestoreResult result={configResult} />}
 
       {configPicker && (
         <FolderPicker
-          title="Choose the folder for Farmhand's settings"
+          title={configPicker === "load" ? "Choose the folder your settings were saved in" : "Choose the folder for Farmhand's settings"}
           startPath={configInfo?.isSet ? configInfo.path : null}
           shares={shares}
           onSelect={chooseConfigFolder}
-          onClose={() => setConfigPicker(false)}
+          onClose={() => setConfigPicker(null)}
         />
       )}
 
@@ -137,8 +154,8 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
 
       {configRestoreOpen && (
         <ConfirmDialog
-          title="Restore settings from the network folder"
-          confirmLabel="Restore"
+          title="Load all settings"
+          confirmLabel="Load all"
           tone="primary"
           onClose={() => setConfigRestoreOpen(false)}
           onConfirm={async () => {
@@ -149,9 +166,11 @@ export function SettingsCopy({ initialInfo, shares, onSettingsRestored, reloadAl
           }}
         >
           <div>
-            Load the settings saved in that folder? This replaces the current look and display preferences with the saved
-            ones, puts back the STL and 3MF folders it lists, and adds any network shares that aren't already here. Passwords
-            aren't saved, so those shares will need theirs typed in.
+            Load all the settings saved in <b style={{ color: c.heading }}>{configInfo?.path}</b>? The look, the arrangements of
+            the Printers, Monitor and Farm cost pages and the Power page's electricity prices are replaced with the saved ones;
+            the STL, 3MF, project and farm cost folders it lists are put back; network shares and printers that aren't here
+            yet are added, and what printers and models are missing is filled in. A share's password isn't saved, so a share
+            added back needs its password typed in.
           </div>
         </ConfirmDialog>
       )}

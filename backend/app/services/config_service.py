@@ -19,6 +19,7 @@ log = logging.getLogger("farmhand.settings")
 
 KEY_CONFIG = "config_json"  # the settings themselves (appearance + preferences), as the server holds them
 KEY_LOCATION = "config_storage_dir"  # the network folder a copy is written to
+FARM_COST_LOCATION = "farm_cost_dir"  # farm_cost.KEY_LOCATION: the farm cost records folder, saved with the rest
 
 # What happened the last time the copy was written, so the page can say so. In memory: it's about now.
 _last_mirror: dict = {"ok": None, "error": None, "at": None}
@@ -91,7 +92,7 @@ def _share_entries(db: Session) -> list[dict]:
 def build_document(db: Session) -> dict:
     return config_store.build_document(
         get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
-        project_path=storage.custom_path("project"),
+        project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
     )
 
 
@@ -261,6 +262,28 @@ def set_location(db: Session, raw: str | None, if_exists: str = "ask") -> dict:
     return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db)}
 
 
+DEFAULT_FOLDER = "farmhand configs"  # Save all with no settings folder chosen: this one, beside the STL folder
+
+
+def save_all(db: Session, if_exists: str = "ask") -> dict:
+    """
+    Save all: everything written to the settings folder now (farmhand-config.json, and every printer's and model's
+    file). With no folder chosen yet, "farmhand configs" beside the STL folder is chosen for it, made if need be; one
+    that already holds settings is never overwritten without asking (if_exists, as set_location's).
+    """
+    if not location_path(db):
+        folder = storage.ready_root("stl").parent / DEFAULT_FOLDER  # StorageUnavailableError while the STL share is away
+        folder.mkdir(exist_ok=True)
+        chosen = set_location(db, str(folder), if_exists)
+        if not chosen["saved"]:
+            return {**chosen, "mirror": None}
+        restored = chosen["restored"]
+    else:
+        restored = None
+    written = mirror(db)
+    return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db), "mirror": written}
+
+
 def restore(db: Session) -> dict:
     """Load the settings file in the chosen folder into Farmhand."""
     path = location_path(db)
@@ -278,6 +301,16 @@ def restore(db: Session) -> dict:
     )
     result["restored"] += applied
     result["warnings"] += warnings
+
+    farm_cost_path = doc["farm_cost"]["records_path"]
+    if farm_cost_path and farm_cost_path != app_settings.get(db, FARM_COST_LOCATION):
+        from .farm_cost import set_location as set_farm_cost_location  # (farm_cost reads these settings itself)
+
+        try:
+            set_farm_cost_location(db, farm_cost_path)
+            result["restored"].append("farm cost folder")
+        except ValueError as e:
+            result["warnings"].append(f"The farm cost folder ({farm_cost_path}) wasn't put back: {e}")
 
     for entry in doc["shares"]:
         label = entry.get("name") or "(unnamed)"

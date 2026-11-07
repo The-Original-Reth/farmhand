@@ -6,27 +6,14 @@ import { useData } from "../data.jsx";
 
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge, Row } from "../components/common/ui.jsx";
-import { writeStored } from "../lib/storage.js";
 import { nameCollator } from "../models/modelSort.js";
 import { AddPrinterForm } from "./PrinterForms.jsx";
 import { ScanPrintersDialog } from "./ScanPrintersDialog.jsx";
+import { PRINTER_SORTS } from "./printerSort.js";
 import { webUiOf } from "./webUi.js";
 import { notesHint } from "../lib/format.js";
 
-const PRINTER_SORT_KEY = "farmhand.printerSort";
-const SORTS = { name: "Name", kind: "Type", wired: "Wired IP", wireless: "Wireless IP" }; // the columns the list sorts by
-
-// The order remembered in this browser: { key, dir }. An older Farmhand kept just "asc" or "desc", for the name.
-function loadSort() {
-  try {
-    const raw = localStorage.getItem(PRINTER_SORT_KEY);
-    if (raw === "asc" || raw === "desc") return { key: "name", dir: raw };
-    const s = JSON.parse(raw);
-    return SORTS[s?.key] && (s.dir === "asc" || s.dir === "desc") ? s : { key: "name", dir: "asc" };
-  } catch {
-    return { key: "name", dir: "asc" };
-  }
-}
+const SORTS = PRINTER_SORTS; // the columns the list sorts by
 
 // IP addresses in number order (10.0.6.9 before 10.0.6.21); anything else after them, by its text
 const ipKey = (ip) => {
@@ -55,19 +42,14 @@ function sorted(printers, { key, dir }) {
 }
 const COLUMNS = "1fr 1fr 120px 140px 140px 90px"; // name, type, web UI, wired IP, wireless IP, status
 
-// Every printer, sorted by name (the order remembered in this browser), with "Add printer"
-export function PrinterList({ setPath }) {
+// Every printer, in the order chosen by its column headings (`sort`, saved with the settings: onSortChange), with
+// "Add printer"
+export function PrinterList({ setPath, sort: printerSort, onSortChange }) {
   const { printers, bundlesForPrinter } = useData();
   const [addPrinterOpen, setAddPrinterOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
-  // The printer list's order: a column (SORTS) and "asc" | "desc", remembered in this browser
-  const [printerSort, setPrinterSortState] = useState(loadSort);
   // a column's arrow: the first click sorts by it A→Z (or low to high), the next reverses it
-  const sortBy = (key) => {
-    const next = { key, dir: printerSort.key === key && printerSort.dir === "asc" ? "desc" : "asc" };
-    setPrinterSortState(next);
-    writeStored(PRINTER_SORT_KEY, next);
-  };
+  const sortBy = (key) => onSortChange({ key, dir: printerSort.key === key && printerSort.dir === "asc" ? "desc" : "asc" });
 
   return (
     <div>

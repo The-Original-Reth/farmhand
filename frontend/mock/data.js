@@ -297,7 +297,7 @@ export function buildFarm() {
   const config = {
     appearance: { scheme: "farmhand", contrast: 0, font: "archivo", size: "default", file_name_color: "auto" },
     preferences: {
-      model_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4, farm_cost_order: [], energy_price_per_kwh: 0.17,
+      model_sort: { key: "name", dir: "asc" }, printer_sort: { key: "name", dir: "asc" }, monitor_order: [], monitor_max_zoom: 4, farm_cost_order: [], energy_price_per_kwh: 0.17,
       // the average cost was 0.15 until September, then 0.17; March was given its own price
       energy_price_history: [{ from: "2025-11", price: 0.15 }, { from: "2026-09", price: 0.17 }],
       energy_price_months: { "2026-03": 0.142 },

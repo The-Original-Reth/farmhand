@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import answer_errors
 from ..schemas.config import (
-    ConfigOut, ConfigSaveOut, ConfigUpdate, InspectOut, LocationResult, LocationUpdate, MirrorOut, RestoreOut,
+    ConfigOut, ConfigSaveOut, ConfigUpdate, InspectOut, LocationResult, LocationUpdate, MirrorOut, RestoreOut, SaveAllIn,
+    SaveAllOut,
 )
 from ..services import config_service
 
@@ -49,6 +50,17 @@ def save_now(db: Session = Depends(get_db)):
     if not config_service.location_path(db):
         raise HTTPException(status_code=422, detail="Choose a settings folder first.")
     return config_service.mirror(db)
+
+
+@router.post("/save-all", response_model=SaveAllOut)
+def save_all(payload: SaveAllIn, db: Session = Depends(get_db)):
+    """
+    Save all: every setting, printer and model file written to the settings folder now. With no folder chosen,
+    "farmhand configs" beside the STL folder is used; one already holding settings is never overwritten unless
+    if_exists says so (needs_choice comes back instead, with what's there). 503 while the STL share is away.
+    """
+    with answer_errors():
+        return config_service.save_all(db, payload.if_exists)
 
 
 @router.post("/restore", response_model=RestoreOut)
