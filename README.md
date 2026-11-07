@@ -97,6 +97,8 @@ The first things to do, in this order. Everything is done in the web page; there
 
 1. **Settings › Save location** (left-hand menu). Type the NAS address of the one folder Farmhand should keep
    everything in (`//192.168.1.50/share/Farmhand`) and its username and password, then **Use this location**.
+   Or press **Browse…** to pick the folder on a share that's already connected: it's used straight away, with that
+   share's own login.
    Farmhand connects to it and uses a folder inside it for each kind of file, making the ones that aren't there:
    **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **Farm cost** (the
    monthly records) and **Farmhand Configs** (the settings). Folders already there are used as they are, whatever

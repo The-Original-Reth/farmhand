@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, FolderDown, HardDrive, RefreshCw, Save } from "lucide-react";
+import { ChevronDown, FolderDown, FolderOpen, HardDrive, RefreshCw, Save } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { errorText, getSaveLocation, reconnectShare, setSaveLocation } from "../api.js";
 import { monoText, panelBox, primaryButton, uiText } from "../styles.js";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
 import { Badge } from "../components/common/ui.jsx";
+import { FolderPicker } from "./FolderPicker.jsx";
 
 // What each folder inside the save location holds, in the order shown
 const FOLDERS = [
@@ -14,6 +15,18 @@ const FOLDERS = [
   ["farmCost", "Farm cost", "Farm cost records"],
   ["config", "Farmhand Configs", "Settings (Save all)"],
 ];
+
+// A folder picked on a connected share, as its NAS address and that share: /data/nas/truenas/Farmhand on //nas/share
+// is //nas/share/Farmhand. null when it isn't on one.
+function pickedAt(path, shares) {
+  const share = shares
+    .filter((s) => s.mountPoint && (path === s.mountPoint || path.startsWith(`${s.mountPoint}/`)))
+    .sort((a, b) => b.mountPoint.length - a.mountPoint.length)[0];
+  if (!share) return null;
+  const rest = path.slice(share.mountPoint.length).replace(/^\/+/, "");
+  const base = share.protocol === "nfs" ? `${share.server}:/${share.share.replace(/^\/+/, "")}` : `//${share.server}/${share.share}`;
+  return { address: rest ? `${base}/${rest}` : base, share };
+}
 
 const looksNfs = (address) => /^nfs:\/\//i.test(address.trim()) || /^[^/\\]+:\//.test(address.trim()); // nas:/volume1/...
 
@@ -30,6 +43,7 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
   const [domain, setDomain] = useState("");
   const [version, setVersion] = useState("auto");
   const [advanced, setAdvanced] = useState(false);
+  const [picking, setPicking] = useState(false); // the folder browser, to pick the save location
   const [busy, setBusy] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState(null);
@@ -58,20 +72,28 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
   const versions = nfs ? ["4", "3"] : ["auto", "3.1.1", "3.0", "2.1"];
   const versionValue = versions.includes(version) ? version : versions[0]; // switching SMB / NFS while typing resets it
 
-  const use = async () => {
+  // `picked`: { address, share } chosen with Browse… (used at once, with that share's own login, domain and version left
+  // as they are); else the address and login typed
+  const use = async (picked) => {
+    const at = (picked ? picked.address : address).trim();
     setError(null);
     setDone(false);
-    if (!address.trim()) return setError("Type the NAS address, like //192.168.1.50/share/Farmhand.");
+    if (!at) return setError("Type the NAS address, like //192.168.1.50/share/Farmhand.");
     setBusy(true);
     try {
-      const r = await setSaveLocation({
-        address: address.trim(),
-        username: nfs ? null : username.trim(),
-        password,
-        domain: nfs ? "" : domain.trim(),
-        version: versionValue === "auto" ? "" : versionValue,
-      });
+      const r = await setSaveLocation(
+        picked
+          ? { address: at, username: picked.share.username || null }
+          : {
+              address: at,
+              username: nfs ? null : username.trim(),
+              password,
+              domain: nfs ? "" : domain.trim(),
+              version: versionValue === "auto" ? "" : versionValue,
+            },
+      );
       setLocation(r);
+      if (picked) fill(r); // the boxes show the picked share's own login
       setPassword("");
       setDone(true);
       await onSaved(r);
@@ -115,7 +137,20 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
         </div>
       )}
 
-      <TextField label="NAS address" value={address} onChange={setAddress} placeholder="e.g. //192.168.1.50/share/Farmhand" />
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <TextField label="NAS address" value={address} onChange={setAddress} placeholder="e.g. //192.168.1.50/share/Farmhand" />
+        </div>
+        <button
+          data-testid="save-location-browse"
+          onClick={() => setPicking(true)}
+          title="Pick the folder on a connected network share"
+          style={{ ...btn, display: "flex", alignItems: "center", gap: 6, marginBottom: 14, padding: "8px 12px", whiteSpace: "nowrap" }}
+        >
+          <FolderOpen size={13} />
+          Browse…
+        </button>
+      </div>
       {!nfs && (
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 200px" }}>
@@ -182,7 +217,7 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
           Connected. Everything now goes inside {location.address}.
         </div>
       )}
-      <button data-testid="save-location-use" onClick={use} disabled={busy || cannotMount} style={{ ...primaryButton(busy || cannotMount), marginBottom: 14 }}>
+      <button data-testid="save-location-use" onClick={() => use()} disabled={busy || cannotMount} style={{ ...primaryButton(busy || cannotMount), marginBottom: 14 }}>
         {busy ? "Connecting…" : saved ? "Save location" : "Use this location"}
       </button>
 
@@ -222,6 +257,25 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
         arranged, and your printers and models. <b style={{ color: c.textMuted }}>Load all settings</b> brings it back. A share's
         password is never saved; the printers' API keys and PrusaLink passwords are, so keep the folder private.
       </div>
+
+      {picking && (
+        <FolderPicker
+          title="Choose the save location"
+          startPath={location?.folders?.config ? location.folders.config.replace(/\/[^/]+$/, "") : shares.find((s) => s.mounted)?.mountPoint || null}
+          shares={shares}
+          onSelect={async (path) => {
+            const picked = pickedAt(path, shares);
+            if (!picked) {
+              throw new Error(
+                "Pick a folder on a connected network share. To use another NAS, type its address and login here first, then Browse inside it.",
+              );
+            }
+            setAddress(picked.address);
+            await use(picked);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </div>
   );
 }

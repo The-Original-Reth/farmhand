@@ -688,11 +688,18 @@ export const getSaveLocation = async () => normalizeSaveLocation(await request("
 // Connects to the address (reusing the share already there) and uses or makes STL, 3MF, Projects, Farm cost and
 // Farmhand Configs inside it. configChoice: what's in Farmhand Configs when it already holds saved settings (ask to
 // load or replace them), else null. A blank password keeps the saved one.
-// domain and version (Advanced): the workgroup, and the SMB / NFS version ("" = worked out by itself)
-export const setSaveLocation = async ({ address, username, password, domain = "", version = "" }) => {
+// domain and version (Advanced): the workgroup, and the SMB / NFS version ("" = worked out by itself); left out, the
+// share's stay as they are
+export const setSaveLocation = async ({ address, username, password, domain, version }) => {
   const r = await request(
     "/settings/storage/save-location",
-    jsonBody("PUT", { address, username: username || null, ...(password ? { password } : {}), domain, version }),
+    jsonBody("PUT", {
+      address,
+      username: username || null,
+      ...(password ? { password } : {}),
+      ...(domain !== undefined ? { domain } : {}),
+      ...(version !== undefined ? { version } : {}),
+    }),
   );
   return { ...normalizeSaveLocation(r), configChoice: normalizeFound(r.config_choice) };
 };
