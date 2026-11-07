@@ -107,3 +107,56 @@ def test_a_pruned_version_comes_back_with_its_settings(db_session, other_farmhan
     library_records.import_library(other_farmhand)
     v1 = other_farmhand.query(BundleVersion).filter_by(version=1).one()
     assert not v1.full_files_retained and v1.threemf_path is None and v1.settings["n"] == 1
+
+
+def test_models_another_farmhand_moved_are_relinked_and_their_doubles_taken_out(db_session, other_farmhand):
+    """The Pi's case: the other Farmhand's Models scan (before it left other Farmhands' files alone) took the first
+    one's STLs in and moved them; the first then brought those in again as new models from the other's records."""
+    # a model (one version, as the Pi's were) with notes, and a 3MF sliced from it
+    model = source_model_service.create_source_model(db_session, name="Flexi-Rex.stl", file_type=SourceFileType.stl, file_obj=io.BytesIO(_stl()))
+    source_model_service.set_notes(db_session, model.id, "Print it standing up", 0)
+    printer = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    bundle = Bundle(printer_id=printer.id)
+    db_session.add(bundle)
+    db_session.flush()
+    db_session.add(BundleSourceModel(bundle_id=bundle.id, source_model_id=model.id))
+    db_session.commit()
+    files = list(model.versions)
+    # the other Farmhand takes in each file where it lies, moving it into its own folders (as its scan used to)
+    for v in files:
+        source_model_service.import_scanned_file(other_farmhand, v.file_path)
+    for m in other_farmhand.query(SourceModel):
+        library_records.write_model(other_farmhand, m.id)
+    assert not any(os.path.exists(v.file_path) for v in files)  # gone from where the first Farmhand put them
+
+    library_records.import_models(db_session)  # ...and brought in again as a new model (the double)
+    assert db_session.query(SourceModel).count() == 2
+
+    out = library_records.import_library(db_session)
+    assert out["models"] == []
+    left = db_session.query(SourceModel).all()
+    assert [m.id for m in left] == [model.id]  # the doubles taken out, the original kept
+    kept = left[0]
+    assert kept.notes == "Print it standing up" and kept.bundle_links[0].bundle_id == bundle.id
+    assert all(os.path.isfile(v.file_path) for v in kept.versions)  # pointed at its files where they are now
+    assert {os.path.realpath(v.file_path) for v in kept.versions} == {
+        os.path.realpath(v.file_path) for m in other_farmhand.query(SourceModel) for v in m.versions
+    }
+
+
+def test_a_model_used_by_a_3mf_is_never_taken_out_as_a_double(db_session):
+    a = source_model_service.create_source_model(db_session, name="Fin.stl", file_type=SourceFileType.stl, file_obj=io.BytesIO(_stl()))
+    b = SourceModel(name="Fin.stl", file_type=SourceFileType.stl)
+    db_session.add(b)
+    db_session.flush()
+    from app.models import SourceModelVersion
+
+    db_session.add(SourceModelVersion(source_model_id=b.id, version=1, file_path=a.versions[0].file_path))
+    printer = printer_service.create_printer(db_session, name="P", kind=None, wired_ip=None, wireless_ip=None)
+    bundle = Bundle(printer_id=printer.id)
+    db_session.add(bundle)
+    db_session.flush()
+    db_session.add(BundleSourceModel(bundle_id=bundle.id, source_model_id=b.id))
+    db_session.commit()
+    assert library_records.drop_doubles(db_session) == []  # b is used: kept
+    assert db_session.query(SourceModel).count() == 2
