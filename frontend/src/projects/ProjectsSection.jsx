@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, FileBox, FileText, FolderKanban, GripVertical, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
+import { Box, FileBox, FileText, FolderKanban, FolderSearch, GripVertical, Pencil, PenTool, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { arrangeProjectFiles, createProject, deleteProject, renameProject } from "../api.js";
 import { c } from "../theme.js";
 import { useData } from "../data.jsx";
@@ -12,6 +12,7 @@ import { Row, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, UploadDialog } from "./ProjectFiles.jsx";
 import { EmptyBox, plural } from "./pieces.jsx";
+import { ScanProjectsDialog } from "./ScanProjects.jsx";
 import { StlActions, StlFiles } from "./StlSection.jsx";
 import { ThreemfActions, ThreemfFiles } from "./ThreemfSection.jsx";
 import { AddPrinterButton, ProjectPrinters } from "./ProjectPrinters.jsx";
@@ -31,10 +32,20 @@ export function ProjectsSection({ path, setPath, onOpenModel, onOpenPrinter }) {
 function ProjectList({ onOpen }) {
   const { projects } = useData();
   const [creating, setCreating] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const sorted = [...projects].sort((a, b) => nameCollator.compare(a.name, b.name));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 900 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button
+          data-testid="project-scan"
+          onClick={() => setScanning(true)}
+          title="Bring in project folders from the NAS, or check the project files"
+          style={toolButton(12)}
+        >
+          <FolderSearch size={12} />
+          Scan projects
+        </button>
         <button data-testid="project-new" onClick={() => setCreating(true)} style={toolButton(12)}>
           <Plus size={12} />
           New project
@@ -43,7 +54,8 @@ function ProjectList({ onOpen }) {
       {sorted.length === 0 ? (
         <div style={panelBox({ padding: 20, ...uiText(13, c.textFaint, { lineHeight: 1.6 }) })}>
           No projects yet. A project gathers what one piece of work needs: its CAD files, STL files, 3MF files, printers
-          and parts. <b style={{ color: c.textMuted }}>New project</b> starts one.
+          and parts. <b style={{ color: c.textMuted }}>New project</b> starts one; <b style={{ color: c.textMuted }}>Scan projects</b>{" "}
+          brings in project folders you already have on the NAS.
         </div>
       ) : (
         <div style={panelBox({ overflow: "hidden" })}>
@@ -57,6 +69,7 @@ function ProjectList({ onOpen }) {
           ))}
         </div>
       )}
+      {scanning && <ScanProjectsDialog onClose={() => setScanning(false)} />}
       {creating && (
         <Modal title="New project" onClose={() => setCreating(false)}>
           <ProjectNameForm onClose={() => setCreating(false)} onSaved={(p) => onOpen(p.id)} />

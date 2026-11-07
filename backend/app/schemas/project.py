@@ -44,6 +44,12 @@ class Counts(BaseModel):
     have: int | None = None
 
 
+class FolderIn(BaseModel):
+    """A folder on the server (a project folder to bring in)."""
+
+    path: str
+
+
 class FileOrder(BaseModel):
     """A project's documents or CAD files, in the order to put them: every one, first to last."""
 

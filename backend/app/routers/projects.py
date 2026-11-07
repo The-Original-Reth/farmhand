@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
-from ..schemas.project import BomOut, FileOrder, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
-from ..services import project_files, project_parts, project_service, send_print
+from ..schemas.project import BomOut, FileOrder, FolderIn, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
+from ..services import project_files, project_parts, project_scan, project_service, send_print
 from ..services.project_files import CAD, DOC, STL, THREEMF, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
@@ -25,6 +25,35 @@ def create_project(payload: ProjectIn, db: Session = Depends(get_db)):
     """Make a project. 409 if the name is empty, too long, or another project's (in any case)."""
     with answer_errors(409):
         return out(project_service.create_project(db, payload.name))
+
+
+# ---- Scan projects: bringing in project folders, and checking the project files (before /{project_id}) ----
+
+
+@router.get("/scan")
+def scan_folder(path: str = Query(..., description="The folder whose subfolders are projects"), db: Session = Depends(get_db)):
+    """Each subfolder of `path` as the project it would become: {path, folders: [{name, path, files: {doc, cad, stl,
+    threemf, gcode}, total, in_farmhand, error}]}. 422 for a folder outside the browse root or not a folder."""
+    with answer_errors():
+        return project_scan.scan_folder(db, path)
+
+
+@router.post("/import", status_code=201)
+def import_folder(payload: FolderIn, db: Session = Depends(get_db)):
+    """Make a project from one folder, its files copied in by kind: {project_id, name, files, warnings}. 409 when a
+    project of that name is here already; 503 if the project files folder isn't there."""
+    with answer_errors():
+        try:
+            return project_scan.import_folder(db, payload.path)
+        except project_scan.ProjectExists as e:  # a ValueError: answered here, before it would be a 422
+            raise HTTPException(status_code=409, detail=str(e)) from None
+
+
+@router.get("/check")
+def check_files(db: Session = Depends(get_db)):
+    """Every project file against the disk: {projects, files_checked, root, error, problems: [...], problems_total,
+    unknown: [paths], unknown_total}. Changes nothing."""
+    return project_scan.check_files(db)
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

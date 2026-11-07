@@ -241,6 +241,34 @@ export const deleteProjectFileVersion = (kind, projectId, fileId, v) => del(`/pr
 export const deleteProjectFile = (kind, projectId, fileId) => del(`/projects/${projectId}/${kind}/${fileId}`);
 // A project's documents or CAD files ("doc" / "cad") put in this order: every one's id, first to last. Answers the project.
 export const arrangeProjectFiles = (kind, projectId, ids) => request(`/projects/${projectId}/${kind}/order`, jsonBody("PUT", { ids }));
+
+// Scan projects. A folder's subfolders, each as the project it would become:
+// { path, folders: [{ name, path, files: { doc, cad, stl, threemf, gcode }, total, inFarmhand, error }] }
+export const scanProjectFolder = async (path) => {
+  const r = await request(`/projects/scan?path=${encodeURIComponent(path)}`);
+  return {
+    path: r.path,
+    folders: r.folders.map((f) => ({ name: f.name, path: f.path, files: f.files, total: f.total, inFarmhand: f.in_farmhand, error: f.error })),
+  };
+};
+// One folder made into a project, its files copied in: { projectId, name, files, warnings }. 409 if the name's taken.
+export const importProjectFolder = async (path) => {
+  const r = await request("/projects/import", jsonBody("POST", { path }));
+  return { projectId: r.project_id, name: r.name, files: r.files, warnings: r.warnings };
+};
+// Every project file against the disk (changes nothing): { projects, filesChecked, root, error, problems: [{ projectId,
+// project, kind, fileId, version, filename, path, problem }], problemsTotal, unknown: [paths], unknownTotal }
+export const checkProjectFiles = async () => {
+  const r = await request("/projects/check");
+  return {
+    projects: r.projects, filesChecked: r.files_checked, root: r.root, error: r.error,
+    problems: r.problems.map((p) => ({
+      projectId: p.project_id, project: p.project, kind: p.kind, fileId: p.file_id, version: p.version,
+      filename: p.filename, path: p.path, problem: p.problem,
+    })),
+    problemsTotal: r.problems_total, unknown: r.unknown, unknownTotal: r.unknown_total,
+  };
+};
 // A model from the Models page: put in a project, or taken out of it (the model itself stays)
 export const addProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "PUT" });
 export const removeProjectModel = (projectId, modelId) => request(`/projects/${projectId}/source-models/${modelId}`, { method: "DELETE" });
@@ -751,6 +779,20 @@ export const saveConfigOnExit = (patch) => {
 };
 
 export const saveConfigNow = () => post("/settings/config/save-now");
+// Save all: every setting, printer and model written to the settings folder now. With no folder chosen, Farmhand picks
+// "farmhand configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
+// answered with setConfigLocation({ path: found.path, ifExists }).
+export const saveAllSettings = async (ifExists = "ask") => {
+  const r = await request("/settings/config/save-all", jsonBody("POST", { if_exists: ifExists }));
+  return {
+    saved: r.saved,
+    needsChoice: r.needs_choice,
+    found: normalizeFound(r.found),
+    restored: normalizeRestore(r.restored),
+    location: normalizeConfigLocation(r.location),
+    mirror: r.mirror,
+  };
+};
 export const restoreConfig = async () => normalizeRestore(await post("/settings/config/restore"));
 
 // ---- scanning the STL folder for files added from outside Farmhand ----
@@ -777,20 +819,6 @@ export const importScannedFiles = async (paths) => {
   const r = await request("/source-models/scan/import", jsonBody("POST", { paths }));
   return {
     results: r.results.map((x) => ({ path: x.path, ok: x.ok, error: x.error, sourceModelId: x.source_model_id })),
-  };
-};
-// Save all: every setting, printer and model written to the settings folder now. With no folder chosen, Farmhand picks
-// "farmhand configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
-// answered with setConfigLocation({ path: found.path, ifExists }).
-export const saveAllSettings = async (ifExists = "ask") => {
-  const r = await request("/settings/config/save-all", jsonBody("POST", { if_exists: ifExists }));
-  return {
-    saved: r.saved,
-    needsChoice: r.needs_choice,
-    found: normalizeFound(r.found),
-    restored: normalizeRestore(r.restored),
-    location: normalizeConfigLocation(r.location),
-    mirror: r.mirror,
   };
 };
 

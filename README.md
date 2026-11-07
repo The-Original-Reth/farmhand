@@ -231,6 +231,17 @@ sudo docker compose down -v
 documents, CAD files, STL files, 3MF files, printers and its BOM (the parts it needs that aren't printed). **New project** on the Projects page makes one (a name not already
 used, in any case), and its page has **Rename**, the bin to delete it, and its six sections (Documents, CAD, STL
 files, BOM, 3MF files, Printers), each folding away with the arrow by its heading (remembered in this browser).
+- **Scan projects** (beside **New project** on the Projects page) has two parts:
+  - **Import folders**: pick the folder your projects are in on the NAS. Each folder inside it is listed with what it
+    holds, and each one ticked becomes a project of the same name (one already in Farmhand is left out). Its files are
+    copied in, sorted by kind: STL and OBJ files as the project's own STLs (the folders they're in become
+    sub-components), 3MF files (for the printer they were sliced for, when that's a printer here), a G-code beside a 3MF
+    of the same name as that 3MF's G-code, CAD files (STEP, IGES, Fusion, SolidWorks, OpenSCAD...), and everything else
+    as documents. Hidden and system files are left out, and the originals stay where they are. A file that can't be
+    brought in is named, and the rest still come in.
+  - **Check projects**: looks at every file the projects keep and lists, project by project, any that went missing or
+    were changed outside Farmhand, and any file in the project files folder that no project has on record. Nothing is
+    changed.
 - **Arranging documents and CAD files**: drag one by the grip at its start to where it should go (an amber line
   shows where it lands), or focus the grip and use the up and down arrow keys. The order is kept; a new upload goes
   at the end. A document is one line: its version, name and date on the left; its size, versions, **New version**,
@@ -898,6 +909,7 @@ share.
 | GET | `/settings/config/location/inspect?path=` | Look at a folder before choosing it: usable? already holds settings? |
 | PUT | `/settings/config/location` | Choose the network folder (`null` = none); `if_exists`: `ask` (default), `restore`, `overwrite` |
 | POST | `/settings/config/save-now` | Write the copy again now |
+| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now; with none chosen, `farmhand configs` beside the STL folder (`if_exists` as above when it already holds settings) |
 | POST | `/settings/config/restore` | Load the settings file (and printer and model records) in the chosen folder |
 
 The full API, with every route, is described at **http://localhost:4545/docs**.
@@ -909,7 +921,6 @@ The full API, with every route, is described at **http://localhost:4545/docs**.
   over lives in the container's throwaway filesystem, and is refused.
 - Chosen folders get a small `.farmhand-storage` marker. If a share drops and
   leaves an empty folder behind, the marker is missing and uploads are refused
-| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now; with none chosen, `farmhand configs` beside the STL folder (`if_exists` as above when it already holds settings) |
   with a clear message instead of quietly filling the local disk.
 - Browsing keeps working while the NAS is off, but without previews: they're only kept on the NAS, next to their
   files. Previews, downloads, new uploads and sending G-code need it online.

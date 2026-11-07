@@ -154,6 +154,98 @@ export function mockApi() {
     farm.projects.push(p);
     return [201, projectOut(p)];
   });
+  // Scan projects (before /projects/:id). A sample folder of project folders on the NAS, as the real scan sees it:
+  // each name -> its files, sorted into kinds the way the API sorts them.
+  const SCAN_ROOT = "/data/nas/farm-nas/projects";
+  const scanFolders = {
+    "Aquarium shop order": ["Quote.pdf", "Stand.stl"],
+    "Dragon egg": ["Egg shell.stl", "Stand/Base.stl", "Stand/Claw.stl", "Egg.step", "Egg plate.3mf", "Egg plate.gcode", "Paint notes.txt"],
+    "Shark display": ["Body/Left/Gill.stl", "Fins/Dorsal fin.stl", "Fins/Tail.stl", "Stand.stl", "Order.pdf"],
+  };
+  const scanKind = (name) =>
+    /\.(stl|obj)$/i.test(name) ? "stl" : /\.3mf$/i.test(name) ? "threemf" : /\.(gcode|bgcode)$/i.test(name) ? "gcode"
+      : /\.(step|stp|iges|igs|brep|brp|f3d|f3z|sldprt|sldasm|scad|fcstd|ipt|iam|3dm|blend|skp|dwg|dxf)$/i.test(name) ? "cad" : "doc";
+  const scanCounts = (files) => {
+    const counts = { doc: 0, cad: 0, stl: 0, threemf: 0, gcode: 0 };
+    for (const f of files) counts[scanKind(f)] += 1;
+    return counts;
+  };
+  const scanFolder = (path) => {
+    const at = String(path || "").replace(/\/+$/, "");
+    if (!at.startsWith("/")) throw new HttpError(422, "Use a full path (starting with /).");
+    if (!at.startsWith("/data")) throw new HttpError(422, "That folder isn't under /data. Only folders where network storage is mounted for Farmhand can be chosen.");
+    if (at !== SCAN_ROOT) throw new HttpError(422, `In the mockup, only ${SCAN_ROOT} has project folders to scan.`);
+    return at;
+  };
+  on("GET", "/projects/scan", (_p, _b, q) => {
+    const path = scanFolder(q.get("path"));
+    const taken = new Set(farm.projects.map((p) => p.name.toLowerCase()));
+    return {
+      path,
+      folders: Object.entries(scanFolders).map(([name, files]) => {
+        const counts = scanCounts(files);
+        return { name, path: `${path}/${name}`, files: counts, total: files.length, in_farmhand: taken.has(name.toLowerCase()), error: null };
+      }),
+    };
+  });
+  on("POST", "/projects/import", (_p, body) => {
+    const path = String(body.path || "");
+    const name = path.split("/").pop();
+    const files = scanFolders[name];
+    if (scanFolder(path.split("/").slice(0, -1).join("/")) && !files) throw new HttpError(422, `${path} isn't a folder.`);
+    if (farm.projects.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+      throw new HttpError(409, `There's already a project called ${name}: it isn't brought in again.`);
+    }
+    const p = {
+      id: farm.nextIds.project++, name, created_at: iso(nowUnix()),
+      doc_files: [], cad_files: [], stl_files: [], threemf_files: [], source_model_ids: [], bundle_ids: [], printer_ids: [], parts: [],
+    };
+    const counts = { doc: 0, cad: 0, stl: 0, threemf: 0, gcode: 0 };
+    const threemfs = {};
+    for (const rel of files) {
+      const kind = scanKind(rel);
+      if (kind === "gcode") continue; // after the 3MFs
+      const parts = rel.split("/");
+      const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [] };
+      if (kind === "stl") Object.assign(f, { need: 1, have: 0, component: parts.slice(0, -1).join("/") || null });
+      if (kind === "threemf") f.printer_id = null;
+      addFileVersion(f, { files: [parts[parts.length - 1]], fields: {} });
+      p[KIND[kind].list].push(f);
+      if (kind === "threemf") threemfs[rel.replace(/\.3mf$/i, "").toLowerCase()] = f;
+      counts[kind] += 1;
+    }
+    for (const rel of files.filter((x) => scanKind(x) === "gcode")) {
+      const match = threemfs[rel.replace(/\.(gcode|bgcode)$/i, "").toLowerCase()];
+      if (match) {
+        match.versions[0].gcode = rel.split("/").pop();
+        counts.gcode += 1;
+      } else {
+        const f = { id: farm.nextIds.cad++, created_at: iso(nowUnix()), versions: [] };
+        addFileVersion(f, { files: [rel.split("/").pop()], fields: {} });
+        p.doc_files.push(f);
+        counts.doc += 1;
+      }
+    }
+    farm.projects.push(p);
+    return [201, { project_id: p.id, name, files: counts, warnings: [] }];
+  });
+  on("GET", "/projects/check", () => {
+    // the mockup keeps no files, so it reports a sample: the first project's first document as missing, one stray file
+    const kinds = ["doc_files", "cad_files", "stl_files", "threemf_files"];
+    const checked = farm.projects.reduce((n, p) => n + kinds.reduce((m, k) => m + (p[k] || []).reduce((s, f) => s + f.versions.length, 0), 0), 0);
+    const first = farm.projects.find((p) => (p.doc_files || []).length);
+    const problems = first
+      ? [{
+          project_id: first.id, project: first.name, kind: "doc", file_id: first.doc_files[0].id, version: first.doc_files[0].versions[0].version,
+          filename: first.doc_files[0].versions[0].filename, path: `/data/nas/farm-nas/projects/${first.id}/docs/${first.doc_files[0].id}/v1`, problem: "missing",
+        }]
+      : [];
+    const unknown = ["/data/nas/farm-nas/projects/stray notes.txt"];
+    return {
+      projects: farm.projects.length, files_checked: checked, root: "/data/nas/farm-nas/projects", error: null,
+      problems, problems_total: problems.length, unknown, unknown_total: unknown.length,
+    };
+  });
   on("GET", "/projects/:id", ({ id }) => projectOut(project(id)));
   on("PATCH", "/projects/:id", ({ id }, body) => {
     const p = project(id);
@@ -1310,6 +1402,14 @@ export function mockApi() {
     return { saved: true, needs_choice: false, found: null, restored: null, location: configLocation() };
   });
   on("POST", "/settings/config/save-now", () => ({ ok: true, skipped: false, path: farm.settingsFolder, error: null }));
+  // Save all: with no folder chosen, "farmhand configs" beside the STL folder (as the server does)
+  on("POST", "/settings/config/save-all", () => {
+    if (!farm.settingsFolder) farm.settingsFolder = farm.storage.stl.replace(/\/[^/]*$/, "") + "/farmhand configs";
+    return {
+      saved: true, needs_choice: false, found: null, restored: null, location: configLocation(),
+      mirror: { ok: true, skipped: false, path: farm.settingsFolder, error: null },
+    };
+  });
   on("POST", "/settings/config/restore", () => ({ restored: ["appearance", "display preferences"], shares_added: [], shares_kept: ["farm-nas"], needs_password: [], warnings: [], records: null }));
 
   on("GET", "/settings/storage", () => storageOut());
@@ -1321,7 +1421,7 @@ export function mockApi() {
   });
   on("GET", "/settings/storage/browse", (_, _b, q) => {
     const path = q.get("path") || "/data";
-    const tree = { "/data": ["nas", "storage"], "/data/nas": ["farm-nas"], "/data/nas/farm-nas": ["3mf", "farmhand-settings", "models", "projects"], "/data/storage": ["bundles", "projects", "source_models"] };
+    const tree = { "/data": ["nas", "storage"], "/data/nas": ["farm-nas"], "/data/nas/farm-nas": ["3mf", "farmhand-settings", "models", "projects"], [SCAN_ROOT]: Object.keys(scanFolders), "/data/storage": ["bundles", "projects", "source_models"] };
     const parent = path === "/data" ? null : path.split("/").slice(0, -1).join("/") || "/data";
     return { path, root: "/data", parent, entries: (tree[path] || []).map((name) => ({ name, path: `${path}/${name}`, is_mount: path === "/data/nas" })) };
   });
@@ -1402,14 +1502,6 @@ export function mockApi() {
           // an upload: only the names of the files sent, and its text fields, are kept (the mockup doesn't store files)
           if ((req.headers["content-type"] || "").includes("multipart/form-data")) {
             body = {
-  // Save all: with no folder chosen, "farmhand configs" beside the STL folder (as the server does)
-  on("POST", "/settings/config/save-all", () => {
-    if (!farm.settingsFolder) farm.settingsFolder = farm.storage.stl.replace(/\/[^/]*$/, "") + "/farmhand configs";
-    return {
-      saved: true, needs_choice: false, found: null, restored: null, location: configLocation(),
-      mirror: { ok: true, skipped: false, path: farm.settingsFolder, error: null },
-    };
-  });
               files: [...raw.matchAll(/filename="([^"]*)"/g)].map((m) => m[1]),
               fields: Object.fromEntries([...raw.matchAll(/name="([^"]+)"\r\n\r\n([^\r]*)\r\n/g)].map((m) => [m[1], m[2]])),
             };
