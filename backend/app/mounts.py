@@ -351,8 +351,14 @@ def _run(argv: list[str], timeout: int = MOUNT_TIMEOUT_SECONDS) -> subprocess.Co
     return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
 
 
-def friendly_error(stderr: str, spec: ShareSpec) -> MountError:
-    """Turn mount's raw output into something a person can act on."""
+def friendly_error(stderr: str, spec: ShareSpec, allowed: bool | None = None) -> MountError:
+    """
+    Turn mount's raw output into something a person can act on. `allowed`: whether this container may mount at all
+    (None: look). When it may, "Operation not permitted" (mount error 1) is the NAS saying no, not the container: a
+    wrong login, guest access turned off, or an SMB version it won't use.
+    """
+    if allowed is None:
+        allowed = _has_cap_sys_admin()
     text = (stderr or "").strip()
     if spec.password and len(spec.password) >= 4:
         text = text.replace(spec.password, "•••")
@@ -370,8 +376,25 @@ def friendly_error(stderr: str, spec: ShareSpec) -> MountError:
             "was given. " + COMPOSE_FIX,
             "privilege",
         )
-    if says("operation not permitted", "mount error(1)", "only root", "must be superuser"):
+    if says("only root", "must be superuser") or (says("operation not permitted", "mount error(1)") and not allowed):
         return MountError("Farmhand isn't allowed to mount shares from inside its container. " + COMPOSE_FIX, "privilege")
+    if says("operation not permitted", "mount error(1)"):
+        if spec.protocol == "nfs":
+            return MountError(
+                f"{spec.server} refused this computer. On the NAS, allow this machine's IP address to use that export "
+                "(and allow root access to it).",
+                "permission",
+            )
+        login = (
+            f"that the username ({spec.username}) and password are right and that user may use this share"
+            if spec.username
+            else "that the NAS lets guests use this share, or give a username and password"
+        )
+        return MountError(
+            f"The NAS turned the connection down (mount error 1). Check {login}; if they are, try another SMB version "
+            "under Advanced (Farmhand's container is allowed to mount shares, so this is the NAS saying no).",
+            "auth",
+        )
     if says("unknown filesystem type", "mount error(19)"):
         return MountError(
             f"This computer's kernel can't mount {proto} shares (the {'cifs' if spec.protocol == 'smb' else 'nfs'} "
@@ -446,7 +469,8 @@ def _run_mount(spec: ShareSpec, argv: list[str]) -> None:
     except FileNotFoundError:
         raise MountError("The `mount` command isn't available in this image — rebuild it.", "unsupported")
     if result.returncode != 0:
-        raise friendly_error(result.stderr or result.stdout, spec)
+        # mount() has already checked this container may mount this kind of share
+        raise friendly_error(result.stderr or result.stdout, spec, allowed=True)
 
 
 def unmount(mount_point: str | os.PathLike, lazy: bool = False) -> None:

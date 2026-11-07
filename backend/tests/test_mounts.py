@@ -283,9 +283,32 @@ def test_mount_errors_are_translated_for_humans():
         (smb, "something nobody has seen before", "other"),
     ]
     for spec, stderr, kind in cases:
-        err = mounts.friendly_error(stderr, spec)
+        err = mounts.friendly_error(stderr, spec, allowed=False)
         assert err.kind == kind, f"{stderr!r} -> {err.kind}: {err}"
         assert len(str(err)) > 20  # a sentence, not a bare code
+
+
+def test_operation_not_permitted_is_the_nas_saying_no_when_the_container_may_mount():
+    smb = mounts.validate_fields("smb", "10.0.0.5", "farmhand", "elves", "pw123456")
+    guest = mounts.validate_fields("smb", "10.0.0.5", "farmhand")
+    nfs = mounts.validate_fields("nfs", "10.0.0.5", "/vol")
+    err = mounts.friendly_error("mount error(1): Operation not permitted", smb, allowed=True)
+    assert err.kind == "auth" and "elves" in str(err) and "SMB version" in str(err) and "docker-compose" not in str(err)
+    assert "guests" in str(mounts.friendly_error("mount error(1): Operation not permitted", guest, allowed=True))
+    assert mounts.friendly_error("mount.nfs: Operation not permitted", nfs, allowed=True).kind == "permission"
+    # without the permission it's still the container, and "only root" always is
+    assert mounts.friendly_error("mount error(1): Operation not permitted", smb, allowed=False).kind == "privilege"
+    assert mounts.friendly_error("mount: only root can do that", smb, allowed=True).kind == "privilege"
+
+
+def test_a_refused_mount_says_what_the_nas_did(isolated, monkeypatch):
+    fake = FakeMount(returncode=32, stderr="mount error(1): Operation not permitted")
+    monkeypatch.setattr(mounts, "_run", fake)
+    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    spec = mounts.validate_fields("smb", "10.0.0.5", "farmhand", "elves", "pw123456")
+    with pytest.raises(mounts.MountError) as e:
+        mounts.mount(spec, isolated / "x")
+    assert e.value.kind == "auth" and "docker-compose" not in str(e.value)
 
 
 def test_error_text_never_leaks_the_password():
