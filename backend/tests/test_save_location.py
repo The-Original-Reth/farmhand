@@ -81,3 +81,14 @@ def test_save_location_over_the_api(api, nas):
     nas.fail_with = MountError("The NAS refused the connection.", "auth")
     r = api.put("/settings/storage/save-location", json={"address": "//10.0.0.9/other"})
     assert r.status_code == 422 and "refused" in r.json()["detail"]
+
+
+def test_the_save_location_says_how_its_share_is_and_takes_its_version(db_session, nas):
+    assert svc.describe(db_session)["share"] is None
+    svc.set_save_location(db_session, {"address": "//10.0.0.5/prints/Farmhand", "username": "alice", "password": "s3cret!"})
+    share = svc.describe(db_session)["share"]
+    assert share["name"] == "Farmhand" and share["mounted"] and share["has_password"] and "password" not in share
+    assert svc.describe(db_session)["capability"]["ok"]
+    svc.set_save_location(db_session, {"address": "//10.0.0.5/prints/Farmhand", "username": "alice", "version": "3.0", "domain": "WORKGROUP"})
+    row = db_session.query(NetworkShare).one()
+    assert (row.version, row.domain, row.password) == ("3.0", "WORKGROUP", "s3cret!")  # the password kept

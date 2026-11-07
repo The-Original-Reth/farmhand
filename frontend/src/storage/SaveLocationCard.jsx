@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { FolderDown, HardDrive, Save } from "lucide-react";
+import { ChevronDown, FolderDown, HardDrive, RefreshCw, Save } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
-import { errorText, getSaveLocation, setSaveLocation } from "../api.js";
+import { errorText, getSaveLocation, reconnectShare, setSaveLocation } from "../api.js";
 import { monoText, panelBox, primaryButton, uiText } from "../styles.js";
-import { TextField } from "../components/common/fields.jsx";
+import { FieldSelect, TextField } from "../components/common/fields.jsx";
+import { Badge } from "../components/common/ui.jsx";
 
 // What each folder inside the save location holds, in the order shown
 const FOLDERS = [
@@ -17,30 +18,45 @@ const FOLDERS = [
 const looksNfs = (address) => /^nfs:\/\//i.test(address.trim()) || /^[^/\\]+:\//.test(address.trim()); // nas:/volume1/...
 
 // The save location: the one place on the NAS everything goes, typed as its address with its login. Farmhand connects
-// to it and uses (or makes) a folder inside it for each kind of file. Then Save all / Load all settings.
+// to it and uses (or makes) a folder inside it for each kind of file. Its Advanced fold has the network share's own
+// settings (how it's connected, Reconnect, the workgroup and the SMB / NFS version). Then Save all / Load all settings.
 // shares: the connected shares (the first one fills the address in until a location is saved). copy: useSettingsCopy.
 // onSaved(result): the folders changed (the page reloads; result.configChoice asks about settings already there).
 export function SaveLocationCard({ shares, copy, onSaved }) {
-  const [location, setLocation] = useState(null); // as the server has it: { address, folders }
+  const [location, setLocation] = useState(null); // as the server has it: { address, share, capability, folders }
   const [address, setAddress] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [domain, setDomain] = useState("");
+  const [version, setVersion] = useState("auto");
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
 
-  useEffect(() => {
+  // what's shown in the boxes: the save location's own share, else (until one is saved) the share already connected
+  const fill = (l) => {
+    const share = l.share || shares[0];
+    setAddress(l.address || (share ? `//${share.server}/${share.share}` : ""));
+    setUsername(share?.username || "");
+    setDomain(share?.domain || "");
+    setVersion(share?.version || "auto");
+  };
+  const load = () =>
     getSaveLocation()
       .then((l) => {
         setLocation(l);
-        const share = shares[0];
-        // until a location is saved, suggest the share already connected
-        setAddress(l.address || (share ? `//${share.server}/${share.share}` : ""));
-        const same = shares.find((s) => (l.address || "").toLowerCase().includes(`${s.server}/${s.share}`.toLowerCase())) || share;
-        setUsername(same?.username || "");
+        return l;
       })
       .catch((e) => setError(errorText(e)));
+  useEffect(() => {
+    load().then((l) => l && fill(l));
   }, []);
+
+  const nfs = looksNfs(address);
+  const versions = nfs ? ["4", "3"] : ["auto", "3.1.1", "3.0", "2.1"];
+  const versionValue = versions.includes(version) ? version : versions[0]; // switching SMB / NFS while typing resets it
 
   const use = async () => {
     setError(null);
@@ -48,7 +64,13 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
     if (!address.trim()) return setError("Type the NAS address, like //192.168.1.50/share/Farmhand.");
     setBusy(true);
     try {
-      const r = await setSaveLocation({ address: address.trim(), username: looksNfs(address) ? null : username.trim(), password });
+      const r = await setSaveLocation({
+        address: address.trim(),
+        username: nfs ? null : username.trim(),
+        password,
+        domain: nfs ? "" : domain.trim(),
+        version: versionValue === "auto" ? "" : versionValue,
+      });
       setLocation(r);
       setPassword("");
       setDone(true);
@@ -59,19 +81,42 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
       setBusy(false);
     }
   };
+  const reconnect = async () => {
+    setError(null);
+    setReconnecting(true);
+    try {
+      await reconnectShare(location.share.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      await load();
+      setReconnecting(false);
+    }
+  };
 
   const btn = { ...ui, fontSize: fs(13), background: "none", color: c.textMuted, border: `1px solid ${c.borderStrong}`, borderRadius: 4, padding: "6px 12px", cursor: "pointer" };
   const saved = location?.address;
+  const share = location?.share;
+  const capability = location?.capability;
+  const cannotMount = capability && !capability.ok;
   return (
     <div data-testid="save-location-card" style={panelBox({ padding: 16 })}>
-      <div style={uiText(15, c.heading, { fontWeight: 700, marginBottom: 4 })}>Save location</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
+        <div style={uiText(15, c.heading, { fontWeight: 700 })}>Save location</div>
+        {share && (share.mounted ? <Badge tone="green">connected</Badge> : <Badge tone="amber">not connected</Badge>)}
+      </div>
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginBottom: 12 })}>
         The one place on your NAS where Farmhand keeps everything. Type its address and login: Farmhand connects to it, and
         uses a folder inside it for each kind of file, making the ones that aren't there yet.
       </div>
+      {cannotMount && (
+        <div data-testid="capability-warning" style={uiText(12, c.amber, { lineHeight: 1.6, border: `1px solid ${c.amber}`, background: c.amberDim, borderRadius: 4, padding: "10px 12px", marginBottom: 12 })}>
+          {capability.message}
+        </div>
+      )}
 
       <TextField label="NAS address" value={address} onChange={setAddress} placeholder="e.g. //192.168.1.50/share/Farmhand" />
-      {!looksNfs(address) && (
+      {!nfs && (
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 200px" }}>
             <TextField label="Username (blank for guest)" value={username} onChange={setUsername} />
@@ -82,18 +127,62 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
               type="password"
               value={password}
               onChange={setPassword}
-              placeholder={saved ? "Leave blank to keep the saved one" : ""}
+              placeholder={share?.hasPassword ? "Leave blank to keep the saved one" : ""}
             />
           </div>
         </div>
       )}
+
+      <button
+        data-testid="save-location-advanced"
+        aria-expanded={advanced}
+        onClick={() => setAdvanced(!advanced)}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, marginBottom: advanced ? 10 : 14, cursor: "pointer", ...ui, fontSize: fs(12), color: c.textMuted }}
+      >
+        <ChevronDown size={13} style={{ transform: advanced ? "none" : "rotate(-90deg)", transition: "transform 0.12s ease" }} />
+        <span style={{ fontWeight: 700 }}>Advanced</span>
+        <span style={{ color: c.textFaint }}>the network share</span>
+      </button>
+      {advanced && (
+        <div data-testid="save-location-share" style={{ borderLeft: `2px solid ${c.border}`, paddingLeft: 12, marginLeft: 6, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            {share ? (
+              <>
+                <span style={uiText(12, share.mounted ? c.green : c.amber, { lineHeight: 1.5, flex: "1 1 260px" })}>
+                  {share.mounted ? `Connected to ${share.address}` : `Not connected${share.error ? `: ${share.error}` : "."}`}
+                  <span style={{ color: c.textFaint }}> · mounted at </span>
+                  <span style={monoText(12, c.textMuted)}>{share.mountPoint}</span>
+                </span>
+                <button data-testid="save-location-reconnect" onClick={reconnect} disabled={reconnecting} style={{ ...btn, display: "flex", alignItems: "center", gap: 6 }}>
+                  <RefreshCw size={12} />
+                  {reconnecting ? "Reconnecting…" : "Reconnect"}
+                </button>
+              </>
+            ) : (
+              <span style={uiText(12, c.textFaint)}>Not connected yet: the share is set up when the location is saved.</span>
+            )}
+          </div>
+          {!nfs && <TextField label="Domain / workgroup (optional)" value={domain} onChange={setDomain} />}
+          <FieldSelect
+            label={`${nfs ? "NFS" : "SMB"} version`}
+            value={versionValue}
+            onChange={setVersion}
+            options={versions.map((v) => ({ value: v, label: v === "auto" ? "Automatic (recommended)" : v }))}
+          />
+          <div style={uiText(12, c.textFaint, { lineHeight: 1.6 })}>
+            Changes here are tried on a test connection first, so a typo can't break the one in use. Farmhand mounts the share
+            itself: its container needs the SYS_ADMIN and DAC_READ_SEARCH permissions (see the README).
+          </div>
+        </div>
+      )}
+
       {error && <div data-testid="save-location-error" style={uiText(12, c.amber, { lineHeight: 1.5, marginBottom: 10 })}>{error}</div>}
       {done && !error && (
         <div data-testid="save-location-done" style={uiText(12, c.green, { marginBottom: 10 })}>
           Connected. Everything now goes inside {location.address}.
         </div>
       )}
-      <button data-testid="save-location-use" onClick={use} disabled={busy} style={{ ...primaryButton(busy), marginBottom: 14 }}>
+      <button data-testid="save-location-use" onClick={use} disabled={busy || cannotMount} style={{ ...primaryButton(busy || cannotMount), marginBottom: 14 }}>
         {busy ? "Connecting…" : saved ? "Save location" : "Use this location"}
       </button>
 

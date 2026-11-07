@@ -107,8 +107,9 @@ The first things to do, in this order. Everything is done in the web page; there
    **Load all settings** (see "Where settings and records are kept"). If Farmhand Configs already holds saved
    settings when you set the save location, Farmhand asks whether to load them or replace them.
 
-   **Advanced** (folded away below the card) still has the network shares and each folder on its own, for a
-   farm that keeps them in different places.
+   The card's own **Advanced** has the network share's settings: whether it's connected (and why not), **Reconnect**,
+   the domain or workgroup, and the SMB or NFS version. The page's **Advanced** (folded away below the card) has
+   each folder on its own, for a farm that keeps them in different places.
 3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
    - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
      key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.
@@ -839,12 +840,10 @@ library**.
 Everything is done from **Settings** in the sidebar — nothing to set up on the
 computer running Farmhand, no files to edit. The **Save location** card does it all from one address (see
 "Setting it up"): it adds the share (or uses the one already connected there, also when the address is a folder
-inside it) and sets every folder. What follows is the same by hand, under **Advanced**.
+inside it) and sets every folder.
 
-1. **Add network share…** Give it a name and **paste the NAS folder's full address
-   into the one address box** — Farmhand works out the type, server, share and
-   sub-folder from it, and shows you how it read it before you connect. Any of
-   these work:
+1. **Paste the NAS folder's full address into the NAS address box** — Farmhand works out the type, server, share
+   and sub-folder from it. Any of these work:
    ```
    //192.168.1.50/farmhand/Projects       SMB
    \\nas\farmhand\Projects                SMB, as copied from Windows Explorer
@@ -852,13 +851,13 @@ inside it) and sets every folder. What follows is the same by hand, under **Adva
    192.168.1.50:/volume1/farmhand         NFS
    nfs://nas/volume1/farmhand             NFS
    ```
-   Add a username and password below if it's an SMB share that needs them (they
-   stay out of the address). Farmhand connects straight away and **only saves the
-   share if that works** — if not, it says why (can't reach it, wrong password,
-   no share by that name, …).
-2. Under **STL files** and **3MF files**, press **Change…**, jump to the share,
-   open the folder you want (or make one with **New folder**) and press
-   **Use this folder**. The two are chosen separately, and must be different folders.
+   Add a username and password if it's an SMB share that needs them (they stay out of the address). Farmhand
+   connects straight away and **only saves the share if that works** — if not, it says why (can't reach it, wrong
+   password, no share by that name, …). The domain or workgroup and the SMB / NFS version are under the card's
+   **Advanced**; a change there is tried on a test connection first.
+2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, Farm cost, Farmhand Configs). To keep
+   one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want
+   (or make one with **New folder**) and press **Use this folder**.
 3. Files you already have stay where they are and keep working. The page shows
    how many are in a previous location and offers **Move them now** (copy → check
    the size → update → delete the original). Each file's preview moves with it.
@@ -866,7 +865,7 @@ inside it) and sets every folder. What follows is the same by hand, under **Adva
 Farmhand remembers its shares and **re-mounts them after every restart**, and
 checks every 30 seconds — so a NAS that was switched on a little after the
 computer is picked up on its own. A share shows as *not connected*, with the
-reason, until it is; **Reconnect** retries immediately. (A wrong password is the
+reason, until it is; **Reconnect** (under the Save location card's Advanced) retries immediately. (A wrong password is the
 one thing it won't keep retrying by itself, so it can't lock the NAS account.)
 
 ### Previews live next to their files
@@ -892,8 +891,7 @@ So `docker-compose.yml` gives the `api` service
 matters on hosts running AppArmor, like Ubuntu). That is a real widening of what
 the container may do — acceptable for a trusted home/workshop server, worth
 knowing before you put this anywhere shared. NFS needs only `SYS_ADMIN`. The
-Settings page checks for these and says exactly which one is missing (and still
-lets you add an NFS share if only the SMB one is). After changing `cap_add`, run
+Settings page checks for these and says exactly which one is missing. After changing `cap_add`, run
 `docker compose up -d` so the container is recreated with them. If you'd rather
 not grant them, you can mount the share on the host yourself and add a bind
 mount for it under `/data/nas/<name>` in `docker-compose.yml`; the Settings page
@@ -902,7 +900,7 @@ will still let you pick folders on it.
 **Your NAS's side:** the account needs write access to the share. Farmhand runs as
 root inside its container, so an NFS export must allow it (often `no_root_squash`,
 or allowing this machine's IP). If SMB won't connect, try a specific version
-under *Advanced* (3.0 or 2.1 for older NAS).
+under the Save location card's *Advanced* (3.0 or 2.1 for older NAS).
 
 **Your login is stored** in Farmhand's database, as is, so it can reconnect after
 a restart. It's never shown again or sent back to the browser, but anyone who can

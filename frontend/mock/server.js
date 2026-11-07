@@ -1145,8 +1145,15 @@ export function mockApi() {
   // The save location: one place on the NAS for everything, as the server sets it up (connecting to the share, and
   // using or making STL, 3MF, Projects, Farm cost and Farmhand Configs inside it). A password of "wrong" is refused, to
   // try the error.
+  // the share the save location is on: the one whose server and share the address starts with
+  const saveLocationShare = () => {
+    const at = String(farm.saveLocation || "").replace(/^(smb|cifs):\/\//i, "//").toLowerCase();
+    return (farm.shares || []).find((s) => at.startsWith(`//${s.server}/${s.share}`.toLowerCase())) || null;
+  };
   const saveLocationOut = () => ({
     address: farm.saveLocation || null,
+    share: saveLocationShare(),
+    capability,
     folders: {
       stl: farm.storage.stl, threemf: farm.storage.threemf, project: farm.storage.project,
       farm_cost: farm.farmCostFolder || FARM_COST_DEFAULT, config: farm.settingsFolder || null,
@@ -1167,6 +1174,20 @@ export function mockApi() {
     farm.farmCostFolder = `${base}/Farm cost`;
     farm.settingsFolder = `${base}/Farmhand Configs`;
     farm.saveLocation = address;
+    let share = saveLocationShare();
+    if (!share) {
+      // a new place: its share is added, connected (as the server does)
+      const shareName = m[2].split("/")[0];
+      share = {
+        id: Math.max(0, ...(farm.shares || []).map((s) => s.id)) + 1, name: shareName, protocol: "smb", server: m[1], share: m[2],
+        username: body.username || null, domain: null, version: null, has_password: !!body.password, address: `smb://${m[1]}/${m[2]}`,
+        mount_point: `/data/nas/${shareName.toLowerCase()}`, mounted: true, error: null, error_kind: null, files_here: 0,
+      };
+      farm.shares = [...(farm.shares || []), share];
+    }
+    if ("domain" in body) share.domain = body.domain || null;
+    if ("version" in body) share.version = body.version || null;
+    if (body.username !== undefined) share.username = body.username || null;
     return { ...saveLocationOut(), config_choice: null };
   });
   on("PUT", "/farm-cost/location", (_, body) => {

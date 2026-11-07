@@ -73,11 +73,29 @@ def _folder(base: Path, name: str) -> Path:
     return path
 
 
+def _share_of(db: Session, address: str | None) -> NetworkShare | None:
+    if not address:
+        return None
+    try:
+        found = _existing_share(db, *mounts.parse_location(address))
+    except ValueError:
+        return None
+    return found[0] if found else None
+
+
 def describe(db: Session) -> dict:
-    """The save location as typed (null until it's set) and the folder each kind of file goes to now."""
+    """
+    The save location as typed (null until it's set), its share as the shares list shows one (connected or not, why
+    not, its login without the password, SMB version...; null until set), whether this container may mount shares at
+    all, and the folder each kind of file goes to now.
+    """
     config_path = config_service.location_path(db)
+    address = app_settings.get(db, KEY)
+    row = _share_of(db, address)
     return {
-        "address": app_settings.get(db, KEY),
+        "address": address,
+        "share": network_shares_service._out(db, row) if row else None,
+        "capability": mounts.mount_capability(),
         "folders": {
             "stl": str(storage.effective_root("stl")),
             "threemf": str(storage.effective_root("threemf")),
@@ -108,6 +126,9 @@ def set_save_location(db: Session, data: dict) -> dict:
             changes["username"] = username
         if password and password != row.password:
             changes["password"] = password
+        for field in ("domain", "version"):  # Advanced: the workgroup and the SMB / NFS version
+            if field in data and ((data[field] or "").strip() or None) != getattr(row, field):
+                changes[field] = (data[field] or "").strip() or None
         if changes:
             network_shares_service.update_share(db, row.id, changes)  # tried on a scratch mount first
         elif not mounts.is_mounted(mounts.mount_point_for(row.name)):

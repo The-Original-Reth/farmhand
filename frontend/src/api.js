@@ -675,20 +675,24 @@ const normalizeShare = (s) => ({
   filesHere: s.files_here,
 });
 
-// The save location: one place on the NAS everything goes in. { address (null until set), folders: { stl, threemf,
-// project, farmCost, config } }
+// The save location: one place on the NAS everything goes in. { address (null until set), share (its share as the
+// shares list has one, null until set), capability (may this container mount shares), folders: { stl, threemf, project,
+// farmCost, config } }
 const normalizeSaveLocation = (r) => ({
   address: r.address,
+  share: r.share ? normalizeShare(r.share) : null,
+  capability: r.capability || null,
   folders: { stl: r.folders.stl, threemf: r.folders.threemf, project: r.folders.project, farmCost: r.folders.farm_cost, config: r.folders.config },
 });
 export const getSaveLocation = async () => normalizeSaveLocation(await request("/settings/storage/save-location"));
 // Connects to the address (reusing the share already there) and uses or makes STL, 3MF, Projects, Farm cost and
 // Farmhand Configs inside it. configChoice: what's in Farmhand Configs when it already holds saved settings (ask to
 // load or replace them), else null. A blank password keeps the saved one.
-export const setSaveLocation = async ({ address, username, password }) => {
+// domain and version (Advanced): the workgroup, and the SMB / NFS version ("" = worked out by itself)
+export const setSaveLocation = async ({ address, username, password, domain = "", version = "" }) => {
   const r = await request(
     "/settings/storage/save-location",
-    jsonBody("PUT", { address, username: username || null, ...(password ? { password } : {}) }),
+    jsonBody("PUT", { address, username: username || null, ...(password ? { password } : {}), domain, version }),
   );
   return { ...normalizeSaveLocation(r), configChoice: normalizeFound(r.config_choice) };
 };

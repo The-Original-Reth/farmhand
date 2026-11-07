@@ -1,26 +1,16 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, HardDrive } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import {
-  deleteShare,
-  errorText,
-  getConfig,
-  getShares,
-  getStorageSettings,
-  migrateStorage,
-  reconnectShare,
-  saveStorageSettings,
-} from "../api.js";
+import { errorText, getConfig, getShares, getStorageSettings, migrateStorage, saveStorageSettings } from "../api.js";
 import { monoText, panelBox, uiText } from "../styles.js";
 
-import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialogs.jsx";
+import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { Badge, SectionLabel } from "../components/common/ui.jsx";
 import { formatBytes, plural } from "../lib/format.js";
 import { FolderPicker } from "./FolderPicker.jsx";
 import { useSettingsCopy } from "./useSettingsCopy.jsx";
 import { SaveLocationCard } from "./SaveLocationCard.jsx";
 import { FarmCostFolderCard } from "./FarmCostFolderCard.jsx";
-import { ShareForm, SharesCard } from "./Shares.jsx";
 import { ConfigLocationCard, locationProblem } from "./ConfigLocationCard.jsx";
 
 function LocationCard({ title, blurb, location, onChange, onReset }) {
@@ -130,12 +120,8 @@ export function StorageSection({ onSettingsRestored }) {
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveResult, setMoveResult] = useState(null);
   const [sharesInfo, setSharesInfo] = useState(null);
-  const [shareForm, setShareForm] = useState(null); // null | { existing?: share }
-  const [removing, setRemoving] = useState(null); // null | share
-  const [shareBusy, setShareBusy] = useState(null);
-  const [shareError, setShareError] = useState(null);
   const [configInfo, setConfigInfo] = useState(null); // where the settings copy goes, as first loaded
-  const [advanced, setAdvanced] = useState(false); // the shares and each folder on its own, folded away at first
+  const [advanced, setAdvanced] = useState(false); // each folder on its own, folded away at first
 
   useEffect(() => {
     Promise.all([getStorageSettings(), getShares(), getConfig().catch(() => null)])
@@ -161,19 +147,6 @@ export function StorageSection({ onSettingsRestored }) {
   if (!info || !sharesInfo) {
     return <div style={uiText(13, c.textFaint)}>Loading storage settings…</div>;
   }
-
-  const reconnect = async (sh) => {
-    setShareError(null);
-    setShareBusy(sh.id);
-    try {
-      await reconnectShare(sh.id);
-    } catch (e) {
-      setShareError(`${sh.name}: ${errorText(e)}`);
-    } finally {
-      setShareBusy(null);
-      await reloadAll().catch(() => {});
-    }
-  };
 
   const body = (kind, path) => ({ [{ stl: "stlPath", threemf: "threemfPath", project: "projectPath" }[kind]]: path });
   const resetLocation = async (kind) => {
@@ -214,31 +187,12 @@ export function StorageSection({ onSettingsRestored }) {
       >
         <ChevronDown size={14} style={{ transform: advanced ? "none" : "rotate(-90deg)", transition: "transform 0.12s ease" }} />
         <span style={{ fontWeight: 700 }}>Advanced</span>
-        <span style={{ color: c.textFaint }}>network shares, and each folder on its own</span>
+        <span style={{ color: c.textFaint }}>each folder on its own</span>
       </button>
 
       {advanced && (
         <>
           <SectionLabel>Where files are stored</SectionLabel>
-
-          <SharesCard
-            data={sharesInfo}
-            onAdd={() => setShareForm({})}
-            onEdit={(sh) => setShareForm({ existing: sh })}
-            onReconnect={reconnect}
-            onRemove={async (sh) => {
-              setShareError(null);
-              try {
-                const fresh = await getShares();
-                setSharesInfo(fresh);
-                setRemoving(fresh.shares.find((x) => x.id === sh.id) || sh);
-              } catch {
-                setRemoving(sh);
-              }
-            }}
-            busyId={shareBusy}
-            actionError={shareError}
-          />
 
           <LocationCard
             title="STL / OBJ / STEP files"
@@ -267,10 +221,6 @@ export function StorageSection({ onSettingsRestored }) {
 
           <div style={uiText(12, c.textFaint, { lineHeight: 1.7 })}>
             <div>
-              <b style={{ color: c.textMuted }}>Network shares.</b> Farmhand mounts them itself, so there's nothing to set up on
-              the computer running it. To do that its container is given the SYS_ADMIN and DAC_READ_SEARCH permissions (see the README).
-            </div>
-            <div style={{ marginTop: 6 }}>
               <b style={{ color: c.textMuted }}>Safety check.</b> Chosen folders get a small <span style={mono}>.farmhand-storage</span>{" "}
               marker. If a share drops and leaves an empty folder behind, the marker is missing and uploads are refused rather
               than silently filling the local disk.
@@ -293,40 +243,6 @@ export function StorageSection({ onSettingsRestored }) {
           onSelect={async (path) => setInfo(await saveStorageSettings(body(picker, path)))}
           onClose={() => setPicker(null)}
         />
-      )}
-
-      {shareForm && (
-        <Modal title={shareForm.existing ? `Edit ${shareForm.existing.name}` : "Add network share"} onClose={() => setShareForm(null)} width={500}>
-          <ShareForm
-            existing={shareForm.existing}
-            capability={sharesInfo.capability}
-            onClose={() => setShareForm(null)}
-            onSaved={reloadAll}
-          />
-        </Modal>
-      )}
-
-      {removing && (
-        <ConfirmDialog
-          title="Remove network share"
-          confirmLabel="Remove share"
-          onClose={() => setRemoving(null)}
-          onConfirm={async () => {
-            await deleteShare(removing.id);
-            await reloadAll();
-          }}
-        >
-          <div>
-            Disconnect <b style={{ color: c.heading }}>{removing.name}</b> and forget its login? Nothing on the NAS is
-            deleted.
-          </div>
-          {removing.filesHere > 0 && (
-            <DeleteWarning>
-              {removing.filesHere === 1 ? "1 version has its files" : `${removing.filesHere} versions have their files`} stored
-              on this share. Farmhand won't be able to open or download them until you add the share again.
-            </DeleteWarning>
-          )}
-        </ConfirmDialog>
       )}
 
       {moveOpen && (
