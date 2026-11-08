@@ -120,7 +120,7 @@ def test_a_full_copy_still_checks_every_file(db_session, fake, tmp_path):
 
 
 def test_which_changes_touch_which_files():
-    from app.main import _what_changed
+    from app.change_hooks import _what_changed
 
     every = config_service.EVERYTHING
     assert _what_changed("/printers") == every and _what_changed("/printers/3") == every  # added / edited

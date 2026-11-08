@@ -12,13 +12,13 @@ connection; nothing here ever stops the thread.
 from __future__ import annotations
 
 import logging
-import threading
 import time
 
 from sqlalchemy import select
 
 from .database import SessionLocal
 from .models import Printer
+from .periodic import PeriodicWorker
 from .services import config_service, moonraker, prusalink
 
 log = logging.getLogger("farmhand.printers")
@@ -27,23 +27,13 @@ INTERVAL_SECONDS = 60  # how often the thread wakes: PrusaLink printers are look
 MOONRAKER_INTERVAL_SECONDS = 15 * 60
 
 
-class PrinterPoller:
+class PrinterPoller(PeriodicWorker):
+    name, failure, log = "printer-poller", "Syncing printers failed", log
+
     def __init__(self, interval: float = INTERVAL_SECONDS, moonraker_interval: float = MOONRAKER_INTERVAL_SECONDS):
-        self.interval = interval
+        super().__init__(interval, first_wait=30)  # let the API finish starting first
         self.moonraker_interval = moonraker_interval
         self._moonraker_due = 0.0  # monotonic time of the next Moonraker sync
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        if self._thread and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="printer-poller", daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
 
     def run_once(self) -> None:
         sync_moonraker = time.monotonic() >= self._moonraker_due
@@ -52,7 +42,7 @@ class PrinterPoller:
         with SessionLocal() as db:
             ids = list(db.scalars(select(Printer.id).where(Printer.decommissioned.is_(False))))
         for printer_id in ids:
-            if self._stop.is_set():
+            if self.stopping:
                 return
             with SessionLocal() as db:  # one session per printer: one failing can't spoil the others
                 printer = db.get(Printer, printer_id)
@@ -68,15 +58,6 @@ class PrinterPoller:
                     log.debug("Couldn't sync printer %s: %s", printer.name, e)
         if sync_moonraker:
             config_service.request_mirror(config_service.MirrorScope(printers=True))  # each printer's file picks up what came in
-
-    def _run(self) -> None:
-        self._stop.wait(30)  # let the API finish starting first
-        while not self._stop.is_set():
-            try:
-                self.run_once()
-            except Exception:  # noqa: BLE001 — a poller must never die
-                log.exception("Syncing printers failed")
-            self._stop.wait(self.interval)
 
 
 poller = PrinterPoller()

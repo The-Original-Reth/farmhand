@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 import time
 
 from fastapi import FastAPI, Request
@@ -9,17 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
-from . import storage
+from . import background, change_hooks, storage
 from .database import SessionLocal, create_schema, engine
-from .mount_supervisor import supervisor
 from .notes import NotesConflict, conflict_response
-from .printer_poller import poller
-from .farm_cost_recorder import recorder as farm_cost_recorder
 from .routers import bundles, config_settings, farm_cost, moonraker, printers, projects, prusalink, source_models, storage_settings
-from .services import (
-    bundle_service, config_service, library_records, previews, project_records, project_scan, storage_settings_service,
-    sub_printer_service,
-)
+from .services import storage_settings_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
 
@@ -28,8 +21,8 @@ logger = logging.getLogger("farmhand.startup")
 app = FastAPI(
     title="Farmhand",
     description=(
-        "Cataloging and versioning system for a 3D print farm's 3MF files. Does not slice or send jobs to "
-        "printers; it reads each printer's print history from Moonraker and shares maintenance reminders with it."
+        "Catalogs and versions a 3D print farm's files (STL models, the 3MFs sliced from them, G-code, projects) and "
+        "talks to its printers (Klipper/Moonraker, Prusa/PrusaLink): print history, power, maintenance, sending prints."
     ),
     version="0.1.0",
 )
@@ -50,42 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def keep_settings_copy_current(request: Request, call_next):
-    # A change to a printer, a model or a 3MF file (notes, stars, settings, a sync...) is copied to the settings
-    # folder's printers/ and models/ files shortly after, in the background (config_service.request_mirror)
-    response = await call_next(request)
-    if request.method in ("POST", "PUT", "PATCH", "DELETE") and response.status_code < 400:
-        scope = _what_changed(request.url.path)
-        if scope is not None:
-            config_service.request_mirror(scope)
-        # ...and a change to a project is written to its record in its own folder (project_records)
-        parts = request.url.path.strip("/").split("/")
-        one = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
-        if parts[0] == "projects":
-            project_records.request_write(one)
-        # ...and a model's or 3MF's to its record beside its files (library_records)
-        if parts[0] == "source-models":
-            library_records.request_write("model", one)
-        if parts[0] == "bundles" and parts[-1] != "inspect":
-            library_records.request_write("bundle", one)
-    return response
-
-
-def _what_changed(path: str) -> "config_service.MirrorScope | None":
-    """Which files of the settings copy a successful change at this path touches (None: none of them)."""
-    parts = path.strip("/").split("/")
-    if parts[0] == "printers":
-        if len(parts) > 2 and parts[1].isdigit():
-            return config_service.MirrorScope(printers={int(parts[1])})  # its notes, a sync, its service...
-        return config_service.EVERYTHING  # added, renamed, retired or deleted: file names and models' files follow
-    if parts[0] in ("bundles", "source-models"):
-        if parts[-1] == "inspect":
-            return None  # only reads the 3MF
-        if parts[-1] == "print":
-            return config_service.MirrorScope(printers=True)  # a print sent: its printer's history may have it
-        return config_service.MirrorScope(models=True)
-    return None
+change_hooks.install(app)  # what a change made through the API writes to the NAS afterwards
 
 
 app.include_router(printers.router)
@@ -118,54 +76,6 @@ async def storage_unavailable_handler(request: Request, exc: storage.StorageUnav
     return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
-def _keep_projects_folder_in() -> None:
-    """
-    Each project's record written to its folder once (a minute after starting, when the shares are mounted), then the
-    project files folder scanned every few minutes: projects another Farmhand sharing it has (or project folders
-    dropped in) come in on their own.
-    """
-    time.sleep(60)
-    try:
-        with SessionLocal() as db:
-            library_records.write_all(db)
-            project_records.write_all(db)
-    except Exception:  # noqa: BLE001 - this must never stop
-        logger.exception("Writing the records failed")
-    while True:
-        try:
-            with SessionLocal() as db:
-                library = library_records.import_library(db)  # models and 3MFs first: projects name them
-                result = project_scan.import_projects_folder(db, auto=True)
-            for name in library["models"] + library["threemfs"]:
-                logger.info("Brought in %s from the shared folders", name)
-            for p in result["imported"]:
-                logger.info("Brought in the project %s from the project files folder", p["name"])
-        except storage.StorageUnavailableError:
-            pass  # the folder is away: next time
-        except Exception:  # noqa: BLE001 - this must never stop; it tries again in a few minutes
-            logger.exception("Scanning the project files folder failed")
-        time.sleep(300)
-
-
-def _keep_previews_beside_models() -> None:
-    """
-    Previews are kept only next to their files. Copies the app kept itself (from before) are moved out to their files:
-    a minute after starting (once the saved network shares are mounted), then every hour for shares that come back
-    later.
-    """
-    wait = 60
-    while True:
-        time.sleep(wait)
-        wait = 3600
-        try:
-            with SessionLocal() as db:
-                moved = previews.move_app_copies_out(db)
-            if moved:
-                logger.info("Moved %d preview(s) out of the app to their files", moved)
-        except Exception:  # noqa: BLE001 - this must never stop; it tries again in an hour
-            logger.exception("Moving previews out to their files failed")
-
-
 @app.on_event("startup")
 def on_startup() -> None:
     # Simple create_all for now, appropriate for this stage. Move to real
@@ -190,29 +100,7 @@ def on_startup() -> None:
             # Pick up the storage locations chosen in the UI
             with SessionLocal() as db:
                 storage_settings_service.apply_saved_locations(db)
-            # Re-mount saved network shares (and keep them mounted). In a thread: a slow
-            # or unreachable NAS must never delay the API coming up.
-            supervisor.start()
-            # Sync every printer's history and power meter now and then, so energy figures build up on their own
-            poller.start()
-            # Once a month is over, its Farm cost table is saved as a record in the "farm-cost" folder
-            farm_cost_recorder.start()
-            # Changes to printers and models get copied to the settings folder in the background, and once now
-            config_service.enable_background_mirror()
-            config_service.request_mirror()
-            threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
-            # Projects written to their folders, and ones in the project files folder that aren't here brought in
-            project_records.background.enable()
-            library_records.background.enable()
-            threading.Thread(target=_keep_projects_folder_in, name="projects-folder", daemon=True).start()
-            # 3MF versions from before printer profiles: linked to the printer preset each was sliced with, once
-            threading.Thread(
-                target=sub_printer_service.run_link_missing, args=(SessionLocal,), name="sub-printers", daemon=True
-            ).start()
-            # 3MFs from before auto-starring: each one's newest version starred, once
-            threading.Thread(
-                target=bundle_service.run_star_existing, args=(SessionLocal,), name="stars", daemon=True
-            ).start()
+            background.start_all()  # shares, printers, Farm cost, records... (app/background.py)
             return
         except OperationalError as e:
             last_error = e
@@ -229,8 +117,7 @@ def on_startup() -> None:
 
 @app.on_event("shutdown")
 def on_shutdown() -> None:
-    supervisor.stop()
-    poller.stop()
+    background.stop_all()
 
 
 @app.get("/health")

@@ -43,7 +43,8 @@ routers wrap calls in `errors.answer_errors()` to turn them into 404/422 (or a r
 Checks several routers share live in `routers/common.py`: `require_printer` ("Printer not found" 404),
 `require_confirm` (409 when a delete lacks `confirm=true`), `require_readable`, `preview_response` and `sync_state`.
 Printer integrations are packages: `services/moonraker/` and `services/prusalink/`, with errors mapped to HTTP
-in `main.py`. `printer_poller.py` and `mount_supervisor.py` are background threads started from `main.py`.
+in `main.py`. Background jobs (`mount_supervisor.py`, `printer_poller.py`, `farm_cost_recorder.py`, and the
+shared-folders and previews workers) are `periodic.PeriodicWorker`s, started and stopped by `background.py`.
 
 **Storage** (`app/storage.py`): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
 and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores
@@ -51,10 +52,12 @@ absolute paths. Chosen roots must contain a `.farmhand-storage` marker or writes
 unmounted share is detected). Writes go to a temp name and are then renamed; deletes only remove recorded files,
 never a recursive delete.
 
-**Settings mirror**: a middleware in `main.py` calls `config_service.request_mirror()` after every successful
-mutating request, which writes `farmhand-config.json` plus per-printer/per-model JSON files to a chosen folder.
-`_what_changed()` maps URL paths to what gets rewritten, so a new mutating route under an unexpected prefix
-needs an entry there. Passwords are never written to the mirror.
+**Settings mirror**: a middleware in `change_hooks.py` calls `config_service.request_mirror()` after every successful
+mutating request, which writes `farmhand-config.json` plus per-printer/per-model JSON files to a chosen folder, and
+writes the project/model/3MF records beside their files (`project_records`, `library_records`, all through
+`record_files.py`). `_what_changed()` maps URL paths to what gets rewritten, so a new mutating route under an
+unexpected prefix needs an entry there. Share passwords are never written; printer files do hold the printer's
+Moonraker API key and PrusaLink password (asked for, so a restore connects straight away).
 
 **Frontend**: `src/api.js` is the single HTTP client. It also normalizes API shapes into the shapes the UI
 components use. The API host comes from the browser's own hostname at runtime (port 4545), and

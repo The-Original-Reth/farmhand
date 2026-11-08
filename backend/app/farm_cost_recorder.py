@@ -12,10 +12,10 @@ them) and the page opens without costing every print first.
 from __future__ import annotations
 
 import logging
-import threading
 
 from . import storage
 from .database import SessionLocal
+from .periodic import PeriodicWorker
 from .services import config_service, farm_cost
 
 log = logging.getLogger("farmhand.farm_cost")
@@ -24,22 +24,11 @@ INTERVAL_SECONDS = 60 * 60
 FIRST_LOOK_SECONDS = 2 * 60  # after start-up: let the printers sync first
 
 
-class FarmCostRecorder:
+class FarmCostRecorder(PeriodicWorker):
+    name, failure, log = "farm-cost-recorder", "Couldn't save the farm cost record", log
+
     def __init__(self, interval: float = INTERVAL_SECONDS, first_look: float = FIRST_LOOK_SECONDS):
-        self.interval = interval
-        self.first_look = first_look
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        if self._thread and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="farm-cost-recorder", daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
+        super().__init__(interval, first_wait=first_look)
 
     def run_once(self) -> None:
         with SessionLocal() as db:
@@ -51,15 +40,6 @@ class FarmCostRecorder:
                 return
         if written:
             log.info("Saved the farm cost record %s", written)
-
-    def _run(self) -> None:
-        wait = self.first_look
-        while not self._stop.wait(wait):
-            try:
-                self.run_once()
-            except Exception:  # noqa: BLE001 - one bad look must never stop the thread
-                log.exception("Couldn't save the farm cost record")
-            wait = self.interval
 
 
 recorder = FarmCostRecorder()
