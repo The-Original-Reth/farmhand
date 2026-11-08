@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
+from ..schemas.farm_cost import RecordsLocationIn
 from ..services import config_service, farm_cost
 
 # The Farm cost page: the filament every printer used and what it cost, by month. Read only. Its electricity comes
@@ -22,10 +22,6 @@ def farm_filament(tz: str | None = Query(None, max_length=64), db: Session = Dep
     return {**farm_cost.filament_by_month(db, tz), "records": farm_cost.records_status(db)}
 
 
-class LocationIn(BaseModel):
-    path: str | None = None  # null or "" = back to the default
-
-
 @router.get("/location")
 def records_location(db: Session = Depends(get_db)):
     """Where each month's record is saved: {path, is_default, default_path, status} (see services/farm_cost.py)."""
@@ -33,7 +29,7 @@ def records_location(db: Session = Depends(get_db)):
 
 
 @router.put("/location")
-def choose_records_location(payload: LocationIn, db: Session = Depends(get_db)):
+def choose_records_location(payload: RecordsLocationIn, db: Session = Depends(get_db)):
     """Choose the folder each month's record is saved in, or go back to the default (path null). 422 says why not."""
     with answer_errors():
         out = farm_cost.set_location(db, payload.path)

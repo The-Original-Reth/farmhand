@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -11,7 +10,7 @@ from ..names import download_name
 from ..models import SourceFileType
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
-from ..schemas.source_model import SourceModelOut
+from ..schemas.source_model import SourceModelOut, SourceModelRename
 from ..schemas.scan import ScanImportOut, ScanImportRequest, ScanOut
 from ..services import bundle_service, source_model_service
 from .common import preview_response, require_confirm, require_readable, require_source_model, require_source_model_version
@@ -63,12 +62,8 @@ def get_source_model(source_model_id: int, db: Session = Depends(get_db)):
     return require_source_model(db, source_model_id)
 
 
-class Rename(BaseModel):
-    name: str
-
-
 @router.patch("/{source_model_id}", response_model=SourceModelOut)
-def rename_source_model(source_model_id: int, payload: Rename, db: Session = Depends(get_db)):
+def rename_source_model(source_model_id: int, payload: SourceModelRename, db: Session = Depends(get_db)):
     """Rename a model (what it's shown, searched and downloaded as; its extension stays, and its stored file keeps its own name)."""
     with answer_errors():
         return source_model_service.rename(db, source_model_id, payload.name)

@@ -10,7 +10,7 @@ from ...models import GcodeFilament, Printer, PrinterEnergyReading, PrintJob
 from ...timeutil import as_utc
 from .. import filament_cost
 from ..printer_service import ensure_connection, record_sync_error, record_sync_ok
-from .client import MoonrakerError, _call, gcode_tail, history_totals, meter_reading
+from .client import MoonrakerError, call, gcode_tail, history_totals, meter_reading
 
 PAGE = 100  # history entries asked for per request
 
@@ -33,7 +33,7 @@ def sync_history(db: Session, printer: Printer) -> dict:
         reading = meter_reading(printer)
         start = 0
         while True:
-            page = _call(printer, "GET", "/server/history/list", params={"limit": PAGE, "start": start, "order": "desc"})
+            page = call(printer, "GET", "/server/history/list", params={"limit": PAGE, "start": start, "order": "desc"})
             jobs = page.get("jobs") or []
             ids = [str(raw.get("job_id")) for raw in jobs if raw.get("job_id") is not None]
             if ids:

@@ -73,5 +73,5 @@ def _tidy(app_root: Path) -> None:
     if not app_root.is_dir():
         return
     for d in sorted((p for p in app_root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
-        storage._rmdir_if_empty(d)
-    storage._rmdir_if_empty(app_root)
+        storage.rmdir_if_empty(d)
+    storage.rmdir_if_empty(app_root)

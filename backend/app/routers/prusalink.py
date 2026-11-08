@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Printer
 from ..services import prusalink as pl
-from ..services.send_print import PrinterBusy, send_to_prusalink
+from ..services.send_print import send_to_prusalink
 from .common import require_printer, sync_state
 
 # A PrusaLink printer (Prusa Core One, MK4, XL...): its live status and sending it a print. Its print history,
@@ -106,8 +106,6 @@ def send_print(printer_id: int, file: UploadFile = File(...), db: Session = Depe
         where = send_to_prusalink(
             db, printer, name, lambda: contextlib.nullcontext((file.file, size)), who="The printer"
         )
-    except PrinterBusy as e:
-        raise HTTPException(status_code=409, detail=str(e)) from None
     except pl.PrusaLinkError as e:
         if e.kind == "busy":  # it said it was ready, then turned the print down
             raise HTTPException(status_code=409, detail=str(e)) from None

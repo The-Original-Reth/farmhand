@@ -33,7 +33,7 @@ def _get(db: Session, share_id: int) -> NetworkShare:
     return row
 
 
-def _name_taken(db: Session, name: str) -> bool:
+def name_taken(db: Session, name: str) -> bool:
     """Is there a share already whose name gives the same mount folder (names that differ only in case, say)?"""
     wanted = mounts.slug(name)
     return any(mounts.slug(existing) == wanted for existing in db.scalars(select(NetworkShare.name)))
@@ -48,7 +48,7 @@ def _files_here(db: Session, mount_point: Path) -> int:
     return sum(count_version_files(db, here, here)) + count_project_files(db, here)
 
 
-def _out(db: Session, row: NetworkShare) -> dict:
+def share_out(db: Session, row: NetworkShare) -> dict:
     mount_point = mounts.mount_point_for(row.name)
     err = mounts.get_error(row.id)
     address = f"smb://{row.server}/{row.share}" if row.protocol == "smb" else f"{row.server}:{row.share}"
@@ -73,7 +73,7 @@ def _out(db: Session, row: NetworkShare) -> dict:
 
 def list_shares(db: Session) -> dict:
     rows = db.scalars(select(NetworkShare).order_by(NetworkShare.name))
-    return {"shares": [_out(db, r) for r in rows], "capability": mounts.mount_capability()}
+    return {"shares": [share_out(db, r) for r in rows], "capability": mounts.mount_capability()}
 
 
 def create_share(db: Session, data: dict) -> dict:
@@ -87,7 +87,7 @@ def create_share(db: Session, data: dict) -> dict:
         protocol, server, share,
         data.get("username"), data.get("password"), data.get("domain"), data.get("version"),
     )
-    if _name_taken(db, name):
+    if name_taken(db, name):
         raise ValueError(f"There's already a share called “{name}”.")
 
     mount_point = mounts.mount_point_for(name)
@@ -105,7 +105,7 @@ def create_share(db: Session, data: dict) -> dict:
         _unmount_quietly(mount_point)
         raise
     mounts.clear_error(row.id)
-    return _out(db, row)
+    return share_out(db, row)
 
 
 def _unmount_quietly(mount_point: Path, lazy: bool = False) -> None:
@@ -172,13 +172,13 @@ def update_share(db: Session, share_id: int, changes: dict) -> dict:
     row.password, row.domain, row.version = spec.password, spec.domain, spec.version
     db.commit()
     _mount_noting_errors(row, spec, mount_point)
-    return _out(db, row)
+    return share_out(db, row)
 
 
 def reconnect_share(db: Session, share_id: int) -> dict:
     row = _get(db, share_id)
     _mount_noting_errors(row, _spec(row), mounts.mount_point_for(row.name))
-    return _out(db, row)
+    return share_out(db, row)
 
 
 def _mount_noting_errors(row: NetworkShare, spec: ShareSpec, mount_point: Path) -> None:
@@ -244,7 +244,7 @@ def restore_share(db: Session, data: dict) -> str:
         data.get("protocol"), data.get("server"), data.get("share"),
         data.get("username"), None, data.get("domain"), data.get("version"),
     )
-    if _name_taken(db, name):
+    if name_taken(db, name):
         return "kept"
     row = NetworkShare(
         name=name, protocol=spec.protocol, server=spec.server, share=spec.share,

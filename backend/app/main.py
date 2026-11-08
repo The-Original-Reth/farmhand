@@ -15,6 +15,7 @@ from .routers import bundles, config_settings, farm_cost, moonraker, printers, p
 from .services import storage_settings_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
+from .services.send_print import PrinterBusy
 
 logger = logging.getLogger("farmhand.startup")
 
@@ -68,6 +69,12 @@ async def notes_conflict_handler(request: Request, exc: NotesConflict):
 async def printer_error_handler(request: Request, exc: MoonrakerError | PrusaLinkError):
     # the printer couldn't be reached or refused: a clear 502 saying which, not a generic 500
     return JSONResponse(status_code=502, content={"detail": str(exc), "kind": exc.kind})
+
+
+@app.exception_handler(PrinterBusy)
+async def printer_busy_handler(request: Request, exc: PrinterBusy):
+    # a print sent to a printer that's printing (or otherwise not ready): 409, saying what it's doing
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(storage.StorageUnavailableError)

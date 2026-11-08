@@ -30,3 +30,7 @@ class SourceModelOut(BaseModel):
     notes: str = ""
     notes_revision: int = 0
     notes_updated_at: dt.datetime | None = None
+
+
+class SourceModelRename(BaseModel):
+    name: str

@@ -30,7 +30,7 @@ def check_files(db: Session) -> dict:
     for kind in (DOC, CAD, STL, THREEMF):
         for v in db.scalars(select(kind.version_cls)):
             f = v.file
-            for path in project_files._files_of(v):
+            for path in project_files.files_of(v):
                 if path:
                     known.add(os.path.realpath(path))
             checked += 1

@@ -25,7 +25,7 @@ def answered_at(printer: Printer) -> str | None:
     return printer_links.answered("moonraker", printer.id, printer.moonraker_urls)
 
 
-def _call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None,
+def call(printer: Printer, method: str, path: str, *, params: dict | None = None, json: dict | None = None,
           files: dict | None = None, data: dict | None = None, timeout: httpx.Timeout = TIMEOUT, unwrapped: bool = False):
     """
     One Moonraker request; returns its "result" (or, unwrapped, the whole answer: an upload's isn't wrapped). Asked at
@@ -98,7 +98,7 @@ def _error_text(r: httpx.Response) -> str:
 
 def server_info(printer: Printer) -> dict:
     """Is it reachable, and what state is Klipper in (ready, startup, shutdown, error, disconnected)?"""
-    info = _call(printer, "GET", "/server/info")
+    info = call(printer, "GET", "/server/info")
     return {"klippy_state": info.get("klippy_state"), "moonraker_version": info.get("moonraker_version")}
 
 
@@ -140,7 +140,7 @@ def probe(base: str) -> dict | None:
 
 def history_totals(printer: Printer) -> tuple[dict, list]:
     """(job_totals, auxiliary_totals): the second holds e.g. a power meter's energy summed over all prints."""
-    result = _call(printer, "GET", "/server/history/totals")
+    result = call(printer, "GET", "/server/history/totals")
     return result.get("job_totals") or {}, result.get("auxiliary_totals") or []
 
 
@@ -155,7 +155,7 @@ def meter_reading(printer: Printer) -> tuple[str, float] | None:
     None if the printer has no such sensor (or no sensors at all).
     """
     try:
-        sensors = _call(printer, "GET", "/server/sensors/list").get("sensors") or {}
+        sensors = call(printer, "GET", "/server/sensors/list").get("sensors") or {}
     except MoonrakerError as e:
         if e.kind == "not_found":
             return None  # Moonraker's sensor component isn't set up
@@ -169,7 +169,7 @@ def meter_reading(printer: Printer) -> tuple[str, float] | None:
 
 def print_state(printer: Printer) -> str | None:
     """What Klipper is doing: "standby", "printing", "paused", "complete", "cancelled" or "error"."""
-    status = _call(printer, "GET", "/printer/objects/query", params={"print_stats": "state"}).get("status") or {}
+    status = call(printer, "GET", "/printer/objects/query", params={"print_stats": "state"}).get("status") or {}
     return (status.get("print_stats") or {}).get("state")
 
 
@@ -178,7 +178,7 @@ def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO) ->
     Put a G-code in the printer's gcodes folder (replacing one of the same name) and start it. Returns where it went.
     data: the bytes, or an open file, which is streamed from where it is rather than read into memory first.
     """
-    answer = _call(
+    answer = call(
         printer, "POST", "/server/files/upload", files={"file": (filename, data)}, data={"root": "gcodes", "print": "true"},
         timeout=UPLOAD_TIMEOUT, unwrapped=True,
     )
@@ -195,7 +195,7 @@ def live_print(printer: Printer) -> dict | None:
     does. Plus nozzle and bed temperatures. None when nothing is printing.
     """
     params = {name: fields or "" for name, fields in LIVE_OBJECTS.items()}
-    status = _call(printer, "GET", "/printer/objects/query", params=params).get("status") or {}
+    status = call(printer, "GET", "/printer/objects/query", params=params).get("status") or {}
     stats = status.get("print_stats") or {}
     if stats.get("state") not in ("printing", "paused"):
         return None
@@ -240,7 +240,7 @@ def board(printer: Printer) -> dict | None:
     None when it won't say (an older Moonraker, or one that can't be reached).
     """
     try:
-        cpu = _call(printer, "GET", "/machine/system_info")["system_info"]["cpu_info"]
+        cpu = call(printer, "GET", "/machine/system_info")["system_info"]["cpu_info"]
         model = str(cpu.get("model") or "").strip()
     except (MoonrakerError, KeyError, TypeError, AttributeError):
         return None
@@ -271,7 +271,7 @@ def webcams(printer: Printer) -> list[dict]:
     addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is
     (on whichever of its IPs it answered at).
     """
-    listed = _call(printer, "GET", "/server/webcams/list").get("webcams") or []
+    listed = call(printer, "GET", "/server/webcams/list").get("webcams") or []
     base = printer.mainsail_url or ""  # at the IP Moonraker just answered at
     out = []
     for cam in listed:

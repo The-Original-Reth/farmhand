@@ -5,14 +5,15 @@ import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
 from ..models import BundleVersion
 from ..names import download_name
-from ..schemas.bundle import BundleOut, BundleVersionDetailOut, MonumentUpdate, StarUpdate, ThreeMFInspection
+from ..schemas.bundle import (
+    BundleOut, BundleVersionDetailOut, BundleVersionRename, MonumentUpdate, StarUpdate, ThreeMFInspection,
+)
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service, send_print
 from .common import preview_response, require_bundle, require_bundle_version, require_confirm, require_readable
@@ -130,12 +131,8 @@ def set_monument(version_id: int, payload: MonumentUpdate, db: Session = Depends
         )
 
 
-class Rename(BaseModel):
-    filename: str
-
-
 @router.patch("/versions/{version_id}", response_model=BundleVersionDetailOut)
-def rename_version(version_id: int, payload: Rename, db: Session = Depends(get_db)):
+def rename_version(version_id: int, payload: BundleVersionRename, db: Session = Depends(get_db)):
     """Rename a 3MF version (what it's shown and downloaded as; it always stays a .3mf). Files stay put."""
     with answer_errors():
         return bundle_service.rename_version(db, version_id, payload.filename)
@@ -180,10 +177,7 @@ def send_to_printer(version_id: int, db: Session = Depends(get_db)):
     printer is busy; a printer that can't be reached answers 502.
     """
     with answer_errors():
-        try:
-            return send_print.send_gcode(db, version_id)
-        except send_print.PrinterBusy as e:
-            raise HTTPException(status_code=409, detail=str(e)) from None
+        return send_print.send_gcode(db, version_id)
 
 
 @router.get("/versions/{version_id}/thumbnail")

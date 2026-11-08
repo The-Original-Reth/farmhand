@@ -16,8 +16,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import PrinterEnergyReading, PrintJob
-from ..timeutil import as_utc
+from ..models import Printer, PrinterEnergyReading, PrintJob
+from ..timeutil import as_utc, utc_iso
 
 # {(printer id, time zone, month or day): (what the figures were made from, the rows)}: a printer's readings only ever
 # grow, so while they and its prints are as they were, the rows are too
@@ -97,3 +97,36 @@ def _by_period(db: Session, printer_id: int, tz_name: str | None, fmt: str) -> l
     with _cache_lock:
         _cache[key] = (made_from, out)
     return out
+
+
+def printer_energy(db: Session, printer: Printer, tz_name: str | None) -> dict:
+    """
+    The printer's energy use, totalled by month in the viewer's time zone:
+      meter: the power meter's latest reading (whole printer, idle included) | null
+      print_total_kwh: the printer's own sum of energy over all prints, as of the last sync | null
+      print_jobs_kwh: what the prints Farmhand has on record add up to
+      months: [{key: "2026-10", prints, print_count, whole, partial}], newest first (see by_month)
+    """
+    conn = printer.connection_row
+    aux = {(t.get("provider"), t.get("field")): t for t in (conn.auxiliary_totals or [])} if conn else {}
+    print_total = next((t.get("total") for (_, field), t in aux.items() if field == "energy_consumption"), None)
+    jobs_kwh = db.scalar(
+        select(func.sum(PrintJob.energy_kwh)).where(PrintJob.printer_id == printer.id, PrintJob.energy_kwh.isnot(None))
+    )
+    latest = db.execute(
+        select(PrinterEnergyReading.taken_at, PrinterEnergyReading.energy_kwh, PrinterEnergyReading.sensor)
+        .where(PrinterEnergyReading.printer_id == printer.id)
+        .order_by(PrinterEnergyReading.taken_at.desc())
+        .limit(1)
+    ).first()
+    meter = None
+    if latest:
+        first_at = db.scalar(select(func.min(PrinterEnergyReading.taken_at)).where(PrinterEnergyReading.printer_id == printer.id))
+        at, kwh, sensor = latest
+        meter = {"sensor": sensor, "energy_kwh": kwh, "taken_at": utc_iso(at), "first_reading_at": utc_iso(first_at)}
+    return {
+        "meter": meter,
+        "print_total_kwh": print_total,
+        "print_jobs_kwh": jobs_kwh or 0.0,
+        "months": by_month(db, printer.id, tz_name),
+    }

@@ -82,7 +82,7 @@ def require_version(db: Session, kind: Kind, project_id: int, file_id: int, vers
     return v
 
 
-def _files_of(v) -> list[str | None]:
+def files_of(v) -> list[str | None]:
     gcode = getattr(v, "gcode", None)  # a 3MF version's G-code goes with it
     return [v.file_path, v.thumbnail_path, storage.preview_beside(v.file_path), gcode.file_path if gcode else None]
 
@@ -146,7 +146,7 @@ def delete_version(db: Session, kind: Kind, project_id: int, file_id: int, versi
     """Delete one version's file for good. Deleting the only one deletes the file."""
     v = require_version(db, kind, project_id, file_id, version)
     f = v.file
-    paths = _files_of(v)
+    paths = files_of(v)
     if len(f.versions) == 1:
         db.delete(f)
     else:
@@ -157,7 +157,7 @@ def delete_version(db: Session, kind: Kind, project_id: int, file_id: int, versi
 
 def delete_file(db: Session, kind: Kind, project_id: int, file_id: int) -> None:
     f = _require_file(db, kind, project_id, file_id)
-    paths = [p for v in f.versions for p in _files_of(v)]
+    paths = [p for v in f.versions for p in files_of(v)]
     db.delete(f)
     db.commit()
     storage.delete_files(paths)
@@ -174,7 +174,7 @@ def files_of_project(db: Session, project_id: int) -> list[str | None]:
     paths: list[str | None] = []
     for kind in KINDS.values():
         versions = db.scalars(select(kind.version_cls).join(kind.file_cls).where(kind.file_cls.project_id == project_id))
-        paths += [p for v in versions for p in _files_of(v)]
+        paths += [p for v in versions for p in files_of(v)]
     return paths
 
 

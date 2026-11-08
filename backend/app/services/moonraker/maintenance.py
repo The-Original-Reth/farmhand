@@ -12,7 +12,7 @@ from sqlalchemy.orm import object_session
 
 from ...errors import NotFound
 from ...models import MaintenanceEntry, Printer
-from .client import MoonrakerError, _call, job_totals
+from .client import MoonrakerError, call, job_totals
 
 # Mainsail keeps each reminder as one item in Moonraker's database namespace "maintenance", keyed by a UUID:
 #   name, note, perform_note, start_time / end_time (unix seconds), start_filament / end_filament (mm, from the job
@@ -40,7 +40,7 @@ def _entries(printer: Printer) -> dict[str, dict]:
     if _in_farmhand(printer):
         return {r.key: dict(r.entry) for r in printer.maintenance_rows}
     try:
-        result = _call(printer, "GET", "/server/database/item", params={"namespace": NAMESPACE})
+        result = call(printer, "GET", "/server/database/item", params={"namespace": NAMESPACE})
     except MoonrakerError as e:
         if e.kind == "not_found":
             return {}  # nobody has added a reminder on this printer yet
@@ -59,7 +59,7 @@ def _put(printer: Printer, key: str, value: dict) -> None:
             row.updated_at = dt.datetime.now(dt.timezone.utc)
         object_session(printer).commit()
         return
-    _call(printer, "POST", "/server/database/item", json={"namespace": NAMESPACE, "key": key, "value": value})
+    call(printer, "POST", "/server/database/item", json={"namespace": NAMESPACE, "key": key, "value": value})
 
 
 def _remove(printer: Printer, key: str) -> None:
@@ -67,7 +67,7 @@ def _remove(printer: Printer, key: str) -> None:
         printer.maintenance_rows = [r for r in printer.maintenance_rows if r.key != key]
         object_session(printer).commit()
         return
-    _call(printer, "DELETE", "/server/database/item", params={"namespace": NAMESPACE, "key": key})
+    call(printer, "DELETE", "/server/database/item", params={"namespace": NAMESPACE, "key": key})
 
 
 def _check_parts(printer: Printer, reminder: dict) -> dict:

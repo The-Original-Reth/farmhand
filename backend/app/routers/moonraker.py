@@ -1,26 +1,20 @@
 from __future__ import annotations
 
-import datetime as dt
-
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import config_store
 from ..database import get_db
 from ..errors import answer_errors
-from ..models import Printer, PrinterEnergyReading, PrintJob
+from ..schemas.maintenance import MaintenanceIn, MaintenanceUpdate, PerformIn, ServiceDone, ServiceUpdate
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
-from ..services import moonraker as mr
+from ..services import cameras, print_history, printer_service
 from ..services import energy as energy_service
-from ..services import config_service, filament_cost, go2rtc, printer_service
-from ..timeutil import as_utc, utc_iso
+from ..services import moonraker as mr
 from .common import require_confirm, require_printer, sync_state
 
 # Everything a printer's Moonraker gives Farmhand: its connection, its print history (as copied into Farmhand),
-# its statistics, and its maintenance reminders (kept in Moonraker, shared with Mainsail).
+# its statistics, its energy and cameras, and its maintenance reminders (kept in Moonraker, shared with Mainsail).
 # A MoonrakerError anywhere becomes a 502 with {"detail", "kind"} (see main.py).
 router = APIRouter(prefix="/printers", tags=["moonraker"])
 
@@ -63,34 +57,7 @@ def webcams(printer_id: int, db: Session = Depends(get_db)):
     (a Buddy3D's). Never fails: says why there are none. board: the computer a Klipper printer runs on, shown in the
     corner of its cameras ({name: "Pi 4", model, memory_gb}, see moonraker.board), or null.
     """
-    printer = require_printer(db, printer_id)
-    cams, errors, board = [], [], None
-    if printer.connection_type == "moonraker":
-        try:
-            cams += mr.webcams(printer)
-            board = mr.board(printer)  # only once it has answered: an unreachable one isn't waited for twice
-        except mr.MoonrakerError as e:
-            errors.append(str(e))
-    if printer.camera_address:
-        try:
-            cams.append(_relayed_camera(printer))
-        except go2rtc.Go2rtcError as e:
-            errors.append(str(e))
-    elif printer.connection_type == "prusalink":
-        errors.append("No camera address set. Add the Buddy3D camera's IP on the printer's Edit page")
-    return {"webcams": cams, "error": "; ".join(errors) or None, "board": board}
-
-
-def _relayed_camera(printer: Printer) -> dict:
-    """The printer's own camera (a Buddy3D's RTSP stream), handed to go2rtc, in the shape mr.webcams gives."""
-    name = go2rtc.stream_name(printer.id)
-    go2rtc.register(name, go2rtc.rtsp_url(printer.camera_address))
-    return {
-        "name": "Camera", "service": "farmhand-go2rtc", "mjpeg": False,
-        "stream_url": f"/go2rtc/api/ws?src={name}",  # on the web server the page came from
-        "snapshot_url": None, "flip_horizontal": False, "flip_vertical": False, "rotation": 0,
-        "aspect_ratio": "16:9", "target_fps": 15,
-    }
+    return cameras.printer_cameras(require_printer(db, printer_id))
 
 
 @router.post("/{printer_id}/moonraker/sync")
@@ -99,45 +66,6 @@ def sync(printer_id: int, db: Session = Depends(get_db)):
     printer = require_printer(db, printer_id)
     counts = mr.sync_history(db, printer)
     return {**counts, **sync_state(printer)}
-
-
-def _job_out(j: PrintJob, cost: dict | None = None, kwh_price: float | None = None) -> dict:
-    meta = j.job_metadata or {}
-    # The print's energy at the average cost per kWh typed on the Power page; null without either
-    energy_cost = round(j.energy_kwh * kwh_price, 2) if j.energy_kwh is not None and kwh_price is not None else None
-    return {
-        "id": j.id,
-        "job_id": j.job_id,
-        "filename": j.filename,
-        "status": j.status,
-        "start_time": utc_iso(j.start_time),
-        "end_time": utc_iso(j.end_time),
-        "print_duration": j.print_duration,
-        "total_duration": j.total_duration,
-        "filament_used": j.filament_used,
-        "filament_grams": filament_cost.grams_used(j, cost),
-        "slicer": meta.get("slicer"),
-        "estimated_time": meta.get("estimated_time"),
-        "layer_height": meta.get("layer_height"),
-        "filament_type": meta.get("filament_type"),
-        "energy_kwh": j.energy_kwh,  # null when the printer has no power meter set up in Moonraker
-        "avg_power_w": j.avg_power_w,
-        "max_power_w": j.max_power_w,
-        # From filament_used and the 3MF it was sliced from (services/filament_cost.py); null when there's no match
-        "filament_cost": cost["cost"] if cost else None,
-        "filament_cost_detail": cost,
-        "energy_price": kwh_price,  # $ per kWh for the month it started in
-        "energy_cost": energy_cost,
-        "total_cost": _total_cost(cost["cost"] if cost else None, energy_cost),
-    }
-
-
-def _total_cost(filament: float | None, energy: float | None) -> float | None:
-    """Filament cost + energy cost. With no filament cost (none, or 0) the total is that filament cost; with no energy
-    cost, the filament cost alone."""
-    if not filament:
-        return filament
-    return round(filament + (energy or 0), 2)
 
 
 @router.get("/{printer_id}/print-jobs")
@@ -155,29 +83,7 @@ def print_jobs(
     priced at its month's price per kWh (the month it started in, in the viewer's time zone; see config_store).
     """
     require_printer(db, printer_id)
-    where = [PrintJob.printer_id == printer_id]
-    if status == "failed":
-        where.append(PrintJob.status.notin_(["completed", "in_progress"]))
-    elif status:
-        where.append(PrintJob.status == status)
-    for word in (q or "").lower().split():
-        where.append(func.lower(PrintJob.filename).contains(word, autoescape=True))
-    total = db.scalar(select(func.count()).select_from(PrintJob).where(*where))
-    jobs = list(db.scalars(
-        select(PrintJob).where(*where).order_by(PrintJob.start_time.desc().nullslast(), PrintJob.id.desc()).limit(limit).offset(offset)
-    ))
-    costs = filament_cost.costs(db, jobs)
-    prefs = config_service.get_config(db)["preferences"]
-    zone = energy_service.zone(tz)
-
-    def month_price(j: PrintJob) -> float | None:
-        started = as_utc(j.start_time) if j.start_time else dt.datetime.now(dt.timezone.utc)
-        return config_store.energy_price_for(prefs, started.astimezone(zone).strftime("%Y-%m"))
-
-    return {
-        "total": total, "energy_price_per_kwh": prefs["energy_price_per_kwh"],
-        "jobs": [_job_out(j, costs[j.id], month_price(j)) for j in jobs],
-    }
+    return print_history.jobs_page(db, printer_id, limit=limit, offset=offset, status=status, q=q, tz=tz)
 
 
 @router.get("/{printer_id}/print-stats")
@@ -197,41 +103,10 @@ def energy(printer_id: int, tz: str | None = Query(None, max_length=64), db: Ses
       print_jobs_kwh: what the prints Farmhand has on record add up to
       months: [{key: "2026-10", prints, print_count, whole, partial}], newest first (see services/energy.py)
     """
-    printer = require_printer(db, printer_id)
-    conn = printer.connection_row
-    aux = {(t.get("provider"), t.get("field")): t for t in (conn.auxiliary_totals or [])} if conn else {}
-    print_total = next((t.get("total") for (_, field), t in aux.items() if field == "energy_consumption"), None)
-    jobs_kwh = db.scalar(
-        select(func.sum(PrintJob.energy_kwh)).where(PrintJob.printer_id == printer_id, PrintJob.energy_kwh.isnot(None))
-    )
-    latest = db.execute(
-        select(PrinterEnergyReading.taken_at, PrinterEnergyReading.energy_kwh, PrinterEnergyReading.sensor)
-        .where(PrinterEnergyReading.printer_id == printer_id)
-        .order_by(PrinterEnergyReading.taken_at.desc())
-        .limit(1)
-    ).first()
-    meter = None
-    if latest:
-        first_at = db.scalar(select(func.min(PrinterEnergyReading.taken_at)).where(PrinterEnergyReading.printer_id == printer_id))
-        at, kwh, sensor = latest
-        meter = {"sensor": sensor, "energy_kwh": kwh, "taken_at": utc_iso(at), "first_reading_at": utc_iso(first_at)}
-    return {
-        "meter": meter,
-        "print_total_kwh": print_total,
-        "print_jobs_kwh": jobs_kwh or 0.0,
-        "months": energy_service.by_month(db, printer_id, tz),
-    }
+    return energy_service.printer_energy(db, require_printer(db, printer_id), tz)
 
 
 # ------------------------------------------------------------------ the 1500-hour service (kept in Farmhand)
-
-
-class ServiceDone(BaseModel):
-    note: str = Field("", max_length=5000)
-
-
-class ServiceUpdate(BaseModel):
-    enabled: bool
 
 
 @router.post("/{printer_id}/service/done")
@@ -264,30 +139,6 @@ def service_update(printer_id: int, payload: ServiceUpdate, db: Session = Depend
 
 
 # ------------------------------------------------------------------ maintenance (in Moonraker, shared with Mainsail)
-
-
-class Reminder(BaseModel):
-    type: str | None = None  # null | "one-time" | "repeat"
-    filament: dict | None = None  # {"bool": true, "value": metres}
-    printtime: dict | None = None  # {"bool": true, "value": hours}
-    date: dict | None = None  # {"bool": true, "value": days}
-
-
-class MaintenanceIn(BaseModel):
-    name: str = Field(max_length=200)
-    note: str = Field("", max_length=5000)
-    reminder: Reminder | None = None
-
-
-class MaintenanceUpdate(BaseModel):
-    name: str | None = Field(None, max_length=200)
-    note: str | None = Field(None, max_length=5000)
-    reminder: Reminder | None = None
-
-
-class PerformIn(BaseModel):
-    note: str = Field("", max_length=5000)
-
 
 
 @router.get("/{printer_id}/maintenance")

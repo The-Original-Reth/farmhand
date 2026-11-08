@@ -305,8 +305,8 @@ def import_scanned_file(db: Session, path: str) -> SourceModel:
             except OSError:
                 log.error("Couldn't put %s back at %s after a failed import; it is safe at %s", name, full, moved_to)
         if dest_dir is not None:
-            storage._rmdir_if_empty(dest_dir)
-            storage._rmdir_if_empty(dest_dir.parent)
+            storage.rmdir_if_empty(dest_dir)
+            storage.rmdir_if_empty(dest_dir.parent)
         if isinstance(e, OSError):
             reason = e.strerror or str(e)
             raise ValueError(

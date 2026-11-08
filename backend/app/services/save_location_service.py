@@ -52,7 +52,7 @@ def _new_name(db: Session, share: str) -> str:
     """A name for a share added here: its own name ("Farmhand" for 3d_prints/Farmhand), made unique."""
     base = (share.strip("/").split("/")[-1] or "NAS")[:30]
     name, n = base, 2
-    while network_shares_service._name_taken(db, name):
+    while network_shares_service.name_taken(db, name):
         name, n = f"{base} {n}", n + 1
     return name
 
@@ -93,7 +93,7 @@ def describe(db: Session) -> dict:
     row = _share_of(db, address)
     return {
         "address": address,
-        "share": network_shares_service._out(db, row) if row else None,
+        "share": network_shares_service.share_out(db, row) if row else None,
         "capability": mounts.mount_capability(),
         "folders": {
             "stl": str(storage.effective_root("stl")),

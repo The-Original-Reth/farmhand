@@ -18,7 +18,7 @@ from ...models import Bundle, BundleSourceModel, BundleVersion, Printer, SourceM
 from ...parsers import parse_3mf
 from .marks import star_newest_if_none
 from .queries import require_bundle
-from .versions import _enforce_rolling_window, check_gcode_name, check_gcode_printer, known_profiles, wrong_printer
+from .versions import enforce_rolling_window, check_gcode_name, check_gcode_printer, known_profiles, wrong_printer
 
 
 def _parse_upload_to_tempfile(threemf_file_obj) -> tuple[str, "object"]:
@@ -209,7 +209,7 @@ def add_bundle_version(
             new_sub_printer_name=new_sub_printer_name,
         )
 
-        _enforce_rolling_window(db, bundle)
+        enforce_rolling_window(db, bundle)
         star_newest_if_none(bundle, [version])  # nothing starred yet: this newest version is
 
         db.commit()

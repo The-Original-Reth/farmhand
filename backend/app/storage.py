@@ -378,7 +378,7 @@ _VERSION_DIR = re.compile(r"^v\d+(-\d+)?$")  # v3, or v3-2 beside another Farmha
 _ID_DIR = re.compile(r"^\d+$")
 
 
-def _rmdir_if_empty(d: Path) -> bool:
+def rmdir_if_empty(d: Path) -> bool:
     try:
         d.rmdir()  # only ever succeeds on an empty directory
         return True
@@ -429,15 +429,15 @@ def tidy_project_folder(project_folder: str) -> None:
     root = effective_root("project") / project_folder
     for d in (root / "docs", root / "cad", root / "stl", root / "threemf", root):
         if d.is_dir():
-            _rmdir_if_empty(d)
+            rmdir_if_empty(d)
 
 
 def _prune_version_folder(d: Path) -> None:
     """Remove a `v{n}` folder if it's empty, then its `{id}` folder if that's empty too. Other folders are left alone."""
     if _VERSION_DIR.match(d.name):
-        _rmdir_if_empty(d)
+        rmdir_if_empty(d)
         if _ID_DIR.match(d.parent.name):
-            _rmdir_if_empty(d.parent)
+            rmdir_if_empty(d.parent)
 
 
 # ------------------------------------------------------------------ choosing a location

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import answer_errors
 from ..schemas.project import BomOut, FileOrder, FolderIn, PartIn, PartUpdate, ProjectIn, ProjectOut, StlChange
-from ..services import library_records, project_files, project_parts, project_scan, project_service, send_print
+from ..services import library_records, project_files, project_parts, project_scan, project_service
 from ..services.project_files import CAD, DOC, STL, THREEMF, Kind
 from ..services.project_service import out
 from .common import preview_response, require_confirm, require_readable
@@ -319,10 +319,7 @@ def send_threemf_gcode(project_id: int, file_id: int, version: int, db: Session 
     busy; 422 when the 3MF has no printer or the version no G-code; a printer that can't be reached answers 502.
     """
     with answer_errors():
-        try:
-            return project_files.send_gcode(db, project_id, file_id, version)
-        except send_print.PrinterBusy as e:
-            raise HTTPException(status_code=409, detail=str(e)) from None
+        return project_files.send_gcode(db, project_id, file_id, version)
 
 
 # ---- the parts list: parts added one at a time, or many from a BOM (a CSV file) ----

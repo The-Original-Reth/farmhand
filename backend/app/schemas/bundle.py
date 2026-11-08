@@ -65,3 +65,7 @@ class ThreeMFInspection(BaseModel):
     printer_preset_name: str | None = None  # the printer preset (printer profile) it was sliced with
     slicer_display_name: str
     matched_printer: PrinterOut | None  # the registered printer with that exact name, if any
+
+
+class BundleVersionRename(BaseModel):
+    filename: str

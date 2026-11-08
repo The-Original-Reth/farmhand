@@ -18,7 +18,7 @@ from .marks import star_newest_if_none
 from .queries import require_bundle, require_version
 
 
-def _enforce_rolling_window(db: Session, bundle: Bundle) -> None:
+def enforce_rolling_window(db: Session, bundle: Bundle) -> None:
     """
     Per spec: the full-file window always covers the most recent N
     versions (N = settings.full_file_version_window, default 5). Any
