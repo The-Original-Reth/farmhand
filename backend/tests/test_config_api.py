@@ -17,9 +17,9 @@ def client(api, tmp_path, monkeypatch):
     monkeypatch.setattr(config.settings, "storage_root", str(area / "storage"))
     monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
     real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
+    monkeypatch.setattr(storage.locations, "_is_mount", lambda p: os.path.realpath(p) == real)
     storage.reset()
-    svc._last_mirror.update(ok=None, error=None, at=None)
+    svc.nas_copy._last_mirror.update(ok=None, error=None, at=None)
     return api, nas
 
 

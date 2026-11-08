@@ -88,7 +88,7 @@ def share(isolated_storage, monkeypatch):
     nas = isolated_storage / "nas" / "lab"
     nas.mkdir(parents=True)
     real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
+    monkeypatch.setattr(storage.locations, "_is_mount", lambda p: os.path.realpath(p) == real)
     return nas
 
 
@@ -238,7 +238,7 @@ def test_write_text_atomically_replaces_the_file_whole_or_not_at_all(tmp_path, m
     def boom(src, dst):
         raise OSError("share dropped mid-write")
 
-    monkeypatch.setattr(storage.os, "replace", boom)
+    monkeypatch.setattr(storage.writing.os, "replace", boom)
     with pytest.raises(OSError):
         storage.write_text_atomically(target, "third\n")
     assert target.read_text(encoding="utf-8") == "second\n"  # the previous file is untouched

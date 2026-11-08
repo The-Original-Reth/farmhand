@@ -141,7 +141,7 @@ def test_a_file_that_cannot_be_moved_stays_put_and_is_not_added(db_session, stl_
     def refuse(src, dst):
         raise PermissionError(errno.EACCES, "Permission denied")
 
-    monkeypatch.setattr(storage.os, "rename", refuse)  # e.g. a read-only share, or no right to remove files from that folder
+    monkeypatch.setattr(storage.writing.os, "rename", refuse)  # e.g. a read-only share, or no right to remove files from that folder
     result = svc.import_scanned_files(db_session, [str(f)])[0]
 
     assert not result["ok"] and "Couldn't move Frog.stl" in result["error"] and "Permission denied" in result["error"]
@@ -156,7 +156,7 @@ def test_across_filesystems_the_move_is_a_verified_copy_then_delete(db_session, 
     def different_device(src, dst):
         raise OSError(errno.EXDEV, "Invalid cross-device link")
 
-    monkeypatch.setattr(storage.os, "rename", different_device)
+    monkeypatch.setattr(storage.writing.os, "rename", different_device)
     result = svc.import_scanned_files(db_session, [str(f)])[0]
 
     assert result["ok"]
@@ -168,15 +168,15 @@ def test_across_filesystems_the_move_is_a_verified_copy_then_delete(db_session, 
 def test_if_the_original_cannot_be_deleted_after_a_cross_device_copy_nothing_is_left_doubled(db_session, stl_root, monkeypatch):
     f = _write_tetrahedron(stl_root / "Read only" / "Frog.stl")
     digest = _digest(f)
-    monkeypatch.setattr(storage.os, "rename", lambda s, d: (_ for _ in ()).throw(OSError(errno.EXDEV, "cross-device")))
-    real_unlink = storage.Path.unlink
+    monkeypatch.setattr(storage.writing.os, "rename", lambda s, d: (_ for _ in ()).throw(OSError(errno.EXDEV, "cross-device")))
+    real_unlink = storage.writing.Path.unlink
 
     def unlink(self, *a, **k):
         if self == f:
             raise PermissionError(errno.EROFS, "Read-only file system")
         return real_unlink(self, *a, **k)
 
-    monkeypatch.setattr(storage.Path, "unlink", unlink)
+    monkeypatch.setattr(storage.writing.Path, "unlink", unlink)
     result = svc.import_scanned_files(db_session, [str(f)])[0]
 
     assert not result["ok"] and "Read-only file system" in result["error"]
@@ -214,7 +214,7 @@ def test_one_file_that_fails_does_not_stop_the_others_in_the_batch(db_session, s
             raise PermissionError(errno.EACCES, "Permission denied")
         return real_rename(src, dst)
 
-    monkeypatch.setattr(storage.os, "rename", picky)
+    monkeypatch.setattr(storage.writing.os, "rename", picky)
     results = svc.import_scanned_files(db_session, [str(bad), str(good)])
     assert [r["ok"] for r in results] == [False, True]
     assert bad.is_file() and not good.exists()
@@ -235,7 +235,7 @@ def test_a_scan_of_an_unmounted_folder_still_refuses_and_moves_nothing(db_sessio
     nas = area / "nas" / "lab"
     nas.mkdir(parents=True)
     monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == str(nas.resolve()))
+    monkeypatch.setattr(storage.locations, "_is_mount", lambda p: os.path.realpath(p) == str(nas.resolve()))
     folder = nas / "stl"
     folder.mkdir()
     storage_settings.save(db_session, {"stl_path": str(folder)})
@@ -346,7 +346,7 @@ def test_moving_to_a_new_location_brings_files_registered_in_place_into_the_mana
     nas = area / "nas" / "lab"
     nas.mkdir(parents=True)
     monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == str(nas.resolve()))
+    monkeypatch.setattr(storage.locations, "_is_mount", lambda p: os.path.realpath(p) == str(nas.resolve()))
 
     f = _write_tetrahedron(stl_root / "2023" / "v1" / "Frog.stl")
     model_id = _legacy_registered_in_place(db_session, f)  # imported in place by an earlier version

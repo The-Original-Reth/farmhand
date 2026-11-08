@@ -153,7 +153,7 @@ def share(tmp_path, monkeypatch):
     nas.mkdir(parents=True)
     monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
     real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
+    monkeypatch.setattr(storage.locations, "_is_mount", lambda p: os.path.realpath(p) == real)
     return nas
 
 
@@ -166,7 +166,7 @@ def nas(tmp_path, monkeypatch):
     monkeypatch.setattr(mounts, "mount", fake.mount)
     monkeypatch.setattr(mounts, "unmount", fake.unmount)
     monkeypatch.setattr(mounts, "is_mounted", fake.is_mounted)
-    monkeypatch.setattr(storage, "_is_mount", fake.is_mounted)
+    monkeypatch.setattr(storage.locations, "_is_mount", fake.is_mounted)
     monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: {"ok": True, "smb": True, "nfs": True, "message": None, "smb_message": None, "nfs_message": None})
     mounts._errors.clear()
     yield fake

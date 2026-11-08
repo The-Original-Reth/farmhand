@@ -129,19 +129,19 @@ def test_which_changes_touch_which_files():
 
 
 def test_changes_waiting_to_be_copied_add_up(monkeypatch):
-    monkeypatch.setattr(config_service, "_background_mirror", True)
-    monkeypatch.setattr(config_service, "_mirror_scope", None)
-    monkeypatch.setattr(config_service, "_mirror_full", False)
-    monkeypatch.setattr(config_service, "_mirror_thread", type("Alive", (), {"is_alive": lambda self: True})())
+    monkeypatch.setattr(config_service.nas_copy, "_background_mirror", True)
+    monkeypatch.setattr(config_service.nas_copy, "_mirror_scope", None)
+    monkeypatch.setattr(config_service.nas_copy, "_mirror_full", False)
+    monkeypatch.setattr(config_service.nas_copy, "_mirror_thread", type("Alive", (), {"is_alive": lambda self: True})())
     config_service.request_mirror(config_service.MirrorScope(printers={1}))
     config_service.request_mirror(config_service.MirrorScope(printers={2}))
     config_service.request_mirror(config_service.MirrorScope(models=True))
-    assert config_service._mirror_scope == config_service.MirrorScope(printers={1, 2}, models=True)
+    assert config_service.nas_copy._mirror_scope == config_service.MirrorScope(printers={1, 2}, models=True)
     config_service.request_mirror(config_service.MirrorScope(printers=True))
-    assert config_service._mirror_scope.printers is True
+    assert config_service.nas_copy._mirror_scope.printers is True
     config_service.request_mirror()
-    assert config_service._mirror_full is True
-    config_service._mirror_wanted.clear()
+    assert config_service.nas_copy._mirror_full is True
+    config_service.nas_copy._mirror_wanted.clear()
 
 
 def test_file_names_are_safe_and_never_collide():
@@ -291,9 +291,9 @@ def test_the_settings_copy_and_restore_include_printers(db_session, fake, share)
 
 
 def test_background_copies_are_off_until_the_app_starts(monkeypatch):
-    monkeypatch.setattr(config_service, "_background_mirror", False)
+    monkeypatch.setattr(config_service.nas_copy, "_background_mirror", False)
     config_service.request_mirror()  # does nothing (and starts no thread) in tests
-    assert not config_service._mirror_wanted.is_set()
+    assert not config_service.nas_copy._mirror_wanted.is_set()
 
 
 def test_a_deleted_printers_file_goes_even_in_a_partial_copy(db_session, fake, tmp_path):

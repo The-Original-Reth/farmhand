@@ -15,7 +15,7 @@ from app.services import network_shares_service as shares
 @pytest.fixture()
 def share(share):
     """The shared fake NAS share, with no settings copy written yet."""
-    svc._last_mirror.update(ok=None, error=None, at=None)
+    svc.nas_copy._last_mirror.update(ok=None, error=None, at=None)
     return share
 
 

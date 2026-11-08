@@ -63,8 +63,8 @@ def test_a_new_version_never_goes_into_a_folder_with_files_in_it(tmp_path):
     taken = tmp_path / "7" / "v1"
     taken.mkdir(parents=True)
     (taken / "Other farmhand.stl").write_bytes(b"x")
-    assert storage._version_dir(tmp_path, 7, 1, fresh=True) == tmp_path / "7" / "v1-2"
-    assert storage._version_dir(tmp_path, 7, 1) == taken  # finding a version's folder is unchanged
+    assert storage.roots._version_dir(tmp_path, 7, 1, fresh=True) == tmp_path / "7" / "v1-2"
+    assert storage.roots._version_dir(tmp_path, 7, 1) == taken  # finding a version's folder is unchanged
     assert storage.is_managed_layout(str(tmp_path / "7" / "v1-2" / "a.stl"), 7, 1)
 
 

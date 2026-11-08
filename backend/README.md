@@ -53,7 +53,7 @@ files from the farm, not synthetic ones).
 - STEP viewer / three.js rendering pipeline (deferred per spec, revisit
   once this core is further along)
 - Cloud file storage (currently local disk under `storage/`, behind a
-  small interface in `app/storage.py` so it can be swapped later)
+  small interface in `app/storage/` so it can be swapped later)
 
 ## Setup — Docker Compose (recommended)
 
@@ -232,7 +232,7 @@ app/
   schemas/       # Pydantic request/response shapes
   services/      # business logic (versioning rules live here, not in routers)
   routers/       # FastAPI route definitions — thin, delegate to services
-  storage.py     # local-disk file storage, swappable later
+  storage/       # local-disk file storage, swappable later
   config.py      # env-based settings
   database.py    # engine/session setup
   main.py        # app entrypoint

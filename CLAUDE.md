@@ -46,7 +46,7 @@ Printer integrations are packages: `services/moonraker/` and `services/prusalink
 in `main.py`. Background jobs (`mount_supervisor.py`, `printer_poller.py`, `farm_cost_recorder.py`, and the
 shared-folders and previews workers) are `periodic.PeriodicWorker`s, started and stopped by `background.py`.
 
-**Storage** (`app/storage.py`): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
+**Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
 and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores
 absolute paths. Chosen roots must contain a `.farmhand-storage` marker or writes get 503 (that's how an
 unmounted share is detected). Writes go to a temp name and are then renamed; deletes only remove recorded files,
