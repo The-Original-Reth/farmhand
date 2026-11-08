@@ -3,21 +3,12 @@ from __future__ import annotations
 import io
 import os
 
-import numpy as np
 import pytest
 
 from app.errors import NotFound
 from app.models import SourceFileType
 from app.services import source_model_service as svc
-
-
-def _cube_stl_bytes():
-    v = np.array([(x, y, z) for x in (0, 1) for y in (0, 1) for z in (0, 1)], dtype=np.float32)
-    quads = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
-    tris = np.array([[v[q[0]], v[q[1]], v[q[2]]] for q in quads] + [[v[q[0]], v[q[2]], v[q[3]]] for q in quads])
-    rec = np.zeros(len(tris), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
-    rec["v"] = tris
-    return b"cube".ljust(80, b" ") + np.uint32(len(tris)).tobytes() + rec.tobytes()
+from .factories import cube_stl_bytes as _cube_stl_bytes
 
 
 def _model(db, name="Cube.stl", data=None, file_type=SourceFileType.stl):

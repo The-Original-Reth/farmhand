@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import io
 import os
-import struct
 import zipfile
 
 import pytest
 from PIL import Image
 
-from app import config, storage
+from app import storage
 from app.services import storage_settings_service
 from app.thumbnails.cad_preview import render_cad_preview
+from .factories import stl_bytes as _stl_bytes
 
 
 def _project(api, name="Bracket job"):
@@ -20,12 +20,6 @@ def _project(api, name="Bracket job"):
 def _upload(api, pid, name="Bracket.f3d", data=b"fusion data", note=None, cad_id=None):
     url = f"/projects/{pid}/cad" + (f"/{cad_id}/versions" if cad_id else "")
     return api.post(url, files={"file": (name, io.BytesIO(data))}, data={"note": note} if note else {})
-
-
-def _stl_bytes() -> bytes:
-    """A binary STL of one triangle."""
-    tri = struct.pack("<12fH", 0, 0, 1, 0, 0, 0, 10, 0, 0, 0, 10, 0, 0)
-    return b"\0" * 80 + struct.pack("<I", 1) + tri
 
 
 def _png_bytes(size=(64, 40)) -> bytes:
@@ -134,17 +128,6 @@ def test_a_step_file_is_drawn(tmp_path):
 
 
 # ------------------------------------------------------------------ the project files folder
-
-
-@pytest.fixture()
-def share(tmp_path, monkeypatch):
-    """A fake *connected* NAS share inside the area the Settings page may browse."""
-    nas = tmp_path / "data" / "nas" / "lab"
-    nas.mkdir(parents=True)
-    monkeypatch.setattr(config.settings, "storage_browse_root", str(tmp_path / "data"))
-    real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
-    return nas
 
 
 def test_cad_files_go_to_the_chosen_project_files_folder(api, db_session, share):

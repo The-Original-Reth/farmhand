@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -15,7 +16,13 @@ from app import config, models  # noqa: F401 registers all models on Base
 from app import storage
 from app.database import Base, get_db
 from app.main import app
-from app import printer_links
+from app import mounts, printer_links
+from app.services.moonraker import client as mr_client
+from app.services.prusalink import client as pl_client
+
+from .fake_moonraker import FakeMoonraker
+from .fake_nas import FakeNas
+from .fake_prusalink import FakePrusaLink
 
 
 @pytest.fixture(autouse=True)
@@ -110,3 +117,68 @@ def sample_3mf_paths():
     if not all(p.exists() for p in paths.values()):
         pytest.skip("Real sample .3mf files not found in tests/fixtures/ or /mnt/user-data/uploads")
     return {k: str(v) for k, v in paths.items()}
+
+
+# ------------------------------------------------------------------ printers, NAS shares and a second Farmhand
+
+
+@pytest.fixture()
+def moonraker(monkeypatch):
+    """A Klipper printer's Moonraker (tests/fake_moonraker.py), answering every address Farmhand asks."""
+    f = FakeMoonraker()
+    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
+    return f
+
+
+@pytest.fixture()
+def prusalink(monkeypatch):
+    """A Prusa printer's PrusaLink (tests/fake_prusalink.py), answering every address Farmhand asks."""
+    f = FakePrusaLink()
+    monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(f.handle))
+    return f
+
+
+@pytest.fixture()
+def klipper(api, moonraker):
+    """The API, and the id of a Klipper printer (VT 1190 at 10.0.6.21) whose Moonraker answers: (api, printer id)."""
+    printer = api.post("/printers", json={"name": "VT 1190", "kind": "Voron", "wired_ip": "10.0.6.21"}).json()
+    return api, printer["id"]
+
+
+@pytest.fixture()
+def share(tmp_path, monkeypatch):
+    """A fake *connected* NAS share (a mount point, tmp_path/data/nas/lab) inside the area the pages may browse."""
+    area = tmp_path / "data"
+    nas = area / "nas" / "lab"
+    nas.mkdir(parents=True)
+    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
+    real = str(nas.resolve())
+    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
+    return nas
+
+
+@pytest.fixture()
+def nas(tmp_path, monkeypatch):
+    area = tmp_path / "data"
+    area.mkdir()
+    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
+    fake = FakeNas()
+    monkeypatch.setattr(mounts, "mount", fake.mount)
+    monkeypatch.setattr(mounts, "unmount", fake.unmount)
+    monkeypatch.setattr(mounts, "is_mounted", fake.is_mounted)
+    monkeypatch.setattr(storage, "_is_mount", fake.is_mounted)
+    monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: {"ok": True, "smb": True, "nfs": True, "message": None, "smb_message": None, "nfs_message": None})
+    mounts._errors.clear()
+    yield fake
+    storage.reset()
+    mounts._errors.clear()
+
+
+@pytest.fixture()
+def other_farmhand():
+    """A second Farmhand: its own (empty) database, sharing the same folders."""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine, future=True)()
+    yield db
+    db.close()

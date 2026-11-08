@@ -5,6 +5,9 @@ what matters to it. `from . import factories as make`, then make.printer(db), ma
 from __future__ import annotations
 
 import io
+import struct
+
+import numpy as np
 from pathlib import Path
 
 from app.models import SourceFileType
@@ -18,6 +21,11 @@ def printer(db, name="VT 1190", kind="Voron", wired_ip=None):
     return printer_service.find_by_name(db, name) or printer_service.create_printer(
         db, name=name, kind=kind, wired_ip=wired_ip, wireless_ip=None
     )
+
+
+def klipper_printer(db, name="VT 1190", ip="10.0.6.21"):
+    """A new Klipper printer on its cable at `ip` (its Moonraker at port 7125 there)."""
+    return printer_service.create_printer(db, name=name, kind="Voron", wired_ip=ip, wireless_ip=None)
 
 
 def model(db, name="Model.stl", data=None):
@@ -55,3 +63,33 @@ def add_version(db, bundle, threemf_path, filename="a.3mf", gcode=GCODE):
             gcode_file_obj=io.BytesIO(gcode) if gcode is not None else None,
             gcode_filename=Path(filename).with_suffix(".gcode").name if gcode is not None else None,
         )
+
+
+
+# ------------------------------------------------------------------ STL files
+
+
+def stl_bytes(size: float = 10.0) -> bytes:
+    """A binary STL of one triangle."""
+    tri = struct.pack("<12fH", 0, 0, 1, 0, 0, 0, size, 0, 0, 0, size, 0, 0)
+    return b"\0" * 80 + struct.pack("<I", 1) + tri
+
+
+def cube_stl_bytes():
+    v = np.array([(x, y, z) for x in (0, 1) for y in (0, 1) for z in (0, 1)], dtype=np.float32)
+    quads = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    tris = np.array([[v[q[0]], v[q[1]], v[q[2]]] for q in quads] + [[v[q[0]], v[q[2]], v[q[3]]] for q in quads])
+    rec = np.zeros(len(tris), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
+    rec["v"] = tris
+    return b"cube".ljust(80, b" ") + np.uint32(len(tris)).tobytes() + rec.tobytes()
+
+
+def write_tetrahedron(path):
+    """A small but valid binary STL, so thumbnailing really runs."""
+    v = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+    out = bytearray(b"\0" * 80 + struct.pack("<I", 4))
+    for a, b, c in [(0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3)]:
+        out += struct.pack("<12fH", 0, 0, 1, *v[a], *v[b], *v[c], 0)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(bytes(out))
+    return path

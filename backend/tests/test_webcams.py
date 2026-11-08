@@ -6,15 +6,6 @@ import pytest
 
 from app.services.moonraker import client as mr_client
 
-from .fake_moonraker import FakeMoonraker
-
-
-@pytest.fixture()
-def moonraker(monkeypatch):
-    f = FakeMoonraker()
-    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
-    return f
-
 
 def _cam(**kw):
     cam = {"name": "Bed", "enabled": True, "service": "mjpegstreamer", "stream_url": "/webcam/?action=stream",

@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from app import config, config_store as cs, storage
+from app import config_store as cs, storage
 from app.models import NetworkShare
 from app.services import app_settings
 from app.services import config_service as svc
@@ -13,16 +13,10 @@ from app.services import network_shares_service as shares
 
 
 @pytest.fixture()
-def share(tmp_path, monkeypatch):
-    """A connected-looking NAS share (a mount point) inside the browsable area."""
-    area = tmp_path / "data"
-    nas = area / "nas" / "lab"
-    nas.mkdir(parents=True)
-    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
-    real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
+def share(share):
+    """The shared fake NAS share, with no settings copy written yet."""
     svc._last_mirror.update(ok=None, error=None, at=None)
-    return nas
+    return share
 
 
 def _folder(share, name="settings"):
@@ -378,7 +372,6 @@ def test_an_older_settings_file_keeps_its_orders_as_they_are(db_session, share):
 def test_on_a_new_farmhand_the_orders_wait_for_the_printers_brought_back(db_session, share):
     """Load all on a Farmhand with no printers yet: they come back from the printers/ files, and the orders with them."""
     from app import records_store
-    from app.services import records_service
 
     folder = _folder(share)
     prefs = {"farm_cost_order": [7, 1], "monitor_order": ["7:Front", "1:top"]}

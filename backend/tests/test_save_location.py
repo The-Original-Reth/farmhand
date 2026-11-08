@@ -11,7 +11,7 @@ from app.services import config_service, farm_cost
 from app.services import network_shares_service as shares
 from app.services import save_location_service as svc
 
-from .test_network_shares import SMB, nas  # noqa: F401 - the fake NAS fixture
+from .test_network_shares import SMB
 
 
 def _real(p) -> str:

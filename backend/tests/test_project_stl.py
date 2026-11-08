@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 import io
-import struct
 
 from app import storage
-
-
-def _stl_bytes(size=10.0) -> bytes:
-    """A binary STL of one triangle."""
-    tri = struct.pack("<12fH", 0, 0, 1, 0, 0, 0, size, 0, 0, 0, size, 0, 0)
-    return b"\0" * 80 + struct.pack("<I", 1) + tri
+from .factories import stl_bytes as _stl_bytes
 
 
 def _project(api, name="Keychains"):

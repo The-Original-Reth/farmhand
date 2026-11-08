@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import io
-import os
 from pathlib import Path
 
 import pytest
 
-from app import config, mounts, storage
+from app import mounts
 from app.models import NetworkShare, SourceFileType
 from app.mounts import MountError
 from app.services import network_shares_service as shares
@@ -16,50 +15,6 @@ from app.services import storage_settings_service as storage_settings
 from .conftest import posix_only
 
 SMB = dict(name="Lab NAS", protocol="smb", server="10.0.0.5", share="farmhand", username="alice", password="s3cret!")
-
-
-class FakeNas:
-    """The NAS and the kernel's mount table, in one: mounting works unless told to fail."""
-
-    def __init__(self):
-        self.mounted: set[str] = set()
-        self.mount_calls: list = []
-        self.fail_with: Exception | None = None
-        self.fail_scratch: Exception | None = None  # fail only the scratch mount used to try new settings
-
-    def mount(self, spec, mount_point):
-        mp = os.path.realpath(str(mount_point))
-        self.mount_calls.append((spec, mp))
-        if mp in self.mounted:
-            return
-        err = self.fail_scratch if (".test-" in mp and self.fail_scratch) else self.fail_with
-        if err:
-            raise err
-        Path(mp).mkdir(parents=True, exist_ok=True)
-        self.mounted.add(mp)
-
-    def unmount(self, mount_point, lazy=False):
-        self.mounted.discard(os.path.realpath(str(mount_point)))
-
-    def is_mounted(self, path):
-        return os.path.realpath(str(path)) in self.mounted
-
-
-@pytest.fixture()
-def nas(tmp_path, monkeypatch):
-    area = tmp_path / "data"
-    area.mkdir()
-    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
-    fake = FakeNas()
-    monkeypatch.setattr(mounts, "mount", fake.mount)
-    monkeypatch.setattr(mounts, "unmount", fake.unmount)
-    monkeypatch.setattr(mounts, "is_mounted", fake.is_mounted)
-    monkeypatch.setattr(storage, "_is_mount", fake.is_mounted)
-    monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: {"ok": True, "smb": True, "nfs": True, "message": None, "smb_message": None, "nfs_message": None})
-    mounts._errors.clear()
-    yield fake
-    storage.reset()
-    mounts._errors.clear()
 
 
 # ------------------------------------------------------------------ adding

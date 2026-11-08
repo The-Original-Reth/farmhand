@@ -13,15 +13,6 @@ from app.services import printer_service, records_service
 from app.services import prusalink as pl
 from app.services.prusalink import client as pl_client
 
-from .fake_prusalink import FakePrusaLink
-
-
-@pytest.fixture()
-def fake(monkeypatch):
-    f = FakePrusaLink()
-    monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(f.handle))
-    return f
-
 
 def _core_one(db, name="Core One", password="secret123"):
     p = printer_service.create_printer(db, name=name, kind="Prusa Core One", wired_ip="10.0.6.40", wireless_ip=None)
@@ -35,14 +26,14 @@ def _jobs(db, printer_id):
 # ------------------------------------------------------------------ setting a printer up for PrusaLink
 
 
-def test_a_printer_switches_to_prusalink_and_back_without_losing_its_prints(db_session, fake):
+def test_a_printer_switches_to_prusalink_and_back_without_losing_its_prints(db_session, prusalink):
     p = _core_one(db_session)
     out = PrinterOut.model_validate(p)
     assert out.connection_type == "prusalink" and out.prusalink_url == "http://10.0.6.40"
     assert out.prusalink_username == "maker" and out.has_prusalink_password
     assert "secret123" not in out.model_dump_json()  # the password never goes back out
 
-    fake.start_job(1, "frog.bgcode", progress=10, time_printing=600)
+    prusalink.start_job(1, "frog.bgcode", progress=10, time_printing=600)
     pl.poll(db_session, p)
     p = printer_service.update_printer(db_session, p.id, {"prusalink_url": "http://coreone.local", "prusalink_username": " maker "})
     assert p.prusalink_url == "http://coreone.local" and p.has_prusalink_password  # the password stays when not sent
@@ -52,7 +43,7 @@ def test_a_printer_switches_to_prusalink_and_back_without_losing_its_prints(db_s
     assert len(_jobs(db_session, p.id)) == 1  # the prints it recorded stay
 
 
-def test_a_wrong_password_is_reported_plainly(db_session, fake):
+def test_a_wrong_password_is_reported_plainly(db_session, prusalink):
     p = _core_one(db_session, password="wrong")
     with pytest.raises(pl.PrusaLinkError) as caught:
         pl.poll(db_session, p)
@@ -60,9 +51,9 @@ def test_a_wrong_password_is_reported_plainly(db_session, fake):
     assert p.connection_row.last_sync_error.startswith("PrusaLink refused")
 
 
-def test_a_printer_that_is_off_is_reported_plainly(db_session, fake):
+def test_a_printer_that_is_off_is_reported_plainly(db_session, prusalink):
     p = _core_one(db_session)
-    fake.down = True
+    prusalink.down = True
     with pytest.raises(pl.PrusaLinkError) as caught:
         pl.poll(db_session, p)
     assert caught.value.kind == "unreachable"
@@ -71,27 +62,27 @@ def test_a_printer_that_is_off_is_reported_plainly(db_session, fake):
 # ------------------------------------------------------------------ the print history Farmhand records
 
 
-def test_a_print_is_recorded_from_start_to_finish(db_session, fake):
+def test_a_print_is_recorded_from_start_to_finish(db_session, prusalink):
     p = _core_one(db_session)
     pl.poll(db_session, p)  # idle: nothing to record
     assert _jobs(db_session, p.id) == []
     assert p.service_row is not None and p.service_row.start_printtime == 0  # the service count starts here
 
-    fake.start_job(7, "Frog keychain.bgcode", progress=5, time_printing=300, time_remaining=5700)
+    prusalink.start_job(7, "Frog keychain.bgcode", progress=5, time_printing=300, time_remaining=5700)
     pl.poll(db_session, p)
     [job] = _jobs(db_session, p.id)
     assert job.status == "in_progress" and job.filename == "Frog keychain.bgcode" and job.print_duration == 300
     assert job.job_metadata["estimated_time"] == 6000 and job.job_metadata["filament_type"] == "PETG"
 
-    fake.advance(progress=60, time_printing=3600)
+    prusalink.advance(progress=60, time_printing=3600)
     pl.poll(db_session, p)
-    fake.advance(progress=100, time_printing=6000, state="FINISHED")
+    prusalink.advance(progress=100, time_printing=6000, state="FINISHED")
     pl.poll(db_session, p)
     pl.poll(db_session, p)  # still showing FINISHED until someone clears it: no second record
     [job] = _jobs(db_session, p.id)
     assert job.status == "completed" and job.end_time is not None and job.print_duration == 6000
 
-    fake.clear_job()
+    prusalink.clear_job()
     pl.poll(db_session, p)
     assert len(_jobs(db_session, p.id)) == 1
     assert p.connection_row.totals == {"total_jobs": 1, "total_print_time": 6000.0, "total_filament_used": None, "longest_print": 6000.0}
@@ -99,11 +90,11 @@ def test_a_print_is_recorded_from_start_to_finish(db_session, fake):
 
 
 @pytest.mark.parametrize("last_progress, expected", [(40, "unknown"), (99.5, "completed")])
-def test_a_print_whose_end_was_missed_is_closed_by_how_far_it_got(db_session, fake, last_progress, expected):
+def test_a_print_whose_end_was_missed_is_closed_by_how_far_it_got(db_session, prusalink, last_progress, expected):
     p = _core_one(db_session)
-    fake.start_job(3, "shark.bgcode", progress=last_progress, time_printing=1200)
+    prusalink.start_job(3, "shark.bgcode", progress=last_progress, time_printing=1200)
     pl.poll(db_session, p)
-    fake.clear_job()  # it ended (or was cancelled at the printer) between two looks
+    prusalink.clear_job()  # it ended (or was cancelled at the printer) between two looks
     pl.poll(db_session, p)
     [job] = _jobs(db_session, p.id)
     assert job.status == expected and job.end_time is not None
@@ -120,46 +111,46 @@ def _restored_running(db, printer_id, number=475, filename="sloth.bgcode"):
     return row
 
 
-def test_a_print_brought_in_by_load_all_is_carried_on_not_counted_twice(db_session, fake):
+def test_a_print_brought_in_by_load_all_is_carried_on_not_counted_twice(db_session, prusalink):
     p = _core_one(db_session)
     restored = _restored_running(db_session, p.id)
-    fake.start_job(475, "sloth.bgcode", progress=90, time_printing=28500)
+    prusalink.start_job(475, "sloth.bgcode", progress=90, time_printing=28500)
     pl.poll(db_session, p)
     [job] = _jobs(db_session, p.id)
     assert job.id == restored.id and job.job_id == "475@20261107T053108" and job.print_duration == 28500
     assert p.connection_row.totals["total_print_time"] == 28500
 
 
-def test_a_print_brought_in_by_load_all_that_has_since_ended_is_closed(db_session, fake):
+def test_a_print_brought_in_by_load_all_that_has_since_ended_is_closed(db_session, prusalink):
     p = _core_one(db_session)
     _restored_running(db_session, p.id)
     pl.poll(db_session, p)  # the printer is idle now
     [job] = _jobs(db_session, p.id)
     assert job.status == "unknown" and job.end_time is not None
-    fake.start_job(476, "next.bgcode", progress=1, time_printing=10)
+    prusalink.start_job(476, "next.bgcode", progress=1, time_printing=10)
     pl.poll(db_session, p)  # a different print is a new record
     assert [j.job_id.split("@")[0] for j in _jobs(db_session, p.id)] == ["475", "476"]
 
 
-def test_a_new_job_closes_the_one_before(db_session, fake):
+def test_a_new_job_closes_the_one_before(db_session, prusalink):
     p = _core_one(db_session)
-    fake.start_job(3, "one.bgcode", progress=50, time_printing=100)
+    prusalink.start_job(3, "one.bgcode", progress=50, time_printing=100)
     pl.poll(db_session, p)
-    fake.start_job(4, "two.bgcode", progress=1, time_printing=10)
+    prusalink.start_job(4, "two.bgcode", progress=1, time_printing=10)
     pl.poll(db_session, p)
     first, second = _jobs(db_session, p.id)
     assert first.status == "unknown" and second.status == "in_progress" and second.filename == "two.bgcode"
 
 
-def test_stopped_and_failed_prints_say_so(db_session, fake):
+def test_stopped_and_failed_prints_say_so(db_session, prusalink):
     p = _core_one(db_session)
-    fake.start_job(5, "a.bgcode", progress=20, time_printing=100)
+    prusalink.start_job(5, "a.bgcode", progress=20, time_printing=100)
     pl.poll(db_session, p)
-    fake.advance(progress=20, time_printing=100, state="STOPPED")
+    prusalink.advance(progress=20, time_printing=100, state="STOPPED")
     pl.poll(db_session, p)
-    fake.start_job(6, "b.bgcode", progress=20, time_printing=100)
+    prusalink.start_job(6, "b.bgcode", progress=20, time_printing=100)
     pl.poll(db_session, p)
-    fake.advance(progress=20, time_printing=100, state="ERROR")
+    prusalink.advance(progress=20, time_printing=100, state="ERROR")
     pl.poll(db_session, p)
     assert [j.status for j in _jobs(db_session, p.id)] == ["cancelled", "error"]
 
@@ -167,17 +158,17 @@ def test_stopped_and_failed_prints_say_so(db_session, fake):
 # ------------------------------------------------------------------ maintenance kept in Farmhand
 
 
-def test_maintenance_is_kept_in_farmhand_and_counts_recorded_print_time(db_session, fake):
+def test_maintenance_is_kept_in_farmhand_and_counts_recorded_print_time(db_session, prusalink):
     p = _core_one(db_session)
     pl.poll(db_session, p)
     key = mr.add_maintenance(p, name="Clean the nozzle", note="", reminder={"type": "repeat", "printtime": {"bool": True, "value": 1}})
     assert db_session.query(MaintenanceEntry).filter_by(printer_id=p.id).count() == 1
-    assert fake.requests.count(("GET", "/api/v1/status")) == 2  # nothing about maintenance asked of the printer (1 login try + 1)
+    assert prusalink.requests.count(("GET", "/api/v1/status")) == 2  # nothing about maintenance asked of the printer (1 login try + 1)
 
     [entry] = mr.list_maintenance(p)["entries"]
     assert entry["id"] == key and entry["state"] == "ok"
 
-    fake.start_job(1, "long.bgcode", progress=100, time_printing=7200, state="FINISHED")
+    prusalink.start_job(1, "long.bgcode", progress=100, time_printing=7200, state="FINISHED")
     pl.poll(db_session, p)
     [entry] = mr.list_maintenance(p)["entries"]
     assert entry["state"] == "due" and entry["checks"][0]["used"] == pytest.approx(2)
@@ -189,15 +180,15 @@ def test_maintenance_is_kept_in_farmhand_and_counts_recorded_print_time(db_sessi
     assert [e["id"] for e in mr.list_maintenance(p)["entries"]] == [next_key]
 
 
-def test_a_filament_reminder_is_refused_for_a_printer_that_does_not_report_filament(db_session, fake):
+def test_a_filament_reminder_is_refused_for_a_printer_that_does_not_report_filament(db_session, prusalink):
     p = _core_one(db_session)
     with pytest.raises(ValueError, match="filament"):
         mr.add_maintenance(p, name="Dry the spool", note="", reminder={"type": "one-time", "filament": {"bool": True, "value": 500}})
 
 
-def test_the_service_can_be_marked_done(db_session, fake):
+def test_the_service_can_be_marked_done(db_session, prusalink):
     p = _core_one(db_session)
-    fake.start_job(1, "x.bgcode", progress=100, time_printing=3600, state="FINISHED")
+    prusalink.start_job(1, "x.bgcode", progress=100, time_printing=3600, state="FINISHED")
     pl.poll(db_session, p)
     mr.service_done(db_session, p, note="new belts")
     assert p.service_row.start_printtime == 3600 and p.service["hours_since"] == 0
@@ -207,15 +198,15 @@ def test_the_service_can_be_marked_done(db_session, fake):
 
 
 @pytest.fixture()
-def client(api, fake):
+def client(api, prusalink):
     printer = api.post("/printers", json={"name": "Core One", "kind": "Prusa Core One", "wired_ip": "10.0.6.40"}).json()
     api.patch(f"/printers/{printer['id']}", json={"connection_type": "prusalink", "prusalink_password": "secret123"})
     return api, printer["id"]
 
 
-def test_live_status_over_the_api(client, fake):
+def test_live_status_over_the_api(client, prusalink):
     c, pid = client
-    fake.start_job(9, "Frog.bgcode", progress=42.5, time_printing=1200, time_remaining=1600)
+    prusalink.start_job(9, "Frog.bgcode", progress=42.5, time_printing=1200, time_remaining=1600)
     s = c.get(f"/printers/{pid}/prusalink").json()
     assert s["reachable"] and s["state"] == "PRINTING" and s["printer_type"] == "COREONE" and s["firmware"] == "6.2.0"
     assert s["temps"]["temp_nozzle"] == 215.2 and s["job"]["file"] == "Frog.bgcode" and s["job"]["progress"] == 42.5
@@ -226,9 +217,9 @@ def test_live_status_over_the_api(client, fake):
     assert printer["connection_type"] == "prusalink" and printer["has_prusalink_password"] and "prusalink_password" not in printer
 
 
-def test_live_status_says_why_it_cannot_reach_the_printer(client, fake):
+def test_live_status_says_why_it_cannot_reach_the_printer(client, prusalink):
     c, pid = client
-    fake.down = True
+    prusalink.down = True
     s = c.get(f"/printers/{pid}/prusalink").json()
     assert s["reachable"] is False and s["error_kind"] == "unreachable"
 
@@ -238,17 +229,17 @@ def test_a_moonraker_printer_has_no_prusalink_status(api):
     assert api.get(f"/printers/{pid}/prusalink").status_code == 409
 
 
-def test_sending_a_print(client, fake):
+def test_sending_a_print(client, prusalink):
     c, pid = client
     r = c.post(f"/printers/{pid}/prusalink/print", files={"file": ("Frog keychain.bgcode", b"GCDE" + b"x" * 100)})
     assert r.status_code == 200 and r.json()["sent"] == "usb/Frog keychain.bgcode"
-    [up] = fake.uploads
+    [up] = prusalink.uploads
     assert up["path"] == "/api/v1/files/usb/Frog%20keychain.bgcode" and up["size"] == 104
     assert up["headers"]["print-after-upload"] == "?1" and up["headers"]["overwrite"] == "?1"
     assert c.get(f"/printers/{pid}/print-jobs").json()["jobs"][0]["filename"] == "Frog keychain.bgcode"  # recorded at once
 
 
-def test_a_big_print_is_streamed_whole_with_its_length_up_front(client, fake):
+def test_a_big_print_is_streamed_whole_with_its_length_up_front(client, prusalink):
     import inspect
 
     from app.routers import prusalink as router
@@ -257,27 +248,27 @@ def test_a_big_print_is_streamed_whole_with_its_length_up_front(client, fake):
     c, pid = client
     body = bytes(range(256)) * (3 * 1024 * 16 + 7)  # ~12 MB: several pieces, and not a whole number of them
     assert c.post(f"/printers/{pid}/prusalink/print", files={"file": ("big.bgcode", body)}).status_code == 200
-    [up] = fake.uploads
+    [up] = prusalink.uploads
     assert up["size"] == len(body) and up["headers"]["content-length"] == str(len(body))
     assert "transfer-encoding" not in up["headers"]
 
 
-def test_only_a_sliced_file_can_be_sent(client, fake):
+def test_only_a_sliced_file_can_be_sent(client, prusalink):
     c, pid = client
     r = c.post(f"/printers/{pid}/prusalink/print", files={"file": ("frog.3mf", b"PK..")})
     assert r.status_code == 422 and "Slice the 3MF first" in r.json()["detail"]
-    assert fake.uploads == []
+    assert prusalink.uploads == []
 
 
-def test_a_busy_printer_is_not_sent_a_print(client, fake):
+def test_a_busy_printer_is_not_sent_a_print(client, prusalink):
     c, pid = client
-    fake.start_job(1, "running.bgcode", progress=30, time_printing=100)
+    prusalink.start_job(1, "running.bgcode", progress=30, time_printing=100)
     r = c.post(f"/printers/{pid}/prusalink/print", files={"file": ("next.bgcode", b"GCDE")})
     assert r.status_code == 409 and "PRINTING" in r.json()["detail"]
-    assert fake.uploads == []
+    assert prusalink.uploads == []
 
 
-def test_maintenance_over_the_api(client, fake):
+def test_maintenance_over_the_api(client, prusalink):
     c, pid = client
     c.get(f"/printers/{pid}/prusalink")
     r = c.post(f"/printers/{pid}/maintenance", json={"name": "Clean the bed", "reminder": {"type": "repeat", "date": {"bool": True, "value": 7}}})
@@ -289,9 +280,9 @@ def test_maintenance_over_the_api(client, fake):
 # ------------------------------------------------------------------ the copy on the NAS
 
 
-def test_the_nas_copy_keeps_the_prusalink_setup_its_password_and_maintenance(db_session, fake, tmp_path):
+def test_the_nas_copy_keeps_the_prusalink_setup_its_password_and_maintenance(db_session, prusalink, tmp_path):
     p = _core_one(db_session)
-    fake.start_job(1, "x.bgcode", progress=100, time_printing=3600, state="FINISHED")
+    prusalink.start_job(1, "x.bgcode", progress=100, time_printing=3600, state="FINISHED")
     pl.poll(db_session, p)
     mr.add_maintenance(p, name="Clean the nozzle", note="", reminder=None)
     records_service.write_all(db_session, tmp_path)
@@ -312,7 +303,7 @@ def test_the_nas_copy_keeps_the_prusalink_setup_its_password_and_maintenance(db_
     assert rs.PRINTERS_DIR == "printers"
 
 
-def test_a_printer_can_be_added_as_a_prusalink_printer_straight_away(api, fake):
+def test_a_printer_can_be_added_as_a_prusalink_printer_straight_away(api, prusalink):
     r = api.post("/printers", json={
         "name": "Core One 2", "wired_ip": "10.0.6.41", "connection_type": "prusalink",
         "prusalink_username": "maker", "prusalink_password": "secret123", "prusalink_url": "coreone2.local",
@@ -335,8 +326,8 @@ def test_a_printer_added_as_mainsail_keeps_its_moonraker_details(api):
 # ------------------------------------------------------------------ a Prusa on cable and Wi-Fi: two IPs
 
 
-def _two_ips(monkeypatch, fake, *, wired_down=True, quiet=False):
-    """The fake at both IPs: the wired one unplugged (no connection), or `quiet` (it connects, then never answers)."""
+def _two_ips(monkeypatch, prusalink, *, wired_down=True, quiet=False):
+    """Moonraker at both IPs: the wired one unplugged (no connection), or `quiet` (it connects, then never answers)."""
     asked: list[str] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -345,16 +336,16 @@ def _two_ips(monkeypatch, fake, *, wired_down=True, quiet=False):
             if quiet:
                 raise httpx.ReadTimeout("no answer", request=request)
             raise httpx.ConnectError("no route to host", request=request)
-        return fake.handle(request)
+        return prusalink.handle(request)
 
     monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(handle))
     return asked
 
 
-def test_a_prusa_is_reached_at_its_wifi_ip_when_its_cable_is_out(db_session, fake, monkeypatch):
+def test_a_prusa_is_reached_at_its_wifi_ip_when_its_cable_is_out(db_session, prusalink, monkeypatch):
     p = printer_service.update_printer(db_session, _core_one(db_session).id, {"wireless_ip": "10.0.6.41"})
     assert p.prusalink_urls == ["http://10.0.6.40", "http://10.0.6.41"]  # wired first
-    asked = _two_ips(monkeypatch, fake)
+    asked = _two_ips(monkeypatch, prusalink)
 
     assert pl.version(p)["text"] == "PrusaLink"  # through the Wi-Fi, after the cable didn't connect
     assert pl.answered_at(p) == "http://10.0.6.41"
@@ -363,34 +354,34 @@ def test_a_prusa_is_reached_at_its_wifi_ip_when_its_cable_is_out(db_session, fak
     assert set(asked) == {"10.0.6.41"}  # it remembers: the dead address isn't tried every time
 
 
-def test_a_prusa_that_went_quiet_isnt_asked_again_elsewhere(db_session, fake, monkeypatch):
+def test_a_prusa_that_went_quiet_isnt_asked_again_elsewhere(db_session, prusalink, monkeypatch):
     # it connected, so the request may have been carried out (a print started): it must not be sent twice
     p = printer_service.update_printer(db_session, _core_one(db_session, name="Quiet").id, {"wireless_ip": "10.0.6.41"})
-    asked = _two_ips(monkeypatch, fake, quiet=True)
+    asked = _two_ips(monkeypatch, prusalink, quiet=True)
     with pytest.raises(pl.PrusaLinkError) as e:
         pl.version(p)
     assert e.value.kind == "unreachable" and "10.0.6.41" not in asked
 
 
-def test_a_prusalink_address_set_by_hand_is_the_only_one_tried(db_session, fake, monkeypatch):
+def test_a_prusalink_address_set_by_hand_is_the_only_one_tried(db_session, prusalink, monkeypatch):
     p = _core_one(db_session, name="By hand")
     p = printer_service.update_printer(db_session, p.id, {"wireless_ip": "10.0.6.41", "prusalink_url": "http://10.0.6.40"})
     assert p.prusalink_urls == ["http://10.0.6.40"]
-    asked = _two_ips(monkeypatch, fake)
+    asked = _two_ips(monkeypatch, prusalink)
     with pytest.raises(pl.PrusaLinkError):
         pl.version(p)
     assert set(asked) == {"10.0.6.40"}
 
 
-def test_the_live_status_says_the_address_that_answered(api, fake, monkeypatch):
+def test_the_live_status_says_the_address_that_answered(api, prusalink, monkeypatch):
     p = api.post("/printers", json={"name": "Prusa_2", "wired_ip": "10.0.6.40", "wireless_ip": "10.0.6.41",
                                     "connection_type": "prusalink", "prusalink_password": "secret123"}).json()
-    _two_ips(monkeypatch, fake)
+    _two_ips(monkeypatch, prusalink)
     out = api.get(f"/printers/{p['id']}/prusalink").json()
     assert out["reachable"] and out["prusalink_url"] == "http://10.0.6.41"
 
 
-def test_a_printer_that_lost_its_password_gets_it_back_from_the_nas_copy(db_session, fake, tmp_path):
+def test_a_printer_that_lost_its_password_gets_it_back_from_the_nas_copy(db_session, prusalink, tmp_path):
     p = _core_one(db_session)
     records_service.write_all(db_session, tmp_path)
     printer_service.update_printer(db_session, p.id, {"prusalink_password": ""})  # cleared here
@@ -399,7 +390,7 @@ def test_a_printer_that_lost_its_password_gets_it_back_from_the_nas_copy(db_sess
     assert out["printers_filled"] == ["Core One"] and p.prusalink_row.password == "secret123"
 
 
-def test_the_saved_password_is_shown_when_asked_for(api, fake):
+def test_the_saved_password_is_shown_when_asked_for(api, prusalink):
     printer = api.post("/printers", json={"name": "Core One", "wired_ip": "10.0.6.30"}).json()
     assert api.get(f"/printers/{printer['id']}/prusalink/password").status_code == 409  # not a PrusaLink printer
     api.patch(f"/printers/{printer['id']}", json={"connection_type": "prusalink"})

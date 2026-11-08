@@ -17,8 +17,7 @@ from app.services import source_model_service as svc
 
 from . import factories as make
 
-from .test_redraw_previews import _cube_stl_bytes
-from .test_scan import _write_tetrahedron
+from .factories import cube_stl_bytes as _cube_stl_bytes, write_tetrahedron as _write_tetrahedron
 
 PNG = b"\x89PNG\r\n\x1a\n"
 

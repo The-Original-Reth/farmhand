@@ -13,18 +13,6 @@ from app.services import storage_settings_service as svc
 from . import factories as make
 
 
-@pytest.fixture()
-def share(tmp_path, monkeypatch):
-    """A fake *connected* NAS share (a mount point) inside the area the Storage page may browse."""
-    area = tmp_path / "data"
-    nas = area / "nas" / "lab"
-    nas.mkdir(parents=True)
-    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
-    real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
-    return nas
-
-
 def _folder(share, name):
     d = share / name
     d.mkdir(parents=True, exist_ok=True)

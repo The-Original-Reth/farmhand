@@ -2,35 +2,16 @@ from __future__ import annotations
 
 import io
 import os
-import struct
 import time
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from app import storage
-from app.database import Base
 from app.models import Project, ProjectPart
 from app.services import project_files, project_records
 from app.services.project_scan import common as scan_common, folder_sync
 from app.services.project_files import DOC, STL
 from app.services.project_service import create_project, require_project, set_counts
-
-
-def _stl() -> bytes:
-    tri = struct.pack("<12fH", 0, 0, 1, 0, 0, 0, 10, 0, 0, 0, 10, 0, 0)
-    return b"\0" * 80 + struct.pack("<I", 1) + tri
-
-
-@pytest.fixture()
-def other_farmhand():
-    """A second Farmhand: its own (empty) database, sharing the same folders."""
-    engine = create_engine("sqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
-    db = sessionmaker(bind=engine, future=True)()
-    yield db
-    db.close()
+from .factories import stl_bytes as _stl
 
 
 def _shark(db) -> Project:

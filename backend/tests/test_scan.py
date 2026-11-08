@@ -4,7 +4,6 @@ import errno
 import hashlib
 import io
 import os
-import struct
 
 import pytest
 
@@ -14,17 +13,7 @@ from app.services import source_model_service as svc
 from app.services import storage_settings_service as storage_settings
 
 from .conftest import symlink
-
-
-def _write_tetrahedron(path):
-    """A small but valid binary STL, so thumbnailing really runs."""
-    v = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
-    out = bytearray(b"\0" * 80 + struct.pack("<I", 4))
-    for a, b, c in [(0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3)]:
-        out += struct.pack("<12fH", 0, 0, 1, *v[a], *v[b], *v[c], 0)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(bytes(out))
-    return path
+from .factories import write_tetrahedron as _write_tetrahedron
 
 
 @pytest.fixture()

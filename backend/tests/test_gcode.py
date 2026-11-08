@@ -7,15 +7,9 @@ from __future__ import annotations
 import os
 from urllib.parse import unquote
 
-import httpx
 import pytest
 
 from app.names import with_version
-from app.services.moonraker import client as mr_client
-from app.services.prusalink import client as pl_client
-
-from .fake_moonraker import FakeMoonraker
-from .fake_prusalink import FakePrusaLink
 
 
 # ------------------------------------------------------------------ "ver N" in a version's name
@@ -125,13 +119,6 @@ def test_a_pruned_version_cannot_be_given_a_gcode(farm):
 # ------------------------------------------------------------------ sending it to a Moonraker (Klipper) printer
 
 
-@pytest.fixture()
-def moonraker(monkeypatch):
-    f = FakeMoonraker()
-    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
-    return f
-
-
 def test_sending_a_gcode_to_a_klipper_printer_uploads_it_and_starts_it(farm, moonraker):
     c = farm["api"]
     v2 = _versions(farm)[2]["id"]
@@ -192,13 +179,6 @@ def test_a_printer_that_is_off_says_so(farm, moonraker):
 
 
 # ------------------------------------------------------------------ sending it to a PrusaLink printer (Core One)
-
-
-@pytest.fixture()
-def prusalink(monkeypatch):
-    f = FakePrusaLink()
-    monkeypatch.setattr(pl_client, "transport", httpx.MockTransport(f.handle))
-    return f
 
 
 def test_sending_a_gcode_to_a_prusalink_printer(farm, prusalink):

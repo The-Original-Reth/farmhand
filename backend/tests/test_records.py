@@ -3,30 +3,25 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
-import os
 
-import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app import config, records_store as rs, storage
+from app import records_store as rs
 from app.database import Base
 from app.models import Printer, PrinterEnergyReading, PrintJob, SourceFileType
 from app.services import bundle_service, config_service, printer_service, records_service
 from app.services import moonraker as mr
 from app.services import source_model_service as models_svc
-from app.services.moonraker import client as mr_client, history as mr_history
-
-from .fake_moonraker import FakeMoonraker
+from app.services.moonraker import history as mr_history
 
 
 @pytest.fixture()
-def fake(monkeypatch):
-    f = FakeMoonraker()
-    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
+def fake(moonraker, monkeypatch):
+    """The shared Moonraker, with every sync taking a meter reading."""
     monkeypatch.setattr(mr_history, "READING_SPACING", dt.timedelta(0))
-    return f
+    return moonraker
 
 
 def _printer_with_everything(db, fake, name="V2 BOG"):
@@ -279,17 +274,6 @@ def test_a_record_from_a_newer_farmhand_is_skipped(tmp_path):
 
 
 # ------------------------------------------------------------------ through the settings folder
-
-
-@pytest.fixture()
-def share(tmp_path, monkeypatch):
-    area = tmp_path / "data"
-    nas = area / "nas" / "lab"
-    nas.mkdir(parents=True)
-    monkeypatch.setattr(config.settings, "storage_browse_root", str(area))
-    real = str(nas.resolve())
-    monkeypatch.setattr(storage, "_is_mount", lambda p: os.path.realpath(p) == real)
-    return nas
 
 
 def test_the_settings_copy_and_restore_include_printers(db_session, fake, share):

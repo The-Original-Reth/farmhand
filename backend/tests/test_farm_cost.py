@@ -3,13 +3,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-import httpx
 import pytest
 
 from app.services import filament_cost
-from app.services.moonraker import client as mr_client
-
-from .fake_moonraker import FakeMoonraker
 
 
 def _ts(*args):
@@ -17,9 +13,8 @@ def _ts(*args):
 
 
 @pytest.fixture()
-def farm(api, monkeypatch):
-    fake = FakeMoonraker()
-    monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(fake.handle))
+def farm(api, moonraker):
+    fake = moonraker
     pid = api.post("/printers", json={"name": "VT 1190", "kind": "Voron", "wired_ip": "10.0.6.21"}).json()["id"]
     other = api.post("/printers", json={"name": "Idle", "kind": "Voron", "wired_ip": None}).json()["id"]
     return api, fake, pid, other
