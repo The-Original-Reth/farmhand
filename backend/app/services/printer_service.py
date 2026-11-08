@@ -55,14 +55,6 @@ def require_printer(db: Session, printer_id: int) -> Printer:
     return printer
 
 
-def set_decommissioned(db: Session, printer_id: int, decommissioned: bool) -> Printer:
-    printer = require_printer(db, printer_id)
-    printer.decommissioned = decommissioned
-    db.commit()
-    db.refresh(printer)
-    return printer
-
-
 def delete_printer(db: Session, printer_id: int) -> None:
     """
     Remove a decommissioned printer for good, with its print history, notes, connection, printer profiles and maintenance.

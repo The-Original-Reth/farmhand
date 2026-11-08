@@ -182,17 +182,6 @@ export function libraryRoutes(ctx) {
     if ((farm.jobs[p.id] || []).some((j) => j.status === "in_progress")) throw new HttpError(409, `${p.name} is printing, so a new print can't be started.`);
     return { sent: `gcodes/${v.gcode_name}`, printer: p.name };
   });
-  on("PATCH", "/bundles/versions/:id/monument", ({ id }, body) => {
-    const { v } = version(id);
-    if (body.monument) {
-      if (!body.note) throw new HttpError(422, "Monumenting a version requires a note explaining why it matters");
-      Object.assign(v, { monument: true, monument_note: body.note });
-    } else {
-      if (!body.confirm) throw new HttpError(422, "Un-monumenting re-exposes this version to pruning — pass confirm=True to proceed");
-      v.monument = false;
-    }
-    return versionDetail(v);
-  });
   on("DELETE", "/bundles/versions/:id", ({ id }, _b, q) => {
     requireConfirm(q);
     const { b, v } = version(id);

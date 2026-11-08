@@ -187,7 +187,7 @@ def test_a_decommissioned_printer_is_found_again_and_named(api, network):
     hosts["10.0.6.21"], hosts["10.0.6.30"] = FakeMoonraker(), FakeMoonraker()
     hosts["10.0.6.21"].interfaces = {"eth0": ["10.0.6.21"], "wlan0": ["10.0.6.121"]}
     old = api.post("/printers", json={"name": "Old V2", "wireless_ip": "10.0.6.121"}).json()  # known by its Wi-Fi IP
-    api.patch(f"/printers/{old['id']}/decommission", json={"decommissioned": True}).raise_for_status()
+    api.patch(f"/printers/{old['id']}", json={"decommissioned": True}).raise_for_status()
     api.post("/printers", json={"name": "Active", "wired_ip": "10.0.6.30"}).raise_for_status()
 
     found = api.get("/printers/discover", params={"cidr": "10.0.6.0/24"}).json()

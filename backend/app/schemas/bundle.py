@@ -52,12 +52,6 @@ class StarUpdate(BaseModel):
     version_id: int | None  # the version to star; null clears the star
 
 
-class MonumentUpdate(BaseModel):
-    monument: bool
-    note: str | None = None
-    confirm: bool = False
-
-
 class ThreeMFInspection(BaseModel):
     """What a 3MF says about itself, before anything is stored."""
 

@@ -34,8 +34,7 @@ files from the farm, not synthetic ones).
   as Orca has no physical printer in a 3MF. Built against a real OrcaSlicer
   2.4.2 file.
 - **Versioning engine** (`app/services/bundle_service.py`): the rolling
-  5-version full-file window, monument exemption (with required note to
-  monument, required confirmation to un-monument), and the locked-printer
+  5-version full-file window, monument exemption (version 1 is one), and the locked-printer
   rule (a bundle's printer can't change after creation; uploading an
   "Update" whose embedded profile doesn't match is rejected).
 - **Upload flow** matching the UI decisions made in the mockup: creating a
@@ -171,7 +170,6 @@ Postgres instance running.
 | GET | `/printers/discover/range` | The range Scan network starts with: `{cidr}`, the /24 of the server's own private IPv4 address, or, in a Docker container (which only sees Docker's network), the /24 most printers' IPs are in; `null` when neither is known |
 | GET | `/printers/discover?cidr=192.168.1.0/24` | Printers in a private IPv4 range (10.x, 172.16–31.x, 192.168.x; up to a /22; anything else is a 422) that aren't in Farmhand yet: Klipper / Kalico, found by their Moonraker on port 7125, and Prusas, by their PrusaLink on port 80 (its `/api/version`: without the password it turns the question down with its own Digest realm, "Printer API", so it's found as `connection_type: "prusalink"`, `needs_api_key: true`, no hostname). Addresses an active printer already has are skipped; a printer found at a decommissioned one's address is listed with `decommissioned_id` / `decommissioned_name` (null otherwise), so the UI brings that one back (a PATCH of it) instead of adding it again. Each printer's `/machine/system_info` interfaces give `link` (`wired` / `wireless` by interface name, e.g. `eth0` / `wlan0`; null when unknown) and its `wired_ip` / `wireless_ip`. A printer answering on both is listed once, at its wired IP, and one whose other IP is already in Farmhand is skipped. Nothing is added; each answer is `{ip, connection_type, address, web_url, hostname, firmware, version, state, needs_api_key, link, wired_ip, wireless_ip, decommissioned_id, decommissioned_name}` |
 | PATCH | `/printers/{id}` | Edit a printer — partial update (only fields present are changed; `null` clears an IP/type). Renaming is safe: see "Renaming a printer" below |
-| PATCH | `/printers/{id}/decommission` | Toggle decommissioned |
 | DELETE | `/printers/{id}?confirm=true` | Delete a decommissioned printer with its print history, notes, connection, printer profiles, parts and maintenance. 409 while it's active or still has 3MF files (the message says which) |
 | PUT | `/printers/{id}/notes` | Save the printer's notes. Send the `base_revision` the text was based on; if someone saved since, answers **409** with their current notes and changes nothing (same rules as a model's notes, shared code in `app/notes.py`) |
 | GET | `/printers/{id}/bundles` | 3MF bundles locked to a printer |
@@ -216,7 +214,6 @@ Postgres instance running.
 | DELETE | `/bundles/{id}?confirm=true` | Permanently delete a bundle and all its versions |
 | DELETE | `/source-models/{id}/versions/{v}?confirm=true` | Delete one STL version's file (the folder stays) |
 | DELETE | `/source-models/{id}?confirm=true&cascade=` | Delete an STL folder. Bundles sliced only from it are refused (409) unless `cascade=true`, which deletes them too; mixed-plate bundles that use other models are just unlinked |
-| PATCH | `/bundles/versions/{id}/monument` | Flag/unflag a version as a monument |
 | GET | `/bundles/versions/{id}/download/3mf` | Download the original 3MF (404s if pruned) |
 | GET | `/bundles/versions/{id}/download/gcode` | Download the gcode (404s if none was uploaded, or if pruned) |
 | GET | `/farm-cost?tz=` | The filament each printer used, by month in the viewer's time zone: `{printers: [{printer_id, months: [{key, prints, grams, filament_cost, unweighed, uncosted}], days, energy_days: [{key, whole, partial}]}], records: {folder, problem, saved}}` (the Farm cost page; `days`: the same as `months` per day, key `2026-10-05`; `energy_days`: the power meter's rise per day, for a printer clicked while looking at a month; `records`: the farm cost folder, where each month's CSV is saved once it's over) |

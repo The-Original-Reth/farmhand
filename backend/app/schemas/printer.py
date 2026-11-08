@@ -215,10 +215,6 @@ class DiscoveredPrinterOut(BaseModel):
     decommissioned_name: str | None = None
 
 
-class PrinterDecommission(BaseModel):
-    decommissioned: bool
-
-
 class PrinterUpdate(BaseModel):
     """
     Partial update: only fields actually present in the request are applied

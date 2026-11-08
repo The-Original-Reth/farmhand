@@ -27,7 +27,6 @@ def test_anything_else_is_a_real_fault_and_is_not_hidden():
 @pytest.mark.parametrize("method, path, kwargs", [
     ("get", "/bundles/versions/999/download/3mf", {}),
     ("get", "/bundles/versions/999/download/gcode", {}),
-    ("patch", "/bundles/versions/999/monument", {"json": {"monument": True, "note": "keep"}}),
     ("patch", "/bundles/versions/999", {"json": {"filename": "x"}}),
     ("put", "/bundles/999/star", {"json": {"version_id": None}}),
     ("put", "/bundles/999/notes", {"json": {"notes": "x", "base_revision": 0}}),

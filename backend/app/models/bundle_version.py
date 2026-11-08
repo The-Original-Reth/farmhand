@@ -21,10 +21,8 @@ class BundleVersion(Base):
         kept — a version is re-parsed fresh from its own stored 3MF at
         upload time, not cached from a prior parse, so `settings` here IS
         that fresh parse's output, permanently retained even after pruning.
-      - version 1 is a monument by default; monumenting requires a note;
-        un-monumenting requires explicit confirmation (modeled here as the
-        service layer requiring an explicit confirm flag, not a DB
-        constraint).
+      - version 1 is a monument by default (kept in full however many
+        versions follow); Load all brings a version's monument back.
       - Any two arbitrary versions (not just adjacent ones) can be diffed;
         `settings` being a flat JSON dict of every parsed key is exactly
         what makes that possible without a rigid per-setting schema, and

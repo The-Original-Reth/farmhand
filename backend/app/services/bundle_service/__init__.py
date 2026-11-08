@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from .queries import get_bundle, require_bundle, require_version, list_all_bundles, list_bundles_for_printer, list_bundles_for_source_model
 from .uploads import inspect_3mf, create_bundle, add_bundle_version
-from .versions import attach_gcode, set_monument, download_bundle_version, delete_bundle, delete_bundle_version, rename_version
+from .versions import attach_gcode, download_bundle_version, delete_bundle, delete_bundle_version, rename_version
 from .marks import StarNotAllowed, run_star_existing, set_starred_version, set_notes, star_existing
 from ...notes import NotesConflict  # noqa: F401  (raised by set_notes)
 
@@ -26,7 +26,6 @@ __all__ = [
     "create_bundle",
     "add_bundle_version",
     "attach_gcode",
-    "set_monument",
     "download_bundle_version",
     "delete_bundle",
     "delete_bundle_version",

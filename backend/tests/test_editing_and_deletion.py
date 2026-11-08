@@ -44,7 +44,7 @@ def test_a_decommissioned_printer_is_deleted_with_everything_kept_about_it(api):
     r = api.delete(f"/printers/{pid}", params={"confirm": "true"})
     assert r.status_code == 409 and "Decommission it first" in r.json()["detail"]  # still active
 
-    api.patch(f"/printers/{pid}/decommission", json={"decommissioned": True}).raise_for_status()
+    api.patch(f"/printers/{pid}", json={"decommissioned": True}).raise_for_status()
     assert api.delete(f"/printers/{pid}", params={"confirm": "true"}).status_code == 204
     assert api.get(f"/printers/{pid}").status_code == 404
     assert api.get("/printers").json() == []
@@ -54,7 +54,7 @@ def test_a_decommissioned_printer_is_deleted_with_everything_kept_about_it(api):
 def test_a_printer_with_3mf_files_isnt_deleted(db_session, sample_3mf_paths):
     printer = make.printer(db_session, "VT 1190")
     make.bundle(db_session, sample_3mf_paths["shark_vt1190"], printer_id=printer.id)
-    printer_service.set_decommissioned(db_session, printer.id, True)
+    printer_service.update_printer(db_session, printer.id, {"decommissioned": True})
     with pytest.raises(ValueError, match="still has 1 3MF file. Delete it from its page first"):
         printer_service.delete_printer(db_session, printer.id)
     assert printer_service.get_printer(db_session, printer.id) is not None

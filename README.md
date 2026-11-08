@@ -400,11 +400,6 @@ documentation); change them like any other.
 **Settings** — connecting a NAS (SMB or NFS) and choosing where STL, 3MF and project files go (see "Network storage"),
 and where a copy of Farmhand's settings and records is kept
 
-**Not wired into the UI yet** (the API supports these, nothing calls them):
-- Monument flagging/unflagging (`PATCH /bundles/versions/{id}/monument`) — the UI shows monuments read-only.
-- Deleting printers (retire one with "Decommissioned" instead — its history stays). Printers can be added
-  from the Printers page or straight from a 3MF upload.
-
 ## Versions
 
 A newer file becomes a **new version** of the entry it replaces, shown **above** the older ones.

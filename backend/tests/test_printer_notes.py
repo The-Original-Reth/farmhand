@@ -31,7 +31,7 @@ def test_editing_or_retiring_a_printer_leaves_its_notes_alone(db_session):
     p = make.printer(db_session)
     svc.set_notes(db_session, p.id, "keep me", 0)
     svc.update_printer(db_session, p.id, {"kind": "Voron 2.4", "wired_ip": "10.0.0.9"})
-    svc.set_decommissioned(db_session, p.id, True)
+    svc.update_printer(db_session, p.id, {"decommissioned": True})
     after = svc.get_printer(db_session, p.id)
     assert after.notes == "keep me" and after.notes_revision == 1 and after.decommissioned
 

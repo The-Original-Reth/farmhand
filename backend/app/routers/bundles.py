@@ -12,7 +12,7 @@ from ..errors import answer_errors
 from ..models import BundleVersion
 from ..names import download_name
 from ..schemas.bundle import (
-    BundleOut, BundleVersionDetailOut, BundleVersionRename, MonumentUpdate, StarUpdate, ThreeMFInspection,
+    BundleOut, BundleVersionDetailOut, BundleVersionRename, StarUpdate, ThreeMFInspection,
 )
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..services import bundle_service, send_print
@@ -121,14 +121,6 @@ def save_notes(bundle_id: int, payload: NotesUpdate, db: Session = Depends(get_d
 def get_bundle_version(version_id: int, db: Session = Depends(get_db)):
     """Full detail including parsed settings — this is what the compare/diff view fetches for each side."""
     return require_bundle_version(db, version_id)
-
-
-@router.patch("/versions/{version_id}/monument", response_model=BundleVersionDetailOut)
-def set_monument(version_id: int, payload: MonumentUpdate, db: Session = Depends(get_db)):
-    with answer_errors():
-        return bundle_service.set_monument(
-            db, version_id=version_id, monument=payload.monument, note=payload.note, confirm=payload.confirm
-        )
 
 
 @router.patch("/versions/{version_id}", response_model=BundleVersionDetailOut)

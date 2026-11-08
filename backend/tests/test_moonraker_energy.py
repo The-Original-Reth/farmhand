@@ -86,7 +86,7 @@ def test_the_poller_syncs_every_active_printer_and_survives_one_being_off(db_ses
     on = _printer(db_session, "On", "10.0.6.21")
     printer_service.create_printer(db_session, name="No address", kind=None, wired_ip=None, wireless_ip=None)
     retired = _printer(db_session, "Retired", "10.0.6.22")
-    printer_service.set_decommissioned(db_session, retired.id, True)
+    printer_service.update_printer(db_session, retired.id, {"decommissioned": True})
     monkeypatch.setattr(printer_poller, "SessionLocal", sessionmaker(bind=db_session.get_bind(), future=True))
     moonraker.add_job("000001", "a.gcode")
     printer_poller.PrinterPoller().run_once()

@@ -49,28 +49,6 @@ def enforce_rolling_window(db: Session, bundle: Bundle) -> None:
             db.add(v)
 
 
-def set_monument(
-    db: Session, *, version_id: int, monument: bool, note: str | None = None, confirm: bool = False
-) -> BundleVersion:
-    version = require_version(db, version_id)
-
-    if monument:
-        if not note:
-            raise ValueError("Monumenting a version requires a note explaining why it matters")
-        version.monument = True
-        version.monument_note = note
-    else:
-        if not confirm:
-            raise ValueError(
-                "Un-monumenting re-exposes this version to pruning — pass confirm=True to proceed"
-            )
-        version.monument = False
-
-    db.commit()
-    db.refresh(version)
-    return version
-
-
 def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | None]:
     """
     Returns (threemf_path, gcode_path) — gcode_path may be None if gcode
@@ -81,8 +59,7 @@ def download_bundle_version(db: Session, version_id: int) -> tuple[str, str | No
     if not version.full_files_retained:
         raise ValueError(
             "This version's original files were pruned (parsed parameters are still available, "
-            "but there's no 3MF/gcode left to download) — flag it as a monument before this "
-            "happens to keep it downloadable"
+            "but there's no 3MF/gcode left to download)"
         )
     return version.threemf_path, version.gcode_path
 

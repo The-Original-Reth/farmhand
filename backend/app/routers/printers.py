@@ -8,7 +8,7 @@ from ..errors import answer_errors
 from ..schemas.bundle import BundleOut
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import (
-    DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, PrinterDecommission, PrinterOut, PrinterUpdate, SubPrinterCopyIn,
+    DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, PrinterOut, PrinterUpdate, SubPrinterCopyIn,
     SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow, SubPrinterSettingsCopyOut,
 )
 from ..services import bundle_service, print_progress, printer_discovery, printer_service, sub_printer_service
@@ -80,12 +80,6 @@ def delete_printer(printer_id: int, confirm: bool = Query(False), db: Session = 
     with answer_errors(409):
         printer_service.delete_printer(db, printer_id)
     return Response(status_code=204)
-
-
-@router.patch("/{printer_id}/decommission", response_model=PrinterOut)
-def set_decommissioned(printer_id: int, payload: PrinterDecommission, db: Session = Depends(get_db)):
-    with answer_errors():
-        return printer_service.set_decommissioned(db, printer_id, payload.decommissioned)
 
 
 @router.get("/{printer_id}/bundles", response_model=list[BundleOut])

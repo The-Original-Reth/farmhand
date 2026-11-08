@@ -210,44 +210,6 @@ def test_rolling_window_prunes_oldest_non_monument_version(db_session, sample_3m
         assert versions_by_number[n].threemf_path is not None
 
 
-def test_monumenting_requires_a_note(db_session, sample_3mf_paths):
-    printer, model = _setup_printer_and_model(db_session, "VT 1190")
-    with open(sample_3mf_paths["shark_vt1190"], "rb") as f:
-        bundle = bundle_service.create_bundle(
-            db_session,
-            source_model_ids=[model.id],
-            threemf_file_obj=f,
-            threemf_filename="shark.3mf",
-            gcode_file_obj=_fake_gcode(),
-            gcode_filename="shark.gcode",
-        )
-    v1 = bundle.versions[0]
-
-    with pytest.raises(ValueError, match="requires a note"):
-        bundle_service.set_monument(db_session, version_id=v1.id, monument=True, note=None)
-
-
-def test_unmonumenting_requires_confirmation(db_session, sample_3mf_paths):
-    printer, model = _setup_printer_and_model(db_session, "VT 1190")
-    with open(sample_3mf_paths["shark_vt1190"], "rb") as f:
-        bundle = bundle_service.create_bundle(
-            db_session,
-            source_model_ids=[model.id],
-            threemf_file_obj=f,
-            threemf_filename="shark.3mf",
-            gcode_file_obj=_fake_gcode(),
-            gcode_filename="shark.gcode",
-        )
-    v1 = bundle.versions[0]  # monument=True by default
-
-    with pytest.raises(ValueError, match="confirm=True"):
-        bundle_service.set_monument(db_session, version_id=v1.id, monument=False, confirm=False)
-
-    # with confirmation, it goes through
-    updated = bundle_service.set_monument(db_session, version_id=v1.id, monument=False, confirm=True)
-    assert updated.monument is False
-
-
 def test_mixed_plate_bundle_links_multiple_source_models(db_session, sample_3mf_paths):
     """The corrected many-to-many relationship — one 3MF, multiple source models."""
     printer_service.create_printer(  # the printer the 3MF was sliced for has to be registered
