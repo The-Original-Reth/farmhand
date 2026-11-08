@@ -4,7 +4,8 @@ import { c } from "../theme.js";
 import { useData } from "../data.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
 import { WebUiButton } from "../printers/PrinterList.jsx";
-import { EmptyBox, HeadingButton, PickDialog, plural, TakeOutButton } from "./pieces.jsx";
+import { EmptyBox, HeadingButton, PickDialog, TakeOutButton } from "./pieces.jsx";
+import { plural } from "../lib/format.js";
 
 export function AddPrinterButton({ onClick }) {
   return (

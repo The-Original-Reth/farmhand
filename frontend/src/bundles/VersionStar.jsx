@@ -1,16 +1,10 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
-import { c } from "../theme.js";
+import { c, fixed } from "../theme.js";
 import { errorText, setStarredVersion } from "../api.js";
 import { useData } from "../data.jsx";
 
-// Stars are real metal colours, not theme roles: the initial version is silver and the starred version is gold in
-// every scheme (the theme's "amber" is blue or violet in some of them). Each has a darker edge so it holds up on
-// light backgrounds.
-const STAR_GOLD = "#F2C230";
-const STAR_GOLD_EDGE = "#B8860B";
-const STAR_SILVER = "#C9CDD3";
-const STAR_SILVER_EDGE = "#868B93";
+// Stars are real metal colours (fixed), not theme roles: the theme's "amber" is blue or violet in some schemes.
 
 // The star beside a 3MF version's thumbnail. v1, the initial upload, is always silver. Every later version has an
 // outline star; clicking one turns it gold, and only one version of a 3MF is gold at a time, so starring another
@@ -22,7 +16,7 @@ export function VersionStar({ bundle, ver }) {
   const [hover, setHover] = useState(false);
 
   if (ver.v === 1) {
-    return <Star data-testid="initial-star" size={13} color={STAR_SILVER_EDGE} fill={STAR_SILVER} aria-label="Initial version" />;
+    return <Star data-testid="initial-star" size={13} color={fixed.silverEdge} fill={fixed.silver} aria-label="Initial version" />;
   }
 
   const busy = pending !== undefined;
@@ -55,10 +49,10 @@ export function VersionStar({ bundle, ver }) {
       style={{
         display: "flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, padding: 0,
         border: "none", background: "none", cursor: busy ? "default" : "pointer",
-        color: error ? c.danger : starred ? STAR_GOLD_EDGE : hover ? c.textMuted : c.textFaint,
+        color: error ? c.danger : starred ? fixed.goldEdge : hover ? c.textMuted : c.textFaint,
       }}
     >
-      <Star size={13} fill={starred ? STAR_GOLD : "none"} />
+      <Star size={13} fill={starred ? fixed.gold : "none"} />
     </button>
   );
 }

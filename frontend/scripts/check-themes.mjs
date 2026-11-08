@@ -1,6 +1,6 @@
 // Checks that every colour scheme is legible: WCAG contrast ratios for text on the surfaces it sits on.
 // Run:  node scripts/check-themes.mjs          (exits non-zero if a scheme fails)
-import { PRESETS, SLICER_SCHEMES } from "../src/palettes.js";
+import { FIXED, PRESETS, SLICER_SCHEMES } from "../src/palettes.js";
 
 const lum = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -49,6 +49,12 @@ for (const [slicer, modes] of Object.entries(SLICER_SCHEMES)) {
     bad.forEach(([n, fg, bg]) => console.log(`        ${n}: ${fg} on ${bg} = ${ratio(fg, bg).toFixed(2)}:1 (needs ${MIN})`));
     if (bad.length) failures++;
   }
+}
+// The colours no scheme changes: a camera's labels and messages over its black picture
+for (const [n, fg, bg] of [["camera label on camera", FIXED.cameraText, FIXED.camera], ["camera message on camera", FIXED.cameraMessage, FIXED.camera]]) {
+  const r = ratio(fg, bg);
+  console.log(`${r < MIN ? "FAIL" : "ok  "} ${n} at ${r.toFixed(1)}:1`);
+  if (r < MIN) failures++;
 }
 console.log(failures ? `\n${failures} scheme(s) not legible enough` : "\nevery scheme is legible");
 process.exit(failures ? 1 : 0);

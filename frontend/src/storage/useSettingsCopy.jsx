@@ -7,6 +7,7 @@ import { useAction } from "../hooks/useAction.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { RestoreResult } from "./ConfigLocationCard.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
+import { plural } from "../lib/format.js";
 
 // Farmhand's settings copy on the NAS: Save all, Load all settings, where it goes, and what to do when the folder chosen
 // already holds one. initialInfo: its location as the Settings page loaded it. shares: the connected network shares,
@@ -109,9 +110,9 @@ export function useSettingsCopy({ initialInfo, shares, onSettingsRestored, reloa
                 That folder already has a Farmhand settings file
                 {configFound.summary?.savedAt ? <> (saved {new Date(configFound.summary.savedAt).toLocaleString()})</> : null}: colour scheme{" "}
                 <b style={{ color: c.heading }}>{configFound.summary?.scheme}</b>
-                {configFound.summary?.shares ? `, ${configFound.summary.shares} network share${configFound.summary.shares === 1 ? "" : "s"}` : ""}
-                {configFound.summary?.printers ? `, ${configFound.summary.printers} printer${configFound.summary.printers === 1 ? "" : "s"}` : ""}
-                {configFound.summary?.models ? `, notes for ${configFound.summary.models} model${configFound.summary.models === 1 ? "" : "s"}` : ""}. What
+                {configFound.summary?.shares ? `, ${plural(configFound.summary.shares, "network share")}` : ""}
+                {configFound.summary?.printers ? `, ${plural(configFound.summary.printers, "printer")}` : ""}
+                {configFound.summary?.models ? `, notes for ${plural(configFound.summary.models, "model")}` : ""}. What
                 should Farmhand do with it?
               </>
             ) : (

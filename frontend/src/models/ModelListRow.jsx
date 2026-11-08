@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { StickyNote } from "lucide-react";
-import { c } from "../theme.js";
+import { c, fixed } from "../theme.js";
 import { uiText } from "../styles.js";
 
 import { Badge, Thumb } from "../components/common/ui.jsx";
@@ -27,7 +27,7 @@ export function ModelListRow({ model, bundleCount, printerCount, borderBottom, b
         borderRight: borderRight ? `1px solid ${c.border}` : "none",
       }}
     >
-      <Thumb src={model.thumb} size={56} background="#FFFFFF" placeholderIcon />
+      <Thumb src={model.thumb} size={56} background={fixed.preview} placeholderIcon />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div
           data-testid="model-name"

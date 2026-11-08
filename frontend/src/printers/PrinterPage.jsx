@@ -22,6 +22,7 @@ import { WebUiButton } from "./PrinterList.jsx";
 import { EditPrinterForm } from "./PrinterForms.jsx";
 import { PrusaLinkCard, usePrusaLink } from "./PrusaLink.jsx";
 import { SubPrinters, usesSubPrinter } from "./SubPrinters.jsx";
+import { plural } from "../lib/format.js";
 
 // Searching the 3MF files on one printer: like the Models search, every word has to be found, in any of the file's
 // names (every version), the printer profiles they were sliced with, the models it was sliced from, its slicer, or its notes.
@@ -252,7 +253,7 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
                 disabled={allBundles.length > 0}
                 title={
                   allBundles.length > 0
-                    ? `It still has ${allBundles.length} 3MF file${allBundles.length === 1 ? "" : "s"}. Delete ${allBundles.length === 1 ? "it" : "them"} first, then the printer can be deleted.`
+                    ? `It still has ${plural(allBundles.length, "3MF file")}. Delete ${allBundles.length === 1 ? "it" : "them"} first, then the printer can be deleted.`
                     : "Delete this decommissioned printer from Farmhand"
                 }
                 style={toolButton(12, { marginBottom: 3, color: c.danger, opacity: allBundles.length > 0 ? 0.5 : 1, cursor: allBundles.length > 0 ? "default" : "pointer" })}

@@ -1,18 +1,19 @@
 import { useState } from "react";
-import { Box, ChevronDown, FileBox, FileCode, FileText, PenTool, Send, Upload } from "lucide-react";
+import { Box, ChevronDown, FileBox, FileCode, FileText, PenTool, Upload } from "lucide-react";
 import {
   deleteProjectFile, deleteProjectFileVersion, errorText, sendProjectGcode, setProjectStlCounts, uploadProjectFile,
   uploadProjectFileVersion, uploadProjectGcode,
 } from "../api.js";
-import { c, fs } from "../theme.js";
+import { c, fs, fixed } from "../theme.js";
 import { useData } from "../data.jsx";
+import { GcodeLine } from "../bundles/GcodeRow.jsx";
 import { useAction } from "../hooks/useAction.js";
-import { formatBytes } from "../lib/format.js";
+import { formatBytes, plural } from "../lib/format.js";
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
-import { fieldBox, headerButton, monoText, toolButton, uiText } from "../styles.js";
-import { Card, CardTitle, HeadingButton, MoveButton, nameStyle, OlderToggle, plural, ProjectOnlyTag } from "./pieces.jsx";
+import { fieldBox, monoText, toolButton, uiText } from "../styles.js";
+import { Card, CardTitle, HeadingButton, MoveButton, nameStyle, OlderToggle, ProjectOnlyTag } from "./pieces.jsx";
 
 // How many: "have / need", changed right there (each saved when the box is left or Enter is pressed; one out of range
 // goes back). Amber while there are fewer than needed, green once there are enough. `onSave({ have })` or
@@ -217,13 +218,13 @@ export function FileCard({ project, kind, file, onNewVersion, onMove, grip }) {
       }
     >
       <FileVersionRow ver={latest} isLatest opens={kind.opens} onDelete={() => setDeleting(latest)} />
-      {latest.gcodeName && <GcodeLine project={project} file={file} ver={latest} printer={printer} />}
+      {latest.gcodeName && <GcodeLine ver={latest} href={latest.gcodeDownload} printer={printer} send={() => sendProjectGcode(project.id, file.id, latest.v)} indent={108} />}
       <div id={bodyId}>
         {showOlder &&
           older.map((v) => (
             <div key={v.v}>
               <FileVersionRow ver={v} opens={kind.opens} onDelete={() => setDeleting(v)} />
-              {v.gcodeName && <GcodeLine project={project} file={file} ver={v} printer={printer} />}
+              {v.gcodeName && <GcodeLine ver={v} href={v.gcodeDownload} printer={printer} send={() => sendProjectGcode(project.id, file.id, v.v)} indent={108} />}
             </div>
           ))}
       </div>
@@ -294,43 +295,6 @@ function DocLine({ file, grip, bodyId, showOlder, onToggleOlder, onNewVersion, o
   );
 }
 
-// A project 3MF version's G-code, on a line under it: its name, Download, and Send to the 3MF's printer (asked first:
-// it starts printing straight away)
-function GcodeLine({ project, file, ver, printer }) {
-  const [confirming, setConfirming] = useState(false);
-  const [sent, setSent] = useState(null);
-  return (
-    <div data-testid="threemf-gcode" data-version={ver.v} style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 9px 108px", flexWrap: "wrap" }}>
-      <FileCode size={13} color={c.textFaint} />
-      <span style={uiText(12, c.textFaint)}>G-code</span>
-      <span style={monoText(12, c.textPrimary, { minWidth: 0, overflowWrap: "anywhere" })}>{ver.gcodeName}</span>
-      {sent && <span style={uiText(12, c.green)}>Sent to {sent.printer} and started</span>}
-      <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-        <DownloadButton href={ver.gcodeDownload} />
-        {printer && (
-          <button data-testid="threemf-gcode-send" onClick={() => setConfirming(true)} title={`Send this G-code to ${printer.name} and start printing it`} style={headerButton()}>
-            <Send size={12} />
-            Send to {printer.name}
-          </button>
-        )}
-      </div>
-      {confirming && (
-        <ConfirmDialog
-          title="Send to printer"
-          confirmLabel="Send and print"
-          tone="amber"
-          onClose={() => setConfirming(false)}
-          onConfirm={async () => setSent(await sendProjectGcode(project.id, file.id, ver.v))}
-        >
-          Send <b style={{ color: c.heading }}>{ver.gcodeName}</b> to <b style={{ color: c.heading }}>{printer.name}</b> and
-          start printing it now? Make sure the bed is clear and the right filament is loaded. A file of the same name on
-          the printer is replaced.
-        </ConfirmDialog>
-      )}
-    </div>
-  );
-}
-
 // Upload the G-code sliced from a project 3MF version (replacing one it had)
 function GcodeUpload({ project, file, ver, onClose }) {
   const { putProject } = useData();
@@ -368,7 +332,7 @@ function FileVersionRow({ ver, isLatest = false, onDelete, opens = false }) {
     >
       {!opens && (
         <a href={ver.preview || undefined} target="_blank" rel="noreferrer" title={ver.preview ? "Open the preview" : "No preview for this kind of file"}>
-          <Thumb src={ver.preview} size={64} background="#FFFFFF" placeholderIcon />
+          <Thumb src={ver.preview} size={64} background={fixed.preview} placeholderIcon />
         </a>
       )}
       <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 26, flexShrink: 0 })}>v{ver.v}</span>

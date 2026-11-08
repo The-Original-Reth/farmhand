@@ -21,8 +21,8 @@ export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined,
 export const fmtMoney = (v) => (v == null ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 // a cost in dollars: "$3.73"
 export const fmtCost = (v) => (v == null ? "—" : `$${fmtMoney(v)}`);
-// "1 file", "3 files"
-export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// "1 file", "3 files" (many: when it isn't just an "s" more)
+export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // a hover hint for something with notes: its notes' first 120 characters
 export const notesHint = (notes) => `Has notes: ${notes.slice(0, 120)}${notes.length > 120 ? "…" : ""}`;
 // a file or a disk's size: "512 B", "3.4 MB", "120 GB"

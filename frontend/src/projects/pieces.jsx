@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, FolderInput } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
+import { c, fs, ui, fixed } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
 import { nameCollator } from "../models/modelSort.js";
@@ -8,10 +8,10 @@ import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { SearchBox } from "../components/common/fields.jsx";
 import { Row, Thumb } from "../components/common/ui.jsx";
 import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
+import { plural } from "../lib/format.js";
 
 // What a project's page is built from: the pieces its sections share
 
-export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // What an empty section (or list) says, in a slim box
 export function EmptyBox({ children }) {
@@ -152,7 +152,7 @@ export function PickDialog({ title, width = 560, noun, searchPlaceholder, items,
         ) : (
           shown.map((x) => (
             <Row key={x.id} hoverable={false}>
-              {x.Icon ? <x.Icon size={15} color={c.textFaint} /> : <Thumb src={x.thumb} size={36} plateGrid={x.plateGrid} background={x.plateGrid ? undefined : "#FFFFFF"} placeholderIcon />}
+              {x.Icon ? <x.Icon size={15} color={c.textFaint} /> : <Thumb src={x.thumb} size={36} plateGrid={x.plateGrid} background={x.plateGrid ? undefined : fixed.preview} placeholderIcon />}
               <div style={{ flex: 1, minWidth: 0, marginLeft: x.Icon ? 10 : 12 }}>
                 <div style={x.mono ? monoText(12, c.textPrimary, { overflowWrap: "anywhere" }) : uiText(13, c.textPrimary, { overflowWrap: "anywhere" })}>{x.name}</div>
                 {x.sub && <div style={uiText(12, c.textFaint, { marginTop: 2 })}>{x.sub}</div>}
@@ -183,7 +183,7 @@ export function PickDialog({ title, width = 560, noun, searchPlaceholder, items,
 export function VersionLine({ testId, ver, isLatest, thumb, plateGrid = false, filename, details, children }) {
   return (
     <div data-testid={testId} data-version={ver.v} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 16px", borderTop: `1px solid ${c.border}`, flexWrap: "wrap" }}>
-      <Thumb src={thumb} size={64} plateGrid={plateGrid} background={plateGrid ? undefined : "#FFFFFF"} placeholderIcon />
+      <Thumb src={thumb} size={64} plateGrid={plateGrid} background={plateGrid ? undefined : fixed.preview} placeholderIcon />
       <span style={monoText(12, isLatest ? c.amber : c.textFaint, { width: 30 })}>v{ver.v}</span>
       <div style={{ flex: "1 1 220px", minWidth: 0 }}>
         {filename && <div style={monoText(12, c.textPrimary, { overflowWrap: "anywhere" })}>{filename}</div>}

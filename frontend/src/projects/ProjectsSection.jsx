@@ -11,12 +11,13 @@ import { TextField } from "../components/common/fields.jsx";
 import { Row, SectionToggle, TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, UploadDialog } from "./ProjectFiles.jsx";
-import { EmptyBox, plural } from "./pieces.jsx";
+import { EmptyBox } from "./pieces.jsx";
 import { ScanProjectsDialog } from "./ScanProjects.jsx";
 import { StlActions, StlFiles } from "./StlSection.jsx";
 import { ThreemfActions, ThreemfFiles } from "./ThreemfSection.jsx";
 import { AddPrinterButton, ProjectPrinters } from "./ProjectPrinters.jsx";
 import { BomActions, BomList } from "./BomSection.jsx";
+import { plural } from "../lib/format.js";
 
 // The Projects page: the list of projects, or one project's own page
 // onOpenModel(modelId) / onOpenPrinter(printerId): that model's or printer's own page

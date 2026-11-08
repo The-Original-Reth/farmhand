@@ -80,8 +80,6 @@ export const saveConfigOnExit = (patch) => {
   }
 };
 
-export const saveConfigNow = () => post("/settings/config/save-now");
-
 // Save all: every setting, printer and model written to the settings folder now. With no folder chosen, Farmhand picks
 // "farmhand-configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
 // answered with setConfigLocation({ path: found.path, ifExists }).

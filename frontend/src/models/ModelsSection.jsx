@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Lock, Printer, Search, Upload } from "lucide-react";
-import { c, fs, mono, ui } from "../theme.js";
+import { c, fs, mono, ui, fixed } from "../theme.js";
 import { fieldBox, linkButton, monoText, toolButton, uiText } from "../styles.js";
 import { renameBundle, renameModel } from "../api.js";
 import { useData } from "../data.jsx";
@@ -23,6 +23,7 @@ import { UploadStlForm } from "./UploadStlForm.jsx";
 import { AddModelFileForm, DeleteModelButton } from "./modelActions.jsx";
 import { MODEL_SORTS, nameCollator, sortModelRows } from "./modelSort.js";
 import { NotesSection } from "../notes/NotesSection.jsx";
+import { plural } from "../lib/format.js";
 
 function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleLabel = "Upload 3MF" }) {
   return (
@@ -309,7 +310,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <Thumb src={model.thumb} size={64} background="#FFFFFF" placeholderIcon />
+              <Thumb src={model.thumb} size={64} background={fixed.preview} placeholderIcon />
               <div>
                 <div style={uiText(14, c.heading)}>
                   <EditableName value={model.name} label="this model file" extension={{ STL: ".stl", OBJ: ".obj", STEP: ".step" }[model.type] || ".stl"} testId="model-name" textStyle={{ ...ui, fontSize: fs(14) }} onSave={async (name) => putModel(await renameModel(model.id, name))} />
@@ -321,7 +322,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={uiText(12, c.textFaint)}>
-                {sourceList.length} version{sourceList.length === 1 ? "" : "s"}
+                {plural(sourceList.length, "version")}
               </span>
               {sourceRest.length > 0 && (
                 <ChevronRight

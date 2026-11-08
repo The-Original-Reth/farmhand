@@ -9,7 +9,7 @@ import { SegmentedToggle } from "../components/common/fields.jsx";
 import { Badge } from "../components/common/ui.jsx";
 import { FolderPicker } from "../storage/FolderPicker.jsx";
 import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
-import { plural } from "./pieces.jsx";
+import { plural } from "../lib/format.js";
 
 // Scan projects: the project files folder scanned at once (every project folder there that isn't one of this Farmhand's
 // projects brought in: another Farmhand's sharing it, or one dropped in by hand), another folder's project folders

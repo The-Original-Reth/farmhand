@@ -10,18 +10,18 @@ export const unescape = (v) => String(v).replace(/\\(.)/g, (_, ch) => (ch === "n
 // A preset's name as the slicer's drop-down shows it, without the escapes and quotes it's saved with
 export const presetName = (v) => unescape(v || "").replace(/^"|"$/g, "");
 // One value of a per-extruder (or per-filament) setting: they're kept joined, by ";" when the values hold commas
-export const nth = (raw, index) => {
+const nth = (raw, index) => {
   if (raw == null || index == null) return raw;
   const parts = String(raw).split(String(raw).includes(";") ? ";" : ",");
   return parts[index] ?? parts[0];
 };
 // "Ripe_PLA" -> "Ripe PLA": a setting no page has a place for gets its key as a label
-export const keyLabel = (k) => k.replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase());
+const keyLabel = (k) => k.replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase());
 
 // The keys in some groups, on a page, and on a list of pages
 export const groupKeys = (groups) => groups.flatMap((g) => g.rows.map((r) => r[0]));
 export const pageKeys = (page) => groupKeys(page.groups || []);
-export const placedKeys = (pages) => new Set(pages.flatMap(pageKeys));
+const placedKeys = (pages) => new Set(pages.flatMap(pageKeys));
 
 // How many extruders the printer has, by how many nozzle diameters there are
 export const extruderCount = (settings) => Math.max(1, String(settings?.nozzle_diameter ?? "").split(/[;,]/).filter((s) => s !== "").length);

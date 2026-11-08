@@ -26,7 +26,7 @@ const appColors = () => ({
   bg: c.panel, field: c.panelAlt, border: c.border, borderStrong: c.borderStrong, heading: c.heading, textPrimary: c.textPrimary,
   textMuted: c.textMuted, textFaint: c.textFaint, accent: c.amber, accentText: c.amber, accentDim: c.amberDim,
 });
-export const useSlicerColors = () => useContext(SlicerColors) || appColors();
+const useSlicerColors = () => useContext(SlicerColors) || appColors();
 
 const KINDS = ["bool", "enum", "color", "gcode", "bed"];
 // The label column and the value column, the same in every group so the fields line up down a page

@@ -15,14 +15,14 @@ const CIDR_HELP =
 
 // The range to start with until the server says its own: the /24 of the address the browser reached Farmhand by,
 // when that's an IPv4 one
-export function guessRange(host = window.location.hostname) {
+function guessRange(host = window.location.hostname) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(host);
   return m && m[1] !== "127" ? `${m[1]}.${m[2]}.${m[3]}.0/24` : "";
 }
 
 // A name for each printer found: its hostname (its IP when it gave none). Where a hostname is shared, by printers
 // found together or with one already in Farmhand, each of them gets its IP's last number added: "mainsailos-21".
-export function suggestNames(found, existingNames) {
+function suggestNames(found, existingNames) {
   const taken = new Set(existingNames);
   const count = {};
   for (const f of found) if (f.hostname) count[f.hostname] = (count[f.hostname] || 0) + 1;

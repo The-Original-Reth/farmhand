@@ -1,5 +1,5 @@
 import { CheckSquare, GitCompare, Square, X } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
+import { c, fs, ui, fixed } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
@@ -50,7 +50,7 @@ export function CompareTray({ selection, onRemove, onCompare, onClear }) {
         justifyContent: "space-between",
         gap: 16,
         zIndex: 40,
-        boxShadow: "0 -4px 16px rgba(0,0,0,0.3)",
+        boxShadow: `0 -4px 16px ${fixed.shadow}`,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flex: 1, minWidth: 0 }}>

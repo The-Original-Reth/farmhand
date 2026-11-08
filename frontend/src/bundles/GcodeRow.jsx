@@ -8,11 +8,17 @@ import { useData } from "../data.jsx";
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { DownloadButton } from "../components/common/ui.jsx";
 
-// A 3MF version's G-code, on a line under the version: its name, Download, and Send to the printer the 3MF was
-// sliced for (asked first: it starts printing straight away)
+// A library 3MF version's G-code, sent to the printer the 3MF is locked to
 export function GcodeRow({ ver, bundle }) {
   const { printers } = useData();
   const printer = printers.find((p) => p.id === bundle.printerId);
+  return <GcodeLine ver={ver} href={bundleGcodeUrl(ver.id)} printer={printer} send={() => sendGcode(ver.id)} indent={128} />;
+}
+
+// A 3MF version's G-code, on a line under the version (a library 3MF's or a project's): its name, Download, and Send to
+// the printer the 3MF was sliced for (asked first: it starts printing straight away). send() sends it and answers what
+// the printer was sent; indent lines it up under the version's file name.
+export function GcodeLine({ ver, href, printer, send, indent }) {
   const [confirming, setConfirming] = useState(false);
   const [sent, setSent] = useState(null); // what the printer was sent, once it was
 
@@ -20,7 +26,7 @@ export function GcodeRow({ ver, bundle }) {
     <div
       data-testid="gcode-row"
       data-version={ver.v}
-      style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 9px 128px", flexWrap: "wrap" }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: `0 16px 9px ${indent}px`, flexWrap: "wrap" }}
     >
       <FileCode size={13} color={c.textFaint} />
       <span style={uiText(12, c.textFaint)}>G-code</span>
@@ -31,7 +37,7 @@ export function GcodeRow({ ver, bundle }) {
         </span>
       )}
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-        <DownloadButton href={bundleGcodeUrl(ver.id)} />
+        <DownloadButton href={href} />
         {printer && (
           <button
             data-testid="gcode-send"
@@ -50,7 +56,7 @@ export function GcodeRow({ ver, bundle }) {
           confirmLabel="Send and print"
           tone="amber"
           onClose={() => setConfirming(false)}
-          onConfirm={async () => setSent(await sendGcode(ver.id))}
+          onConfirm={async () => setSent(await send())}
         >
           Send <b style={{ color: c.heading }}>{ver.gcodeName}</b> to <b style={{ color: c.heading }}>{printer.name}</b> and
           start printing it now? Make sure the bed is clear and the right filament is loaded. A file of the same name on

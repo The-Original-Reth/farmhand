@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Box, ChevronDown, Download, ExternalLink, Folder, FolderInput, Layers, Plus, Upload, X } from "lucide-react";
 import { addProjectModel, API_BASE, deleteProjectFile, removeProjectModel, setProjectStlCounts } from "../api.js";
-import { c, fs, ui } from "../theme.js";
+import { c, fs, ui, fixed } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
 import { AddModelFileForm } from "../models/modelActions.jsx";
@@ -12,9 +12,9 @@ import { DownloadButton, TrashButton } from "../components/common/ui.jsx";
 import { toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, HaveNeed, UploadDialog } from "./ProjectFiles.jsx";
 import {
-  Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, MoveButton, nameStyle, OlderToggle, PickDialog, plural, ProjectOnlyTag, TakeOutButton,
-  VersionLine,
+  Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, MoveButton, nameStyle, OlderToggle, PickDialog, ProjectOnlyTag, TakeOutButton, VersionLine,
 } from "./pieces.jsx";
+import { plural } from "../lib/format.js";
 
 const STL = FILE_KINDS.stl;
 
@@ -202,13 +202,13 @@ function StlTile({ testId, dataAttrs, name, thumb, tag, ver, versions, haveNeed,
         data-testid="stl-tile-preview"
         onClick={onDetails}
         title={`${name}: show every version`}
-        style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0, padding: 0, border: "none", borderBottom: `1px solid ${c.border}`, background: "#FFFFFF", cursor: "pointer" }}
+        style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0, padding: 0, border: "none", borderBottom: `1px solid ${c.border}`, background: fixed.preview, cursor: "pointer" }}
       >
         {thumb ? (
           // filling the row, placed over it so the picture's own size never makes the row taller
           <img src={thumb} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         ) : (
-          <Box size={28} color="#C7CACC" />
+          <Box size={28} color={fixed.previewIcon} />
         )}
       </button>
       <div style={{ padding: "7px 8px 8px", display: "flex", flexDirection: "column", gap: 6, background: c.panelAlt, flex: 1 }}>

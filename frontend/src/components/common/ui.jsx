@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronRight, Download, FileBox, Trash2 } from "lucide-react";
-import { c, fs, ui } from "../../theme.js";
+import { c, fixed, fs, ui } from "../../theme.js";
 import { monoText, uiText } from "../../styles.js";
 
 export function Badge({ children, tone = "muted" }) {
@@ -115,7 +115,7 @@ export function Thumb({ src, size = 36, plateGrid = false, background, placehold
         <img src={src} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : placeholderIcon ? (
         <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <FileBox size={Math.round(size * 0.4)} color="#C7CACC" />
+          <FileBox size={Math.round(size * 0.4)} color={fixed.previewIcon} />
         </div>
       ) : (
         <div style={{ width: "100%", height: "100%" }} />

@@ -151,6 +151,17 @@ export const SLICER_SCHEMES = {
   },
 };
 
+// Colours that are the same in every scheme, because of what they sit on or stand for: a model's preview is drawn on
+// white, a camera's picture is shown on black (with its labels and messages over it), a dialog dims the page behind it,
+// and the version stars are real metals (silver for v1, gold for the starred one), each with a darker edge so it holds
+// up on light backgrounds.
+export const FIXED = {
+  preview: "#FFFFFF", previewIcon: "#C7CACC",
+  camera: "#000000", cameraText: "#E6E8EA", cameraMessage: "#8A9198", cameraBadge: "rgba(0,0,0,0.55)",
+  backdrop: "rgba(0,0,0,0.55)", shadow: "rgba(0,0,0,0.3)",
+  gold: "#F2C230", goldEdge: "#B8860B", silver: "#C9CDD3", silverEdge: "#868B93",
+};
+
 export const FONTS = [
   { id: "archivo", name: "Archivo", note: "default", stack: "'Archivo', system-ui, sans-serif" },
   { id: "system", name: "System", note: "your device's own font", stack: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" },

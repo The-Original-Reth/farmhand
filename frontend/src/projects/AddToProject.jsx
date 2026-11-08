@@ -8,6 +8,7 @@ import { nameCollator } from "../models/modelSort.js";
 import { Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { TextField } from "../components/common/fields.jsx";
 import { toolButton, uiText } from "../styles.js";
+import { plural } from "../lib/format.js";
 
 // What can be added to a project from elsewhere: a model (from its page) or a 3MF (from its card). Its own project list,
 // how it's added, and what it's called in the dialog.
@@ -32,7 +33,7 @@ export function AddToProjectButton({ model, bundle }) {
           e.stopPropagation();
           setOpen(true);
         }}
-        title={inCount ? `In ${inCount} project${inCount === 1 ? "" : "s"}: add it to another` : `Add this ${THINGS[kind].noun} to a project`}
+        title={inCount ? `In ${plural(inCount, "project")}: add it to another` : `Add this ${THINGS[kind].noun} to a project`}
         style={toolButton(12, { whiteSpace: "nowrap" })}
       >
         <FolderPlus size={12} />

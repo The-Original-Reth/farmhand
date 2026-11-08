@@ -293,7 +293,7 @@ paths, so a file stays where it is when a location changes until it is moved.
 
 ## Network shares (how mounting works)
 
-`app/mounts.py` reads a single pasted location into protocol/server/share (`parse_location`; the frontend's `location.js` mirrors it only for the live preview, and they're checked against each other), validates what a person typed, builds the `mount` command as an argument
+`app/mounts.py` reads a single pasted location into protocol/server/share (`parse_location`), validates what a person typed, builds the `mount` command as an argument
 list (never a shell string), and turns `mount`'s errors into plain-language messages.
 An SMB login goes in a temporary `0600` credentials file — never on the command line and
 never in the comma-separated option string. `app/services/network_shares_service.py` saves

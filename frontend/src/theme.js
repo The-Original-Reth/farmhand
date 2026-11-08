@@ -3,6 +3,8 @@
 // remounting anything: the page you're on, open dialogs and your selections are all left alone.
 import { PRESETS, FONTS, DEFAULT_APPEARANCE } from "./palettes.js";
 
+export { FIXED as fixed } from "./palettes.js"; // the colours no scheme changes
+
 export const c = { ...PRESETS.find((p) => p.id === DEFAULT_APPEARANCE.scheme).colors };
 // Whether the scheme in use is dark or light (a slicer's settings window takes its dark or light colours from it)
 export const look = { mode: PRESETS.find((p) => p.id === DEFAULT_APPEARANCE.scheme).mode };

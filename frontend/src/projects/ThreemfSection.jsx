@@ -12,7 +12,8 @@ import { FieldSelect } from "../components/common/fields.jsx";
 import { DownloadButton } from "../components/common/ui.jsx";
 import { toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, UploadDialog } from "./ProjectFiles.jsx";
-import { Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, OlderToggle, PickDialog, plural, TakeOutButton, VersionLine } from "./pieces.jsx";
+import { Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, OlderToggle, PickDialog, TakeOutButton, VersionLine } from "./pieces.jsx";
+import { plural } from "../lib/format.js";
 
 const THREEMF = FILE_KINDS.threemf;
 

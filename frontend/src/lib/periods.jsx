@@ -27,7 +27,7 @@ export function energyByPeriod({ months }, by) {
 }
 
 // "By month" / "By year", above a table added up by period
-export const BY_MONTH_OR_YEAR = [{ value: "month", label: "By month" }, { value: "year", label: "By year" }];
+const BY_MONTH_OR_YEAR = [{ value: "month", label: "By month" }, { value: "year", label: "By year" }];
 export function PeriodButtons({ testId, by, onChange, options = BY_MONTH_OR_YEAR }) {
   return (
     <div data-testid={testId} style={{ display: "flex", gap: 6 }}>

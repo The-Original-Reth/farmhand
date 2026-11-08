@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ExternalLink, PictureInPicture2 } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
+import { c, fs, ui, fixed } from "../theme.js";
 import { CameraPicture } from "./players.jsx";
 import { NO_ZOOM, panned, TILE, zoomed } from "./wall.js";
 
@@ -11,7 +11,7 @@ const canFloat = typeof window !== "undefined" && "documentPictureInPicture" in 
 
 // The labels and buttons over a camera's corners: light on a dark see-through backing, readable over any picture
 const badge = (more) => ({
-  padding: "2px 7px", borderRadius: 3, background: "rgba(0,0,0,0.55)", color: "#e6e8ea", border: "none", ...ui, fontSize: fs(11), ...more,
+  padding: "2px 7px", borderRadius: 3, background: fixed.cameraBadge, color: fixed.cameraText, border: "none", ...ui, fontSize: fs(11), ...more,
 });
 const corner = (where) => ({ position: "absolute", [where.x]: 6, [where.y]: 6 });
 
@@ -43,7 +43,7 @@ function useFloating(label) {
       return setRefused(true);
     }
     w.document.title = label;
-    w.document.body.style.cssText = "margin:0;background:#000;overflow:hidden;width:100vw;height:100vh";
+    w.document.body.style.cssText = `margin:0;background:${fixed.camera};overflow:hidden;width:100vw;height:100vh`;
     w.addEventListener("pagehide", () => setWin(null));
     setWin(w);
   };
@@ -132,7 +132,7 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
         position: "relative", aspectRatio: `${TILE}`,
         display: hidden ? "none" : undefined, order: place, opacity: moving ? 0.4 : 1,
         outline: target ? `2px solid ${c.amber}` : "none", outlineOffset: 2,
-        background: "#000", border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden",
+        background: fixed.camera, border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden",
         cursor: z.s > 1 ? (pan.current ? "grabbing" : "grab") : big ? "zoom-out" : "zoom-in", touchAction: z.s > 1 ? "none" : undefined,
       }}
     >
@@ -149,7 +149,7 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
       {/* over the picture, so the wheel, drags and clicks reach the tile even where the camera is a page of its own */}
       <div style={{ position: "absolute", inset: 0 }} />
       {(floating.win || floating.refused || state !== "showing") && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(12), color: "#8a9198" }}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(12), color: fixed.cameraMessage }}>
           {floating.win ? "In a picture-in-picture window" : floating.refused ? "The browser wouldn't open a picture-in-picture window" : state === "failed" ? "The camera isn't answering" : "Waiting for the camera…"}
         </div>
       )}

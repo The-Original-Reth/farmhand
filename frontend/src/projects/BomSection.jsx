@@ -9,7 +9,7 @@ import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
 import { HaveNeed, HaveNeedLabel } from "./ProjectFiles.jsx";
-import { plural } from "./pieces.jsx";
+import { plural } from "../lib/format.js";
 
 // The template a BOM is filled in from: the columns Upload BOM reads, in this order (only Part is needed)
 const TEMPLATE = "Part,Need,Have,Link,Notes\r\n";

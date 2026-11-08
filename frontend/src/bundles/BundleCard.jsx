@@ -8,6 +8,7 @@ import { DeleteBundleButton, NewVersionButton } from "./bundleActions.jsx";
 import { GcodeRow } from "./GcodeRow.jsx";
 import { VersionRow } from "./VersionRow.jsx";
 import { VersionsToggle } from "./versions.jsx";
+import { plural } from "../lib/format.js";
 
 // One 3MF file as a card: a heading (`title` on the left, which also shows/hides the older versions when clicked; the
 // version count, that toggle, New version and Delete on the right), its newest version, the older ones when shown,
@@ -46,7 +47,7 @@ export function BundleCard({ bundle: b, versions: vlist, title, grow = false, ex
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={uiText(12, c.textFaint)}>
-            {vlist.length} version{vlist.length === 1 ? "" : "s"}
+            {plural(vlist.length, "version")}
           </span>
           {rest.length > 0 && (
             <VersionsToggle open={isExpanded} olderCount={rest.length} controlsId={`versions-${b.id}`} onToggle={() => expansion.set(b.id, !isExpanded)} />

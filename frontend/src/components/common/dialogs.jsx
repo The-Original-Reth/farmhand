@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { c } from "../../theme.js";
+import { c, fixed } from "../../theme.js";
 import { useAction } from "../../hooks/useAction.js";
 import { cancelButton, primaryButton, uiText } from "../../styles.js";
 
@@ -56,7 +56,7 @@ export function Modal({ title, onClose, children, width = 420, closeOnBackdrop =
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: fixed.backdrop,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

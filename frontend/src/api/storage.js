@@ -1,5 +1,5 @@
 // The Storage page: where files go, the folder picker, network shares and the save location.
-import { del, jsonBody, post, request } from "./client.js";
+import { jsonBody, post, request } from "./client.js";
 import { normalizeFound } from "./settings.js";
 
 const normalizeLocation = (l) => ({
@@ -106,16 +106,8 @@ export const getShares = async () => {
   return { shares: r.shares.map(normalizeShare), capability: r.capability };
 };
 
-// Mounts the share first and only saves it if that worked, so errors here are the real reason.
-export const createShare = async (data) => normalizeShare(await request("/settings/storage/shares", jsonBody("POST", data)));
-
-export const updateShare = async (id, data) =>
-  normalizeShare(await request(`/settings/storage/shares/${id}`, jsonBody("PATCH", data)));
-
 export const reconnectShare = async (id) =>
   normalizeShare(await post(`/settings/storage/shares/${id}/connect`));
-
-export const deleteShare = (id) => del(`/settings/storage/shares/${id}`);
 
 export const migrateStorage = async () => {
   const r = await post("/settings/storage/migrate");

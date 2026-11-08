@@ -64,7 +64,7 @@ projects, farmCost, storage, settings), so components always import from `api.js
 into the shapes the UI components use. The API host comes from the browser's own hostname at runtime (port 4545), and
 `VITE_API_BASE` overrides it. `src/` has one folder per area (models, bundles, printers, power, storage, settings,
 monitor, notes, compare). Colours come from `palettes.js`/`theme.js`; don't hard-code colours, or the
-contrast check stops covering them.
+contrast check stops covering them (ones no scheme changes, like the white behind previews, are `fixed` there).
 
 **Mock backend** (`frontend/mock/`: `server.js` the Vite plugin, `core.js` the in-memory farm and shared helpers,
 `routes/<area>.js` the routes, `data.js` the sample farm): serves `/mock-api` in exactly the real API's shapes. Each
@@ -72,9 +72,6 @@ contrast check stops covering them.
 built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink
 behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`). A typical feature
 commit touches router → service → test → `src/api/` → mock → UI.
-
-`app/mounts.py` `parse_location` and `frontend/src/location.js` must stay in agreement (the frontend copy
-only drives the live preview).
 
 ## Conventions
 

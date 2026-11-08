@@ -7,7 +7,7 @@ import { useData } from "../data.jsx";
 import { arranged, moved } from "../lib/order.js";
 
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
-import { fmtCost as money, fmtGrams, fmtKwh } from "../lib/format.js";
+import { fmtCost as money, fmtGrams, fmtKwh, plural } from "../lib/format.js";
 import { energyCost, priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
 import { PeriodButtons, periodKey, periodLabel, PeriodPicker, tableHead } from "../lib/periods.jsx";
 
@@ -77,8 +77,8 @@ const addUp = (rows) =>
 
 // What hovering filament figures says: how many prints were left out of them, and why
 const gaps = (r) => [
-  r.unweighed ? `${r.unweighed} print${r.unweighed === 1 ? "" : "s"} without a known weight` : null,
-  r.uncosted ? `${r.uncosted} print${r.uncosted === 1 ? "" : "s"} without a filament price` : null,
+  r.unweighed ? `${plural(r.unweighed, "print")} without a known weight` : null,
+  r.uncosted ? `${plural(r.uncosted, "print")} without a filament price` : null,
 ].filter(Boolean).join("; ");
 
 const orDash = (v, format) => (v == null ? "—" : format(v));
