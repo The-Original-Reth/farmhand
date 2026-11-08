@@ -101,8 +101,9 @@ export const FILE_KINDS = {
     drop: "Drop the files here (any kind): one or several", previews: "",
   },
   cad: {
+    multiple: true,
     key: "cad", noun: "CAD file", Icon: PenTool, accept: undefined, list: (p) => p.cadFiles,
-    drop: "Drop the CAD file here (any kind)", previews: "STEP, IGES, STL, OBJ and Fusion files get a preview.",
+    drop: "Drop the CAD files here (any kind): one or several", previews: "STEP, IGES, STL, OBJ and Fusion files get a preview.",
   },
   stl: {
     key: "stl", noun: "STL file", Icon: Box, accept: ".stl,.obj", list: (p) => p.stlFiles,
