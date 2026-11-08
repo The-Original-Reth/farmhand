@@ -12,23 +12,21 @@ Farmhands' records describe the same files, the one saved last is the one brough
 """
 from __future__ import annotations
 
-import datetime as dt
-import json
 import logging
 import os
-import threading
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import storage
+from .. import record_files, storage
 from ..models import (
     Bundle, BundleNote, BundleSourceModel, BundleStar, BundleVersion, BundleVersionSubPrinter, Printer, ProjectSourceModel,
     SourceFileType, SourceModel, SourceModelNote, SourceModelVersion, SubPrinter,
 )
 from . import sub_printer_service
-from .project_records import instance_id
+from ..record_files import iso_or_none, parse_iso, relative_to, resolve_from
+from .app_settings import instance_id
 
 log = logging.getLogger("farmhand.library_records")
 
@@ -36,38 +34,11 @@ MODEL_PREFIX = "farmhand-model-"
 THREEMF_PREFIX = "farmhand-3mf-"
 FORMAT = 1
 MAX_RECORD_BYTES = 20_000_000  # a 3MF's record holds every version's slicer settings
+background = record_files.BackgroundWriter("library-record", "a library record")
 
 
 def is_record(name: str) -> bool:
     return (name.startswith(MODEL_PREFIX) or name.startswith(THREEMF_PREFIX)) and name.endswith(".json")
-
-
-def _when(value) -> str | None:
-    return value.isoformat() if isinstance(value, dt.datetime) else None
-
-
-def _parse_when(value):
-    try:
-        return dt.datetime.fromisoformat(value) if isinstance(value, str) else None
-    except ValueError:
-        return None
-
-
-def _rel(path: str | None, root: Path) -> str | None:
-    """A file's place in the record: relative to the STL or 3MF folder when it's inside it, else as it is."""
-    if not path:
-        return None
-    try:
-        return Path(path).resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return path
-
-
-def _at(root: Path, where) -> Path | None:
-    if not isinstance(where, str) or not where:
-        return None
-    p = Path(where)
-    return p if p.is_absolute() else root / p
 
 
 def _record_folder(paths: list[tuple[str | None, int]], owner_id: int, root: Path) -> Path | None:
@@ -91,10 +62,6 @@ def _record_folder(paths: list[tuple[str | None, int]], owner_id: int, root: Pat
 # ------------------------------------------------------------------ writing
 
 
-def _write(folder: Path, prefix: str, doc: dict, me: str) -> None:
-    storage.write_text_atomically(folder / f"{prefix}{me}.json", json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
-
-
 def write_model(db: Session, model_id: int) -> bool:
     model = db.get(SourceModel, model_id)
     if model is None:
@@ -104,16 +71,16 @@ def write_model(db: Session, model_id: int) -> bool:
     if folder is None:
         return False
     me = instance_id(db)
-    _write(folder, MODEL_PREFIX, {
-        "farmhand_model": FORMAT, "instance": me, "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    record_files.write_json(folder / f"{MODEL_PREFIX}{me}.json", {
+        "farmhand_model": FORMAT, "instance": me, "saved_at": record_files.stamp(),
         "note": "Written by Farmhand whenever this model changes: another Farmhand sharing the folder brings it in from it.",
         "name": model.name, "file_type": model.file_type.value, "notes": model.notes,
         "versions": [
-            {"version": v.version, "path": _rel(v.file_path, root), "preview": _rel(v.thumbnail_path, root), "note": v.note,
-             "uploaded_at": _when(v.uploaded_at)}
+            {"version": v.version, "path": relative_to(v.file_path, root), "preview": relative_to(v.thumbnail_path, root), "note": v.note,
+             "uploaded_at": iso_or_none(v.uploaded_at)}
             for v in sorted(model.versions, key=lambda v: v.version)
         ],
-    }, me)
+    })
     return True
 
 
@@ -127,23 +94,23 @@ def write_bundle(db: Session, bundle_id: int) -> bool:
         return False
     me = instance_id(db)
     star = bundle.star_row.version.version if bundle.star_row and bundle.star_row.version else None
-    _write(folder, THREEMF_PREFIX, {
-        "farmhand_3mf": FORMAT, "instance": me, "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    record_files.write_json(folder / f"{THREEMF_PREFIX}{me}.json", {
+        "farmhand_3mf": FORMAT, "instance": me, "saved_at": record_files.stamp(),
         "note": "Written by Farmhand whenever this 3MF changes: another Farmhand sharing the folder brings it in from it.",
         "printer": bundle.printer.name if bundle.printer else None,
         "models": [link.source_model.name for link in bundle.source_model_links if link.source_model],
         "notes": bundle.notes, "starred_version": star,
         "versions": [
             {
-                "version": v.version, "filename": v.filename, "threemf": _rel(v.threemf_path, root), "gcode": _rel(v.gcode_path, root),
-                "preview": _rel(v.thumbnail_path, root), "uploaded_at": _when(v.uploaded_at), "monument": v.monument,
+                "version": v.version, "filename": v.filename, "threemf": relative_to(v.threemf_path, root), "gcode": relative_to(v.gcode_path, root),
+                "preview": relative_to(v.thumbnail_path, root), "uploaded_at": iso_or_none(v.uploaded_at), "monument": v.monument,
                 "monument_note": v.monument_note, "slicer_family": v.slicer_family, "slicer_display_name": v.slicer_display_name,
                 "printer_profile_name": v.printer_profile_name, "settings": v.settings,
                 "sub_printer": v.sub_printer_name,  # the printer's preset it was sliced with, as chosen here
             }
             for v in sorted(bundle.versions, key=lambda v: v.version)
         ],
-    }, me)
+    })
     return True
 
 
@@ -162,65 +129,36 @@ def write_all(db: Session) -> int:
     return written
 
 
-_background = False  # switched on when the app starts (not in tests, which write records themselves)
-
-
-def enable_background_writes() -> None:
-    global _background
-    _background = True
-
-
 def request_write(kind: str | None = None, owner_id: int | None = None) -> None:
     """After a change: that model's or 3MF's record (or every one), written in the background."""
-    if not _background:
-        return
-    from ..database import SessionLocal
+    def write_it(db: Session):
+        if kind == "model" and owner_id:
+            write_model(db, owner_id)
+        elif kind == "bundle" and owner_id:
+            write_bundle(db, owner_id)
+        else:
+            write_all(db)
 
-    def run():
-        try:
-            with SessionLocal() as db:
-                if kind == "model" and owner_id:
-                    write_model(db, owner_id)
-                elif kind == "bundle" and owner_id:
-                    write_bundle(db, owner_id)
-                else:
-                    write_all(db)
-        except storage.StorageUnavailableError:
-            pass
-        except Exception:  # noqa: BLE001 - a record failing must never take anything down
-            log.exception("Writing a library record failed")
-
-    threading.Thread(target=run, name="library-record", daemon=True).start()
+    background.run(write_it)
 
 
 # ------------------------------------------------------------------ reading
 
 
 def _records(root: Path, prefix: str, marker: str) -> list[tuple[Path, dict]]:
-    """Every record of that kind in the folder's {id} folders: (its folder, the record)."""
-    out = []
+    """Every record of that kind in the folder's {id} folders, (its folder, the record), the newest first: where two
+    Farmhands' records describe the same files, the one saved last is brought in."""
     try:
         folders = [Path(e.path) for e in os.scandir(root) if e.is_dir() and not e.name.startswith(".")]
     except OSError:
-        return out
+        return []
+    out = []
     for folder in folders:
-        try:
-            names = [n for n in os.listdir(folder) if n.startswith(prefix) and n.endswith(".json")]
-        except OSError:
-            continue
-        for name in names:
-            try:
-                path = folder / name
-                if path.stat().st_size > MAX_RECORD_BYTES:
-                    continue
-                doc = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
+        for name in record_files.names_in(folder, prefix):
+            doc = record_files.read_json(folder / name, MAX_RECORD_BYTES)
             if isinstance(doc, dict) and doc.get(marker) == FORMAT:
                 out.append((folder, doc))
-    # newest first: where two Farmhands' records describe the same files, the one saved last is brought in
-    out.sort(key=lambda r: r[1].get("saved_at") if isinstance(r[1].get("saved_at"), str) else "", reverse=True)
-    return out
+    return record_files.newest_first(out, lambda r: r[1])
 
 
 def files_kept_by_others(db: Session) -> set[str]:
@@ -233,7 +171,7 @@ def files_kept_by_others(db: Session) -> set[str]:
             continue
         for v in doc.get("versions") or []:
             for key in ("path", "preview"):
-                p = _at(root, v.get(key)) if isinstance(v, dict) else None
+                p = resolve_from(root, v.get(key)) if isinstance(v, dict) else None
                 if p:
                     kept.add(os.path.realpath(p))
     return kept
@@ -256,7 +194,7 @@ def import_models(db: Session) -> dict:
         if doc.get("instance") == me or not isinstance(doc.get("name"), str):
             continue
         versions = [v for v in (doc.get("versions") or []) if isinstance(v, dict)]
-        here = [(v, _at(root, v.get("path"))) for v in sorted(versions, key=lambda v: v.get("version") or 0)]
+        here = [(v, resolve_from(root, v.get("path"))) for v in sorted(versions, key=lambda v: v.get("version") or 0)]
         here = [(v, p) for v, p in here if p and p.is_file()]
         if not here or any(os.path.realpath(p) in known for _, p in here):
             continue  # nothing there any more, or here already
@@ -269,10 +207,10 @@ def import_models(db: Session) -> dict:
         db.add(model)
         db.flush()
         for n, (v, path) in enumerate(here, start=1):
-            preview = _at(root, v.get("preview"))
+            preview = resolve_from(root, v.get("preview"))
             db.add(SourceModelVersion(
                 source_model_id=model.id, version=n, file_path=str(path), thumbnail_path=str(preview) if preview and preview.is_file() else None,
-                note=v.get("note"), **({"uploaded_at": _parse_when(v.get("uploaded_at"))} if _parse_when(v.get("uploaded_at")) else {}),
+                note=v.get("note"), **({"uploaded_at": parse_iso(v.get("uploaded_at"))} if parse_iso(v.get("uploaded_at")) else {}),
             ))
             known.add(os.path.realpath(path))
         if isinstance(doc.get("notes"), str) and doc["notes"].strip():
@@ -293,7 +231,7 @@ def import_bundles(db: Session) -> dict:
         if doc.get("instance") == me:
             continue
         versions = sorted([v for v in (doc.get("versions") or []) if isinstance(v, dict)], key=lambda v: v.get("version") or 0)
-        found = [_at(root, v.get("threemf")) or _at(root, v.get("preview")) for v in versions]
+        found = [resolve_from(root, v.get("threemf")) or resolve_from(root, v.get("preview")) for v in versions]
         found = [p for p in found if p and p.is_file()]
         if not versions or not found or any(os.path.realpath(p) in known for p in found):
             continue  # nothing of it there any more, or here already
@@ -311,7 +249,7 @@ def import_bundles(db: Session) -> dict:
                 db.add(BundleSourceModel(bundle_id=bundle.id, source_model_id=model.id))
         starred = None
         for v in versions:
-            threemf, gcode, preview = (_at(root, v.get(k)) for k in ("threemf", "gcode", "preview"))
+            threemf, gcode, preview = (resolve_from(root, v.get(k)) for k in ("threemf", "gcode", "preview"))
             threemf = threemf if threemf and threemf.is_file() else None
             row = BundleVersion(
                 bundle_id=bundle.id, version=int(v.get("version") or 1), filename=str(v.get("filename") or "")[:255],
@@ -323,7 +261,7 @@ def import_bundles(db: Session) -> dict:
                 gcode_path=str(gcode) if threemf and gcode and gcode.is_file() else None,
                 thumbnail_path=str(preview) if preview and preview.is_file() else None,
                 settings=v.get("settings") if isinstance(v.get("settings"), dict) else {},
-                **({"uploaded_at": _parse_when(v.get("uploaded_at"))} if _parse_when(v.get("uploaded_at")) else {}),
+                **({"uploaded_at": parse_iso(v.get("uploaded_at"))} if parse_iso(v.get("uploaded_at")) else {}),
             )
             db.add(row)
             db.flush()
@@ -363,7 +301,7 @@ def fill_sub_printers(db: Session) -> int:
     named: dict[str, str] = {}
     for _, doc in _records(root, THREEMF_PREFIX, "farmhand_3mf"):
         for v in doc.get("versions") or []:
-            p = _at(root, v.get("threemf")) if isinstance(v, dict) else None
+            p = resolve_from(root, v.get("threemf")) if isinstance(v, dict) else None
             if p and isinstance(v.get("sub_printer"), str) and v["sub_printer"]:
                 named.setdefault(os.path.realpath(p), v["sub_printer"])
     if not named:
@@ -398,7 +336,7 @@ def relink_moved_models(db: Session) -> list[str]:
         if doc.get("instance") == me or not isinstance(doc.get("name"), str):
             continue
         for v in doc.get("versions") or []:
-            p = _at(root, v.get("path")) if isinstance(v, dict) else None
+            p = resolve_from(root, v.get("path")) if isinstance(v, dict) else None
             if p and p.is_file():
                 elsewhere.setdefault((doc["name"], p.name), set()).add(str(p))
     relinked = []

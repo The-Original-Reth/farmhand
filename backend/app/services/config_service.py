@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import config_store, mounts, storage
+from .. import config_store, mounts, record_files, storage
 from ..models import NetworkShare, Printer
 from . import app_settings, network_shares_service, records_service, storage_settings_service
 
@@ -164,7 +164,7 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
         error = str(e)
     except OSError as e:
         error = f"Couldn't write the settings file: {e}"
-    _last_mirror.update(ok=error is None, error=error, at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+    _last_mirror.update(ok=error is None, error=error, at=record_files.stamp())
     return {"ok": error is None, "skipped": False, "path": path, "error": error}
 
 

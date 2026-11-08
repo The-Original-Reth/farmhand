@@ -202,8 +202,8 @@ def on_startup() -> None:
             config_service.request_mirror()
             threading.Thread(target=_keep_previews_beside_models, name="previews-beside", daemon=True).start()
             # Projects written to their folders, and ones in the project files folder that aren't here brought in
-            project_records.enable_background_writes()
-            library_records.enable_background_writes()
+            project_records.background.enable()
+            library_records.background.enable()
             threading.Thread(target=_keep_projects_folder_in, name="projects-folder", daemon=True).start()
             # 3MF versions from before printer profiles: linked to the printer preset each was sliced with, once
             threading.Thread(

@@ -22,3 +22,19 @@ def put(db: Session, key: str, value: str | None) -> None:
         row.value = value
     else:
         db.add(AppSetting(key=key, value=value))
+
+
+INSTANCE_KEY = "instance_id"
+
+
+def instance_id(db: Session) -> str:
+    """This Farmhand's own short id, made once: it names the records it writes beside the files on the NAS, so two
+    Farmhands sharing the folders keep theirs apart."""
+    import uuid
+
+    value = get(db, INSTANCE_KEY)
+    if not value:
+        value = uuid.uuid4().hex[:8]
+        put(db, INSTANCE_KEY, value)
+        db.commit()
+    return value

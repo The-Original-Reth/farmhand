@@ -9,20 +9,16 @@ Written after every change to a project, and for every project when Farmhand sta
 """
 from __future__ import annotations
 
-import datetime as dt
-import json
 import logging
-import os
-import threading
-import uuid
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import storage
+from .. import record_files, storage
 from ..models import Project
-from . import app_settings
+from ..record_files import iso_or_none, relative_to
+from .app_settings import instance_id
 from .project_files import CAD, DOC, STL, THREEMF
 from .project_service import project_folder, require_project
 
@@ -30,36 +26,12 @@ log = logging.getLogger("farmhand.project_records")
 
 PREFIX = "farmhand-project-"  # farmhand-project-<instance>.json
 FORMAT = 1
-INSTANCE_KEY = "instance_id"
 MAX_RECORD_BYTES = 5_000_000
-
-
-def instance_id(db: Session) -> str:
-    """This Farmhand's own short id, made once: it names its records, so two sharing the folders keep theirs apart."""
-    value = app_settings.get(db, INSTANCE_KEY)
-    if not value:
-        value = uuid.uuid4().hex[:8]
-        app_settings.put(db, INSTANCE_KEY, value)
-        db.commit()
-    return value
+background = record_files.BackgroundWriter("project-record", "a project record")
 
 
 def record_path(db: Session, folder: str) -> Path:
     return storage.effective_root("project") / folder / f"{PREFIX}{instance_id(db)}.json"
-
-
-def _where(path: str | None, base: Path) -> str | None:
-    """A file's place for the record: relative to the project's folder when it's inside it, else as it is."""
-    if not path:
-        return None
-    try:
-        return Path(path).resolve().relative_to(base.resolve()).as_posix()
-    except ValueError:
-        return path
-
-
-def _when(value) -> str | None:
-    return value.isoformat() if isinstance(value, dt.datetime) else None
 
 
 def build(db: Session, project: Project) -> dict:
@@ -75,15 +47,15 @@ def build(db: Session, project: Project) -> dict:
             for v in f.versions:
                 gcode = getattr(v, "gcode", None)
                 entry["versions"].append({
-                    "version": v.version, "filename": v.filename, "path": _where(v.file_path, base), "note": v.note,
-                    "size_bytes": v.size_bytes, "uploaded_at": _when(v.uploaded_at),
-                    **({"gcode": {"filename": gcode.filename, "path": _where(gcode.file_path, base)}} if gcode else {}),
+                    "version": v.version, "filename": v.filename, "path": relative_to(v.file_path, base), "note": v.note,
+                    "size_bytes": v.size_bytes, "uploaded_at": iso_or_none(v.uploaded_at),
+                    **({"gcode": {"filename": gcode.filename, "path": relative_to(gcode.file_path, base)}} if gcode else {}),
                 })
             files.append(entry)
     return {
         "farmhand_project": FORMAT,
         "instance": instance_id(db),
-        "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "saved_at": record_files.stamp(),
         "note": "Written by Farmhand whenever this project changes: Scan projects brings the project back from it.",
         "name": project.name,
         "files": files,
@@ -104,7 +76,7 @@ def write(db: Session, project_id: int) -> None:
     db.commit()
     target = storage.ready_root("project") / folder / f"{PREFIX}{instance_id(db)}.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    storage.write_text_atomically(target, json.dumps(build(db, project), indent=2, ensure_ascii=False) + "\n")
+    record_files.write_json(target, build(db, project))
 
 
 def write_all(db: Session) -> int:
@@ -122,54 +94,23 @@ def write_all(db: Session) -> int:
     return written
 
 
-_background = False  # switched on when the app starts (not in tests, which write records themselves)
-
-
-def enable_background_writes() -> None:
-    global _background
-    _background = True
-
-
 def request_write(project_id: int | None) -> None:
-    """After a change: the project's record (or every one, when it isn't one project's), written in the background so
-    a slow NAS never holds up the page."""
-    if not _background:
-        return
-    from ..database import SessionLocal
+    """After a change: the project's record (or every one, when it isn't one project's), written in the background."""
+    def write_it(db: Session):
+        if project_id is None:
+            write_all(db)
+        elif db.get(Project, project_id) is not None:
+            write(db, project_id)
 
-    def run():
-        try:
-            with SessionLocal() as db:
-                if project_id is None:
-                    write_all(db)
-                elif db.get(Project, project_id) is not None:
-                    write(db, project_id)
-        except storage.StorageUnavailableError:
-            pass  # written again with the next change, or when Farmhand starts
-        except Exception:  # noqa: BLE001 - a record failing must never take anything down
-            log.exception("Writing a project record failed")
-
-    threading.Thread(target=run, name="project-record", daemon=True).start()
+    background.run(write_it)
 
 
 def read_records(folder: Path) -> list[dict]:
     """The records in a project's folder (every Farmhand's), the newest first; ones that can't be read are left out."""
-    out = []
-    try:
-        names = [n for n in os.listdir(folder) if n.startswith(PREFIX) and n.endswith(".json")]
-    except OSError:
-        return []
-    for name in names:
-        path = folder / name
-        try:
-            if path.stat().st_size > MAX_RECORD_BYTES:
-                continue
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(doc, dict) and doc.get("farmhand_project") == FORMAT and isinstance(doc.get("name"), str):
-            out.append(doc)
-    return sorted(out, key=lambda d: str(d.get("saved_at") or ""), reverse=True)
+    docs = [record_files.read_json(folder / name, MAX_RECORD_BYTES) for name in record_files.names_in(folder, PREFIX)]
+    return record_files.newest_first([
+        d for d in docs if isinstance(d, dict) and d.get("farmhand_project") == FORMAT and isinstance(d.get("name"), str)
+    ])
 
 
 def is_record(name: str) -> bool:

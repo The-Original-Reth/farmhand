@@ -8,7 +8,8 @@ and can be put back with Restore — the same way the model files themselves liv
                                                 power meter readings
     <settings folder>/models/<name>.json        one model: its notes, and each of its 3MF files' notes and star
 
-Like the settings file, these NEVER contain a secret: a printer's Moonraker API key is left out.
+Unlike the settings file, a printer's file holds its Moonraker API key and PrusaLink password, so a restored
+printer connects straight away: keep the folder private.
 
 This module is the format and the file handling only. No database, so it's easy to test.
 """
@@ -20,6 +21,7 @@ import os
 import re
 from pathlib import Path
 
+from .record_files import dumps
 from .storage import write_text_atomically
 
 RECORD_MARKER = "farmhand_record"  # the key that says "this is one of ours", and what kind
@@ -50,10 +52,6 @@ def file_stem(name: str, taken: set[str]) -> str:
     return candidate
 
 
-def _dumps(document: dict) -> str:
-    return json.dumps(document, indent=2, ensure_ascii=False, sort_keys=False) + "\n"
-
-
 # What this process last wrote to (or found in) each file: {path: hash of its text}. A file whose new text hashes the
 # same needn't be read back over the network to find that out. A full write (check_all) reads every file regardless,
 # in case something else changed them.
@@ -81,7 +79,7 @@ def write_records(folder: str | os.PathLike, kind_dir: str, documents: dict[str,
     for stem, document in documents.items():
         target = target_dir / f"{stem}.json"
         wanted.add(target.name.lower())
-        text = _dumps(document)
+        text = dumps(document)
         digest = _digest(text)
         if not check_all and _last_written.get(str(target)) == digest:
             continue

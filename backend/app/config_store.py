@@ -23,7 +23,7 @@ import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 
-from .storage import write_text_atomically
+from . import record_files
 
 CONFIG_FILENAME = "farmhand-config.json"
 FORMAT_MARKER = "farmhand_config"  # the key that says "this is one of ours"
@@ -255,7 +255,7 @@ def build_document(
     order on a Farmhand that numbers its printers differently."""
     return {
         FORMAT_MARKER: FORMAT_VERSION,
-        "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "saved_at": record_files.stamp(),
         "note": "Written by Farmhand after every settings change. A share's login is kept here without its secret.",
         "appearance": config["appearance"],
         "preferences": config["preferences"],
@@ -269,7 +269,7 @@ def build_document(
 def write_document(folder: str | os.PathLike, document: dict) -> Path:
     """Write atomically: a share dropping mid-write must never leave a half-written settings file."""
     target = Path(folder) / CONFIG_FILENAME
-    write_text_atomically(target, json.dumps(document, indent=2, ensure_ascii=False) + "\n")
+    record_files.write_json(target, document)
     return target
 
 

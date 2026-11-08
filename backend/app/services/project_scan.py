@@ -25,8 +25,10 @@ from sqlalchemy.orm import Session
 from .. import storage
 from ..models import Printer, Project, ProjectFolder, ProjectPart, ProjectThreemfGcode, SourceModel
 from ..parsers import parse_3mf
+from ..record_files import parse_iso, resolve_from
 from ..thumbnails.cad_preview import render_cad_preview
 from . import printer_service, project_files, project_records
+from .app_settings import instance_id
 from .project_files import CAD, DOC, STL, THREEMF
 from .project_service import add_model, clean_component, create_project, link_printer, project_folder, set_counts
 
@@ -289,14 +291,6 @@ def _version_row(kind, f, number: int, path: Path, filename: str, note=None, upl
     )
 
 
-def _at(base: Path, where: str | None) -> Path | None:
-    """A file named in a record: relative to the project's folder, or as it was written."""
-    if not where:
-        return None
-    p = Path(where)
-    return p if p.is_absolute() else base / p
-
-
 def _from_records(db: Session, project: Project, base: Path, records: list[dict], warnings: list[str]) -> dict:
     """The project's files, parts, models and printers as the records in its folder have them (every Farmhand's
     together: a file in any of them comes in once). Files that aren't there any more are left out."""
@@ -307,7 +301,7 @@ def _from_records(db: Session, project: Project, base: Path, records: list[dict]
         for entry in record.get("files") or []:
             kind = kinds.get(entry.get("kind")) if isinstance(entry, dict) else None
             versions = [v for v in (entry.get("versions") or []) if isinstance(v, dict)] if kind else []
-            here = [(v, _at(base, v.get("path"))) for v in sorted(versions, key=lambda v: v.get("version") or 0)]
+            here = [(v, resolve_from(base, v.get("path"))) for v in sorted(versions, key=lambda v: v.get("version") or 0)]
             here = [(v, p) for v, p in here if p and p.is_file()]
             if not here or str(here[-1][1]) in seen:
                 continue
@@ -319,10 +313,10 @@ def _from_records(db: Session, project: Project, base: Path, records: list[dict]
             db.add(f)
             db.flush()
             for n, (v, path) in enumerate(here, start=1):
-                row = _version_row(kind, f, n, path, str(v.get("filename") or path.name)[:255], v.get("note"), _when(v.get("uploaded_at")))
+                row = _version_row(kind, f, n, path, str(v.get("filename") or path.name)[:255], v.get("note"), parse_iso(v.get("uploaded_at")))
                 db.add(row)
                 gcode = v.get("gcode") if kind is THREEMF and isinstance(v.get("gcode"), dict) else None
-                gpath = _at(base, gcode.get("path")) if gcode else None
+                gpath = resolve_from(base, gcode.get("path")) if gcode else None
                 if gpath and gpath.is_file():
                     db.flush()
                     db.add(ProjectThreemfGcode(version_id=row.id, filename=str(gcode.get("filename") or gpath.name)[:255], file_path=str(gpath)))
@@ -359,13 +353,6 @@ def _from_records(db: Session, project: Project, base: Path, records: list[dict]
 
 def _whole(value, default: int) -> int:
     return value if type(value) is int and value >= 0 else default
-
-
-def _when(value):
-    try:
-        return dt.datetime.fromisoformat(value) if isinstance(value, str) else None
-    except ValueError:
-        return None
 
 
 def _component(value, warnings: list[str]):
@@ -482,7 +469,7 @@ def import_projects_folder(db: Session, auto: bool = False) -> dict:
     for pid in db.scalars(select(Project.id)):
         ours[project_folder(db, pid)] = pid  # every project here gets its folder recorded first, so it's never taken
     db.commit()
-    me = project_records.instance_id(db)
+    me = instance_id(db)
     taken = _existing_names(db)
     imported, skipped = [], []
     try:
