@@ -19,7 +19,7 @@ log = logging.getLogger("farmhand.settings")
 
 KEY_CONFIG = "config_json"  # the settings themselves (appearance + preferences), as the server holds them
 KEY_LOCATION = "config_storage_dir"  # the network folder a copy is written to
-FARM_COST_LOCATION = "farm_cost_dir"  # farm_cost.KEY_LOCATION: the farm cost records folder, saved with the rest
+FARM_COST_LOCATION = app_settings.FARM_COST_DIR_KEY  # the farm cost records folder, saved with the rest
 
 # What happened the last time the copy was written, so the page can say so. In memory: it's about now.
 _last_mirror: dict = {"ok": None, "error": None, "at": None}
@@ -89,11 +89,7 @@ def location_path(db: Session, rename: bool = False) -> str | None:
 
 
 def _share_entries(db: Session) -> list[dict]:
-    return [
-        {"name": r.name, "protocol": r.protocol, "server": r.server, "share": r.share,
-         "username": r.username, "domain": r.domain, "version": r.version}
-        for r in db.scalars(select(NetworkShare).order_by(NetworkShare.name))
-    ]
+    return [{k: getattr(r, k) for k in config_store.SHARE_FIELDS} for r in db.scalars(select(NetworkShare).order_by(NetworkShare.name))]
 
 
 def build_document(db: Session) -> dict:
@@ -293,7 +289,7 @@ def set_location(db: Session, raw: str | None, if_exists: str = "ask") -> dict:
     return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db)}
 
 
-DEFAULT_FOLDER = "farmhand-configs"  # Save all with no settings folder chosen: this one, beside the STL folder
+DEFAULT_FOLDER = storage.CONFIG_FOLDER  # Save all with no settings folder chosen: this one, beside the STL folder
 
 
 def save_all(db: Session, if_exists: str = "ask") -> dict:
@@ -316,15 +312,6 @@ def save_all(db: Session, if_exists: str = "ask") -> dict:
     return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db), "mirror": written}
 
 
-def _same_place(a: dict, b: NetworkShare) -> bool:
-    """Does a share in the settings file reach the same folder on the same NAS as one here?"""
-    def where(protocol, server, share):
-        share = (share or "").strip().strip("/\\").replace("\\", "/")
-        same_case = protocol == "nfs"  # SMB ignores case; an NFS export is a path
-        return protocol, (server or "").strip().lower(), share if same_case else share.lower()
-    return where(a.get("protocol"), a.get("server"), a.get("share")) == where(b.protocol, b.server, b.share)
-
-
 def _shares_here(db: Session, entries: list[dict]) -> dict[str, NetworkShare]:
     """
     The settings file's shares that reach a NAS folder a share here already does, under another name (the one typed
@@ -337,7 +324,8 @@ def _shares_here(db: Session, entries: list[dict]) -> dict[str, NetworkShare]:
         name = entry.get("name")
         if not isinstance(name, str) or not name:
             continue
-        match = next((row for row in here if _same_place(entry, row)), None)
+        match = next((row for row in here if network_shares_service.folder_inside(
+            row, entry.get("protocol"), entry.get("server"), entry.get("share")) == ""), None)
         if match is not None and mounts.slug(match.name) != mounts.slug(name):
             out[name] = match
     return out

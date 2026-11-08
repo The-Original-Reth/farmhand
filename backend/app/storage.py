@@ -79,12 +79,17 @@ def local_root() -> Path:
     return p
 
 
+# The folders Farmhand names itself, beside the STL folder (or inside the save location)
+STL_FOLDER = "STL"  # the source model files, inside a save location
+THREEMF_FOLDER = "3MF"  # the sliced 3MFs and their G-code, inside a save location
 PROJECTS_FOLDER = "Projects"  # the project files' default when the STL folder is chosen: beside it
+FARM_COST_FOLDER = "farm-cost"  # the monthly Farm cost records' default
+CONFIG_FOLDER = "farmhand-configs"  # the settings copy's default (Save all / Load all)
 
 # Folders Farmhand names itself, and what each was called before: one with its old name is renamed when it's next used
 # (named_folder), and a folder saved by its old name follows the rename (current_folder): also when another Farmhand
 # sharing the folders renamed it.
-FOLDER_RENAMES = {"farm-cost": ("farm cost",), "farmhand-configs": ("farmhand configs",)}
+FOLDER_RENAMES = {FARM_COST_FOLDER: ("farm cost",), CONFIG_FOLDER: ("farmhand configs",)}
 
 
 def _dir_named(parent: Path, names) -> Path | None:

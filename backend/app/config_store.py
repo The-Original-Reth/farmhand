@@ -78,7 +78,7 @@ MAX_TOOL_LINKS = 200
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
-_SHARE_FIELDS = ("name", "protocol", "server", "share", "username", "domain", "version")
+SHARE_FIELDS = ("name", "protocol", "server", "share", "username", "domain", "version")
 
 
 class ConfigFileError(ValueError):
@@ -250,7 +250,7 @@ def build_document(
     config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
     farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None,
 ) -> dict:
-    """What gets written. Share entries are cut down to the fields in _SHARE_FIELDS — never a password. printer_names:
+    """What gets written. Share entries are cut down to the fields in SHARE_FIELDS — never a password. printer_names:
     each printer's number here and its name, so the orders kept by number (Farm cost, Monitor) come back in the right
     order on a Farmhand that numbers its printers differently."""
     return {
@@ -260,7 +260,7 @@ def build_document(
         "appearance": config["appearance"],
         "preferences": config["preferences"],
         "storage": {"stl_path": stl_path, "threemf_path": threemf_path, "project_path": project_path},
-        "shares": [{k: s.get(k) for k in _SHARE_FIELDS} for s in shares],
+        "shares": [{k: s.get(k) for k in SHARE_FIELDS} for s in shares],
         "farm_cost": {"records_path": farm_cost_path},  # the folder chosen for the monthly records (null: the default)
         "printer_names": {str(k): v for k, v in (printer_names or {}).items()},
     }
@@ -309,7 +309,7 @@ def read_document(folder: str | os.PathLike) -> dict | None:
     shares = []
     for entry in (raw.get("shares") if isinstance(raw.get("shares"), list) else [])[:100]:
         if isinstance(entry, dict):
-            shares.append({k: (entry.get(k) if isinstance(entry.get(k), str) else None) for k in _SHARE_FIELDS})
+            shares.append({k: (entry.get(k) if isinstance(entry.get(k), str) else None) for k in SHARE_FIELDS})
     return {
         "saved_at": raw.get("saved_at") if isinstance(raw.get("saved_at"), str) else None,
         **normalize_config(raw),

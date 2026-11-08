@@ -25,6 +25,7 @@ def put(db: Session, key: str, value: str | None) -> None:
 
 
 INSTANCE_KEY = "instance_id"
+FARM_COST_DIR_KEY = "farm_cost_dir"  # the Farm cost records folder chosen in Settings; none = the default
 
 
 def instance_id(db: Session) -> str:

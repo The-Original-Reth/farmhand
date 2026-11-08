@@ -254,3 +254,18 @@ def test_a_wrong_password_is_not_retried_automatically(db_session, nas):
     shares.reconnect_share(db_session, out["id"])  # the person pressing Reconnect does retry
     assert nas.is_mounted(out["mount_point"])
     assert shares.list_shares(db_session)["shares"][0]["error"] is None
+
+
+def test_a_nas_folder_is_found_in_the_share_that_reaches_it():
+    from app.models import NetworkShare
+    from app.services.network_shares_service import folder_inside
+
+    smb = NetworkShare(name="TrueNas", protocol="smb", server="192.168.4.20", share="3d_prints")
+    assert folder_inside(smb, "smb", "192.168.4.20", "/3D_Prints/") == ""  # SMB ignores case and the slashes
+    assert folder_inside(smb, "smb", "192.168.4.20", r"3d_prints\Farmhand\3MF") == "Farmhand/3MF"
+    assert folder_inside(smb, "smb", "192.168.4.21", "3d_prints") is None  # another NAS
+    assert folder_inside(smb, "nfs", "192.168.4.20", "3d_prints") is None
+    assert folder_inside(smb, "smb", "192.168.4.20", "3d_prints_old") is None  # not inside it
+    nfs = NetworkShare(name="Exports", protocol="nfs", server="nas", share="/mnt/tank/prints")
+    assert folder_inside(nfs, "nfs", "NAS", "/mnt/tank/prints") == ""
+    assert folder_inside(nfs, "nfs", "nas", "/mnt/tank/Prints") is None  # an NFS export is a path: case counts

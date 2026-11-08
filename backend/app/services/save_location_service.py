@@ -27,24 +27,18 @@ from ..models import NetworkShare
 from . import app_settings, config_service, farm_cost, network_shares_service, storage_settings_service
 
 KEY = "save_location"  # the address as typed
-FOLDERS = {"stl": "STL", "threemf": "3MF", "project": "Projects", "farm_cost": "farm-cost", "config": "farmhand-configs"}
-
-
-def _same(a: str, b: str) -> bool:
-    return a.strip("/").lower() == b.strip("/").lower()
+FOLDERS = {
+    "stl": storage.STL_FOLDER, "threemf": storage.THREEMF_FOLDER, "project": storage.PROJECTS_FOLDER,
+    "farm_cost": storage.FARM_COST_FOLDER, "config": storage.CONFIG_FOLDER,
+}
 
 
 def _existing_share(db: Session, protocol: str, server: str, share: str) -> tuple[NetworkShare, str] | None:
     """The share already connected to that place, and the folder inside it the address points at ("" for its top)."""
-    want = share.strip("/")
     for row in db.scalars(select(NetworkShare).order_by(NetworkShare.id)):
-        if row.protocol != protocol or row.server.lower() != server.lower():
-            continue
-        have = row.share.strip("/")
-        if _same(have, want):
-            return row, ""
-        if want.lower().startswith(have.lower() + "/"):
-            return row, want[len(have) + 1:]
+        inside = network_shares_service.folder_inside(row, protocol, server, share)
+        if inside is not None:
+            return row, inside
     return None
 
 

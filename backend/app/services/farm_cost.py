@@ -124,8 +124,8 @@ def _newest_first(rows: dict[str, dict]) -> list[dict]:
 
 # ------------------------------------------------------------------ the record saved after each month
 
-RECORDS_FOLDER = "farm-cost"  # the default: in the folder above the STL / OBJ / STEP folder ("farm cost" before)
-KEY_LOCATION = "farm_cost_dir"  # the folder chosen in Settings (AppSetting); none = the default
+RECORDS_FOLDER = storage.FARM_COST_FOLDER  # the default: in the folder above the STL / OBJ / STEP folder
+KEY_LOCATION = app_settings.FARM_COST_DIR_KEY  # the folder chosen in Settings; none = the default
 _MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 CSV_HEAD = (
     "Period", "Printer", "Prints", "Filament (g)", "Filament cost ($)", "Electricity (kWh)", "Electricity cost ($)",

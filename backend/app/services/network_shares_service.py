@@ -48,6 +48,27 @@ def _files_here(db: Session, mount_point: Path) -> int:
     return sum(count_version_files(db, here, here)) + count_project_files(db, here)
 
 
+def _share_path(protocol: str | None, share: str | None) -> str:
+    """A share's path as compared: no slashes at its ends, "/" between folders; SMB ignores case, NFS (a path) doesn't."""
+    share = (share or "").strip().strip("/\\").replace("\\", "/")
+    return share if protocol == "nfs" else share.lower()
+
+
+def folder_inside(row: NetworkShare, protocol: str | None, server: str | None, share: str | None) -> str | None:
+    """
+    Where a NAS folder (protocol, server, share path) is in a share here: "" when it's the share's own top folder, the
+    folder inside it ("Farmhand/3MF") when it's further in, None when it isn't on that share at all.
+    """
+    if row.protocol != protocol or (row.server or "").strip().lower() != (server or "").strip().lower():
+        return None
+    have, want = _share_path(row.protocol, row.share), _share_path(protocol, share)
+    if have == want:
+        return ""
+    if want.startswith(have + "/"):
+        return (share or "").strip().strip("/\\").replace("\\", "/")[len(have) + 1:]
+    return None
+
+
 def share_out(db: Session, row: NetworkShare) -> dict:
     mount_point = mounts.mount_point_for(row.name)
     err = mounts.get_error(row.id)
