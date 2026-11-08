@@ -59,16 +59,19 @@ writes the project/model/3MF records beside their files (`project_records`, `lib
 unexpected prefix needs an entry there. Share passwords are never written; printer files do hold the printer's
 Moonraker API key and PrusaLink password (asked for, so a restore connects straight away).
 
-**Frontend**: `src/api.js` is the single HTTP client. It also normalizes API shapes into the shapes the UI
-components use. The API host comes from the browser's own hostname at runtime (port 4545), and
+**Frontend**: `src/api.js` is the single HTTP client: it re-exports `src/api/<area>.js` (client, printers, library,
+projects, farmCost, storage, settings), so components always import from `api.js`. It also normalizes API shapes
+into the shapes the UI components use. The API host comes from the browser's own hostname at runtime (port 4545), and
 `VITE_API_BASE` overrides it. `src/` has one folder per area (models, bundles, printers, power, storage, settings,
 monitor, notes, compare). Colours come from `palettes.js`/`theme.js`; don't hard-code colours, or the
 contrast check stops covering them.
 
-**Mock backend** (`frontend/mock/server.js` + `data.js`): a Vite plugin serving `/mock-api` in exactly the real
-API's shapes. It is never built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored
-there**, and Moonraker/PrusaLink behaviour in the backend test stand-ins (`tests/fake_moonraker.py`,
-`tests/fake_prusalink.py`). A typical feature commit touches router → service → test → `api.js` → mock → UI.
+**Mock backend** (`frontend/mock/`: `server.js` the Vite plugin, `core.js` the in-memory farm and shared helpers,
+`routes/<area>.js` the routes, `data.js` the sample farm): serves `/mock-api` in exactly the real API's shapes. Each
+`routes/` file gets the helpers of `core.js` and of the files before it from `ctx`, and returns its own. It is never
+built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink
+behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`). A typical feature
+commit touches router → service → test → `src/api/` → mock → UI.
 
 `app/mounts.py` `parse_location` and `frontend/src/location.js` must stay in agreement (the frontend copy
 only drives the live preview).
