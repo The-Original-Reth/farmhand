@@ -166,7 +166,7 @@ def test_load_all_adds_the_files_another_farmhand_added_to_a_project_both_have(d
     assert folder_sync.import_projects_folder(other_farmhand) == {"imported": [], "skipped": []}
     # ...Load all settings adds what it's missing, once, using the same files
     out = folder_sync.import_projects_folder(other_farmhand, add_missing=True)
-    assert [(p["name"], p["files"]["stl"], p["updated"]) for p in out["imported"]] == [("Shark", 2, True)]
+    assert [(p["name"], p["files"]["stl"], p["added"]) for p in out["imported"]] == [("Shark", 2, True)]
     there = other_farmhand.query(Project).one()
     mine = require_project(db_session, shark.id)
     paths = lambda p: sorted(v.file_path for f in p.stl_files for v in f.versions)  # noqa: E731

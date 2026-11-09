@@ -9,7 +9,7 @@ import { SegmentedToggle } from "../components/common/fields.jsx";
 import { Badge } from "../components/common/ui.jsx";
 import { FolderPicker } from "../storage/FolderPicker.jsx";
 import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
-import { plural } from "../lib/format.js";
+import { plural, whatsIn } from "../lib/format.js";
 
 // Scan projects: the project files folder scanned at once (every project folder there that isn't one of this Farmhand's
 // projects brought in: another Farmhand's sharing it, or one dropped in by hand), another folder's project folders
@@ -17,12 +17,6 @@ import { plural } from "../lib/format.js";
 
 const FOLDER_KEY = "farmhand.projectScanFolder"; // the folder last scanned, remembered in this browser
 
-// "3 STLs, 1 3MF, 2 documents": what a folder holds, by kind
-const KIND_WORDS = [
-  ["stl", "STL"], ["threemf", "3MF"], ["gcode", "G-code"], ["cad", "CAD file"], ["doc", "document"],
-];
-const whatsIn = (files) =>
-  KIND_WORDS.filter(([k]) => files[k]).map(([k, word]) => plural(files[k], word)).join(", ") || "no files";
 
 export function ScanProjectsDialog({ onClose }) {
   const [part, setPart] = useState("folder");

@@ -3,7 +3,7 @@ import { c, fs, mono, ui } from "../theme.js";
 import { monoText, panelBox, uiText } from "../styles.js";
 
 import { Badge } from "../components/common/ui.jsx";
-import { fmtWhen, plural } from "../lib/format.js";
+import { fmtWhen, whatsIn } from "../lib/format.js";
 
 // Why a chosen folder can't be used right now (null when it can): the words on its card's badge
 export const locationProblem = (status) =>
@@ -96,16 +96,6 @@ export function RestoreResult({ result }) {
 
 // The files another Farmhand keeps in the shared folders that Farmhand didn't have, brought in (none copied)
 function BroughtIn({ b, list }) {
-  const files = (f) =>
-    [
-      f.threemf && plural(f.threemf, "3MF"),
-      f.stl && plural(f.stl, "STL"),
-      f.cad && plural(f.cad, "CAD file"),
-      f.doc && plural(f.doc, "document"),
-      f.gcode && plural(f.gcode, "G-code file"),
-    ]
-      .filter(Boolean)
-      .join(", ");
   const added = b.projects.filter((p) => p.added);
   const fresh = b.projects.filter((p) => !p.added);
   if (!b.models.length && !b.threemfs.length && !b.projects.length) return <div>No files to bring in: Farmhand already has every one.</div>;
@@ -116,7 +106,7 @@ function BroughtIn({ b, list }) {
       {fresh.length > 0 && <div data-testid="brought-projects">Projects brought in: {list(fresh.map((p) => p.name))}.</div>}
       {added.map((p) => (
         <div key={p.name} data-testid="brought-added">
-          Added to the project {p.name}: {files(p.files) || "its new files"}.
+          Added to the project {p.name}: {whatsIn(p.files)}.
         </div>
       ))}
     </>

@@ -69,9 +69,9 @@ def _add_files(db: Session, project: Project, base: Path, records: list[dict], w
                     f.printer_id = printer.id if printer else None
                 db.add(f)
                 db.flush()
-                first, added = 1, True
+                first, is_new = 1, True
             else:
-                first, added = max((v.version for v in f.versions), default=0) + 1, False
+                first, is_new = max((v.version for v in f.versions), default=0) + 1, False
             for n, (v, path) in enumerate(new, start=first):
                 row = _version_row(kind, f, n, path, str(v.get("filename") or path.name)[:255], v.get("note"), parse_iso(v.get("uploaded_at")))
                 db.add(row)
@@ -84,7 +84,7 @@ def _add_files(db: Session, project: Project, base: Path, records: list[dict], w
                     counts["gcode"] += 1
             db.flush()
             db.refresh(f)  # its versions, as now
-            if added and kind is STL:
+            if is_new and kind is STL:
                 set_counts(db, project.id, "stl", f.id, need=entry.get("need") or 1, have=entry.get("have") or 0,
                            component=component(entry.get("component"), warnings))
             if kind is THREEMF and f.printer_id:
@@ -175,14 +175,13 @@ def _as_found(db: Session, project: Project, folder: Path, files: list[Path], wa
     return counts
 
 
-def _repair(db: Session, project_id: int, folder: Path, me: str, taken: set[str]) -> dict | None:
+def _repair(db: Session, project_id: int, folder: Path, others: list[dict], taken: set[str]) -> dict | None:
     """
     A project here that came in before its records did (from another Farmhand's numbered folder, named after it: "1"),
     whose folder now holds that Farmhand's record: rebuilt from it, named as it is there, with its files, versions,
     notes, sub-components, counts and parts. Only this Farmhand's entries for it are replaced: no file is touched.
     """
     project = db.get(Project, project_id)
-    others = [r for r in project_records.read_records(folder) if r.get("instance") != me]
     if project is None or not others or project.name != folder.name or others[0]["name"] == project.name:
         return None
     for rows in (project.doc_files, project.cad_files, project.stl_files, project.threemf_files, project.parts,
@@ -208,14 +207,13 @@ def _repair(db: Session, project_id: int, folder: Path, me: str, taken: set[str]
     return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "repaired": True}
 
 
-def _add_newer(db: Session, project_id: int, folder: Path, me: str) -> dict | None:
+def _add_newer(db: Session, project_id: int, folder: Path, others: list[dict]) -> dict | None:
     """
     A project here whose folder another Farmhand shares: the files that Farmhand added since (in its record, and on the
     NAS) added here too, such as a 3MF uploaded there after this one had the project (Load all settings). Only adds;
-    None when there's nothing new.
+    None when there's nothing new. others: the other Farmhands' records in its folder.
     """
     project = db.get(Project, project_id)
-    others = [r for r in project_records.read_records(folder) if r.get("instance") != me]
     if project is None or not others:
         return None
     warnings: list[str] = []
@@ -223,20 +221,21 @@ def _add_newer(db: Session, project_id: int, folder: Path, me: str) -> dict | No
         counts = _add_files(db, project, folder, others, warnings)
     except (ValueError, OSError) as e:
         db.rollback()
-        return {"project_id": project_id, "name": project.name, "files": {}, "warnings": [f"The files added in another Farmhand couldn't be added: {e}"], "updated": True}
+        return {"project_id": project_id, "name": project.name, "files": {}, "warnings": [f"The files added in another Farmhand couldn't be added: {e}"], "added": True}
     if not any(counts.values()):
         db.rollback()
         return None
     db.commit()
     project_records.request_write(project.id)
-    return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "updated": True}
+    return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "added": True}
 
 
 def import_projects_folder(db: Session, add_missing: bool = False) -> dict:
     """
     Scan projects (see the top of this file). One named like a project already here is left out. add_missing (Load
-    all settings): a project here already whose folder another Farmhand shares gets the files that Farmhand added since, too (updated).
-    Answers {imported: [{project_id, name, files, warnings, repaired?, updated?}], skipped: [{name, reason}]}.
+    all settings): a project here already whose folder another Farmhand shares gets the files that Farmhand added
+    since, too (added).
+    Answers {imported: [{project_id, name, files, warnings, repaired?, added?}], skipped: [{name, reason}]}.
     StorageUnavailableError while the project files folder isn't there.
     """
     root = storage.ready_root("project")
@@ -249,12 +248,12 @@ def import_projects_folder(db: Session, add_missing: bool = False) -> dict:
     imported, skipped = [], []
     for entry in subfolders(root):
         folder = Path(entry.path)
+        records = [r for r in project_records.read_records(folder) if r.get("instance") != me]  # the other Farmhands'
         if entry.name in ours:
-            changed = _repair(db, ours[entry.name], folder, me, taken) or (add_missing and _add_newer(db, ours[entry.name], folder, me))
+            changed = _repair(db, ours[entry.name], folder, records, taken) or (add_missing and _add_newer(db, ours[entry.name], folder, records))
             if changed:
                 imported.append(changed)
             continue
-        records = [r for r in project_records.read_records(folder) if r.get("instance") != me]
         try:
             files = [f for f in files_in(folder) if not project_records.is_record(f.name)]
         except (ValueError, OSError) as e:

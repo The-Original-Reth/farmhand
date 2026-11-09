@@ -23,6 +23,13 @@ export const fmtMoney = (v) => (v == null ? "—" : v.toLocaleString(undefined, 
 export const fmtCost = (v) => (v == null ? "—" : `$${fmtMoney(v)}`);
 // "1 file", "3 files" (many: when it isn't just an "s" more)
 export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// "3 STLs, 1 3MF, 2 documents": a project's files by kind ({stl, threemf, gcode, cad, doc} counts)
+const KIND_WORDS = [
+  ["stl", "STL"], ["threemf", "3MF"], ["gcode", "G-code"], ["cad", "CAD file"], ["doc", "document"],
+];
+export const whatsIn = (files) =>
+  KIND_WORDS.filter(([k]) => files[k]).map(([k, word]) => plural(files[k], word)).join(", ") || "no files";
 // a hover hint for something with notes: its notes' first 120 characters
 export const notesHint = (notes) => `Has notes: ${notes.slice(0, 120)}${notes.length > 120 ? "…" : ""}`;
 // a file or a disk's size: "512 B", "3.4 MB", "120 GB"

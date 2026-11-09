@@ -28,8 +28,7 @@ def write_records_once(stop: threading.Event, wait: float = 60) -> None:
         return
     try:
         with SessionLocal() as db:
-            library_records.write_all(db)
-            project_records.write_all(db)
+            config_service.write_records(db)
     except Exception:  # noqa: BLE001 - a record missed now is written with the next change, or by Save all
         log.exception("Writing the records failed")
 

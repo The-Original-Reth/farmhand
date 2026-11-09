@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ... import config_store, mounts, storage
 from ...models import NetworkShare
-from .. import app_settings, network_shares_service, records_service, storage_settings_service
+from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
 
 from .nas_copy import FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
 from .settings import save_config
@@ -50,8 +50,9 @@ DEFAULT_FOLDER = storage.CONFIG_FOLDER  # Save all with no settings folder chose
 def save_all(db: Session, if_exists: str = "ask") -> dict:
     """
     Save all: everything written to the settings folder now (farmhand-config.json, and every printer's and model's
-    file), and every model's, 3MF's and project's record beside its files (write_records). With no folder chosen yet, "farmhand-configs" beside the STL folder is chosen for it, made if need be; one
-    that already holds settings is never overwritten without asking (if_exists, as set_location's).
+    file), and every model's, 3MF's and project's record beside its files (write_records). With no folder chosen yet,
+    "farmhand-configs" beside the STL folder is chosen for it, made if need be; one that already holds settings is
+    never overwritten without asking (if_exists, as set_location's).
     """
     if not location_path(db):
         # StorageUnavailableError while the STL share is away; one still called "farmhand configs" is renamed
@@ -72,13 +73,10 @@ def save_all(db: Session, if_exists: str = "ask") -> dict:
 
 def write_records(db: Session) -> dict:
     """
-    The records kept beside the files, written now too: each model's and library 3MF's in its folder, and each project's
-    (its 3MFs, STLs and other files, its parts list) in the project's folder. Otherwise they're written only after a
-    change and when Farmhand starts, so one missed then (a share away, an older version) waited for the next change.
-    Answers how many of each were written; a folder that's away is skipped.
+    Every record kept beside the files, written now (by Save all, and once when Farmhand starts): each model's and
+    library 3MF's in its folder, and each project's (its 3MFs, STLs and other files, its parts list) in the project's
+    folder. Otherwise one is written only after a change. Answers how many of each; a folder that's away is skipped.
     """
-    from .. import library_records, project_records  # (they import services that import this package)
-
     return {"library": library_records.write_all(db), "projects": project_records.write_all(db)}
 
 
@@ -160,36 +158,29 @@ def restore(db: Session) -> dict:
         else:
             result["shares_kept"].append(label)
 
-    # The printers/ and models/ files: only ever adds what Farmhand is missing
-    records = records_service.restore_all(db, path)
+    # The printers/ and models/ files, and between them every file Farmhand doesn't have yet: only ever adds
+    brought_in: dict = {}
+    records = records_service.restore_all(db, path, lambda: brought_in.update(bring_in_files(db, result["warnings"])))
     result["warnings"] += records.pop("warnings")
     if records["printers_added"] or records["printers_filled"]:
         result["restored"].append("printers")
     if records["model_notes"] or records["threemf_notes"] or records["stars"]:
         result["restored"].append("notes and stars")
     result["records"] = records
+    result["brought_in"] = brought_in
     # the printer orders once more, now the printers from the printers/ files are here too (a new Farmhand had none)
     ordered = _orders_here(db, doc["preferences"], doc["printer_names"])
     save_config(db, {"preferences": {k: ordered[k] for k in ("farm_cost_order", "monitor_order") if k in ordered}})
-    result["brought_in"] = bring_in_files(db, result["warnings"])
-    if records["models_missing"] and (result["brought_in"]["models"] or result["brought_in"]["threemfs"]):
-        # the notes and stars of the models and 3MFs just brought in
-        again = records_service.restore_model_notes(db, path)
-        for key in ("model_notes", "threemf_notes", "stars"):
-            records[key] += again[key]
-        records["models_missing"] = again["models_missing"]
     return result
 
 
 def bring_in_files(db: Session, warnings: list[str]) -> dict:
     """
-    Load all's last step, once the printers are here (each 3MF is for one): every model, 3MF and project another Farmhand
+    Load all, once the printers are here (each 3MF is for one): every model, 3MF and project another Farmhand
     keeps in the shared folders that isn't here yet, from the records beside their files, and every file it added to a
     project that's here already. "Here" is the same file on the NAS: nothing is copied, brought in twice, or changed.
     Answers {models: [names], threemfs: [names], projects: [{name, files, added}]}; what's left out goes in warnings.
     """
-    from .. import library_records, project_scan  # (they import services that import this package)
-
     library = library_records.import_library(db)  # a folder that's away is passed over
     warnings += [f"{s['name']} wasn't brought in: {s['reason']}" for s in library["skipped"]]
     projects = []
@@ -199,7 +190,7 @@ def bring_in_files(db: Session, warnings: list[str]) -> dict:
         warnings.append(f"The projects weren't brought in: {e}")
     else:
         for p in found["imported"]:
-            projects.append({"name": p["name"], "files": p["files"], "added": bool(p.get("updated"))})
+            projects.append({"name": p["name"], "files": p["files"], "added": bool(p.get("added"))})
             warnings += [f"{p['name']}: {w}" for w in p["warnings"]]
         warnings += [f"The project {s['name']} wasn't brought in: {s['reason']}" for s in found["skipped"]]
     return {"models": library["models"], "threemfs": library["threemfs"], "projects": projects}

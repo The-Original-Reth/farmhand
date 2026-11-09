@@ -31,6 +31,7 @@ from .loading import (
     DEFAULT_FOLDER,
     restore,
     save_all,
+    write_records,
     set_location,
 )
 from . import loading, nas_copy, settings
@@ -54,6 +55,7 @@ __all__ = [
     "request_mirror",
     "restore",
     "save_all",
+    "write_records",
     "save_config",
     "set_location",
     "loading",
