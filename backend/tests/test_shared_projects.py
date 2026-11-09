@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import os
-import time
 
 
 from app import storage
@@ -79,14 +78,6 @@ def _dragon_egg(root):
     return folder
 
 
-def _settle(folder):
-    old = time.time() - 600
-    for here, dirs, files in os.walk(folder):
-        for name in [*dirs, *files]:
-            os.utime(os.path.join(here, name), (old, old))
-    os.utime(folder, (old, old))
-
-
 def test_a_folder_dropped_in_is_brought_in_as_it_is(db_session):
     folder = _dragon_egg(storage.ready_root("project"))
     out = folder_sync.import_projects_folder(db_session)
@@ -99,14 +90,6 @@ def test_a_folder_dropped_in_is_brought_in_as_it_is(db_session):
     )
     assert p.threemf_files[0].versions[0].gcode.file_path == str(folder / "Egg plate.gcode")
     assert (folder / "Notes.pdf").is_file()  # nothing moved or copied
-
-
-def test_on_its_own_a_folder_still_being_copied_in_waits(db_session):
-    folder = _dragon_egg(storage.ready_root("project"))
-    out = folder_sync.import_projects_folder(db_session, auto=True)
-    assert out["imported"] == [] and "Still being copied in" in out["skipped"][0]["reason"]
-    _settle(folder)
-    assert folder_sync.import_projects_folder(db_session, auto=True)["imported"][0]["name"] == "Dragon egg"
 
 
 def test_a_folder_named_like_a_project_here_is_left_out(db_session):
@@ -168,3 +151,25 @@ def test_a_project_brought_in_as_its_number_is_rebuilt_from_the_record(db_sessio
     assert [x.name for x in there.parts] == ["M3 screw"]
     assert all(os.path.isfile(v.file_path) for f in there.doc_files + there.stl_files for v in f.versions)
     assert folder_sync.import_projects_folder(other_farmhand)["imported"] == []  # once
+
+
+def test_load_all_adds_the_files_another_farmhand_added_to_a_project_both_have(db_session, other_farmhand):
+    shark = _shark(db_session)
+    folder_sync.import_projects_folder(other_farmhand)  # the other Farmhand has the Shark now
+    # then files are added to it here: a new file, and a new version of one both have
+    project_files.upload(db_session, STL, shark.id, "Tail.stl", io.BytesIO(_stl()))
+    fin = require_project(db_session, shark.id).stl_files[0]
+    project_files.add_version(db_session, STL, shark.id, fin.id, "Fin.stl", io.BytesIO(_stl()))
+    project_records.write(db_session, shark.id)
+
+    # a scan on its own leaves a project it has alone...
+    assert folder_sync.import_projects_folder(other_farmhand) == {"imported": [], "skipped": []}
+    # ...Load all settings adds what it's missing, once, using the same files
+    out = folder_sync.import_projects_folder(other_farmhand, add_missing=True)
+    assert [(p["name"], p["files"]["stl"], p["updated"]) for p in out["imported"]] == [("Shark", 2, True)]
+    there = other_farmhand.query(Project).one()
+    mine = require_project(db_session, shark.id)
+    paths = lambda p: sorted(v.file_path for f in p.stl_files for v in f.versions)  # noqa: E731
+    assert paths(there) == paths(mine) and len(there.stl_files) == 2
+    assert sorted(v.version for f in there.stl_files if f.versions[0].filename.startswith("Fin") for v in f.versions) == [1, 2]
+    assert folder_sync.import_projects_folder(other_farmhand, add_missing=True) == {"imported": [], "skipped": []}

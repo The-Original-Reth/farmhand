@@ -5,7 +5,6 @@ folders, or from before this computer) comes back from its records; a folder dro
 """
 from __future__ import annotations
 
-import datetime as dt
 import os
 from pathlib import Path
 
@@ -22,19 +21,8 @@ from ..project_files import CAD, DOC, STL, THREEMF
 from ..project_service import add_model, create_project, link_printer, project_folder, set_counts
 from .common import component, existing_names, files_in, kind_of, no_counts, printer_for, subfolders
 
-QUIET_SECONDS = 120  # on its own (not asked for), a folder is brought in only once nothing in it has changed for this long
 KINDS = {"doc": DOC, "cad": CAD, "stl": STL, "threemf": THREEMF}
 _KIND_FOLDERS = ("docs", "cad", "stl", "threemf")
-
-
-def _quiet(folder: Path, files: list[Path]) -> bool:
-    """Nothing in the folder changed lately: it isn't still being copied in."""
-    now = dt.datetime.now().timestamp()
-    try:
-        newest = max([folder.stat().st_mtime, *(f.stat().st_mtime for f in files)])
-    except OSError:
-        return False
-    return now - newest >= QUIET_SECONDS
 
 
 def _version_row(kind, f, number: int, path: Path, filename: str, note=None, uploaded_at=None):
@@ -52,29 +40,42 @@ def _whole(value, default: int) -> int:
     return value if type(value) is int and value >= 0 else default
 
 
-def _from_records(db: Session, project: Project, base: Path, records: list[dict], warnings: list[str]) -> dict:
-    """The project's files, parts, models and printers as the records in its folder have them (every Farmhand's
-    together: a file in any of them comes in once). Files that aren't there any more are left out."""
+def _add_files(db: Session, project: Project, base: Path, records: list[dict], warnings: list[str]) -> dict:
+    """
+    The files in the records (every Farmhand's together) that the project doesn't have yet, added: a file in any of
+    them comes in once, and a newer version of a file it has is added to that file. Files that aren't there any more
+    are left out; nothing it has is changed or removed. Answers how many of each kind were added to.
+    """
     counts = no_counts()
-    seen: set[str] = set()
+    have: dict[str, object] = {}  # every version's file the project has: the project file it belongs to
+    for kind in KINDS.values():
+        for f in getattr(project, f"{kind.key}_files"):
+            for v in f.versions:
+                have[str(Path(v.file_path))] = f
     for record in records:
         for entry in record.get("files") or []:
             kind = KINDS.get(entry.get("kind")) if isinstance(entry, dict) else None
             versions = [v for v in (entry.get("versions") or []) if isinstance(v, dict)] if kind else []
             here = [(v, resolve_from(base, v.get("path"))) for v in sorted(versions, key=lambda v: v.get("version") or 0)]
             here = [(v, p) for v, p in here if p and p.is_file()]
-            if not here or str(here[-1][1]) in seen:
+            new = [(v, p) for v, p in here if str(p) not in have]
+            if not new:
                 continue
-            seen.update(str(p) for _, p in here)
-            f = kind.file_cls(project_id=project.id)
-            if kind is THREEMF and entry.get("printer"):
-                printer = db.scalar(select(Printer).where(Printer.name == entry["printer"]))
-                f.printer_id = printer.id if printer else None
-            db.add(f)
-            db.flush()
-            for n, (v, path) in enumerate(here, start=1):
+            f = next((have[str(p)] for _, p in here if str(p) in have), None)
+            if f is None:
+                f = kind.file_cls(project_id=project.id)
+                if kind is THREEMF and entry.get("printer"):
+                    printer = db.scalar(select(Printer).where(Printer.name == entry["printer"]))
+                    f.printer_id = printer.id if printer else None
+                db.add(f)
+                db.flush()
+                first, added = 1, True
+            else:
+                first, added = max((v.version for v in f.versions), default=0) + 1, False
+            for n, (v, path) in enumerate(new, start=first):
                 row = _version_row(kind, f, n, path, str(v.get("filename") or path.name)[:255], v.get("note"), parse_iso(v.get("uploaded_at")))
                 db.add(row)
+                have[str(path)] = f
                 gcode = v.get("gcode") if kind is THREEMF and isinstance(v.get("gcode"), dict) else None
                 gpath = resolve_from(base, gcode.get("path")) if gcode else None
                 if gpath and gpath.is_file():
@@ -82,12 +83,19 @@ def _from_records(db: Session, project: Project, base: Path, records: list[dict]
                     db.add(ProjectThreemfGcode(version_id=row.id, filename=str(gcode.get("filename") or gpath.name)[:255], file_path=str(gpath)))
                     counts["gcode"] += 1
             db.flush()
-            if kind is STL:
+            db.refresh(f)  # its versions, as now
+            if added and kind is STL:
                 set_counts(db, project.id, "stl", f.id, need=entry.get("need") or 1, have=entry.get("have") or 0,
                            component=component(entry.get("component"), warnings))
             if kind is THREEMF and f.printer_id:
                 link_printer(db, project.id, f.printer_id)
             counts[kind.key] += 1
+    return counts
+
+
+def _from_records(db: Session, project: Project, base: Path, records: list[dict], warnings: list[str]) -> dict:
+    """The project's files, parts, models and printers as the records in its folder have them (see _add_files)."""
+    counts = _add_files(db, project, base, records, warnings)
     latest = records[0]
     for part in latest.get("parts") or []:
         if isinstance(part, dict) and str(part.get("name") or "").strip():
@@ -200,11 +208,35 @@ def _repair(db: Session, project_id: int, folder: Path, me: str, taken: set[str]
     return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "repaired": True}
 
 
-def import_projects_folder(db: Session, auto: bool = False) -> dict:
+def _add_newer(db: Session, project_id: int, folder: Path, me: str) -> dict | None:
     """
-    Scan projects (see the top of this file). One named like a project already here is left out. auto: run on its
-    own, so a folder still being copied in is left until next time.
-    Answers {imported: [{project_id, name, files, warnings}], skipped: [{name, reason}]}.
+    A project here whose folder another Farmhand shares: the files that Farmhand added since (in its record, and on the
+    NAS) added here too, such as a 3MF uploaded there after this one had the project (Load all settings). Only adds;
+    None when there's nothing new.
+    """
+    project = db.get(Project, project_id)
+    others = [r for r in project_records.read_records(folder) if r.get("instance") != me]
+    if project is None or not others:
+        return None
+    warnings: list[str] = []
+    try:
+        counts = _add_files(db, project, folder, others, warnings)
+    except (ValueError, OSError) as e:
+        db.rollback()
+        return {"project_id": project_id, "name": project.name, "files": {}, "warnings": [f"The files added in another Farmhand couldn't be added: {e}"], "updated": True}
+    if not any(counts.values()):
+        db.rollback()
+        return None
+    db.commit()
+    project_records.request_write(project.id)
+    return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "updated": True}
+
+
+def import_projects_folder(db: Session, add_missing: bool = False) -> dict:
+    """
+    Scan projects (see the top of this file). One named like a project already here is left out. add_missing (Load
+    all settings): a project here already whose folder another Farmhand shares gets the files that Farmhand added since, too (updated).
+    Answers {imported: [{project_id, name, files, warnings, repaired?, updated?}], skipped: [{name, reason}]}.
     StorageUnavailableError while the project files folder isn't there.
     """
     root = storage.ready_root("project")
@@ -218,9 +250,9 @@ def import_projects_folder(db: Session, auto: bool = False) -> dict:
     for entry in subfolders(root):
         folder = Path(entry.path)
         if entry.name in ours:
-            repaired = _repair(db, ours[entry.name], folder, me, taken)
-            if repaired:
-                imported.append(repaired)
+            changed = _repair(db, ours[entry.name], folder, me, taken) or (add_missing and _add_newer(db, ours[entry.name], folder, me))
+            if changed:
+                imported.append(changed)
             continue
         records = [r for r in project_records.read_records(folder) if r.get("instance") != me]
         try:
@@ -237,9 +269,6 @@ def import_projects_folder(db: Session, auto: bool = False) -> dict:
                 "reason": "Another Farmhand keeps this project. It comes in, with its name and everything, once that "
                 "Farmhand has written its record there: update it to this version of Farmhand.",
             })
-            continue
-        if auto and not _quiet(folder, files):
-            skipped.append({"name": name, "reason": "Still being copied in: it's brought in once it's finished."})
             continue
         if name.lower() in taken:
             skipped.append({"name": name, "reason": f"There's already a project called {name} here."})

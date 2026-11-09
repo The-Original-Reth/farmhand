@@ -359,6 +359,12 @@ def restore_models(db: Session, records: list[dict]) -> dict:
     return out
 
 
+def restore_model_notes(db: Session, folder) -> dict:
+    """The models/ files once more (after Load all brought models in): notes and stars for the ones now here."""
+    models, _ = records_store.read_records(folder, records_store.MODELS_DIR)
+    return restore_models(db, models)
+
+
 def restore_all(db: Session, folder) -> dict:
     printers, warnings = records_store.read_records(folder, records_store.PRINTERS_DIR)
     models, model_warnings = records_store.read_records(folder, records_store.MODELS_DIR)

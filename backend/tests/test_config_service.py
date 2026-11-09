@@ -411,3 +411,25 @@ def test_on_a_new_farmhand_the_orders_wait_for_the_printers_brought_back(db_sess
     got = svc.get_config(db_session)["preferences"]
     assert got["farm_cost_order"] == [ids["VT 1026"], ids["Prusa_2"]]
     assert got["monitor_order"] == [f"{ids['VT 1026']}:Front", f"{ids['Prusa_2']}:top"]
+
+
+def test_load_all_brings_in_the_projects_another_farmhand_keeps(db_session, other_farmhand, share):
+    import io
+
+    from app.models import Project
+    from app.services import project_files, project_records
+    from app.services.project_service import create_project
+
+    from .factories import stl_bytes
+
+    p = create_project(db_session, "Shark")
+    project_files.upload(db_session, project_files.STL, p.id, "Fin.stl", io.BytesIO(stl_bytes()))
+    project_records.write(db_session, p.id)
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+
+    out = svc.set_location(other_farmhand, str(folder), "restore")["restored"]
+    assert out["brought_in"]["projects"] == [{"name": "Shark", "files": {"doc": 0, "cad": 0, "stl": 1, "threemf": 0, "gcode": 0}, "added": False}]
+    assert other_farmhand.query(Project).one().name == "Shark"
+    again = svc.restore(other_farmhand)["brought_in"]  # it has them all now: nothing twice
+    assert again == {"models": [], "threemfs": [], "projects": []}

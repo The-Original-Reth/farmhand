@@ -248,7 +248,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
   rewritten after every change. So a project isn't only in Farmhand's database: if the computer running Farmhand is
   replaced, a new Farmhand pointed at the same save location brings every project back with **Scan projects**.
 - **Two Farmhands can share the same NAS folders** (testing on two computers, say). Each writes its own record of a
-  project, and each brings in the projects the other has. Nothing is ever written over: a new file or version goes in
+  project, and each brings in what the other has with **Load all settings** (or **Scan projects**): it never
+  happens on its own. Nothing is ever written over: a new file or version goes in
   a folder of its own when the other Farmhand already has files where it would go (`v1-2` beside `v1`, a project
   folder `1-2` beside `1`). The files themselves are shared, so a file deleted in one is gone for the other too
   (**Check projects** then lists it as missing there).
@@ -256,15 +257,14 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
   3MF folder) is a record (`farmhand-model-<id>.json`, `farmhand-3mf-<id>.json`): the model's name, type, notes and
   versions; the 3MF's printer, the models it was sliced from, notes, starred version, and every version's 3MF, G-code,
   preview, monument and slicer settings (so a version whose files were pruned comes back too). The other Farmhand
-  brings them in, its files used where they are: with **Scan projects**, and on its own every few minutes. A 3MF comes
-  in once its printer (by name) is there too: add it, or **Load all settings**. The Models page's scan never offers a
+  brings them in, its files used where they are, with **Load all settings** or **Scan projects**. A 3MF comes
+  in once its printer (by name) is there too: add it, or **Load all settings** (which brings the printers first). The Models page's scan never offers a
   file another Farmhand keeps, so it can't take one in and move it.
 - **Scan projects** (beside **New project** on the Projects page) has three parts:
-  - **Projects folder**, done as soon as it opens (and on its own every few minutes): every project folder in the
+  - **Projects folder**, done as soon as it opens: every project folder in the
     project files folder that isn't a project here yet comes in, its files used where they are. One another Farmhand
     keeps comes back from its records; a folder you dropped in becomes a project named after it, its files sorted by
-    kind (as below). One named like a project already here is left out, and on its own it leaves a folder until
-    nothing in it has changed for two minutes, so one still being copied in isn't brought in half-done.
+    kind (as below). One named like a project already here is left out.
     Another Farmhand's numbered folder (`1`, its files in `docs/`, `stl/`...) with no record in it yet is left out
     until that Farmhand writes one (update it), and a project that came in as its number before this is rebuilt
     from the record once it's there: named as it is there, with its files, pictures, notes, sub-components, counts
@@ -732,7 +732,11 @@ locations).
   folder you pick where they were saved): the look, the display preferences and arrangements, the electricity
   prices, the STL/3MF/project folders (even if their share hasn't reconnected yet — uploads stay refused until it's
   really there), the farm cost records folder, any shares not already present, and the printer and model records.
-  It's safe to run twice. The Farm cost page's printer order and the Monitor page's camera order are matched by
+  Then it **brings in every file it doesn't have** from the records beside the files on the NAS: the models, 3MF
+  files and projects another Farmhand keeps there, and the files that Farmhand added to a project both have (a 3MF
+  uploaded there, say, or a new version). "Has" means the same file on the NAS: nothing is copied, nothing comes in
+  twice, and nothing already here is changed or removed. It says what it brought in, and what it left out and why
+  (a 3MF for a printer that isn't here). It's safe to run twice. The Farm cost page's printer order and the Monitor page's camera order are matched by
   printer name, so they come back right on a Farmhand that numbers its printers differently (another computer, or a
   fresh install); a printer that isn't there is left out. The Tools page's links come back in the order you put them.
 - **If the share is down** the settings are still saved on the server, the page says the copy
@@ -945,7 +949,7 @@ share.
 | PUT | `/settings/config/location` | Choose the network folder (`null` = none); `if_exists`: `ask` (default), `restore`, `overwrite` |
 | POST | `/settings/config/save-now` | Write the copy again now |
 | POST | `/settings/config/save-all` | Save all: everything written to the settings folder now, and every project's, model's and 3MF's record beside its files (`records`: how many); with none chosen, `farmhand-configs` beside the STL folder (`if_exists` as above when it already holds settings) |
-| POST | `/settings/config/restore` | Load the settings file (and printer and model records) in the chosen folder |
+| POST | `/settings/config/restore` | Load the settings file (and printer and model records) in the chosen folder, then bring in every model, 3MF and project from the records beside the files that isn't here, and the files another Farmhand added to a project both have (`brought_in`: `{models, threemfs, projects: [{name, files, added}]}`) |
 
 The full API, with every route, is described at **http://localhost:4545/docs**.
 

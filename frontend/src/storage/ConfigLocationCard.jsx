@@ -3,7 +3,7 @@ import { c, fs, mono, ui } from "../theme.js";
 import { monoText, panelBox, uiText } from "../styles.js";
 
 import { Badge } from "../components/common/ui.jsx";
-import { fmtWhen } from "../lib/format.js";
+import { fmtWhen, plural } from "../lib/format.js";
 
 // Why a chosen folder can't be used right now (null when it can): the words on its card's badge
 export const locationProblem = (status) =>
@@ -86,10 +86,40 @@ export function RestoreResult({ result }) {
         </div>
       )}
       {result.records && <RestoredRecords r={result.records} list={list} />}
+      {result.broughtIn && <BroughtIn b={result.broughtIn} list={list} />}
       {result.warnings.map((w) => (
         <div key={w} style={{ color: c.amber }}>{w}</div>
       ))}
     </div>
+  );
+}
+
+// The files another Farmhand keeps in the shared folders that Farmhand didn't have, brought in (none copied)
+function BroughtIn({ b, list }) {
+  const files = (f) =>
+    [
+      f.threemf && plural(f.threemf, "3MF"),
+      f.stl && plural(f.stl, "STL"),
+      f.cad && plural(f.cad, "CAD file"),
+      f.doc && plural(f.doc, "document"),
+      f.gcode && plural(f.gcode, "G-code file"),
+    ]
+      .filter(Boolean)
+      .join(", ");
+  const added = b.projects.filter((p) => p.added);
+  const fresh = b.projects.filter((p) => !p.added);
+  if (!b.models.length && !b.threemfs.length && !b.projects.length) return <div>No files to bring in: Farmhand already has every one.</div>;
+  return (
+    <>
+      {b.models.length > 0 && <div data-testid="brought-models">Models brought in: {list(b.models)}.</div>}
+      {b.threemfs.length > 0 && <div data-testid="brought-threemfs">3MF files brought in: {list(b.threemfs)}.</div>}
+      {fresh.length > 0 && <div data-testid="brought-projects">Projects brought in: {list(fresh.map((p) => p.name))}.</div>}
+      {added.map((p) => (
+        <div key={p.name} data-testid="brought-added">
+          Added to the project {p.name}: {files(p.files) || "its new files"}.
+        </div>
+      ))}
+    </>
   );
 }
 

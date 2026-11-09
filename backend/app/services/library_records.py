@@ -238,7 +238,7 @@ def import_bundles(db: Session) -> dict:
         label = versions[-1].get("filename") or "a 3MF"
         printer = db.scalar(select(Printer).where(Printer.name == doc.get("printer")))
         if printer is None:
-            skipped.append({"name": label, "reason": f"It's for the printer {doc.get('printer')}, which isn't here: add it (or Load all settings), and it comes in."})
+            skipped.append({"name": label, "reason": f"It's for the printer {doc.get('printer')}, which isn't here: add that printer, then Load all settings again."})
             continue
         bundle = Bundle(printer_id=printer.id)
         db.add(bundle)

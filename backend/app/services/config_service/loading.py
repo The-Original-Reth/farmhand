@@ -171,4 +171,35 @@ def restore(db: Session) -> dict:
     # the printer orders once more, now the printers from the printers/ files are here too (a new Farmhand had none)
     ordered = _orders_here(db, doc["preferences"], doc["printer_names"])
     save_config(db, {"preferences": {k: ordered[k] for k in ("farm_cost_order", "monitor_order") if k in ordered}})
+    result["brought_in"] = bring_in_files(db, result["warnings"])
+    if records["models_missing"] and (result["brought_in"]["models"] or result["brought_in"]["threemfs"]):
+        # the notes and stars of the models and 3MFs just brought in
+        again = records_service.restore_model_notes(db, path)
+        for key in ("model_notes", "threemf_notes", "stars"):
+            records[key] += again[key]
+        records["models_missing"] = again["models_missing"]
     return result
+
+
+def bring_in_files(db: Session, warnings: list[str]) -> dict:
+    """
+    Load all's last step, once the printers are here (each 3MF is for one): every model, 3MF and project another Farmhand
+    keeps in the shared folders that isn't here yet, from the records beside their files, and every file it added to a
+    project that's here already. "Here" is the same file on the NAS: nothing is copied, brought in twice, or changed.
+    Answers {models: [names], threemfs: [names], projects: [{name, files, added}]}; what's left out goes in warnings.
+    """
+    from .. import library_records, project_scan  # (they import services that import this package)
+
+    library = library_records.import_library(db)  # a folder that's away is passed over
+    warnings += [f"{s['name']} wasn't brought in: {s['reason']}" for s in library["skipped"]]
+    projects = []
+    try:
+        found = project_scan.import_projects_folder(db, add_missing=True)
+    except storage.StorageUnavailableError as e:
+        warnings.append(f"The projects weren't brought in: {e}")
+    else:
+        for p in found["imported"]:
+            projects.append({"name": p["name"], "files": p["files"], "added": bool(p.get("updated"))})
+            warnings += [f"{p['name']}: {w}" for w in p["warnings"]]
+        warnings += [f"The project {s['name']} wasn't brought in: {s['reason']}" for s in found["skipped"]]
+    return {"models": library["models"], "threemfs": library["threemfs"], "projects": projects}

@@ -62,7 +62,9 @@ export function settingsRoutes(ctx) {
       records: { library: farm.models.length + farm.bundles.length, projects: farm.projects.length },
     };
   });
-  on("POST", "/settings/config/restore", () => ({ restored: ["appearance", "display preferences"], shares_added: [], shares_kept: ["farm-nas"], needs_password: [], warnings: [], records: null }));
+  on("POST", "/settings/config/restore", () => ({ restored: ["appearance", "display preferences"], shares_added: [], shares_kept: ["farm-nas"], needs_password: [], warnings: [], records: null,
+    // the mockup has no other Farmhand sharing its folders: nothing to bring in
+    brought_in: { models: [], threemfs: [], projects: [] } }));
 
   on("GET", "/settings/storage", () => storageOut());
   on("PUT", "/settings/storage", (_, body) => {

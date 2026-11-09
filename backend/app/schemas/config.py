@@ -126,6 +126,9 @@ class RestoreOut(BaseModel):
     # From the printers/ and models/ files: printers_added, printers_filled, prints_added, readings_added, prices_added,
     # model_notes, threemf_notes, stars, models_missing
     records: dict | None = None
+    # The files another Farmhand keeps in the shared folders, brought in: {models: [names], threemfs: [names],
+    # projects: [{name, files: {doc, cad, stl, threemf, gcode}, added}]} (added: a project here already, given its new files)
+    brought_in: dict | None = None
 
 
 class LocationResult(BaseModel):

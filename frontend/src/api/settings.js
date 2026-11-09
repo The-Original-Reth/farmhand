@@ -27,6 +27,13 @@ const normalizeRestore = (r) =>
       stars: r.records.stars || 0,
       modelsMissing: r.records.models_missing || [],
     },
+    // the models, 3MFs and projects another Farmhand keeps in the shared folders, brought in (added: a project here
+    // already, given the files it was missing)
+    broughtIn: r.brought_in && {
+      models: r.brought_in.models || [],
+      threemfs: r.brought_in.threemfs || [],
+      projects: (r.brought_in.projects || []).map((p) => ({ name: p.name, files: p.files || {}, added: !!p.added })),
+    },
   };
 
 export const normalizeFound = (f) =>
