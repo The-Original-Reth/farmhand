@@ -153,7 +153,8 @@ them at the end: all four should say **running**. Your data is kept. Then reload
   storage (`storage_data`). Files kept on a NAS are on the NAS.
 - With a settings folder chosen (see "Setting it up"), the settings, the network shares (without their
   passwords) and every printer's and model's records are also on the NAS, kept up to date after every change;
-  **Save all** writes all of it again at once.
+  **Save all** writes all of it again at once, along with each project's record in its folder (its 3MFs, STLs and
+  other files, and its parts list) and each model's and 3MF's record beside its files.
 - **To move to a new computer, or after a lost one:** install Farmhand there (steps 1–4), add the same network
   share on the Settings page, then **Load all settings…** and pick the settings folder (or choose the same
   settings folder and pick **Use those settings**). Then type the
@@ -943,7 +944,7 @@ share.
 | GET | `/settings/config/location/inspect?path=` | Look at a folder before choosing it: usable? already holds settings? |
 | PUT | `/settings/config/location` | Choose the network folder (`null` = none); `if_exists`: `ask` (default), `restore`, `overwrite` |
 | POST | `/settings/config/save-now` | Write the copy again now |
-| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now; with none chosen, `farmhand-configs` beside the STL folder (`if_exists` as above when it already holds settings) |
+| POST | `/settings/config/save-all` | Save all: everything written to the settings folder now, and every project's, model's and 3MF's record beside its files (`records`: how many); with none chosen, `farmhand-configs` beside the STL folder (`if_exists` as above when it already holds settings) |
 | POST | `/settings/config/restore` | Load the settings file (and printer and model records) in the chosen folder |
 
 The full API, with every route, is described at **http://localhost:4545/docs**.

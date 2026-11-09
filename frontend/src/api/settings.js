@@ -80,7 +80,8 @@ export const saveConfigOnExit = (patch) => {
   }
 };
 
-// Save all: every setting, printer and model written to the settings folder now. With no folder chosen, Farmhand picks
+// Save all: every setting, printer and model written to the settings folder now, and every model's, 3MF's and
+// project's record beside its files (records: how many projects', and models' and 3MFs', were written). With no folder chosen, Farmhand picks
 // "farmhand-configs" beside the STL folder; one already holding settings needs a choice first (needsChoice, found),
 // answered with setConfigLocation({ path: found.path, ifExists }).
 export const saveAllSettings = async (ifExists = "ask") => {
@@ -92,6 +93,7 @@ export const saveAllSettings = async (ifExists = "ask") => {
     restored: normalizeRestore(r.restored),
     location: normalizeConfigLocation(r.location),
     mirror: r.mirror,
+    records: r.records || null,
   };
 };
 

@@ -140,3 +140,5 @@ class SaveAllOut(LocationResult):
     """What Save all did: as choosing the folder answers, and the copy it wrote (null when a choice is needed first)."""
 
     mirror: MirrorOut | None
+    # the records written beside the files: {"library": models' and 3MFs', "projects": n} (null when a choice is needed)
+    records: dict[str, int] | None = None

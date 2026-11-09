@@ -310,6 +310,25 @@ def test_save_all_writes_to_the_folder_already_chosen(db_session, share):
     assert out["saved"] and (folder / cs.CONFIG_FILENAME).is_file()
 
 
+def test_save_all_writes_each_projects_record_beside_its_files_too(db_session, share):
+    import io
+
+    from app.services import project_files, project_records
+    from app.services.project_service import create_project
+
+    from .factories import stl_bytes
+
+    p = create_project(db_session, "Shark")
+    project_files.upload(db_session, project_files.STL, p.id, "Fin.stl", io.BytesIO(stl_bytes()))
+    record = project_records.record_path(db_session, p.folder)
+    record.unlink(missing_ok=True)  # never written (a share away when it changed, say)
+
+    svc.set_location(db_session, str(_folder(share)))
+    out = svc.save_all(db_session)
+    assert out["saved"] and out["records"]["projects"] == 1 and record.is_file()
+    assert [(f["kind"], f["versions"][0]["filename"]) for f in json.loads(record.read_text())["files"]] == [("stl", "Fin ver 1.stl")]
+
+
 def test_the_farm_cost_folder_is_saved_and_loaded_back(db_session, share):
     from app.services import farm_cost
 

@@ -52,12 +52,14 @@ export function settingsRoutes(ctx) {
     return { saved: true, needs_choice: false, found: null, restored: null, location: configLocation() };
   });
   on("POST", "/settings/config/save-now", () => ({ ok: true, skipped: false, path: farm.settingsFolder, error: null }));
-  // Save all: with no folder chosen, "farmhand-configs" beside the STL folder (as the server does)
+  // Save all: with no folder chosen, "farmhand-configs" beside the STL folder (as the server does); every model's,
+  // 3MF's and project's record is written beside its files too
   on("POST", "/settings/config/save-all", () => {
     if (!farm.settingsFolder) farm.settingsFolder = farm.storage.stl.replace(/\/[^/]*$/, "") + "/farmhand-configs";
     return {
       saved: true, needs_choice: false, found: null, restored: null, location: configLocation(),
       mirror: { ok: true, skipped: false, path: farm.settingsFolder, error: null },
+      records: { library: farm.models.length + farm.bundles.length, projects: farm.projects.length },
     };
   });
   on("POST", "/settings/config/restore", () => ({ restored: ["appearance", "display preferences"], shares_added: [], shares_kept: ["farm-nas"], needs_password: [], warnings: [], records: null }));

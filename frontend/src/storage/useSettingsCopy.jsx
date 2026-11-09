@@ -21,7 +21,7 @@ export function useSettingsCopy({ initialInfo, shares, onSettingsRestored, reloa
     if (initialInfo) setConfigInfo(initialInfo); // the page's first load came in
   }, [initialInfo]);
   const [configPicker, setConfigPicker] = useState(null); // null | "choose" | "load" (a folder to load settings from)
-  const [saved, setSaved] = useState(null); // where the last Save all wrote everything
+  const [saved, setSaved] = useState(null); // where the last Save all wrote everything, and how many records beside the files
   const [saving, setSaving] = useState(false);
   const [configFound, setConfigFound] = useState(null); // the folder just chosen already holds a settings file
   const [configRestoreOpen, setConfigRestoreOpen] = useState(false);
@@ -73,7 +73,7 @@ export function useSettingsCopy({ initialInfo, shares, onSettingsRestored, reloa
       } else {
         setConfigInfo(r.location);
         if (r.mirror && !r.mirror.ok) setConfigError(r.mirror.error);
-        else setSaved(r.location.path);
+        else setSaved({ path: r.location.path, records: r.records });
       }
     } catch (e) {
       setConfigError(errorText(e));

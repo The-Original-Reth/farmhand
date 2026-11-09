@@ -3,6 +3,7 @@ import { ChevronDown, FolderDown, FolderOpen, HardDrive, RefreshCw, Save } from 
 import { c, fs, ui } from "../theme.js";
 import { errorText, getSaveLocation, reconnectShare, setSaveLocation } from "../api.js";
 import { monoText, panelBox, primaryButton, uiText } from "../styles.js";
+import { plural } from "../lib/format.js";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
 import { Badge } from "../components/common/ui.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
@@ -238,7 +239,9 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
       {copy.error && <div style={uiText(12, c.amber, { lineHeight: 1.5, marginBottom: 10 })}>{copy.error}</div>}
       {copy.saved && !copy.error && (
         <div data-testid="config-saved" style={uiText(12, c.green, { lineHeight: 1.5, marginBottom: 10 })}>
-          Saved all settings to {copy.saved}.
+          Saved all settings to {copy.saved.path}.
+          {copy.saved.records &&
+            ` Wrote ${plural(copy.saved.records.projects, "project record")} into the project folders, and ${plural(copy.saved.records.library, "model or 3MF record", "model and 3MF records")} beside their files.`}
         </div>
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -254,7 +257,9 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginTop: 10 })}>
         <b style={{ color: c.textMuted }}>Save all</b> writes every setting to the farmhand-configs folder: the look, the storage
         and share setup, the farm cost folder, the Power page's prices, how the Printers, Monitor and Farm cost pages are
-        arranged, and your printers and models. <b style={{ color: c.textMuted }}>Load all settings</b> brings it back. A share's
+        arranged, and your printers and models. It also writes each project's record (its 3MFs, STLs and other files, and its
+        parts list) into the project's folder, and each model's and 3MF's beside its files, so they can be brought back from
+        there. <b style={{ color: c.textMuted }}>Load all settings</b> brings it back. A share's
         password is never saved; the printers' API keys and PrusaLink passwords are, so keep the folder private.
       </div>
 

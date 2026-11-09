@@ -50,7 +50,7 @@ DEFAULT_FOLDER = storage.CONFIG_FOLDER  # Save all with no settings folder chose
 def save_all(db: Session, if_exists: str = "ask") -> dict:
     """
     Save all: everything written to the settings folder now (farmhand-config.json, and every printer's and model's
-    file). With no folder chosen yet, "farmhand-configs" beside the STL folder is chosen for it, made if need be; one
+    file), and every model's, 3MF's and project's record beside its files (write_records). With no folder chosen yet, "farmhand-configs" beside the STL folder is chosen for it, made if need be; one
     that already holds settings is never overwritten without asking (if_exists, as set_location's).
     """
     if not location_path(db):
@@ -64,7 +64,22 @@ def save_all(db: Session, if_exists: str = "ask") -> dict:
     else:
         restored = None
     written = mirror(db)
-    return {"saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db), "mirror": written}
+    return {
+        "saved": True, "needs_choice": False, "found": None, "restored": restored, "location": describe(db), "mirror": written,
+        "records": write_records(db),
+    }
+
+
+def write_records(db: Session) -> dict:
+    """
+    The records kept beside the files, written now too: each model's and library 3MF's in its folder, and each project's
+    (its 3MFs, STLs and other files, its parts list) in the project's folder. Otherwise they're written only after a
+    change and when Farmhand starts, so one missed then (a share away, an older version) waited for the next change.
+    Answers how many of each were written; a folder that's away is skipped.
+    """
+    from .. import library_records, project_records  # (they import services that import this package)
+
+    return {"library": library_records.write_all(db), "projects": project_records.write_all(db)}
 
 
 def _shares_here(db: Session, entries: list[dict]) -> dict[str, NetworkShare]:
