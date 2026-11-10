@@ -15,50 +15,22 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from ...errors import NotFound
-from ... import storage
 from ...models import Printer
-from .. import app_settings, print_progress, stream_media, youtube_live
-from .constants import DESTINATIONS, FPS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY, TITLE_EVERY, TITLE_TRIES
+from .. import app_settings, print_progress, youtube_live
+from . import staging
+from .constants import DESTINATIONS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY, TITLE_EVERY, TITLE_TRIES
 from .choices import settings
+from .encoders import encoder
 from .sources import Source, sources
-from .picture import Look, TURNS_FOR, command, encoder_args, status_line, timetable
+from .picture import Look, TURNS_FOR, command, timetable
+from .staging import write_atomically
+from .words import status_line
 
 # ------------------------------------------------------------------ the stream itself
 
 
 def ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
-
-
-# FARMHAND_STREAM_ENCODER: "auto" (the default: an NVIDIA card's encoder when one works here, else the processor),
-# "nvenc" or "cpu" to say which. What "auto" finds is remembered until Farmhand starts again.
-ENCODER_SETTING = "FARMHAND_STREAM_ENCODER"
-_found_encoder: dict[str, str] = {}
-
-
-def _nvenc_works(ffmpeg: str) -> bool:
-    """Whether ffmpeg can compress with an NVIDIA card here: a moment's black picture through it (no card, no driver
-    in reach, or an ffmpeg without it: no)."""
-    try:
-        r = subprocess.run(
-            [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=black:s=256x144:r={FPS}",
-             "-frames:v", "5", *encoder_args("nvenc"), "-f", "null", "-"],
-            capture_output=True, timeout=20,
-        )
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def encoder(ffmpeg: str) -> str:
-    """"nvenc" or "cpu": how the stream is compressed (see FARMHAND_STREAM_ENCODER)."""
-    wanted = (os.environ.get(ENCODER_SETTING) or "auto").strip().lower()
-    if wanted in ("cpu", "nvenc"):
-        return wanted
-    if ffmpeg not in _found_encoder:
-        _found_encoder[ffmpeg] = "nvenc" if _nvenc_works(ffmpeg) else "cpu"
-    return _found_encoder[ffmpeg]
 
 
 def popen(args: list[str]):
@@ -123,8 +95,6 @@ class Stream:
         if not ffmpeg:
             raise ValueError("ffmpeg isn't installed where Farmhand's API runs, so it can't stream. Rebuild with the latest update.sh.")
         srcs = sources(db, chosen["cameras"])
-        cards = {c: cell for c, cell in enumerate(chosen["cells"]) if cell and "camera" not in cell}
-        pictures = _card_pictures(db, cards)
         wants_title = chosen["destination"] == "youtube" and (chosen["title"] or chosen["description"])
         creds = youtube_live.credentials(db) if wants_title else None
         self.stop()
@@ -135,7 +105,7 @@ class Stream:
             files = [os.path.join(self._dir, f"{i}.txt") for i in range(len(srcs))] if chosen["show_status"] else None
             for i, s in enumerate(srcs):
                 if files:
-                    _write_atomically(files[i], s.label)
+                    write_atomically(files[i], s.label)
             self._key = key
             self._destination = chosen["destination"]
             self._labels = [s.label for s in srcs]
@@ -148,32 +118,8 @@ class Stream:
                                else {"state": "failed", "message": "Sign in to YouTube (below) for Farmhand to set the title and description."})
             self._wanted.set()
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
-        # ffmpeg reads each picture again every second: it reads copies made here once, never the stream folder (on
-        # the NAS, that's a hundred files opened a second, and pictures being copied in clash with it)
-        pictures = _local_copies(pictures, folder)
-        # each card's words, as a file ffmpeg reads
-        text_paths = {}
-        captions = {}  # square -> {its picture's place in the slideshow: {"words": file, "text_box"}}
-        for c, cell in cards.items():
-            if cell.get("text"):
-                text_paths[c] = os.path.join(folder, f"text-{c}.txt")
-                _write_atomically(text_paths[c], cell["text"])
-            for j, path in enumerate(pictures.get(c, [])):
-                cap = (cell.get("captions") or {}).get(os.path.basename(path))
-                if cap and cap.get("text"):
-                    words = os.path.join(folder, f"text-{c}-{j}.txt")
-                    _write_atomically(words, cap["text"])
-                    captions.setdefault(c, {})[j] = {"words": words, "text_box": cap.get("text_box")}
+        cells = staging.squares(db, chosen, folder)
         turns_file = os.path.join(folder, "turns.txt") if cycle else None
-        place = {k: i for i, k in enumerate(chosen["cameras"])}
-        def square(c: int, cell: dict | None):
-            if not cell:
-                return None
-            if "camera" in cell:
-                return ("camera", place[cell["camera"]], cell)
-            return ("card", {**cell, "pictures": pictures.get(c, []), "words": text_paths.get(c), "picture_words": captions.get(c, {})})
-
-        cells = [square(c, cell) for c, cell in enumerate(chosen["cells"])]
         enc = encoder(ffmpeg)
         with self._lock:
             self._encoder = enc
@@ -183,7 +129,7 @@ class Stream:
             """The command for an ffmpeg starting now (`clock`: the time of day): its slideshows and turns counted from
             midnight 1970, as the page counts them, so the stream shows what the page shows."""
             if turns_file:
-                _write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
+                write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
             return command(ffmpeg, srcs, url, Look(encoder=enc, clock=clock,
                 status_files=files, cycle=cycle, turns_file=turns_file,
                 resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
@@ -276,7 +222,7 @@ class Stream:
                     for s, f in zip(srcs, files):
                         if not self._current(gen):
                             return
-                        _write_atomically(f, status_line(s.label, by_printer.get(s.printer_id) or {}))
+                        write_atomically(f, status_line(s.label, by_printer.get(s.printer_id) or {}))
             except Exception:  # noqa: BLE001 - the words stay as they were until the next time round
                 pass
             if not _sleep_unless(self, gen, STATUS_EVERY):
@@ -304,60 +250,12 @@ class Stream:
                 self._title = {"state": "failed", "message": f"The YouTube title wasn't set: {last or 'no broadcast found'}"}
 
 
-def _card_pictures(db: Session, cards) -> dict:
-    """Each card's pictures, as files in the stream folder: {square: [paths]} (its picture, or its slideshow's). One not
-    there (or a stream folder that isn't available) shows just the card's colour and words."""
-    out = {}
-    for c, cell in (cards.items() if isinstance(cards, dict) else []):
-        try:
-            if cell.get("slideshow"):
-                out[c] = [str(p) for p in stream_media.slideshow_paths(db, cell["slideshow"])]
-            elif cell.get("image"):
-                out[c] = [str(stream_media.picture_path(db, None, cell["image"]))]
-        except (NotFound, ValueError, storage.StorageUnavailableError, OSError):
-            out[c] = []
-    return out
-
-
-def _local_copies(pictures: dict, folder: str) -> dict:
-    """The cards' pictures copied once into the stream's own folder, each under its own name (a slideshow picture's
-    words go by it): {square: [copies]}. One picture in several squares is copied once; one that can't be read now
-    (being copied in, say) is left out, as one not there is."""
-    copied: dict[str, str | None] = {}
-    out = {}
-    for c, paths in pictures.items():
-        out[c] = []
-        for path in paths:
-            if stream_media.is_blank(path):  # a blank screen: no picture, just its time
-                out[c].append(path)
-                continue
-            if path not in copied:
-                to = os.path.join(folder, "pictures", str(len(copied)), os.path.basename(path))
-                try:
-                    os.makedirs(os.path.dirname(to), exist_ok=True)
-                    shutil.copyfile(path, to)
-                    copied[path] = to
-                except OSError:
-                    copied[path] = None
-            if copied[path]:
-                out[c].append(copied[path])
-    return out
-
-
 def _sleep_unless(stream: Stream, gen: int, seconds: float) -> bool:
     """Wait `seconds`, in short steps; False as soon as the stream is stopped or started again."""
     end = time.monotonic() + seconds
     while stream._current(gen) and (left := end - time.monotonic()) > 0:
         time.sleep(min(0.5, left))
     return stream._current(gen)
-
-
-def _write_atomically(path: str, text: str) -> None:
-    """drawtext reads the file again every frame: it's swapped in whole, never seen half written."""
-    tmp = path + ".new"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-    os.replace(tmp, path)
 
 
 stream = Stream()

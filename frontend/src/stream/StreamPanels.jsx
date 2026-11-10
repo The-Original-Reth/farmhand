@@ -1,13 +1,13 @@
 import { useState } from "react";
+import { Radio } from "lucide-react";
 import { c } from "../theme.js";
-import { cancelButton, fieldBox, headerButton, linkButton, monoText, panelBox, uiText } from "../styles.js";
+import { cancelButton, fieldBox, headerButton, linkButton, monoText, panelBox, primaryButton, uiText } from "../styles.js";
+import { heading, help, panel } from "./streamStyles.js";
 import { saveYouTubeClient, youtubeApply, youtubeSignIn, youtubeSignOut } from "../api.js";
 
-// The Stream page's panels for the resolution and taking turns, and the YouTube broadcast's title and description.
+// The Stream page's panels: its on/off switch, on air or not, where it goes, taking turns, and the YouTube broadcast's
+// title and description.
 
-const panel = () => panelBox({ padding: 16, display: "flex", flexDirection: "column", gap: 12 });
-const heading = uiText(14, c.heading, { fontWeight: 600 });
-const help = uiText(12, c.textFaint, { lineHeight: 1.5 });
 const seconds = (v) => (v === "" || v == null ? "" : Number(v));
 
 // The whole grid all the time, or taking turns: the grid for secondsAll (0: never), then each camera on its own for
@@ -182,6 +182,94 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
         )}
         {youtube.error && <div style={uiText(12, c.danger, { lineHeight: 1.5 })}>{youtube.error}</div>}
       </div>
+    </div>
+  );
+}
+
+const WHERE_KEY = {
+  youtube: "In YouTube Studio: Create → Go live → Stream, then Copy next to Stream key.",
+  twitch: "In the Twitch Creator Dashboard: Settings → Stream, then Copy next to Primary Stream key.",
+};
+const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+
+// The switch at the top of the page: the stream's functions on or off
+export function StreamSwitch({ on, onTurn, busy }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={uiText(14, c.heading, { fontWeight: 600 })}>Stream</span>
+      <button
+        type="button" role="switch" aria-checked={on} data-testid="stream-switch" disabled={busy} onClick={() => onTurn(!on)}
+        title={on ? "Turn the stream off: it stops, and the page rests" : "Turn the stream on, as it was"}
+        style={{
+          position: "relative", width: 40, height: 22, borderRadius: 11, border: `1px solid ${on ? c.green : c.borderStrong}`, padding: 0,
+          background: on ? c.green : c.panelAlt, cursor: busy ? "default" : "pointer", flexShrink: 0,
+        }}
+      >
+        <span style={{ position: "absolute", top: 2, left: on ? 20 : 2, width: 16, height: 16, borderRadius: 8, background: on ? c.bg : c.textMuted, transition: "left 0.15s" }} />
+      </button>
+      <span style={uiText(12, on ? c.textMuted : c.textFaint)}>{on ? "On" : "Off"}</span>
+    </div>
+  );
+}
+
+// On air or not, and the button that changes it. `destLabel(key)`: a destination's name; `destination`: the one chosen.
+export function LiveStatusPanel({ status, destLabel, destination, busy, onStart, onStop }) {
+  const on = status.encoder === "nvenc" ? " · on the NVIDIA card" : status.encoder === "cpu" ? " · on the processor" : "";
+  return (
+    <div data-testid="stream-status" style={panelBox({ padding: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" })}>
+      <Radio size={20} color={status.live ? (status.error ? c.amber : c.green) : c.textFaint} />
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={uiText(15, c.heading, { fontWeight: 600 })}>
+          {status.live ? (status.error ? "Reconnecting…" : `Live on ${destLabel(status.destination)} since ${timeOf(status.startedAt)}${on}`) : "Not streaming"}
+        </div>
+        <div style={uiText(12, status.error ? c.amber : c.textMuted, { marginTop: 4, lineHeight: 1.5 })}>
+          {status.error
+            ? status.error
+            : status.live
+              ? `${status.cameras.length} camera${status.cameras.length === 1 ? "" : "s"}: ${status.cameras.join(", ")}`
+              : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
+        </div>
+      </div>
+      {status.live ? (
+        <button type="button" data-testid="stream-stop" onClick={onStop} disabled={!!busy} style={{ ...cancelButton(!!busy), color: c.danger, borderColor: c.danger }}>
+          {busy === "stop" ? "Stopping…" : "Stop stream"}
+        </button>
+      ) : (
+        <button type="button" data-testid="stream-start" onClick={onStart} disabled={!!busy} style={primaryButton(!!busy)}>
+          {busy === "start" ? "Going live…" : "Go live"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Where it goes, and its stream key (typed here once, kept on the server: `keySet` says one is saved)
+export function WhereToPanel({ destination, destinations, onDestination, streamKey, onKey, keySet, onForgetKey, busy }) {
+  return (
+    <div style={panel()}>
+      <div style={heading}>Where to</div>
+      <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10 })}>
+        <span style={{ width: 90 }}>Stream to</span>
+        <select data-testid="stream-destination" value={destination} onChange={(e) => onDestination(e.target.value)} style={{ ...fieldBox(), padding: "6px 8px" }}>
+          {destinations.map((d) => (
+            <option key={d.key} value={d.key}>{d.label}</option>
+          ))}
+        </select>
+      </label>
+      <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" })}>
+        <span style={{ width: 90 }}>Stream key</span>
+        <input
+          data-testid="stream-key" type="password" autoComplete="new-password" name="farmhand-stream-key" value={streamKey} onChange={(e) => onKey(e.target.value)}
+          placeholder={keySet ? "Saved. Type a new one to replace it" : "Paste your stream key"}
+          style={{ ...fieldBox(), padding: "6px 8px", flex: 1, minWidth: 240 }}
+        />
+        {keySet && (
+          <button type="button" data-testid="stream-forget-key" onClick={onForgetKey} disabled={!!busy} style={headerButton()}>
+            Forget key
+          </button>
+        )}
+      </label>
+      <div style={help}>{WHERE_KEY[destination]} The key stays in Farmhand: it isn't shown again or written to the settings copy.</div>
     </div>
   );
 }

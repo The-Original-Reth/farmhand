@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { c, fixed } from "../theme.js";
 import { headerButton, panelBox, primaryButton, uiText } from "../styles.js";
-import { colourBox, help, label12 } from "./editorFields.js";
-import { CARD, CardScreen } from "./CardScreen.jsx";
+import { colourBox, help, label12 } from "./streamStyles.js";
+import { CardScreen } from "./CardScreen.jsx";
+import { CARD } from "./shapes.js";
 import { CameraChoice, CameraWordsChoice, TextChoice } from "./SquareChoices.jsx";
 import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
 

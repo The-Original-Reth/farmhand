@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { c, fixed, fs, ui } from "../theme.js";
 import { fieldBox, headerButton, uiText } from "../styles.js";
-import { CameraPicture } from "../monitor/players.jsx";
-import { GridSize, swapped } from "./StreamSquares.jsx";
-import { CardScreen, StreamFonts, fontFamily } from "./CardScreen.jsx";
+import { GridSize } from "./StreamSquares.jsx";
+import { StreamFonts } from "./CardScreen.jsx";
+import { Screen } from "./PreviewScreen.jsx";
+import { BORDER_PX, swapped, turnAt } from "./shapes.js";
+import { useSecondsSince, useServerClock, useSlidePlayer } from "./previewClocks.js";
 import { SquareEditor } from "./SquareEditor.jsx";
 
 // What the stream looks like, and where its grid is set up. Above it: the grid's size and the resolution. In it: the
@@ -22,29 +24,6 @@ import { SquareEditor } from "./SquareEditor.jsx";
 // (SquareEditor.jsx), which also uploads and deletes pictures (`ask`, `busy`: the page's own way of asking the server)
 // and saves the page (`onSave`; `dirty`: something isn't saved yet).
 
-// the border round each square, in px of the 720-high picture (services/live_stream/constants.py BORDER_WIDTH)
-const BORDER_PX = 3;
-
-// what's written under a camera, as the server writes it (services/live_stream/picture.py status_line)
-export const statusLine = (label, p) => {
-  if (!p?.state) return p?.error ? `${label} · Status unknown` : `${label} · Idle`;
-  let line = `${label} · ${p.state === "paused" ? "Paused" : "Printing"}`;
-  if (typeof p.progress === "number") line += ` ${Math.round(p.progress)}%`;
-  if (p.file) line += ` · ${String(p.file).split("/").pop().slice(0, 60)}`;
-  return line;
-};
-
-// Which camera is on its own now, taking turns: its place among the cameras, or null while the whole grid is shown; and
-// how long until the next turn. As the server works it out (services/live_stream/picture.py windows).
-export const turnAt = (seconds, n, cycle) => {
-  if (!cycle || n < 2) return { one: null, left: null };
-  const period = cycle.all + n * cycle.each;
-  const at = seconds % period;
-  if (at < cycle.all) return { one: null, left: cycle.all - at };
-  const one = Math.floor((at - cycle.all) / cycle.each);
-  return { one, left: cycle.all + (one + 1) * cycle.each - at };
-};
-
 export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
@@ -55,46 +34,18 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
   const [over, setOver] = useState(null); // the square it would go to
   const cameraSquares = squares.map((sq, i) => (sq?.type === "camera" ? i : null)).filter((i) => i !== null);
   const n = cameraSquares.length;
-  const [seconds, setSeconds] = useState(0);
   const editing = selected !== null || dragging !== null;
   const turning = !!cycle && n > 1;
-  useEffect(() => {
-    if (!turning) return;
-    setSeconds(0);
-    const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(timer);
-  }, [turning, cycle?.all, cycle?.each, n]);
-  // the slideshow in the square being edited: which picture is on show, and whether it goes round on its own; the square
-  // here and the editor's canvas show the same one
-  const [slide, setSlide] = useState({ at: 0, playing: true });
-  useEffect(() => setSlide({ at: 0, playing: true }), [selected]);
+  const seconds = useSecondsSince(turning, [cycle?.all, cycle?.each, n]);
+  // the slideshow in the square being edited: the square here and the editor's canvas show the same picture
   const edited = selected !== null && squares[selected]?.type === "card" ? squares[selected].cell : null;
   const editedShow = edited?.slideshow ? media.slideshows.find((x) => x.name === edited.slideshow) : null;
-  const slides = editedShow?.images.length || 0;
-  useEffect(() => {
-    if (!slide.playing || slides < 2) return;
-    const timer = setInterval(() => setSlide((s) => ({ ...s, at: (s.at + 1) % slides })), Math.max(1, Number(edited?.seconds) || 10) * 1000);
-    return () => clearInterval(timer);
-  }, [slide.playing, slides, edited?.seconds, selected]);
-  const slideCtl = editedShow && {
-    at: slides ? slide.at % slides : 0, playing: slide.playing,
-    go: (at) => setSlide((s) => ({ ...s, at })),
-    // one picture on or back, from where it is now (so quick clicks each count), and held there
-    step: (by) => setSlide((s) => ({ playing: false, at: (((s.at % slides) + by) % slides + slides) % slides })), play: () => setSlide((s) => ({ ...s, playing: true })), stop: () => setSlide((s) => ({ ...s, playing: false })),
-  };
+  const slideCtl = useSlidePlayer(editedShow?.images.length || 0, edited?.seconds, selected, !!editedShow);
   useEffect(() => {
     if (selected !== null && selected >= cells.length) setSelected(null); // the grid got smaller
   }, [cells.length, selected]);
-  // with nothing changed here, the preview keeps the server's time: slideshows and taking turns count from the time of
-  // day there, as the stream does, so it shows what the stream shows (or will start on, going live)
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!serverClock) return;
-    const timer = setInterval(() => setTick((t) => t + 1), 250);
-    return () => clearInterval(timer);
-  }, [!!serverClock]);
-  // the server's time of day now (its, not this computer's: a clock that's a little out doesn't matter)
-  const clock = serverClock ? serverClock.serverTime + (Date.now() - serverClock.heardAt) / 1000 : null;
+  // with nothing changed here, the preview keeps the server's time of day (null: its own)
+  const clock = useServerClock(serverClock);
   const { one, left } = turnAt(clock !== null ? Math.floor(clock) : seconds, n, turning && !editing ? cycle : null);
   const alone = one === null ? null : cameraSquares[one]; // the square shown on its own, taking turns
   const drop = (to) => {
@@ -224,53 +175,5 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
           : "Played in this browser, so you can check it before going live. What goes out is made on the server and may lag a few seconds behind."}
       </div>
     </div>
-  );
-}
-
-// What a square shows: a camera, or a card (its colour, picture or slideshow, and words); nothing (the stream's colour)
-// when null
-function Screen({ sq, showStatus, big, media, back, words = {}, clock = null, inset = 0, edit = false, onChange, slide = null }) {
-  if (!sq) return null;
-  if (sq.type === "camera") {
-    return (
-      <div style={{ position: "relative", width: "100%", height: "100%", background: sq.background || back, display: "flex", containerType: "size" }}>
-        <CameraSquare sq={sq} showStatus={showStatus} big={big} words={words} />
-      </div>
-    );
-  }
-  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} slide={slide || null} clock={clock} />;
-  return null;
-}
-
-function CameraSquare({ sq, showStatus, big, words = {} }) {
-  const [state, setState] = useState("waiting"); // waiting | showing | failed
-  const { cam, label } = sq;
-  const own = sq.cell || {}; // the square's own choices for its words (show_words, words_size, words_color, words_font)
-  const turn = cam && [cam.rotation ? `rotate(${cam.rotation}deg)` : "", cam.flip_horizontal ? "scaleX(-1)" : "", cam.flip_vertical ? "scaleY(-1)" : ""].join(" ").trim();
-  const fill = { width: "100%", height: "100%", objectFit: "contain", display: "block", border: 0, transform: turn || undefined, pointerEvents: "none" };
-  const message = !cam ? "Camera not found" : state === "failed" ? "Camera not answering" : state === "waiting" ? "Connecting…" : null;
-  return (
-    <>
-      {cam && <CameraPicture cam={cam} label={label} style={fill} onState={setState} />}
-      {message && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(11), color: fixed.cameraMessage }}>
-          {message}
-        </div>
-      )}
-      {showStatus && own.show_words !== false && (
-        <div
-          data-testid="stream-preview-words"
-          style={{
-            position: "absolute", left: "1.5cqh", bottom: "2cqh", maxWidth: "calc(100% - 3cqh)", padding: "0.3em 0.5em", background: fixed.cameraBadge,
-            color: own.words_color || words.color || fixed.cameraText, fontFamily: fontFamily(own.words_font || words.font),
-            // as the stream sizes them: their own part of the square's height, else to fit (a 18th of its height, at most a 32nd of its width)
-            fontSize: own.words_size ? `${own.words_size * 100}cqh` : big ? `${100 / 26}cqh` : `max(10px, min(${100 / 18}cqh, ${100 / 32}cqw))`,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none",
-          }}
-        >
-          {statusLine(label, sq.print)}
-        </div>
-      )}
-    </>
   );
 }
