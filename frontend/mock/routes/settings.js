@@ -21,7 +21,7 @@ const cameraCell = (x) => {
   if (x.show_words === false) out.show_words = false;
   if (typeof x.words_size === "number" && Number.isFinite(x.words_size)) out.words_size = Math.round(Math.min(0.3, Math.max(0.02, x.words_size)) * 1e4) / 1e4;
   if (/^#[0-9A-Fa-f]{6}$/.test(x.words_color || "") && x.words_color.toUpperCase() !== "#FFFFFF") out.words_color = x.words_color.toUpperCase();
-  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "dejavu-sans") out.words_font = x.words_font;
+  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "play") out.words_font = x.words_font;
   return out;
 };
 
@@ -63,7 +63,7 @@ export function settingsRoutes(ctx) {
           return {
             background: hex(x.background, null), image: x.slideshow ? null : name(x.image), slideshow: name(x.slideshow),
             seconds: Number.isInteger(x.seconds) && x.seconds >= 3 && x.seconds <= 3600 ? x.seconds : 10,
-            text: typeof x.text === "string" ? x.text.trim().slice(0, 500) : "", color: hex(x.color, "#FFFFFF"), font: typeof x.font === "string" ? x.font : "dejavu-sans", band: x.band === true,
+            text: typeof x.text === "string" ? x.text.trim().slice(0, 500) : "", color: hex(x.color, "#FFFFFF"), font: typeof x.font === "string" ? x.font : "play", band: x.band === true,
             picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
           };
         }

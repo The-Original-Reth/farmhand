@@ -385,7 +385,7 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     cells = [{"camera": f"{pid}:Bed"}, {"slideshow": "Prints", "seconds": 4, "text": " Live! ", "text_box": {"x": 0.5, "y": 0.1}}, {"image": "Elves.png"},
              {"image": "gone.png", "background": "#123456"}]
     s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
-    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": "#FFFFFF", "font": "dejavu-sans", "band": False,
+    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": "#FFFFFF", "font": "play", "band": False,
                              "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125}}
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
@@ -473,6 +473,7 @@ def test_the_grid_and_the_words():
     assert live_stream.status_line("VT 1190", {"state": "printing", "progress": 41.6, "file": "jobs/benchy.gcode"}) == "VT 1190 · Printing 42% · benchy.gcode"
     assert live_stream.status_line("VT 1190", {"state": "paused", "progress": None, "file": None}) == "VT 1190 · Paused"
     assert live_stream.status_line("VT 1190", {"state": None}) == "VT 1190 · Idle"
+    assert live_stream.status_line("Prusa_2", {"state": None, "error": "PrusaLink refused the login."}) == "Prusa_2 · Status unknown"
 
 
 def test_stream_settings_stay_out_of_the_settings_copy():
@@ -648,7 +649,7 @@ def test_a_cards_words_in_the_font_chosen(monkeypatch, tmp_path):
     (tmp_path / "truetype" / "lato" / "Lato-Black.ttf").write_bytes(b"font")
     monkeypatch.setattr(live_stream, "FONTS_DIR", str(tmp_path))
     assert live_stream._cell({"text": "Hi", "font": "lato-black"})["font"] == "lato-black"
-    assert live_stream._cell({"text": "Hi", "font": "wingdings"})["font"] == "dejavu-sans"
+    assert live_stream._cell({"text": "Hi", "font": "wingdings"})["font"] == "play"
     assert live_stream.font_file("lato-black").replace("\\", "/").endswith("truetype/lato/Lato-Black.ttf")
     assert live_stream.font_file("roboto") == live_stream.FONT
     cells = [("card", {"words": "/s/t.txt", "font": "lato-black"})]
@@ -673,8 +674,8 @@ def test_the_stream_folder_as_windows_reaches_it(db_session, monkeypatch, tmp_pa
 
 
 def test_a_camera_squares_own_words():
-    assert live_stream._cell({"camera": "1:Bed", "show_words": False, "words_size": 0.9, "words_color": "#ff0000", "words_font": "play"}) == {
-        "camera": "1:Bed", "show_words": False, "words_size": 0.3, "words_color": "#FF0000", "words_font": "play"}
+    assert live_stream._cell({"camera": "1:Bed", "show_words": False, "words_size": 0.9, "words_color": "#ff0000", "words_font": "lato"}) == {
+        "camera": "1:Bed", "show_words": False, "words_size": 0.3, "words_color": "#FF0000", "words_font": "lato"}
     assert live_stream._cell({"camera": "1:Bed", "show_words": True, "words_color": "#FFFFFF", "words_font": "nope"}) == {"camera": "1:Bed"}
     srcs = [live_stream.Source(i, f"P{i}", ["-i", f"http://cam{i}"]) for i in range(3)]
     cells = [("camera", 0, {"camera": "1:A", "show_words": False}),
