@@ -28,14 +28,18 @@ const clamp = (v, least, most) => Math.round(Math.min(most, Math.max(least, v)) 
 // outline and corner only show while the picture or words are pointed at). `streamText`: { font, color }, the stream's
 // words', for a card that has none of its own. `slide`: { at (which picture) }, a slideshow gone through by
 // hand (StreamPreview keeps it, so the preview's square and the canvas show the same picture); without it the slideshow
-// plays on its own. A slideshow picture with words of its own (card.captions) shows those instead of the card's.
+// plays on its own, or, with `clock` (seconds the stream has run, while live), shows the picture the stream shows now.
+// A slideshow picture with words of its own (card.captions) shows those instead of the card's.
 // `inset`: the square's border, as a part of its height: the picture is fitted inside it, as the stream fits it.
-export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null }) {
+export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null, clock = null }) {
   const [el, setEl] = useState(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [ownShot, setOwnShot] = useState(0);
   // `slide`: { at, playing, go(at) } when the editor goes through a slideshow by hand; else it plays on its own
-  const shot = slide ? slide.at : ownShot;
+  // the picture on show: gone through by hand (slide), on the stream's own time (clock, while live), or its own
+  const sec = Math.max(1, Number(card.seconds) || 10);
+  const showCount = card.slideshow ? media.slideshows.find((x) => x.name === card.slideshow)?.images.length || 0 : 0;
+  const shot = slide ? slide.at : clock !== null && showCount ? Math.floor((clock % (showCount * sec)) / sec) : ownShot;
   const setShot = slide ? (f) => slide.go(f(slide.at)) : setOwnShot;
   const [natural, setNatural] = useState(null); // the picture's own width over height, once loaded
   const drag = useRef(null); // { what: "picture" | "pictureSize" | "text" | "textSize", x, y (where it started), from (the box then) }
@@ -51,10 +55,10 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
   const count = show?.images.length || 0;
   useEffect(() => {
     if (!slide) setOwnShot(0);
-    if (slide || count < 2) return; // gone through by hand (the preview keeps the time), or nothing to go round
+    if (slide || clock !== null || count < 2) return; // gone through by hand or on the stream's time, or nothing to go round
     const timer = setInterval(() => setShot((s) => (s + 1) % count), Math.max(1, Number(card.seconds) || 10) * 1000);
     return () => clearInterval(timer);
-  }, [card.slideshow, count, card.seconds, !!slide]);
+  }, [card.slideshow, count, card.seconds, !!slide, clock !== null]);
   const src = show && count ? (isBlank(show.images[shot % count]) ? null : slideshowPictureUrl(show.name, show.images[shot % count])) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
   const pb = card.picture_box || FULL_BOX;
   // the part of the square inside its border, in px: a picture's box is a part of it (so the border never covers it)

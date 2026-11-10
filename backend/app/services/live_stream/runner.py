@@ -74,6 +74,7 @@ class Stream:
     def __init__(self):
         self._lock = threading.Lock()
         self._encoder: str | None = None
+        self._run_started: float | None = None  # when the ffmpeg now running started (monotonic)
         self._wanted = threading.Event()
         self._proc = None
         self._said: collections.deque[str] = collections.deque(maxlen=KEPT_LINES)
@@ -100,6 +101,9 @@ class Stream:
                 "error": self._error,
                 "title": dict(self._title) if self._title else None,
                 "encoder": self._encoder,  # "nvenc" (an NVIDIA card) or "cpu", while live; None otherwise
+                # how long the picture going out has run, in seconds: its slideshows and taking turns count from its
+                # start, so the page can show the same picture at the same moment (None while it isn't going out)
+                "running_for": round(time.monotonic() - self._run_started, 2) if on_air and self._run_started else None,
             }
 
     def go_live(self, db: Session, session_factory) -> dict:
@@ -196,6 +200,7 @@ class Stream:
             folder, self._dir = self._dir, None
             self._started_at = None
             self._encoder = None
+            self._run_started = None
             self._title = None
         if proc is not None and proc.poll() is None:
             proc.terminate()
@@ -233,6 +238,7 @@ class Stream:
                     proc.terminate()
                     return
                 self._proc = proc
+                self._run_started = time.monotonic()  # its slideshows and turns count from here
             started = time.monotonic()
             for line in proc.stderr or []:
                 line = self._hide_key(line.strip())
