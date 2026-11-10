@@ -21,7 +21,8 @@ router = APIRouter(prefix="/stream", tags=["stream"])
 
 # Changing one of these while live means the picture (or the sound) changes, so the stream starts again
 PICTURE = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color",
-           "background", "font", "color", "key_set", "music", "music_volume", "music_shuffle")
+           "background", "font", "color", "key_set")
+MUSIC = ("music", "music_volume", "music_shuffle")  # these the music follows while live, without starting it again
 
 
 def _restart_if_live(db: Session) -> None:
@@ -74,6 +75,8 @@ def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
             live_stream.stream.stop()
         elif live and (any(before[k] != after[k] for k in PICTURE) or payload.stream_key):
             _restart_if_live(db)
+        elif live and any(before[k] != after[k] for k in MUSIC):
+            live_stream.stream.music_settings(after)
         elif (live and after["destination"] == "youtube" and (before["title"], before["description"]) != (after["title"], after["description"])
               and youtube_live.credentials(db)):
             _apply_title(db)
@@ -240,7 +243,18 @@ def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(Fals
 
 
 # ------------------------------------------------------------------ the music: MP3s in the stream folder's music/
-# Tracks added or deleted while live are played from the next time the stream starts: it isn't stopped for them.
+# Tracks added while live join the music's next round; it isn't stopped for them.
+
+
+@router.post("/music/{action}")
+def music_control(action: str, db: Session = Depends(get_db)):
+    """The music going out while live: play, pause, next (the next track) or back (the track playing from its start,
+    or in its first 3 seconds the one before). 422 when not live, or the music is off."""
+    if action not in ("play", "pause", "next", "back"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    with answer_errors():
+        live_stream.stream.music_control(action)
+    return live_stream.page(db)
 
 
 @router.get("/music/{name}")

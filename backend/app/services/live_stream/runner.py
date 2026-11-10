@@ -4,6 +4,7 @@ The stream itself: ffmpeg kept running for as long as the stream is meant to be 
 from __future__ import annotations
 
 import collections
+import io
 import os
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from ...models import Printer
 from .. import app_settings, print_progress, stream_media, youtube_live
-from . import staging
+from . import music, staging
 from .constants import DESTINATIONS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY, TITLE_EVERY, TITLE_TRIES
 from .choices import settings
 from .encoders import encoder
@@ -33,10 +34,13 @@ def ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
 
 
-def popen(args: list[str]):
-    """ffmpeg started (tests swap this for a stand-in)."""
-    return subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
-                            encoding="utf-8", errors="replace")
+def popen(args: list[str], feed: bool = False):
+    """ffmpeg started (tests swap this for a stand-in). `feed`: its stdin open for the music player to write the sound
+    to (raw bytes); what it says comes as text either way."""
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE if feed else subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE)
+    proc.stderr = io.TextIOWrapper(proc.stderr, encoding="utf-8", errors="replace")
+    return proc
 
 
 class Stream:
@@ -58,6 +62,7 @@ class Stream:
         self._dir: str | None = None
         self._generation = 0
         self._title: dict | None = None  # setting the YouTube title: {state: "waiting" | "done" | "failed", message}
+        self._player: music.Player | None = None  # the music, while live
 
     # what the page shows
     def status(self) -> dict:
@@ -78,7 +83,26 @@ class Stream:
                 "running_for": round(time.monotonic() - self._run_started, 2) if on_air and self._run_started else None,
                 # the server's time of day: slideshows and taking turns count from it, on the stream and on the page
                 "server_time": round(time.time(), 3),
+                # the music while live: {on, playing, track (its file name, None before the first), at (seconds into it)}
+                "music": self._player.status() if self._player and self._wanted.is_set() else None,
             }
+
+    def music_settings(self, chosen: dict) -> None:
+        """The music's choices changed while live: the music follows straight away, no new ffmpeg."""
+        with self._lock:
+            player = self._player
+        if player:
+            player.settings(on=chosen["music"], shuffle=chosen["music_shuffle"], volume=chosen["music_volume"])
+
+    def music_control(self, action: str) -> None:
+        """"play", "pause", "next" or "back" on the music going out. ValueError when there's none to control."""
+        with self._lock:
+            player = self._player if self._wanted.is_set() else None
+        if player is None:
+            raise ValueError("The stream isn't live: the music plays on the stream once it is.")
+        if not player.on:
+            raise ValueError("The music is off: tick Play music on the stream, and Save.")
+        getattr(player, action)()
 
     def go_live(self, db: Session, session_factory) -> dict:
         """Start (or start again, with what's chosen now). ValueError says why it can't."""
@@ -120,10 +144,17 @@ class Stream:
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
         cells = staging.squares(db, chosen, folder)
         turns_file = os.path.join(folder, "turns.txt") if cycle else None
-        tracks = stream_media.track_paths(db) if chosen["music"] else []  # none: a silent sound track
         enc = encoder(ffmpeg)
+
+        def tracks() -> list[str]:  # read again each round of the music, so tracks added while live join in
+            with session_factory() as s:
+                return [str(p) for p in stream_media.track_paths(s)]
+
+        # the music starts with the stream (when it's on and there are tracks; silence otherwise)
+        player = music.Player(ffmpeg, tracks, on=chosen["music"], shuffle=chosen["music_shuffle"], volume=chosen["music_volume"])
         with self._lock:
             self._encoder = enc
+            self._player = player
         url = where["url"] + key
 
         def make(clock: float) -> list[str]:
@@ -131,14 +162,13 @@ class Stream:
             midnight 1970, as the page counts them, so the stream shows what the page shows."""
             if turns_file:
                 write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
-            music = staging.playlist(tracks, os.path.join(folder, "music.txt"), chosen["music_shuffle"]) if tracks else None
             return command(ffmpeg, srcs, url, Look(encoder=enc, clock=clock,
                 status_files=files, cycle=cycle, turns_file=turns_file,
                 resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
-                rows=chosen["rows"], cells=cells, music=music, music_volume=chosen["music_volume"],
+                rows=chosen["rows"], cells=cells, music=True,
             ))
 
-        threading.Thread(target=self._keep_running, args=(gen, make), name="stream", daemon=True).start()
+        threading.Thread(target=self._keep_running, args=(gen, make, player), name="stream", daemon=True).start()
         if files:
             threading.Thread(target=self._keep_words_current, args=(gen, srcs, files, session_factory), name="stream-words", daemon=True).start()
         if wants_title and creds:
@@ -155,6 +185,9 @@ class Stream:
             self._encoder = None
             self._run_started = None
             self._title = None
+            player, self._player = self._player, None
+        if player:
+            player.stop()
         if proc is not None and proc.poll() is None:
             proc.terminate()
             try:
@@ -177,12 +210,13 @@ class Stream:
     def _hide_key(self, text: str) -> str:
         return text.replace(self._key, "<stream key>") if self._key else text
 
-    def _keep_running(self, gen: int, make) -> None:
-        """ffmpeg, started again (with `make(time of day)`'s command, so it keeps the page's time) whenever it stops."""
+    def _keep_running(self, gen: int, make, player: music.Player) -> None:
+        """ffmpeg, started again (with `make(time of day)`'s command, so it keeps the page's time) whenever it stops,
+        each one fed its sound by `player`."""
         while self._current(gen):
             args = make(time.time())
             try:
-                proc = popen(args)
+                proc = popen(args, feed=True)
             except OSError as e:
                 with self._lock:
                     self._error = f"ffmpeg couldn't be started: {e.strerror or e}"
@@ -194,6 +228,7 @@ class Stream:
                     return
                 self._proc = proc
                 self._run_started = time.monotonic()  # its slideshows and turns count from here
+            player.attach(proc.stdin)
             started = time.monotonic()
             for line in proc.stderr or []:
                 line = self._hide_key(line.strip())
@@ -203,7 +238,7 @@ class Stream:
             if not self._current(gen):
                 return
             if code == 0 and "-t" in args and time.monotonic() - started >= TURNS_FOR - 60:
-                continue  # the day's timetable of turns or playlist is done: started again at once, from the top
+                continue  # the day's timetable of turns is done: started again at once, from the top
             with self._lock:
                 last = next((l for l in reversed(self._said) if l), None)
                 self._error = f"The stream stopped (ffmpeg exit {code}): {last or 'no reason given'}. Trying again in {RETRY_SECONDS} s."

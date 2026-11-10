@@ -199,7 +199,7 @@ export function StreamSwitch({ on, onTurn, busy }) {
       <span style={uiText(14, c.heading, { fontWeight: 600 })}>Stream</span>
       <button
         type="button" role="switch" aria-checked={on} data-testid="stream-switch" disabled={busy} onClick={() => onTurn(!on)}
-        title={on ? "Turn the stream off: it stops, and the page rests" : "Turn the stream on, as it was"}
+        title={on ? "Turn the stream off: ffmpeg stops on the server (the page still works)" : "Turn the stream on, to go live"}
         style={{
           position: "relative", width: 40, height: 22, borderRadius: 11, border: `1px solid ${on ? c.green : c.borderStrong}`, padding: 0,
           background: on ? c.green : c.panelAlt, cursor: busy ? "default" : "pointer", flexShrink: 0,
@@ -212,8 +212,9 @@ export function StreamSwitch({ on, onTurn, busy }) {
   );
 }
 
-// On air or not, and the button that changes it. `destLabel(key)`: a destination's name; `destination`: the one chosen.
-export function LiveStatusPanel({ status, destLabel, destination, busy, onStart, onStop }) {
+// On air or not, and the button that changes it. `destLabel(key)`: a destination's name; `destination`: the one chosen;
+// `off`: the switch at the top is off, so there's no going live until it's on.
+export function LiveStatusPanel({ status, destLabel, destination, busy, onStart, onStop, off = false }) {
   const on = status.encoder === "nvenc" ? " · on the NVIDIA card" : status.encoder === "cpu" ? " · on the processor" : "";
   return (
     <div data-testid="stream-status" style={panelBox({ padding: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" })}>
@@ -227,7 +228,9 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
             ? status.error
             : status.live
               ? `${status.cameras.length} camera${status.cameras.length === 1 ? "" : "s"}: ${status.cameras.join(", ")}`
-              : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
+              : off
+                ? "The stream is off: ffmpeg isn't running on the server. Set everything up as usual, and turn it on above to go live."
+                : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
         </div>
       </div>
       {status.live ? (
@@ -235,7 +238,10 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
           {busy === "stop" ? "Stopping…" : "Stop stream"}
         </button>
       ) : (
-        <button type="button" data-testid="stream-start" onClick={onStart} disabled={!!busy} style={primaryButton(!!busy)}>
+        <button
+          type="button" data-testid="stream-start" onClick={onStart} disabled={!!busy || off} style={primaryButton(!!busy || off)}
+          title={off ? "Turn the stream on (top of the page) to go live" : undefined}
+        >
           {busy === "start" ? "Going live…" : "Go live"}
         </button>
       )}

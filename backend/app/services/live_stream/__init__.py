@@ -14,7 +14,8 @@ copy, and is blanked out of anything ffmpeg says.
 
 Going live runs ffmpeg in the API's own container: it reads each camera in the grid (a Mainsail MJPEG stream, go2rtc on
 the printer, or a Buddy3D's RTSP), lays the squares out, writes each printer's name and print under its camera, adds the
-music (the stream folder's MP3s, round and round) or the silent sound track YouTube insists on, and sends it all to the
+music (the stream folder's MP3s, played by Farmhand and fed to ffmpeg as they play, music.py) or the silent sound
+track YouTube insists on, and sends it all to the
 destination. If ffmpeg stops (a camera dropped, the
 network blinked) it is started again after a short wait, for as long as the stream is meant to be live.
 
@@ -26,11 +27,11 @@ from __future__ import annotations
 # What the rest of Farmhand uses. The package, file by file: constants (what the stream can be), fonts, squares (a
 # square's choices, checked), choices (the stream's settings, kept and checked), sources (how ffmpeg reads each
 # camera), frame (the picture's sizes), cards (a card's square), words (the words on the cameras), picture (the whole
-# ffmpeg command), encoders (processor or NVIDIA card), staging (the files going live puts out for ffmpeg), runner (the
+# ffmpeg command), music (the music, fed to ffmpeg as it plays), encoders (processor or NVIDIA card), staging (the files going live puts out for ffmpeg), runner (the
 # stream itself).
 from sqlalchemy.orm import Session
 
-from . import encoders, fonts, runner  # noqa: F401
+from . import encoders, fonts, music, runner  # noqa: F401
 from .choices import auto_grid, rename_slideshow, save, settings  # noqa: F401
 from .constants import DESTINATIONS, RESOLUTION_LABELS, RESOLUTIONS, SETTINGS_KEY  # noqa: F401
 from .fonts import DEFAULT_FONT, FONT, FONTS, font_file  # noqa: F401

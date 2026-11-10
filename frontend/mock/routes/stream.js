@@ -16,8 +16,7 @@ const SIGN_IN_TAKES_MS = 6000;
 const RESOLUTIONS = { "720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)" };
 const MAX_SIDE = 5;
 const PICTURES = ["frog-vt1190", "shark-v2bog", "shark-vt1190"]; // the sample pictures shown for the uploads, in turn
-const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background", "font", "color",
-  "music", "music_volume", "music_shuffle"];
+const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background", "font", "color"];
 // a track of music, as the mock plays it: two seconds of a tone (a WAV), its note by its place among the uploads
 const tone = (n) => {
   const rate = 8000, len = rate * 2, out = Buffer.alloc(44 + len * 2);
@@ -46,7 +45,7 @@ export function streamRoutes(ctx) {
     (farm.stream ??= {
       destination: "youtube", cols: 1, rows: 1, cells: [null], show_status: true, layout: "grid", resolution: "1080p", seconds_all: 30,
       seconds_each: 20, border_color: "#000000", background: "#000000", font: "play", color: "#FFFFFF", enabled: true, title: "", description: "", key_set: false,
-      music: false, music_volume: 50, music_shuffle: true,
+      music: true, music_volume: 50, music_shuffle: true, player: null,
       images: [], slideshows: [], tracks: [], uploads: 0,
       live: false, started_at: null, labels: [], title_status: null,
       youtube: { client_id: null, signed_in: false, channel: null, signing_in: null, error: null },
@@ -71,7 +70,7 @@ export function streamRoutes(ctx) {
       },
       status: {
         live: s.live, on_air: s.live, started_at: s.started_at, running_for: s.live && s.started_at ? Math.round((Date.now() - Date.parse(s.started_at)) / 10) / 100 : null, server_time: Date.now() / 1000, destination: s.live ? s.destination : null, cameras: s.live ? s.labels : [],
-        error: null, title: s.live ? s.title_status : null,
+        error: null, title: s.live ? s.title_status : null, music: s.live ? musicOut() : null,
       },
       destinations: Object.entries(DESTINATIONS).map(([key, label]) => ({ key, label })),
       resolutions: Object.entries(RESOLUTIONS).map(([key, label]) => ({ key, label })),
@@ -83,6 +82,22 @@ export function streamRoutes(ctx) {
       },
       youtube: youtube(),
     };
+  };
+  // the music going out while live, as the server's player says it: the tracks in name order, a track every 3 minutes
+  const TRACK_S = 180;
+  const musicNow = () => {
+    const s = state();
+    const p = (s.player ??= { index: 0, at: 0, since: Date.now(), playing: true });
+    const names = s.tracks.map((x) => x.name).sort(natural);
+    let at = p.at + (p.playing ? (Date.now() - p.since) / 1000 : 0);
+    const index = names.length ? (p.index + Math.floor(at / TRACK_S)) % names.length : 0;
+    at %= TRACK_S;
+    return { p, names, index, at };
+  };
+  const musicOut = () => {
+    const s = state();
+    const { p, names, index, at } = musicNow();
+    return { on: s.music, playing: p.playing, track: s.music ? names[index] ?? null : null, at: Math.round(at * 10) / 10 };
   };
   const titleOutcome = () => {
     const s = state();
@@ -104,6 +119,7 @@ export function streamRoutes(ctx) {
     });
     s.live = true;
     s.started_at = new Date().toISOString();
+    s.player = null; // the music starts with the stream
     s.title_status = titleOutcome();
   };
   const youtubeText = (text, most, what) => {
@@ -310,6 +326,22 @@ export function streamRoutes(ctx) {
   });
   fileRoutes.push([/^\/stream\/pictures\/([^/]+)$/, (m) => png(state().images.find((x) => x.name === decodeURIComponent(m[1]))?.picture)]);
   fileRoutes.push([/^\/stream\/slideshows\/([^/]+)\/pictures\/([^/]+)$/, (m) => png(showOf(m[1])?.images.find((x) => x.name === decodeURIComponent(m[2]))?.picture)]);
+
+  // the music going out, while live: play, pause, next, back (from its start, or in its first 3 s the one before)
+  on("POST", "/stream/music/:action", ({ action }) => {
+    const s = state();
+    if (!["play", "pause", "next", "back"].includes(action)) throw new HttpError(404, "Not Found");
+    if (!s.live) throw new HttpError(422, "The stream isn't live: the music plays on the stream once it is.");
+    if (!s.music) throw new HttpError(422, "The music is off: tick Play music on the stream, and Save.");
+    const { p, names, index, at } = musicNow();
+    const n = Math.max(1, names.length);
+    const restart = (i) => Object.assign(p, { index: ((i % n) + n) % n, at: 0, since: Date.now(), playing: true });
+    if (action === "next") restart(index + 1);
+    else if (action === "back") restart(at > 3 ? index : index - 1);
+    else if (action === "pause" && p.playing) Object.assign(p, { index, at, playing: false });
+    else if (action === "play" && !p.playing) Object.assign(p, { since: Date.now(), playing: true });
+    return page();
+  });
 
   // the music: MP3s, kept in memory by name; each plays as a short tone
   on("POST", "/stream/music", (_, body) => {

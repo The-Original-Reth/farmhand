@@ -202,6 +202,10 @@ def media(db: Session, scan: bool = False) -> dict:
 def _read(db: Session) -> dict:
     try:
         root = folder(db)
+        try:  # its own folders made, so each one is there to open and copy into by hand (one read-only share: left)
+            folder(db, make=True)
+        except OSError:
+            pass
     except storage.StorageUnavailableError as e:
         at = location_info(db)["path"]
         return {"path": at, "windows_path": windows_path(db, at), "images": [], "slideshows": [], "music": [], "error": str(e)}

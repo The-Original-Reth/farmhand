@@ -49,6 +49,8 @@ const normalizeStream = (s) => ({
     // the server's time of day (s): slideshows and taking turns count from it, on the stream and in the preview
     serverTime: typeof s.status.server_time === "number" ? s.status.server_time : null,
     heardAt: Date.now(),
+    // the music going out, while live: { on, playing, track (its file name, null before the first), at (s into it) }
+    music: s.status.music || null,
   },
   destinations: s.destinations,
   resolutions: s.resolutions,
@@ -113,7 +115,9 @@ export const orderSlideshow = async (show, order) => normalizeStream(await reque
 export const removeSlideshowPicture = async (show, name) => normalizeStream(await del(`/stream/slideshows/${enc(show)}/pictures/${enc(name)}`));
 
 // The stream's music: MP3s in the stream folder's music folder (uploads under 50 MB), played one after another, round
-// and round. Tracks added or deleted while live play from the next time the stream starts.
+// and round, starting with the stream. Tracks added while live join its next round.
+// While live: "play", "pause", "next" or "back" (the track from its start, or in its first 3 s the one before).
+export const musicControl = async (action) => normalizeStream(await post(`/stream/music/${action}`));
 export const streamTrackUrl = (name) => `${API_BASE}/stream/music/${enc(name)}`;
 export const uploadStreamMusic = async (files) => normalizeStream(await request("/stream/music", filesBody(files)));
 export const removeStreamTrack = async (name) => normalizeStream(await del(`/stream/music/${enc(name)}`));

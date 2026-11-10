@@ -10,6 +10,7 @@ import math
 from dataclasses import dataclass
 
 from .constants import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_RESOLUTION, FPS, HEIGHT, WIDTH
+from . import music
 from .cards import card_square
 from .choices import auto_grid
 from .encoders import encoder_args
@@ -69,8 +70,8 @@ class Look:
     status_files: the words under each camera, a file per camera (None: no words).
     cycle: taking turns, (seconds on the whole grid, on each camera) (None: the grid all the time); turns_file: its
       timetable (timetable()).
-    music: the music's playlist, as ffmpeg's concat reads it (staging.playlist: round after round of the tracks, for a
-      day), played at music_volume (0 to 100) (None: a silent sound track).
+    music: the sound comes in on stdin, raw, as Farmhand's music player feeds it (music.Player: the music, or silence)
+      (False: a silent sound track of ffmpeg's own).
     """
 
     status_files: list[str] | None = None
@@ -86,8 +87,7 @@ class Look:
     cols: int | None = None
     rows: int | None = None
     cells: list | None = None
-    music: str | None = None
-    music_volume: int = 50
+    music: bool = False
 
 
 def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None) -> list[str]:
@@ -95,8 +95,8 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
     The whole ffmpeg command: the grid's squares laid out, each camera turned as Mainsail shows it and fitted into its
     square with the printer and its print written along its foot; each card its colour, its picture (or slideshow,
     each picture over the first in its own seconds) fitted over it and its words over that; an empty square the stream's
-    background colour; every square with a border round it; the music (or a silent sound track: YouTube wants sound);
-    sent as FLV to `url`.
+    background colour; every square with a border round it; the sound (Farmhand's music player's, or a silent sound
+    track: YouTube wants sound); sent as FLV to `url`.
 
     Taking turns works the way Monitor's enlarging does: only the camera on screen is made full size. Every camera's
     picture goes to a switch (streamselect "pick") that lets through only the one whose turn it is, and only that one
@@ -117,8 +117,8 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
     args = [ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostdin"]
     for s in srcs:
         args += ["-thread_queue_size", "64", *s.input_args]
-    if look.music:  # read as it plays (-re)
-        args += ["-re", "-f", "concat", "-safe", "0", "-i", look.music]
+    if look.music:  # fed as it plays: the music, or silence
+        args += ["-thread_queue_size", "64", *music.INPUT, "-i", "pipe:0"]
     else:
         args += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
     inputs = [n + 1]  # the next input's number: each picture shown is an input of its own, read once a second
@@ -153,22 +153,13 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         video = "[timed]"
     kbps = frame.kbps
     args += ["-filter_complex", ";".join(parts), "-map", video, "-map", f"{n}:a"]
-    if look.music:
-        args += ["-af", music_filter(look.music_volume)]
     args += [*encoder_args(look.encoder), "-pix_fmt", "yuv420p", "-r", str(FPS),
              "-g", str(FPS * 2), "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k",
              "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
-    if look.turns_file or look.music:  # the timetable and the playlist cover a day: then ffmpeg is started again
+    if look.turns_file:
         args += ["-t", str(TURNS_FOR)]
     args += ["-f", "flv", url]
     return args
-
-
-def music_filter(volume: int) -> str:
-    """The music as it goes out: one steady sound track (tracks of different sample rates or mono ones made alike, gaps
-    filled, silence once the playlist is done), at `volume` (0 to 100, squared, so the slider's middle sounds about
-    half as loud: -12 dB)."""
-    return f"aresample=async=1,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume={(volume / 100) ** 2:.4g},apad"
 
 
 def _stream_words(look: Look) -> dict:
