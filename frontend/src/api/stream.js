@@ -94,6 +94,8 @@ export const removeStreamPicture = async (name) => normalizeStream(await del(`/s
 export const createSlideshow = async (name) => normalizeStream(await request("/stream/slideshows", jsonBody("POST", { name })));
 export const removeSlideshow = async (name) => normalizeStream(await del(`/stream/slideshows/${enc(name)}`));
 export const uploadSlideshowPictures = async (show, files) => normalizeStream(await request(`/stream/slideshows/${enc(show)}/pictures`, filesBody(files)));
+// a slideshow's pictures in the order chosen (kept in its folder)
+export const orderSlideshow = async (show, order) => normalizeStream(await request(`/stream/slideshows/${enc(show)}/order`, jsonBody("PUT", { order })));
 export const removeSlideshowPicture = async (show, name) => normalizeStream(await del(`/stream/slideshows/${enc(show)}/pictures/${enc(name)}`));
 
 // Where the stream folder is (Settings): { path, isDefault, defaultPath, status: { exists, writable, markerOk, ready } }.

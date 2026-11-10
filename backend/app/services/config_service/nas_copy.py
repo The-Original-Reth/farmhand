@@ -116,6 +116,7 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
         config_store.write_document(folder, build_document(db))
         records_service.write_all(db, folder, scope)
         records_service.write_streams(db, folder, get_config(db)["preferences"]["stream_layouts"], check_all=scope is None)
+        records_service.write_stream_setup(db, folder)  # the Stream page as it's saved (never its key)
         error = None
     except storage.StorageUnavailableError as e:
         error = str(e)

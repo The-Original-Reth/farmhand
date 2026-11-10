@@ -483,3 +483,31 @@ def test_load_all_brings_in_the_projects_another_farmhand_keeps(db_session, othe
     assert other_farmhand.query(Project).one().name == "Shark"
     again = svc.restore(other_farmhand)["brought_in"]  # it has them all now: nothing twice
     assert again == {"models": [], "threemfs": [], "projects": []}
+
+
+def test_the_stream_pages_setup_is_saved_and_loaded(db_session, share, other_farmhand):
+    from app.services import live_stream, printer_service
+
+    vt = printer_service.create_printer(db_session, name="VT 1190", kind=None, wired_ip=None, wireless_ip=None)
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    live_stream.save(db_session, cols=2, rows=1, cells=[{"camera": f"{vt.id}:Bed", "words_color": "#FF0000"}, {"text": "Hi"}],
+                     title="Live from the farm", font="lato", color="#00FF00", resolution="720p", stream_key="abcd-efgh-1234")
+    svc.mirror(db_session)
+    doc = json.loads((folder / "stream-setup.json").read_text(encoding="utf-8"))
+    assert doc["farmhand_record"] == "stream-setup" and doc["title"] == "Live from the farm" and doc["resolution"] == "720p"
+    assert doc["cells"][0] == {"camera": {"printer": "VT 1190", "camera": "Bed"}, "words_color": "#FF0000"}
+    assert "abcd-efgh-1234" not in json.dumps(doc) and "key" not in " ".join(doc)  # the stream key never leaves Farmhand
+
+    # Load all on another Farmhand: the page comes back, its camera followed to this Farmhand's printer by name
+    db2 = other_farmhand
+    printer_service.create_printer(db2, name="Shelf", kind=None, wired_ip=None, wireless_ip=None)
+    app_settings.put(db2, svc.KEY_LOCATION, str(folder))
+    db2.commit()
+    out = svc.restore(db2)
+    assert "stream setup" in out["restored"]
+    got = live_stream.settings(db2)
+    vt_here = next(p.id for p in printer_service.list_printers(db2) if p.name == "VT 1190")
+    assert (got["title"], got["font"], got["color"], got["resolution"]) == ("Live from the farm", "lato", "#00FF00", "720p")
+    assert got["cells"][0] == {"camera": f"{vt_here}:Bed", "words_color": "#FF0000"} and got["cells"][1]["text"] == "Hi"
+    assert got["key_set"] is False  # its own key (none) stays as it was

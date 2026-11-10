@@ -480,11 +480,12 @@ def test_the_grid_and_the_words():
     assert live_stream.status_line("Prusa_2", {"state": None, "error": "PrusaLink refused the login."}) == "Prusa_2 · Status unknown"
 
 
-def test_stream_settings_stay_out_of_the_settings_copy():
+def test_a_stream_change_refreshes_only_the_settings_file():
+    # the Stream page's setup file is written with the settings (test_config_service); no printer's or model's file
     from app import change_hooks
 
-    assert change_hooks._what_changed("/stream") is None
-    assert change_hooks._what_changed("/stream/start") is None
+    scope = change_hooks._what_changed("/stream")
+    assert scope is not None and scope.printers == set() and scope.models is False
 
 
 # ------------------------------------------------------------------ YouTube: signing in, the title and description
@@ -732,3 +733,24 @@ def test_too_long_words_on_a_slideshow_picture(klipper):
     api, _ = klipper
     r = api.put("/stream", json={"cols": 1, "rows": 1, "cells": [{"slideshow": "Prints", "captions": {"b.png": {"text": "x" * 501}}}]})
     assert r.status_code == 422 and "b.png" in r.json()["detail"]
+
+
+def test_a_slideshows_own_order(klipper, tmp_path):
+    from app.services import stream_media
+
+    api, _ = klipper
+    api.post("/stream/slideshows", json={"name": "Sponsors"})
+    files = [("files", (n, _png(n.encode()), "image/png")) for n in ("a.png", "b.png", "c.png")]
+    api.post("/stream/slideshows/Sponsors/pictures", files=files)
+    shows = api.put("/stream/slideshows/Sponsors/order", json={"order": ["c.png", "a.png"]}).json()["media"]["slideshows"]
+    assert shows == [{"name": "Sponsors", "images": ["c.png", "a.png", "b.png"]}]  # one left out keeps its place after
+    # kept in its folder: the stream and a scan follow it, and a picture added later goes on the end
+    root = stream_media.folder(_db(api))
+    assert [p.name for p in stream_media.slideshow_paths(_db(api), "Sponsors")] == ["c.png", "a.png", "b.png"]
+    (root / "slideshows" / "Sponsors" / "0 new.png").write_bytes(_png())
+    assert api.post("/stream/scan").json()["media"]["slideshows"][0]["images"] == ["c.png", "a.png", "b.png", "0 new.png"]
+    r = api.put("/stream/slideshows/Sponsors/order", json={"order": ["nope.png"]})
+    assert r.status_code == 422 and "nope.png" in r.json()["detail"]
+    # deleting the slideshow takes its order file with it, so its folder goes too
+    assert api.delete("/stream/slideshows/Sponsors?confirm=true").status_code == 200
+    assert not (root / "slideshows" / "Sponsors").exists()

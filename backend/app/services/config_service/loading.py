@@ -191,6 +191,17 @@ def restore(db: Session) -> dict:
     if new:
         save_config(db, {"preferences": {"stream_layouts": have + new}})
         result["restored"].append("stream layouts")
+    # the Stream page as it was saved there (its cameras followed by printer name); its stream key stays as it is here
+    setup, setup_warnings = records_service.read_stream_setup(db, path)
+    result["warnings"] += setup_warnings
+    if setup:
+        from .. import live_stream  # (live_stream reads these settings itself)
+
+        try:
+            live_stream.save(db, **setup)
+            result["restored"].append("stream setup")
+        except ValueError as e:
+            result["warnings"].append(f"The Stream page's setup wasn't put back: {e}")
     return result
 
 

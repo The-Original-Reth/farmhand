@@ -674,7 +674,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   (shows the slideshow's folder as Windows reaches it, `\\server\share\stream\slideshows\…`, with **Copy**, to paste
   into File Explorer: a web page can't open File Explorer itself, and a stream folder that isn't on a network share
   can't be reached so) and **Delete slideshow**;
-  **Show each picture for** sets the seconds (3 to 3600); its pictures go round in name order. Under the editor's
+  **Show each picture for** sets the seconds (3 to 3600); its pictures go round in the order shown (drag a picture onto another to move it there; the order is kept in the
+  slideshow's folder, so every square and the stream follow it, and pictures added later go on the end). Under the editor's
   canvas, **Stop** holds the picture on show (to move or resize it), **Back** and **Next** step through them and
   **Play** lets them go round again; the square in the preview shows the same picture. Text written with **This
   picture** stays with the picture on show, where you put it, and shows only while that picture does; **Every picture**
@@ -825,6 +826,10 @@ locations).
   in `streams/` (its cameras by printer name, all at once or taking turns, and the timings; a deleted layout's file
   goes too). **Load all settings** brings back what's missing (a stream layout only when none here has its name)
   and never overwrites what's already there.
+- **The Stream page's setup** is copied as `stream-setup.json`, beside the settings file, after every save on that
+  page and by **Save all**: the grid and its squares (cameras by printer name), where it streams, taking turns, the
+  resolution, colours and font, the YouTube title and description, and the on/off switch. **Load all settings** puts
+  the page back as it was saved there. The stream key and the YouTube sign-in are never written to it.
 - **A printer's file holds its Moonraker API key and PrusaLink password**, so a restored printer connects straight
   away (a printer missing its key or password gets it back from its file). Keep the settings folder private.
   **A share's password is never written to it**: a restored share comes back saved but not connected and says it

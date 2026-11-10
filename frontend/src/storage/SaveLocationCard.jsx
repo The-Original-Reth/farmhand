@@ -258,7 +258,8 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6, marginTop: 10 })}>
         <b style={{ color: c.textMuted }}>Save all</b> writes every setting to the farmhand-configs folder: the look, the storage
         and share setup, the farm cost folder, the Power page's prices, how the Printers, Monitor and Farm cost pages are
-        arranged, and your printers and models. It also writes each project's record (its 3MFs, STLs and other files, and its
+        arranged, the Stream page's setup and saved layouts (never its stream key or YouTube sign-in), and your printers and
+        models. It also writes each project's record (its 3MFs, STLs and other files, and its
         parts list) into the project's folder, and each model's and 3MF's beside its files, so they can be brought back from
         there. <b style={{ color: c.textMuted }}>Load all settings</b> brings it back. A share's
         password is never saved; the printers' API keys and PrusaLink passwords are, so keep the folder private.
