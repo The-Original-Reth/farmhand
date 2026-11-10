@@ -797,12 +797,16 @@ card once and remembers what it found until Farmhand starts again.
 ### The YouTube title and description
 
 With just the stream key, YouTube keeps its own title. For Farmhand to set the broadcast's **title** and
-**description**, sign it in to your channel once:
+**description**, sign it in to your channel once. The **YouTube account** panel's link, *How to connect your YouTube
+channel, step by step*, opens a page (`/help/youtube`) that goes through it all. In short:
 
 1. In [Google Cloud](https://console.cloud.google.com/), make a project and turn on the **YouTube Data API v3**.
-2. Set up the **OAuth consent screen** and publish it (**In production**); a test one signs Farmhand out after 7 days.
-3. **Credentials → Create credentials → OAuth client ID**, type **TVs and Limited Input devices**. Paste its
-   client ID and secret into the Stream page and press **Save client**.
+2. In **Google Auth Platform** (it used to be the **OAuth consent screen**), press **Get started**: app name, your
+   email, audience **External**. Then on **Audience** add the channel's Google account under **Test users**. Left in
+   **Testing**, Google signs Farmhand out after 7 days, and you sign in again. To stay signed in, publish it (**In
+   production**), which needs a home page, a privacy policy link and their domain on **Branding**.
+3. **Clients → Create client**, type **TVs and Limited Input devices**. Paste its client ID and secret into the Stream
+   page and press **Save client**. Both show as dots until you click the eye next to them.
 4. Press **Sign in to YouTube**. The page shows a code: open google.com/device on any computer or phone, sign in to
    the Google account that owns the channel and enter it. The page notices by itself. (Google warns the app isn't
    verified: it's your own, so continue.)
