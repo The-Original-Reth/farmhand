@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { c, ui } from "../theme.js";
+import { c, fixed, ui } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
 import { box, help, label12 } from "./editorFields.js";
@@ -148,7 +148,7 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
           {show.images.length === 0 && <span style={uiText(12, c.textFaint)}>No pictures in it yet: Add pictures or Open folder.</span>}
           {show.images.map((n) => (
             <div key={n} style={{ width: 96, display: "flex", flexDirection: "column", gap: 3 }}>
-              <div style={{ height: 54, display: "flex", alignItems: "center", justifyContent: "center" }} title={n}>
+              <div style={{ height: 54, background: fixed.pictureThumb, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center" }} title={n}>
                 <img src={slideshowPictureUrl(show.name, n)} alt={n} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain" }} />
               </div>
               {removing === n ? (

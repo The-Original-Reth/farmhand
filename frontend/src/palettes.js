@@ -161,6 +161,7 @@ export const FIXED = {
   backdrop: "rgba(0,0,0,0.55)", shadow: "rgba(0,0,0,0.3)",
   gold: "#F2C230", goldEdge: "#B8860B", silver: "#C9CDD3", silverEdge: "#868B93",
   voronRed: "#ED3023", // Voron Design's red (as in the sidebar's Voron heart): the top bar's warning
+  pictureThumb: "#D9DCDE", // light grey behind a slideshow's pictures in the Stream page's list, so dark and light ones both show
 };
 
 export const FONTS = [
