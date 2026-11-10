@@ -17,7 +17,7 @@ from .words import filter_path
 
 
 def card_square(c: int, cd: dict, frame: Frame, picture: Callable[[str], int], clock: float = 0,
-                font: str | None = None, color: str | None = None) -> str:
+                font: str | None = None, color: str | None = None, slideshow: Callable[[list, int], int] | None = None) -> str:
     """
     Square `c`'s filters, ending in [c{c}]: its colour; its pictures fitted over it (`picture(path)`: the input that
     reads it, once a second), each but the first only in its own seconds (with a blank screen in the slideshow, the
@@ -25,6 +25,10 @@ def card_square(c: int, cd: dict, frame: Frame, picture: Callable[[str], int], c
     slideshow: [...]}, each in its screen's seconds), in their order, each placed on its own (staging.staged_layers);
     its words over that (on a dark band when chosen); its border. `clock`: the time of day at the stream's start, which
     the slideshow counts from; `font`, `color`: the stream's words', unless the card (or a piece of text) has its own.
+
+    A slideshow made ready at going live (cd["frames"]: each screen as one finished picture, slides.compose) is one
+    input instead, `slideshow(frames, seconds)` its number: its pictures and its screens' more pictures are already on
+    it, so only the words are drawn here.
     """
     tw, th = frame.tw, frame.th
     chain = [f"{frame.plain((cd.get('background') or '#' + frame.back).lstrip('#'))}[c{c}b]"]
@@ -34,7 +38,12 @@ def card_square(c: int, cd: dict, frame: Frame, picture: Callable[[str], int], c
     window = _windows(period, seconds, clock)
 
     blanks = any(stream_media.is_blank(p) for p in paths)  # then even the first picture shows only in its turn
-    for j, path in enumerate(paths):
+    if cd.get("frames") and slideshow:  # one input, a finished picture at a time, on the stream's own clock
+        chain = [f"[{slideshow(cd['frames'], seconds)}:v]setpts=PTS-STARTPTS,fps={FPS},setsar=1[c{c}f]"]
+        shown, paths_drawn = f"[c{c}f]", []
+    else:
+        paths_drawn = paths
+    for j, path in enumerate(paths_drawn):
         if stream_media.is_blank(path):  # a blank screen: the square's colour (and its words) in its turn
             continue
         bw, bh, at = _fit(cd, path, frame)

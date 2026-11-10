@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from ...errors import NotFound
 from ... import storage
 from .. import stream_media
+from . import slides
+from .frame import Frame
 
 
 def write_atomically(path: str, text: str) -> None:
@@ -97,8 +99,14 @@ def squares(db: Session, chosen: dict, folder: str) -> list:
                 got = staged_layers(db, (cell.get("slide_layers") or {}).get(os.path.basename(path)) or [], folder, f"{c}-{j}", copied)
                 if got:
                     screens[j] = got
-            out.append(("card", {**cell, "pictures": pictures.get(c, []), "words": words, "picture_words": own, "layers": layers,
-                                 "screen_layers": screens}))
+            card = {**cell, "pictures": pictures.get(c, []), "words": words, "picture_words": own, "layers": layers, "screen_layers": screens}
+            if cell.get("slideshow") and card["pictures"]:
+                # each screen put together once (its colour, picture and more pictures): ffmpeg reads them as one input
+                frame = Frame.of(chosen["resolution"], chosen["cols"], chosen["rows"], chosen["background"], chosen["border_color"])
+                baked = {j: [x for x in ls if x["type"] == "picture"] for j, ls in screens.items()}
+                card["frames"] = slides.compose(cell, card["pictures"], baked, frame, os.path.join(folder, "slides", str(c)))
+                card["screen_layers"] = {j: kept for j, ls in screens.items() if (kept := [x for x in ls if x["type"] != "picture"])}
+            out.append(("card", card))
     return out
 
 
