@@ -200,7 +200,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
 
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
-        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} />
+        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} />
         <SavedLayoutsPanel
           layouts={layouts} onSave={onSaveLayouts} saved={saved} label={label} switchTo={switchTo}
         />

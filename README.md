@@ -702,8 +702,10 @@ benchy.gcode`), brought up to date every 15 seconds.
   the folder as Windows reaches it over the network, with **Copy**, to paste into File Explorer). **Back**,
   **Play/Pause** and **Next**, beside *Play music on the stream*, work on the stream while live: Next skips to the next
   track, Pause is silence until Play, and Back starts the track again (in its first 3 seconds, goes to the one before);
-  the page says which track is on and how far in. Not live, they play the tracks in this browser, as each track's ▶
-  does, at the volume chosen. **Volume** (1% steps; its middle sounds about half as loud), **Shuffle** (a new order each
+  the page says which track is on and how far in. Not live, the music plays on the page all the time while the
+  stream is on, as the slideshows do (round and round, at the volume chosen; a browser that only plays sound after a
+  click starts it with your first click), and the buttons, like each track's ▶, work on that. Turning the stream off
+  stops the music, on the page and on the server. **Volume** (1% steps; its middle sounds about half as loud), **Shuffle** (a new order each
   round; off, name order) and turning the music off are saved with Save, and while live the music follows at once,
   without the stream starting again. Farmhand plays the music itself and feeds it to ffmpeg as it plays, so none of
   this interrupts the picture. Tracks added while live join the next round; with no tracks, the stream is silent.

@@ -21,10 +21,13 @@ const BACK_RESTARTS = 3; // seconds into a track after which Back starts it agai
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const small = { ...headerButton(), padding: "0 6px" };
 
-export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0 }) {
+export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true }) {
   const input = useRef(null);
   const player = useRef(null);
-  const [here, setHere] = useState(null); // the track played here: { name, paused }
+  const paused = useRef(false); // paused here by hand: it stays so until played again (or the switch turned on again)
+  const latest = useRef({}); // (what a track ending goes on with: the list and shuffling as they are now)
+  const requests = useRef(0); // (each track asked for: only the latest's answer counts)
+  const [here, setHere] = useState(null); // the track played here: { name, paused, waiting (for a click: the browser's rule) }
   const [removing, setRemoving] = useState(null); // the track asking "Delete?"
   const [opening, setOpening] = useState(false); // showing where the music folder is, for File Explorer
   const [, tick] = useState(0); // (live: the time into the track goes on between the page's looks)
@@ -51,31 +54,67 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
   useEffect(() => {
     if (live) stopHere(); // live: the buttons are the stream's, and the music is heard there
   }, [live]);
+  // With the stream on, the music plays here all the time, as the slideshows do (live, the stream plays it instead):
+  // round and round, as on the stream. The switch off, or the music unticked, stops it.
+  const wanted = enabled && !live && shown.music && tracks.length > 0;
+  useEffect(() => {
+    if (!enabled) paused.current = false; // (turned on again: it starts again)
+    if (!wanted) {
+      if (!live) stopHere();
+      return;
+    }
+    if (!here && !paused.current) advance(null, 1);
+  }, [wanted, enabled]);
+  latest.current = { tracks, shuffle: shown.musicShuffle };
 
-  // the track `step` along from `name` in the list (round again at either end), played here
+  // the track `step` along from `name` in the list (round again at either end; shuffled, going on: any other one),
+  // played here
   const advance = (name, step) => {
-    if (!tracks.length) return;
-    const i = tracks.indexOf(name);
-    playHere(tracks[(((i < 0 ? 0 : i + step) % tracks.length) + tracks.length) % tracks.length]);
+    const { tracks: list, shuffle } = latest.current;
+    if (!list.length) return;
+    const i = list.indexOf(name);
+    if (shuffle && step > 0 && list.length > 1) {
+      const others = list.filter((x) => x !== name);
+      return playHere(others[Math.floor(Math.random() * others.length)]);
+    }
+    return playHere(list[(((i < 0 ? 0 : i + step) % list.length) + list.length) % list.length]);
   };
   const playHere = (name) => {
     const a = player.current || (player.current = new Audio());
     a.onended = () => advance(name, 1); // on to the next, as the stream does
     a.src = streamTrackUrl(name);
     a.volume = musicGain(shown.musicVolume);
-    a.play().catch(() => setHere(null));
+    paused.current = false;
     setHere({ name, paused: false });
+    const asked = ++requests.current;
+    a.play().catch((e) => {
+      if (asked !== requests.current) return undefined; // another track asked for since: it's that one's
+      if (e?.name !== "NotAllowedError") return setHere(null);
+      // the browser plays sound only once the page has been clicked: it starts with the first click or key
+      setHere({ name, paused: true, waiting: true });
+      const go = () => {
+        document.removeEventListener("pointerdown", go, true);
+        document.removeEventListener("keydown", go, true);
+        if (player.current === a && !paused.current) {
+          a.play().then(() => setHere({ name, paused: false })).catch(() => setHere(null));
+        }
+      };
+      document.addEventListener("pointerdown", go, true);
+      document.addEventListener("keydown", go, true);
+      return undefined;
+    });
+  };
+  const pauseHere = () => {
+    player.current?.pause();
+    paused.current = true;
+    setHere((h) => h && { name: h.name, paused: true });
   };
   // each track's own ▶: play it here, or pause it
-  const toggleTrack = (name) => {
-    if (playing !== name) return playHere(name);
-    player.current.pause();
-    setHere({ name, paused: true });
-  };
+  const toggleTrack = (name) => (playing === name ? pauseHere() : playHere(name));
 
   // Back, Play/Pause, Next: the stream's music while live, otherwise here
   const server = (action) => ask("music", () => musicControl(action));
-  const isPlaying = live ? !!onAir?.playing : !!playing;
+  const isPlaying = live ? !!onAir?.playing : !!playing || !!here?.waiting; // (waiting for a click: going, as far as you're concerned)
   const back = () => {
     if (live) return server("back");
     if (!here) return advance(tracks[0], 0);
@@ -86,10 +125,8 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
   const playPause = () => {
     if (live) return server(onAir?.playing ? "pause" : "play");
     if (!here) return advance(tracks[0], 0);
-    if (playing) {
-      player.current.pause();
-      return setHere({ name: here.name, paused: true });
-    }
+    if (playing) return pauseHere();
+    paused.current = false;
     player.current.play().catch(() => setHere(null));
     return setHere({ name: here.name, paused: false });
   };
@@ -100,6 +137,7 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
   if (live && !onAir?.on) nowText = "The music is off on the stream (tick Play music on the stream and Save)";
   else if (live && onAir.track) nowText = `On the stream: ${onAir.track} · ${clock(at)}${onAir.playing ? "" : " (paused)"}`;
   else if (live) nowText = tracks.length ? "On the stream: starting…" : "On the stream: no tracks, so silence";
+  else if (here?.waiting) nowText = `Here: ${here.name} · starts with your first click on the page (the browser waits for one)`;
   else if (here) nowText = `Here: ${here.name}${here.paused ? " (paused)" : ""}`;
   else if (tracks.length) nowText = "Not live: the buttons play the tracks here, in this browser";
 
