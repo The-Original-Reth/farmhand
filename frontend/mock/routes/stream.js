@@ -5,6 +5,7 @@
 // a made-up code and counts as done a few seconds later; the stream folder is kept in memory, sample pictures standing in
 // for the files uploaded.
 import { HttpError } from "../core.js";
+import { FONTS, cameraCell, cardCell, fileName, isCard } from "../streamCells.js";
 
 const DESTINATIONS = { youtube: "YouTube Live", twitch: "Twitch" };
 const KEY_SHAPE = /^[A-Za-z0-9_\-?=&.]{4,200}$/;
@@ -15,41 +16,11 @@ const SIGN_IN_TAKES_MS = 6000;
 const RESOLUTIONS = { "720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)" };
 const MAX_SIDE = 5;
 const PICTURES = ["frog-vt1190", "shark-v2bog", "shark-vt1190"]; // the sample pictures shown for the uploads, in turn
-const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background"];
-const FONTS = [
-  ["dejavu-sans", "DejaVu Sans", "sans-serif"], ["play", "Play (Farmhand's own)", "sans-serif"], ["dejavu-sans-bold", "DejaVu Sans Bold", "sans-serif"], ["dejavu-serif", "DejaVu Serif", "serif"],
-  ["dejavu-mono", "DejaVu Sans Mono", "monospace"], ["liberation-sans", "Liberation Sans (like Arial)", "sans-serif"],
-  ["roboto-black", "Roboto Black", "sans-serif"], ["bebas-neue", "Bebas Neue (capitals)", "sans-serif"], ["comic-neue", "Comic Neue", "cursive"],
-];
-const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", font: "play", band: false, picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 } };
-// where a card's picture and words are, as parts of the square (services/live_stream.py _picture_box, _text_box)
-const part = (v, least, most, d) => (typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(most, Math.max(least, v)) * 1e4) / 1e4 : d);
-const pictureBox = (b) => {
-  if (!b || typeof b !== "object") return { x: 0, y: 0, w: 1, h: 1 };
-  const w = part(b.w, 0.05, 1, 1), h = part(b.h, 0.05, 1, 1);
-  return { x: part(b.x, 0, 1 - w, (1 - w) / 2), y: part(b.y, 0, 1 - h, (1 - h) / 2), w, h };
-};
-const textBox = (b, size, position) =>
-  b && typeof b === "object"
-    ? { x: part(b.x, 0, 1, 0.5), y: part(b.y, 0, 1, 0.5), size: part(b.size, 0.02, 0.6, 0.125) }
-    : { x: 0.5, y: { top: 0.18, bottom: 0.82 }[position] ?? 0.5, size: Math.round(({ small: 1 / 12, large: 1 / 5 }[size] ?? 0.125) * 1e4) / 1e4 };
-const cameraCell = (x) => {
-  // a camera's square, and only what differs from the usual (services/live_stream.py _camera_cell)
-  const out = { camera: x.camera };
-  if (/^#[0-9A-Fa-f]{6}$/.test(x.background || "")) out.background = x.background.toUpperCase();
-  if (x.show_words === false) out.show_words = false;
-  if (typeof x.words_size === "number" && Number.isFinite(x.words_size)) out.words_size = Math.round(Math.min(0.3, Math.max(0.02, x.words_size)) * 1e4) / 1e4;
-  if (/^#[0-9A-Fa-f]{6}$/.test(x.words_color || "") && x.words_color.toUpperCase() !== "#FFFFFF") out.words_color = x.words_color.toUpperCase();
-  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "play") out.words_font = x.words_font;
-  return out;
-};
-
+const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background", "font", "color"];
 // the stream folder when none is chosen: "stream" in the folder above the STL folder
 // a folder on the sample NAS as Windows reaches it (services/stream_media.py windows_path)
 const windowsPath = (p) => (p.startsWith("/data/nas/farm-nas/") ? `\\\\192.168.1.50\\farm\\${p.slice(19).split("/").join("\\")}` : null);
 const streamDefault = (farm) => `${farm.storage.stl.replace(/\/[^/]+$/, "")}/stream`;
-const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v || "") ? v.toUpperCase() : d);
-const fileName = (v) => (typeof v === "string" && /^[^/\\]{1,120}$/.test(v) && v !== "." && v !== ".." ? v : null);
 const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
 // the smallest near-square grid for n squares, as the server works it out
@@ -63,7 +34,7 @@ export function streamRoutes(ctx) {
   const state = () =>
     (farm.stream ??= {
       destination: "youtube", cols: 1, rows: 1, cells: [null], show_status: true, layout: "grid", resolution: "1080p", seconds_all: 30,
-      seconds_each: 20, border_color: "#000000", background: "#000000", title: "", description: "", key_set: false,
+      seconds_each: 20, border_color: "#000000", background: "#000000", font: "play", color: "#FFFFFF", enabled: true, title: "", description: "", key_set: false,
       images: [], slideshows: [], uploads: 0,
       live: false, started_at: null, labels: [], title_status: null,
       youtube: { client_id: null, signed_in: false, channel: null, signing_in: null, error: null },
@@ -82,7 +53,7 @@ export function streamRoutes(ctx) {
     return {
       settings: {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, cameras: camerasOf(s), show_status: s.show_status, layout: s.layout,
-        resolution: s.resolution, seconds_all: s.seconds_all, seconds_each: s.seconds_each, border_color: s.border_color, background: s.background,
+        resolution: s.resolution, seconds_all: s.seconds_all, seconds_each: s.seconds_each, border_color: s.border_color, background: s.background, font: s.font, color: s.color, enabled: s.enabled,
         title: s.title, description: s.description, key_set: s.key_set,
       },
       status: {
@@ -109,6 +80,7 @@ export function streamRoutes(ctx) {
     const s = state();
     if (!s.key_set) throw new HttpError(422, `Add your ${DESTINATIONS[s.destination]} stream key first.`);
     const cameras = camerasOf(s);
+    if (!s.enabled) throw new HttpError(422, "The stream is turned off: turn it on at the top of the Stream page first.");
     if (!cameras.length) throw new HttpError(422, "Put at least one camera in the grid.");
     s.labels = cameras.map((k) => {
       const [id, name] = [k.slice(0, k.indexOf(":")), k.slice(k.indexOf(":") + 1)];
@@ -139,15 +111,12 @@ export function streamRoutes(ctx) {
         seen.add(x.camera);
         return cameraCell(x);
       }
-      if (["background", "image", "slideshow", "text"].some((k) => k in x)) {
+      if (isCard(x)) {
         if (x.image && x.slideshow) throw new HttpError(422, "A square shows a picture or a slideshow, not both.");
         const text = typeof x.text === "string" ? x.text.trim() : "";
         if (text.length > 500) throw new HttpError(422, `A square's text can be up to 500 characters; this one has ${text.length}.`);
         if (x.seconds != null && !(Number.isInteger(x.seconds) && x.seconds >= 3 && x.seconds <= 3600)) throw new HttpError(422, "A slideshow shows each picture for 3 to 3600 seconds.");
-        return {
-          ...CARD, background: hex(x.background, null), image: x.slideshow ? null : fileName(x.image), slideshow: fileName(x.slideshow),
-          seconds: x.seconds ?? 10, text, color: hex(x.color, "#FFFFFF"), font: FONTS.some(([k]) => k === x.font) ? x.font : "play", band: x.band === true, picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
-        };
+        return cardCell(x);
       }
       throw new HttpError(422, "A square can hold a camera, text, a picture or a slideshow with words over it, or nothing.");
     });
@@ -177,6 +146,18 @@ export function streamRoutes(ctx) {
     if (body.background != null) {
       if (!/^#[0-9A-Fa-f]{6}$/.test(body.background)) throw new HttpError(422, "Choose the stream's background colour with the colour picker (#RRGGBB).");
       s.background = body.background.toUpperCase();
+    }
+    if (body.enabled != null) {
+      s.enabled = !!body.enabled;
+      if (!s.enabled) s.live = false; // turned off: nothing streams
+    }
+    if (body.font != null) {
+      if (!FONTS.some(([k]) => k === body.font)) throw new HttpError(422, "Choose one of the fonts listed for the stream's words.");
+      s.font = body.font;
+    }
+    if (body.color != null) {
+      if (!/^#[0-9A-Fa-f]{6}$/.test(body.color)) throw new HttpError(422, "Choose the colour of the stream's words with the colour picker (#RRGGBB).");
+      s.color = body.color.toUpperCase();
     }
     if (body.border_color != null) {
       if (!/^#[0-9A-Fa-f]{6}$/.test(body.border_color)) throw new HttpError(422, "Choose the border's colour with the colour picker (#RRGGBB).");
@@ -232,6 +213,7 @@ export function streamRoutes(ctx) {
   const confirm = (q) => {
     if (q.get("confirm") !== "true") throw new HttpError(409, "Deleting is permanent — pass confirm=true to proceed");
   };
+  on("POST", "/stream/scan", () => page());
   on("POST", "/stream/pictures", (_, body) => {
     upload(body.files || [], state().images);
     return page();

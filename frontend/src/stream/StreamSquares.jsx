@@ -1,4 +1,6 @@
 import { c } from "../theme.js";
+import { fontFamily } from "./CardScreen.jsx";
+import { LayoutPanel } from "./StreamPanels.jsx";
 import { fieldBox, headerButton, panelBox, uiText } from "../styles.js";
 
 // The Stream page's grid. The grid is 1x1 to 5x5 squares; each holds a camera, words, an image, a slideshow or nothing
@@ -9,9 +11,11 @@ const SIDES = [1, 2, 3, 4, 5];
 
 const panel = () => panelBox({ padding: 16, display: "flex", flexDirection: "column", gap: 12 });
 const heading = uiText(14, c.heading, { fontWeight: 600 });
+const subheading = uiText(13, c.heading, { fontWeight: 600 });
+const part = { display: "flex", flexDirection: "column", gap: 12 };
 const help = uiText(12, c.textFaint, { lineHeight: 1.5 });
 
-// The smallest near-square grid for n squares, as the server works it out (services/live_stream.py auto_grid)
+// The smallest near-square grid for n squares, as the server works it out (services/live_stream/choices.py auto_grid)
 export const autoGrid = (n) => {
   const cols = Math.min(MAX_SIDE, Math.max(1, Math.ceil(Math.sqrt(n))));
   return { cols, rows: Math.min(MAX_SIDE, Math.max(1, Math.ceil(n / cols))) };
@@ -62,7 +66,7 @@ export function GridSize({ shown, change }) {
 // emptying it, the words under each camera, the stream's background colour (each square's unless it has its own) and the
 // border's colour. `cameras`: every camera there is, [{ key, label }];
 // `change(what)` changes the page's choices (saved with its Save).
-export function SquaresPanel({ shown, change, cameras, finding }) {
+export function SquaresPanel({ shown, change, cameras, finding, bare = false }) {
   const { cols, rows, cells } = shown;
   const placed = new Set(cells.filter((x) => x?.camera).map((x) => x.camera));
   // every camera not in a square yet goes into the empty ones, the grid growing (up to 5x5) when they don't all fit
@@ -77,9 +81,9 @@ export function SquaresPanel({ shown, change, cameras, finding }) {
   };
 
   return (
-    <div data-testid="stream-squares" style={panel()}>
+    <div data-testid="stream-squares" style={bare ? part : panel()}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ ...heading, flex: 1 }}>
+        <div style={{ ...(bare ? subheading : heading), flex: 1 }}>
           Squares <span style={uiText(12, c.textFaint, { fontWeight: 400 })}>{cols}×{rows} · {placed.size} camera{placed.size === 1 ? "" : "s"}</span>
         </div>
         <button type="button" data-testid="stream-fill" onClick={fillAll} disabled={!cameras.length} style={headerButton()}>
@@ -122,6 +126,35 @@ export function SquaresPanel({ shown, change, cameras, finding }) {
           </button>
         )}
       </label>
+    </div>
+  );
+}
+
+// Defaults: what every square and camera has unless it has its own, and how the grid is shown. The squares (filling
+// and emptying the grid, the words on the cameras, the background and border colours), the stream's words' font and
+// colour, and the layout (taking turns or not). `fonts`: [{ key, label }]; `count`: the cameras in the grid.
+export function DefaultsPanel({ shown, change, cameras, finding, count, fonts }) {
+  const row = uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" });
+  return (
+    <div data-testid="stream-defaults" style={panel()}>
+      <div style={heading}>Defaults</div>
+      <SquaresPanel shown={shown} change={change} cameras={cameras} finding={finding} bare />
+      <label style={row}>
+        Words
+        <select
+          data-testid="stream-font" value={shown.font || "play"} onChange={(e) => change({ font: e.target.value })}
+          style={{ ...fieldBox(), padding: "5px 8px", fontFamily: fontFamily(shown.font) }}
+        >
+          {fonts.map((f) => <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>)}
+        </select>
+        <input
+          data-testid="stream-color" type="color" value={(shown.color || "#FFFFFF").toLowerCase()} onChange={(e) => change({ color: e.target.value.toUpperCase() })}
+          style={{ width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" }}
+        />
+        <span style={uiText(11, c.textFaint)}>every square's text and camera's words, unless it has its own</span>
+      </label>
+      <div style={{ borderTop: `1px solid ${c.border}` }} />
+      <LayoutPanel shown={shown} count={count} change={change} bare />
     </div>
   );
 }

@@ -111,7 +111,7 @@ def test_saved_stream_layouts_have_a_file_each_in_streams(db_session, share, oth
     vt_here = next(p.id for p in printer_service.list_printers(db2) if p.name == "VT 1190")
     assert got[0]["cells"][0]["image"] == "Elves.png"
     assert {k: v for k, v in got[0].items() if k != "cells"} == {"name": "Whole farm", "cols": 2, "rows": 2, "layout": "cycle", "seconds_all": 0,
-                                                                  "seconds_each": 40, "show_status": True, "border_color": "#FF0000", "background": "#000000"}
+                                                                  "seconds_each": 40, "show_status": True, "border_color": "#FF0000", "background": "#000000", "font": "play", "color": "#FFFFFF"}
     assert got[0]["cells"][1:] == [{"camera": f"{vt_here}:Bed"}, None, {"camera": f"{v2_here.id}:Camera"}]
 
 

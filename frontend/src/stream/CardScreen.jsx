@@ -1,0 +1,172 @@
+import { useEffect, useRef, useState } from "react";
+import { c, fixed, fs, ui } from "../theme.js";
+import { slideshowPictureUrl, streamFontUrl, streamPictureUrl } from "../api.js";
+
+// What a card looks like (CardScreen), in the preview and on the editor's canvas, and the stream's fonts: what a
+// card is made of (CARD), and each font loaded from the server so the words look here as on the stream.
+
+export const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
+export const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
+export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE };
+// the page's own name for one of the stream's fonts (StreamFonts loads each from the server)
+export const fontFamily = (key) => `"fh-stream-${key || "play"}", sans-serif`;
+
+// The stream's fonts, loaded from the server so the words look here as they do on the stream: `fonts` [{ key, generic }]
+export function StreamFonts({ fonts }) {
+  const css = fonts.map((f) => `@font-face { font-family: "fh-stream-${f.key}"; src: url("${streamFontUrl(f.key)}"); font-display: swap; }`).join("\n");
+  return <style>{css}</style>;
+}
+const clamp = (v, least, most) => Math.round(Math.min(most, Math.max(least, v)) * 1e4) / 1e4;
+// What a card looks like, in the preview and on the editor's canvas, as the stream draws it: its colour, its picture
+// (or slideshow, on this page's own clock) fitted into its box, and its words over that, centred on their spot and sized
+// to the square. `edit`: on the editor's canvas, and on the preview's square being edited, where the picture and the words are dragged to move them and by their corner
+// handle to resize them, `onChange({ picture_box } | { text_box })` taking each step ("quiet": on the preview, where the
+// outline and corner only show while the picture or words are pointed at). `streamText`: { font, color }, the stream's
+// words', for a card that has none of its own. `slide`: { at (which picture), playing,
+// go(at) }, for going through a slideshow by hand on the editor's canvas; without it the slideshow plays on its own.
+// `inset`: the square's border, as a part of its height: the picture is fitted inside it, as the stream fits it.
+export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null }) {
+  const [el, setEl] = useState(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [ownShot, setOwnShot] = useState(0);
+  // `slide`: { at, playing, go(at) } when the editor goes through a slideshow by hand; else it plays on its own
+  const shot = slide ? slide.at : ownShot;
+  const setShot = slide ? (f) => slide.go(f(slide.at)) : setOwnShot;
+  const playing = slide ? slide.playing : true;
+  const [natural, setNatural] = useState(null); // the picture's own width over height, once loaded
+  const drag = useRef(null); // { what: "picture" | "pictureSize" | "text" | "textSize", x, y (where it started), from (the box then) }
+  useEffect(() => {
+    if (!el) return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  const show = card.slideshow ? media.slideshows.find((x) => x.name === card.slideshow) : null;
+  const count = show?.images.length || 0;
+  useEffect(() => {
+    if (!slide) setOwnShot(0);
+    if (count < 2 || !playing) return;
+    const timer = setInterval(() => setShot((s) => (s + 1) % count), Math.max(1, Number(card.seconds) || 10) * 1000);
+    return () => clearInterval(timer);
+  }, [card.slideshow, count, card.seconds, playing, slide?.at]);
+  const src = show && count ? slideshowPictureUrl(show.name, show.images[shot % count]) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
+  const pb = card.picture_box || FULL_BOX;
+  // the part of the square inside its border, in px: a picture's box is a part of it (so the border never covers it)
+  const edge = inset * size.h;
+  const iw = Math.max(1, size.w - 2 * edge), ih = Math.max(1, size.h - 2 * edge);
+  // where the picture itself is: fitted into its box keeping its shape (as the stream fits it), so its outline and
+  // corner handle sit on the picture, not on the box round it
+  const shown = (() => {
+    if (!natural || !size.w || !size.h) return pb;
+    const bw = pb.w * iw, bh = pb.h * ih;
+    const [w, h] = bw / bh > natural ? [bh * natural, bh] : [bw, bw / natural];
+    return { x: pb.x + (bw - w) / 2 / iw, y: pb.y + (bh - h) / 2 / ih, w: w / iw, h: h / ih };
+  })();
+  // ... and on the square, as parts of its width and height
+  const at = size.w && size.h
+    ? { x: (edge + shown.x * iw) / size.w, y: (edge + shown.y * ih) / size.h, w: (shown.w * iw) / size.w, h: (shown.h * ih) / size.h }
+    : shown;
+  const tb = card.text_box || MIDDLE;
+  const words = card.text?.trim();
+  const px = Math.max(6, size.h * tb.size);
+
+  const start = (what) => (e) => {
+    if (!edit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); // the text box typed in lets go
+    window.getSelection()?.removeAllRanges();
+    dragged.current = false;
+    drag.current = { what, x: e.clientX, y: e.clientY, from: what.startsWith("picture") ? shown : tb }; // the box closes round the picture
+    el.setPointerCapture(e.pointerId);
+  };
+  const move = (e) => {
+    const d = drag.current;
+    if (!d || !size.w || !size.h) return;
+    const dx = (e.clientX - d.x) / size.w;
+    const dy = (e.clientY - d.y) / size.h;
+    const px_ = (e.clientX - d.x) / iw; // the picture moves within the part inside the border
+    const py_ = (e.clientY - d.y) / ih;
+    const f = d.from;
+    if (d.what === "picture") onChange({ picture_box: { ...f, x: clamp(f.x + px_, 0, 1 - f.w), y: clamp(f.y + py_, 0, 1 - f.h) } });
+    else if (d.what === "text") onChange({ text_box: { ...f, x: clamp(f.x + dx, 0, 1), y: clamp(f.y + dy, 0, 1) } });
+    else if (d.what === "textSize") onChange({ text_box: { ...f, size: clamp(f.size + dy, 0.02, 0.6) } });
+    else {
+      // the box keeps the picture's own shape, so its corner stays on the picture's
+      let w = clamp(f.w + px_, 0.05, 1 - f.x);
+      let h = natural ? (w * iw) / natural / ih : clamp(f.h + py_, 0.05, 1 - f.y);
+      if (h > 1 - f.y) {
+        h = 1 - f.y;
+        if (natural) w = (h * ih * natural) / iw;
+      }
+      onChange({ picture_box: { ...f, w: clamp(w, 0.05, 1 - f.x), h: clamp(h, 0.05, 1 - f.y) } });
+    }
+  };
+  const dragged = useRef(false); // a move just ended: the click that ends it isn't a click on the square
+  const end = () => {
+    if (drag.current) dragged.current = true;
+    drag.current = null;
+  };
+  const swallowClick = (e) => {
+    if (!dragged.current) return;
+    dragged.current = false;
+    e.stopPropagation();
+  };
+  // the outline and corner: always on the editor's canvas; on the preview's square only while pointed at or moved
+  const [hover, setHover] = useState(null); // "picture" | "text" under the pointer
+  const marked = (what) => edit && (edit !== "quiet" || hover === what || drag.current?.what.startsWith(what));
+  const outlineOf = (what) => (edit ? { cursor: "move", ...(marked(what) ? { outline: `1px dashed ${c.amber}` } : {}) } : {});
+  // the corner to drag: inside the picture's own corner (so a picture filling the square still has one to grab), out
+  // from the words'
+  const handle = (what, title) =>
+    marked(what === "pictureSize" ? "picture" : "text") && (
+      <div
+        data-testid={`stream-canvas-${what}`} title={title} onPointerDown={start(what)}
+        style={{ position: "absolute", right: what === "pictureSize" ? 0 : -7, bottom: what === "pictureSize" ? 0 : -7, width: 14, height: 14, background: c.amber, border: `1px solid ${fixed.cameraText}`, cursor: "nwse-resize", pointerEvents: "auto" }}
+      />
+    );
+
+  return (
+    <div
+      ref={setEl} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onClickCapture={swallowClick}
+      style={{
+        position: "relative", width: "100%", height: "100%", background: card.background || streamBackground, overflow: "hidden",
+        touchAction: edit ? "none" : undefined, userSelect: edit ? "none" : undefined,
+      }}
+    >
+      {src && (
+        <div
+          data-testid="stream-canvas-picture" onPointerDown={start("picture")} onClick={edit ? (e) => e.stopPropagation() : undefined}
+          onPointerEnter={() => setHover("picture")} onPointerLeave={() => setHover(null)}
+          style={{ position: "absolute", left: `${at.x * 100}%`, top: `${at.y * 100}%`, width: `${at.w * 100}%`, height: `${at.h * 100}%`, pointerEvents: edit ? "auto" : "none", ...outlineOf("picture") }}
+        >
+          <img
+            src={src} alt="" draggable={false} onLoad={(e) => e.target.naturalHeight && setNatural(e.target.naturalWidth / e.target.naturalHeight)}
+            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }}
+          />
+          {handle("pictureSize", "Drag to make the picture bigger or smaller")}
+        </div>
+      )}
+      {(card.slideshow && !count) || (card.image && !src) ? (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(11), color: fixed.cameraMessage, pointerEvents: "none" }}>
+          {card.slideshow ? "No pictures in the slideshow yet" : "Picture not in the stream folder"}
+        </div>
+      ) : null}
+      {words && (
+        <div
+          data-testid="stream-canvas-text" onPointerDown={start("text")} onPointerEnter={() => setHover("text")} onPointerLeave={() => setHover(null)} onClick={edit ? (e) => e.stopPropagation() : undefined}
+          style={{
+            position: "absolute", left: `${tb.x * 100}%`, top: `${tb.y * 100}%`, transform: "translate(-50%, -50%)", pointerEvents: edit ? "auto" : "none",
+            color: card.color || streamText.color || "#FFFFFF", fontFamily: fontFamily(card.font || streamText.font), fontSize: px, lineHeight: 1.25, textAlign: "center", whiteSpace: "pre",
+            background: card.band ? fixed.cameraBadge : "transparent", padding: card.band ? `0 ${px / 5}px` : 0, ...outlineOf("text"),
+          }}
+        >
+          {words}
+          {handle("textSize", "Drag down to make the words bigger, up to make them smaller")}
+        </div>
+      )}
+    </div>
+  );
+}

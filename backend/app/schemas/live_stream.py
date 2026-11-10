@@ -14,6 +14,9 @@ class StreamSettingsIn(BaseModel):
     seconds_each: int | None = None  # taking turns: how long each camera is shown on its own
     resolution: str | None = None  # "720p" | "1080p" | "1440p" (2K)
     border_color: str | None = None  # "#RRGGBB" round each square of the grid
+    enabled: bool | None = None  # the Stream page's switch: false stops the stream and keeps it from going live
+    font: str | None = None  # the stream's words (a key of live_stream.FONTS), every square's unless it has its own
+    color: str | None = None  # "#RRGGBB": the stream's words' colour, likewise
     background: str | None = None  # "#RRGGBB": the stream's own colour, in empty squares and round what doesn't fill its square
     cols: int | None = None  # the grid: 1 to 5 squares across...
     rows: int | None = None  # ...and down

@@ -177,7 +177,7 @@ def stream_documents(db: Session, layouts: list[dict]) -> dict[str, dict]:
         out[records_store.file_stem(lay["name"], taken)] = {
             **records_store.header(records_store.STREAMS_DIR, lay["name"]),
             "cols": lay.get("cols"), "rows": lay.get("rows"), "cells": cells,
-            **{k: lay.get(k) for k in ("layout", "seconds_all", "seconds_each", "show_status", "border_color", "background")},
+            **{k: lay.get(k) for k in ("layout", "seconds_all", "seconds_each", "show_status", "border_color", "background", "font", "color")},
         }
     return out
 
@@ -204,7 +204,7 @@ def read_streams(db: Session, folder) -> tuple[list[dict], list[str]]:
     layouts = []
     for rec in records:
         lay = {"name": rec["name"].strip(), **{k: rec.get(k) for k in ("cols", "rows", "layout", "seconds_all", "seconds_each",
-                                                                         "show_status", "border_color", "background")}}
+                                                                         "show_status", "border_color", "background", "font", "color")}}
         if isinstance(rec.get("cells"), list):
             cells = []
             for cell in rec["cells"]:

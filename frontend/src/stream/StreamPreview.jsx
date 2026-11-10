@@ -3,7 +3,8 @@ import { c, fixed, fs, ui } from "../theme.js";
 import { fieldBox, uiText } from "../styles.js";
 import { CameraPicture } from "../monitor/players.jsx";
 import { GridSize, swapped } from "./StreamSquares.jsx";
-import { CardScreen, SquareEditor, StreamFonts, fontFamily } from "./SquareEditor.jsx";
+import { CardScreen, StreamFonts, fontFamily } from "./CardScreen.jsx";
+import { SquareEditor } from "./SquareEditor.jsx";
 
 // What the stream looks like, and where its grid is set up. Above it: the grid's size and the resolution. In it: the
 // grid's squares as the server lays them out, the cameras playing in this browser (as on Monitor, so it shows even while
@@ -21,7 +22,10 @@ import { CardScreen, SquareEditor, StreamFonts, fontFamily } from "./SquareEdito
 // (SquareEditor.jsx), which also uploads and deletes pictures (`ask`, `busy`: the page's own way of asking the server)
 // and saves the page (`onSave`; `dirty`: something isn't saved yet).
 
-// what's written under a camera, as the server writes it (services/live_stream.py status_line)
+// the border round each square, in px of the 720-high picture (services/live_stream/constants.py BORDER_WIDTH)
+const BORDER_PX = 3;
+
+// what's written under a camera, as the server writes it (services/live_stream/picture.py status_line)
 export const statusLine = (label, p) => {
   if (!p?.state) return p?.error ? `${label} · Status unknown` : `${label} · Idle`;
   let line = `${label} · ${p.state === "paused" ? "Paused" : "Printing"}`;
@@ -31,7 +35,7 @@ export const statusLine = (label, p) => {
 };
 
 // Which camera is on its own now, taking turns: its place among the cameras, or null while the whole grid is shown; and
-// how long until the next turn. As the server works it out (services/live_stream.py windows).
+// how long until the next turn. As the server works it out (services/live_stream/picture.py windows).
 export const turnAt = (seconds, n, cycle) => {
   if (!cycle || n < 2) return { one: null, left: null };
   const period = cycle.all + n * cycle.each;
@@ -44,6 +48,8 @@ export const turnAt = (seconds, n, cycle) => {
 export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
+  const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
+  const inset = (BORDER_PX * rows) / 720; // a square's border, as a part of its height: pictures are fitted inside it
   const [selected, setSelected] = useState(null); // the square being edited: its place
   const [dragging, setDragging] = useState(null); // the square being dragged: its place
   const [over, setOver] = useState(null); // the square it would go to
@@ -144,7 +150,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
             >
               {sq ? (
                 <Screen
-                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} edit={editHere && "quiet"}
+                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} inset={alone === i ? 0 : inset} edit={editHere && "quiet"}
                   onChange={(what) => change({ cells: cells.map((x, j) => (j === i ? { ...x, ...what } : x)) })}
                 />
               ) : (
@@ -158,9 +164,9 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
       </div>
       {selected !== null && selected < cells.length ? (
         <SquareEditor
-          cells={cells} i={selected} onCells={(next) => change({ cells: next })} cameras={cameras} media={media} fonts={fonts} label={label} streamBackground={back}
+          cells={cells} i={selected} onCells={(next) => change({ cells: next })} cameras={cameras} media={media} fonts={fonts} label={label} streamBackground={back} streamText={words} inset={inset}
           aspect={(16 * rows) / (9 * cols)} onSave={onSave} dirty={dirty} saving={busy === "save"}
-          showStatus={showStatus} ask={ask} busy={busy} onDone={() => setSelected(null)} screen={<Screen sq={squares[selected]} showStatus={showStatus} big media={media} back={back} />}
+          showStatus={showStatus} ask={ask} busy={busy} onDone={() => setSelected(null)} screen={<Screen sq={squares[selected]} showStatus={showStatus} big media={media} back={back} words={words} />}
         />
       ) : (
         <div style={uiText(12, c.textMuted, { marginTop: 6 })}>
@@ -177,20 +183,20 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
 
 // What a square shows: a camera, or a card (its colour, picture or slideshow, and words); nothing (the stream's colour)
 // when null
-function Screen({ sq, showStatus, big, media, back, edit = false, onChange }) {
+function Screen({ sq, showStatus, big, media, back, words = {}, inset = 0, edit = false, onChange }) {
   if (!sq) return null;
   if (sq.type === "camera") {
     return (
       <div style={{ position: "relative", width: "100%", height: "100%", background: sq.background || back, display: "flex", containerType: "size" }}>
-        <CameraSquare sq={sq} showStatus={showStatus} big={big} />
+        <CameraSquare sq={sq} showStatus={showStatus} big={big} words={words} />
       </div>
     );
   }
-  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} edit={edit} onChange={onChange} />;
+  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} />;
   return null;
 }
 
-function CameraSquare({ sq, showStatus, big }) {
+function CameraSquare({ sq, showStatus, big, words = {} }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const { cam, label } = sq;
   const own = sq.cell || {}; // the square's own choices for its words (show_words, words_size, words_color, words_font)
@@ -210,7 +216,7 @@ function CameraSquare({ sq, showStatus, big }) {
           data-testid="stream-preview-words"
           style={{
             position: "absolute", left: "1.5cqh", bottom: "2cqh", maxWidth: "calc(100% - 3cqh)", padding: "0.3em 0.5em", background: fixed.cameraBadge,
-            color: own.words_color || fixed.cameraText, fontFamily: fontFamily(own.words_font),
+            color: own.words_color || words.color || fixed.cameraText, fontFamily: fontFamily(own.words_font || words.font),
             // as the stream sizes them: their own part of the square's height, else to fit (a 18th of its height, at most a 32nd of its width)
             fontSize: own.words_size ? `${own.words_size * 100}cqh` : big ? `${100 / 26}cqh` : `max(10px, min(${100 / 18}cqh, ${100 / 32}cqw))`,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none",

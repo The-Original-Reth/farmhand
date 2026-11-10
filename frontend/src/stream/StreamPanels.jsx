@@ -14,15 +14,15 @@ const seconds = (v) => (v === "" || v == null ? "" : Number(v));
 // secondsEach, in square order. `count`: how many cameras are in the grid.
 // `shown`: the settings as changed on the page; `change(what)` changes them (saved with the page's Save).
 // (The resolution is chosen above the preview; what it costs the computer is said here.)
-export function LayoutPanel({ shown, count, change }) {
+export function LayoutPanel({ shown, count, change, bare = false }) {
   const cycle = shown.layout === "cycle";
   const all = Number(shown.secondsAll) || 0;
   const each = Number(shown.secondsEach) || 0;
   const round = all + count * each;
   const numberBox = { ...fieldBox(), padding: "5px 8px", width: 80 };
   return (
-    <div data-testid="stream-layout-panel" style={panel()}>
-      <div style={heading}>Layout</div>
+    <div data-testid="stream-layout-panel" style={bare ? { display: "flex", flexDirection: "column", gap: 12 } : panel()}>
+      <div style={bare ? uiText(13, c.heading, { fontWeight: 600 }) : heading}>Layout</div>
       {shown.resolution !== "720p" && (
         <div style={help}>
           {shown.resolution === "1080p"

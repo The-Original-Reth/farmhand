@@ -14,14 +14,14 @@ from ..schemas.live_stream import MediaLocationIn, SlideshowIn, StreamSettingsIn
 from ..services import config_service, live_stream, stream_media, youtube_live
 from .common import require_confirm
 
-# The Stream page: printers' cameras sent live to YouTube or Twitch by Farmhand itself (see services/live_stream.py),
+# The Stream page: printers' cameras sent live to YouTube or Twitch by Farmhand itself (see services/live_stream/),
 # and the YouTube broadcast's title and description, set through YouTube's API (services/youtube_live.py). The stream
 # key, the Google client secret and the YouTube sign-in go in and never come back out: answers only say they're there.
 router = APIRouter(prefix="/stream", tags=["stream"])
 
 # Changing one of these while live means the picture changes, so the stream starts again
 PICTURE = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color",
-           "background", "key_set")
+           "background", "font", "color", "key_set")
 
 
 def _restart_if_live(db: Session) -> None:
@@ -57,19 +57,21 @@ def stream_page(db: Session = Depends(get_db)):
 def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
     """
     Save the stream's settings. While live: a change to the picture starts the stream again with it; a new title or
-    description is set on the YouTube broadcast straight away.
+    description is set on the YouTube broadcast straight away; turning the stream off (enabled: false) stops it.
     """
     with answer_errors():
         before = live_stream.settings(db)
         after = live_stream.save(
             db, destination=payload.destination, chosen=payload.cameras, show_status=payload.show_status, layout=payload.layout,
             seconds_all=payload.seconds_all, seconds_each=payload.seconds_each, resolution=payload.resolution,
-            border_color=payload.border_color, background=payload.background, cols=payload.cols, rows=payload.rows, cells=payload.cells,
+            border_color=payload.border_color, background=payload.background, font=payload.font, color=payload.color, enabled=payload.enabled, cols=payload.cols, rows=payload.rows, cells=payload.cells,
             title=payload.title, description=payload.description,
             stream_key=payload.stream_key, clear_key=payload.clear_key,
         )
         live = live_stream.stream.status()["live"]
-        if live and (any(before[k] != after[k] for k in PICTURE) or payload.stream_key):
+        if live and not after["enabled"]:  # turned off: nothing streams
+            live_stream.stream.stop()
+        elif live and (any(before[k] != after[k] for k in PICTURE) or payload.stream_key):
             _restart_if_live(db)
         elif (live and after["destination"] == "youtube" and (before["title"], before["description"]) != (after["title"], after["description"])
               and youtube_live.credentials(db)):
@@ -163,6 +165,13 @@ def delete_slideshow(name: str, confirm: bool = Query(False), db: Session = Depe
     require_confirm(confirm)
     _media(lambda: stream_media.remove_slideshow(db, name))
     _restart_if_used(db, name)
+    return live_stream.page(db)
+
+
+@router.post("/scan")
+def scan_folder(db: Session = Depends(get_db)):
+    """Read the stream folder again (pictures copied in, or taken out, by hand): it isn't read every time the page looks."""
+    stream_media.media(db, scan=True)
     return live_stream.page(db)
 
 

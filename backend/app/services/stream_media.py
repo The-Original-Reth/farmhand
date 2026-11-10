@@ -69,6 +69,7 @@ def set_location(db: Session, raw: str | None) -> dict:
     else:
         app_settings.put(db, KEY_LOCATION, None)
     db.commit()
+    forget()
     return location_info(db)
 
 
@@ -108,9 +109,30 @@ def windows_path(db: Session, path: str) -> str | None:
     return None
 
 
-def media(db: Session) -> dict:
+# What was last found in the stream folder, and which folder that was. It's read again only when asked (Scan folder),
+# after a change made through Farmhand, or when the folder is another one; never just because the page looked again,
+# so a folder on the NAS isn't read every few seconds.
+_found: tuple[str, dict] | None = None
+
+
+def forget() -> None:
+    """Read the stream folder again the next time it's asked about."""
+    global _found
+    _found = None
+
+
+def media(db: Session, scan: bool = False) -> dict:
     """{path, windows_path (windows_path(), or None), images: [names], slideshows: [{name, images: [names]}], error}:
-    what's in the stream folder now."""
+    what's in the stream folder, as last found (read now when `scan`, or the first time)."""
+    global _found
+    which = _chosen(db) or str(default_folder())
+    if not scan and _found and _found[0] == which:
+        return _found[1]
+    _found = (which, _read(db))
+    return _found[1]
+
+
+def _read(db: Session) -> dict:
     try:
         root = folder(db)
     except storage.StorageUnavailableError as e:
@@ -188,11 +210,13 @@ def add_picture(db: Session, slideshow: str | None, filename: str, data: bytes) 
     d.mkdir(parents=True, exist_ok=True)
     name = _free_name(d, name)
     storage.write_bytes_atomically(d / name, data)
+    forget()
     return name
 
 
 def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
     picture_path(db, slideshow, name).unlink()
+    forget()
 
 
 def add_slideshow(db: Session, name: str) -> str:
@@ -202,6 +226,7 @@ def add_slideshow(db: Session, name: str) -> str:
     if any(e.name.lower() == name.lower() for e in os.scandir(d) if e.is_dir()):
         raise ValueError(f"There's already a slideshow called “{name}”.")
     (d / name).mkdir()
+    forget()
     return name
 
 
@@ -212,6 +237,7 @@ def remove_slideshow(db: Session, name: str) -> None:
         raise NotFound("That slideshow isn't there.")
     for n in _pictures_in(d):
         (d / n).unlink(missing_ok=True)
+    forget()
     try:
         d.rmdir()
     except OSError:

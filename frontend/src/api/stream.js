@@ -5,7 +5,7 @@ import { API_BASE, del, jsonBody, post, request } from "./client.js";
 
 // { settings: { destination, cols, rows, cells: [per square, row by row: { camera: "printer id:camera name" } | a card
 // { background, image, slideshow, seconds, text, color, picture_box: { x, y, w, h }, text_box: { x, y, size } (parts of the square) }; a camera may have its own background too | null], cameras (the cameras in square order), showStatus, layout: "grid" | "cycle", resolution,
-// secondsAll, secondsEach, borderColor: "#RRGGBB", background (the stream's colour), title, description, keySet },
+// secondsAll, secondsEach, borderColor: "#RRGGBB", background (the stream's colour), font and color (its words'), title, description, keySet },
 // status: { live, onAir, startedAt, destination, cameras: [labels], error, title: { state: "waiting" | "done" |
 // "failed", message } | null }, destinations: [{ key, label }], resolutions: [{ key: "720p" | "1080p" | "1440p", label }], fonts: [{ key, label, generic }] (what a square's words can be written in),
 // media: { path, windows_path (the stream folder as Windows reaches it over the network, or null), images: [file names], slideshows: [{ name, images: [file names] }], error } (the stream folder), youtube: { clientSet, clientId, signedIn, channel, signingIn: { userCode, verificationUrl } |
@@ -24,9 +24,12 @@ const normalizeStream = (s) => ({
     secondsEach: s.settings.seconds_each,
     borderColor: s.settings.border_color,
     background: s.settings.background,
+    font: s.settings.font, // the stream's words: every square's and camera's unless it has its own
+    color: s.settings.color,
     title: s.settings.title,
     description: s.settings.description,
     keySet: s.settings.key_set,
+    enabled: s.settings.enabled !== false, // the page's switch: off, nothing streams and the page rests
   },
   status: {
     live: s.status.live,
@@ -54,17 +57,17 @@ const normalizeStream = (s) => ({
 export const getStream = async () => normalizeStream(await request("/stream"));
 
 // Save what's given: { destination, cols, rows, cells (the three together), showStatus, layout, resolution, secondsAll,
-// secondsEach, borderColor, background, title, description, streamKey (blank: keep the saved one),
-// clearKey }. While live, a new picture starts the stream again; a new title is set on YouTube straight away.
+// secondsEach, borderColor, background, font, color, title, description, streamKey (blank: keep the saved one),
+// clearKey, enabled (the page's switch: false stops the stream) }. While live, a new picture starts the stream again; a new title is set on YouTube straight away.
 export const saveStream = async (s = {}) =>
   normalizeStream(
     await request(
       "/stream",
       jsonBody("PUT", {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, show_status: s.showStatus, layout: s.layout,
-        resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor, background: s.background,
+        resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor, background: s.background, font: s.font, color: s.color,
         title: s.title, description: s.description,
-        stream_key: s.streamKey || null, clear_key: !!s.clearKey,
+        stream_key: s.streamKey || null, clear_key: !!s.clearKey, enabled: s.enabled,
       }),
     ),
   );
@@ -84,6 +87,8 @@ const filesBody = (files) => {
 export const streamFontUrl = (key) => `${API_BASE}/stream/fonts/${enc(key)}`;
 export const streamPictureUrl = (name) => `${API_BASE}/stream/pictures/${enc(name)}`;
 export const slideshowPictureUrl = (show, name) => `${API_BASE}/stream/slideshows/${enc(show)}/pictures/${enc(name)}`;
+// read the stream folder again (pictures copied in or taken out by hand): the server doesn't keep looking at it
+export const scanStreamFolder = async () => normalizeStream(await post("/stream/scan"));
 export const uploadStreamPictures = async (files) => normalizeStream(await request("/stream/pictures", filesBody(files)));
 export const removeStreamPicture = async (name) => normalizeStream(await del(`/stream/pictures/${enc(name)}`));
 export const createSlideshow = async (name) => normalizeStream(await request("/stream/slideshows", jsonBody("POST", { name })));
@@ -109,15 +114,3 @@ export const youtubeSignOut = async (forgetClient = false) =>
   normalizeStream(await request("/stream/youtube/sign-out", jsonBody("POST", { forget_client: forgetClient })));
 // Set the saved title and description on the live broadcast now
 export const youtubeApply = async () => normalizeStream(await post("/stream/youtube/apply"));
-
-// The slideshow folders: each a name and images (PNG or JPEG under 1 MB each) shown in turn in a square. Deleting a
-// folder empties the squares showing it.
-export const folderImageUrl = (folderId, imageId) => `${API_BASE}/stream/folders/${folderId}/images/${imageId}`;
-export const createStreamFolder = async (name) => normalizeStream(await request("/stream/folders", jsonBody("POST", { name })));
-export const removeStreamFolder = async (id) => normalizeStream(await del(`/stream/folders/${id}`));
-export const uploadFolderImages = async (folderId, files) => {
-  const form = new FormData();
-  for (const file of files) form.append("files", file);
-  return normalizeStream(await request(`/stream/folders/${folderId}/images`, { method: "POST", body: form }));
-};
-export const removeFolderImage = async (folderId, imageId) => normalizeStream(await del(`/stream/folders/${folderId}/images/${imageId}`));

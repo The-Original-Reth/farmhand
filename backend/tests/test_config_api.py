@@ -109,10 +109,10 @@ def test_the_stream_pages_saved_layouts(client):
     layouts = r.json()["config"]["preferences"]["stream_layouts"]
     assert [lay["name"] for lay in layouts] == ["Whole farm", "Vorons", "Too big"]
     # a camera in one square only; anything else in a square: empty
-    picture = {"background": None, "image": "a.png", "slideshow": None, "seconds": 10, "text": "", "color": "#FFFFFF", "font": "play", "band": False,
+    picture = {"background": None, "image": "a.png", "slideshow": None, "seconds": 10, "text": "", "color": None, "font": None, "band": False,
                "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.5, "size": 0.125}}
     assert layouts[0] == {"name": "Whole farm", "cols": 3, "rows": 2, "layout": "cycle", "seconds_all": 0, "seconds_each": 45,
-                          "show_status": False, "border_color": "#FF8800", "background": "#000000",
+                          "show_status": False, "border_color": "#FF8800", "background": "#000000", "font": "play", "color": "#FFFFFF",
                           "cells": [{"camera": "1:Bed"}, picture, None, None, {"camera": "2:Camera"}, None]}
     # saved before the grid (a list of cameras): the grid they made, up to 5x5; out of range or unknown: the defaults
     v = layouts[1]
@@ -128,7 +128,7 @@ def test_saved_stream_layouts_keep_cards(client):
     cells = [{"text": " Hello ", "color": "#ff0000"}, {"slideshow": "Prints", "seconds": 1}, {"logo": 3}, {"image": "a.png", "position": "top"}]
     r = c.put("/settings/config", json={"preferences": {"stream_layouts": [{"name": "Signs", "cols": 2, "rows": 2, "cells": cells, "background": "#102030"}]}})
     lay = r.json()["config"]["preferences"]["stream_layouts"][0]
-    card = {"background": None, "image": None, "slideshow": None, "seconds": 10, "text": "", "color": "#FFFFFF", "font": "play", "band": False,
+    card = {"background": None, "image": None, "slideshow": None, "seconds": 10, "text": "", "color": None, "font": None, "band": False,
             "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.5, "size": 0.125}}
     assert lay["cells"] == [
         {**card, "text": "Hello", "color": "#FF0000"},
