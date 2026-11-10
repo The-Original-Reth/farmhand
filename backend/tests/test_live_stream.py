@@ -739,7 +739,7 @@ def test_camera_streamer_is_read_as_mjpeg_and_a_buddy3d_over_rtsp(db_session):
     assert live_stream.input_args(p, {"name": "Camera", "service": "farmhand-go2rtc"})[-1] == "rtsp://10.0.6.40/live"
     # Mainsail's adaptive MJPEG shows snapshots in the browser, but its address is the MJPEG stream itself
     adaptive = {"name": "front", "service": "mjpegstreamer-adaptive", "mjpeg": False, "stream_url": "http://10.0.6.21/webcam/?action=stream"}
-    assert live_stream.input_args(p, adaptive) == ["-f", "mpjpeg", "-i", "http://10.0.6.21/webcam/?action=stream"]
+    assert live_stream.input_args(p, adaptive) == ["-use_wallclock_as_timestamps", "1", "-f", "mpjpeg", "-i", "http://10.0.6.21/webcam/?action=stream"]
     # go2rtc on the printer: the same camera over its RTSP port
     go2rtc = {"name": "Chamber", "service": "webrtc-go2rtc", "mjpeg": False, "stream_url": "http://10.0.6.33:1984/stream.html?src=chamber&mode=webrtc"}
     assert live_stream.input_args(p, go2rtc) == ["-rtsp_transport", "tcp", "-i", "rtsp://10.0.6.33:8554/chamber"]

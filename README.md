@@ -817,7 +817,9 @@ A field left empty leaves YouTube's own. Farmhand never sees your Google passwor
 stay inside Farmhand like the stream key. **Sign out** forgets the sign-in and tells Google to as well.
 - Cameras are read the same way Monitor finds them: a Mainsail camera with the **MJPEG streamer** or **adaptive
   MJPEG** service (its MJPEG stream), camera-streamer, go2rtc on the printer (its RTSP port, 8554), and a Prusa's
-  Buddy3D. A camera that only plays in a browser some other way can't be streamed; the page says which.
+  Buddy3D. A camera that only plays in a browser some other way can't be streamed; the page says which. An MJPEG
+  camera's frames are timed as they arrive, so a slow one (a couple of frames a second) just changes less often in its
+  square and never holds the rest of the stream back.
 - The streaming is done by ffmpeg in the API's container, on that computer's processor. A Raspberry Pi manages a
   few cameras at 720p; a bigger machine (the Proxmox container) is happier with many, or a higher resolution.
 
