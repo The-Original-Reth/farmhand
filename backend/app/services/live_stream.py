@@ -71,7 +71,7 @@ FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"  # fonts-dejavu-core, i
 FONTS_DIR = "/usr/share/fonts"
 APP_FONTS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts")  # fonts kept with Farmhand: "app:" in FONTS
 # The fonts a square's words can be written in: key -> (name, its file in FONTS_DIR (the Dockerfile installs them),
-# the kind of font the page falls back to while its own copy loads). A font the server doesn't have writes in FONT.
+# the kind of font the page falls back to while its own copy loads). A font the server doesn't have writes in FONT (DejaVu Sans).
 FONTS = {
     "dejavu-sans": ("DejaVu Sans", "truetype/dejavu/DejaVuSans.ttf", "sans-serif"),
     "play": ("Play (Farmhand's own)", "app:Play-Regular.ttf", "sans-serif"),
@@ -97,12 +97,12 @@ FONTS = {
     "comic-neue-bold": ("Comic Neue Bold", "opentype/comic-neue/ComicNeue-Bold.otf", "cursive"),
     "fira-code": ("Fira Code", "truetype/firacode/FiraCode-Regular.ttf", "monospace"),
 }
-DEFAULT_FONT = "dejavu-sans"
+DEFAULT_FONT = "play"  # the stream's words, unless another is chosen
 
 
 def font_file(key: str | None) -> str:
-    """The file a font is written with: its own when the server has it, else FONT."""
-    found = FONTS.get(key or "")
+    """The file a font is written with (none chosen: DEFAULT_FONT): its own when the server has it, else FONT."""
+    found = FONTS.get(key or DEFAULT_FONT)
     if found:
         file = found[1]
         path = os.path.join(APP_FONTS, file[4:]) if file.startswith("app:") else os.path.join(FONTS_DIR, file)
@@ -189,7 +189,7 @@ def _camera_cell(raw: dict) -> dict:
     """
     A camera's square: {"camera"}, and only what differs from the usual: "background" (round its picture; none: the
     stream's), "show_words": False (its printer's name and print not written on it), "words_size" (their height, part
-    of the square's, 0.02 to 0.3; none: sized to the square), "words_color" (none: white), "words_font" (none: DejaVu Sans).
+    of the square's, 0.02 to 0.3; none: sized to the square), "words_color" (none: white), "words_font" (none: DEFAULT_FONT, Play).
     """
     out = {"camera": raw["camera"]}
     back = _color(raw.get("background"), None)
@@ -695,7 +695,8 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
 
 
 def status_line(label: str, p: dict) -> str:
-    """What's written under a camera: "VT 1190 · Printing 42% · benchy.gcode", or "VT 1190 · Idle"."""
+    """What's written under a camera: "VT 1190 · Printing 42% · benchy.gcode", "VT 1190 · Idle", or "VT 1190 · Status
+    unknown" when the printer couldn't be asked (not answering, or refusing Farmhand's login)."""
     if p.get("state"):
         pct = p.get("progress")
         line = f"{label} · {'Paused' if p['state'] == 'paused' else 'Printing'}"
@@ -704,6 +705,8 @@ def status_line(label: str, p: dict) -> str:
         if p.get("file"):
             line += f" · {os.path.basename(str(p['file']))[:60]}"
         return line
+    if p.get("error"):
+        return f"{label} · Status unknown"
     return f"{label} · Idle"
 
 

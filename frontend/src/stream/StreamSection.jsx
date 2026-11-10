@@ -41,7 +41,7 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
 
   const draftOrSaved = draft || page?.settings;
   const inGrid = (draftOrSaved?.cells || []).filter((x) => x?.camera).map((x) => x.camera);
-  const progress = usePrintProgress(draftOrSaved?.showStatus ? [...new Set(inGrid.map(printerOf))] : []);
+  const progress = usePrintProgress(draftOrSaved?.showStatus ? [...new Set(inGrid.map(printerOf))] : [], { keepErrors: true });
 
   useEffect(() => {
     let live = true;

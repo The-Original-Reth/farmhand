@@ -171,7 +171,7 @@ def get_font(key: str):
     """A font a square's words can be written in, for the page to show them as the stream does. 404 when the server
     doesn't have it (the stream then writes in its own font)."""
     path = live_stream.font_file(key)
-    if key not in live_stream.FONTS or path == live_stream.FONT and key != live_stream.DEFAULT_FONT:
+    if key not in live_stream.FONTS or path == live_stream.FONT and key != "dejavu-sans":
         raise HTTPException(status_code=404, detail="That font isn't on this Farmhand.")
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="That font isn't on this Farmhand.")

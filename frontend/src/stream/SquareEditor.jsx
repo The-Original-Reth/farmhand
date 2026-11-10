@@ -23,9 +23,9 @@ const KINDS = [["camera", "Camera"], ["text", "Text"], ["picture", "Picture"], [
 export const kindOf = (cell) => (!cell ? "empty" : cell.camera ? "camera" : cell.slideshow ? "slideshow" : cell.image ? "picture" : "text");
 const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
 const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
-export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", font: "dejavu-sans", band: false, picture_box: FULL_BOX, text_box: MIDDLE };
+export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", font: "play", band: false, picture_box: FULL_BOX, text_box: MIDDLE };
 // the page's own name for one of the stream's fonts (StreamFonts loads each from the server)
-export const fontFamily = (key) => `"fh-stream-${key || "dejavu-sans"}", sans-serif`;
+export const fontFamily = (key) => `"fh-stream-${key || "play"}", sans-serif`;
 
 // The stream's fonts, loaded from the server so the words look here as they do on the stream: `fonts` [{ key, generic }]
 export function StreamFonts({ fonts }) {
@@ -139,7 +139,7 @@ function CameraChoice({ cells, i, onCells, cameras, label }) {
 function CameraWordsChoice({ cell, put, fonts, showStatus }) {
   const set = (what) => {
     const next = { ...cell, ...what };
-    for (const [k, usual] of [["show_words", true], ["words_size", null], ["words_color", "#FFFFFF"], ["words_font", "dejavu-sans"]]) {
+    for (const [k, usual] of [["show_words", true], ["words_size", null], ["words_color", "#FFFFFF"], ["words_font", "play"]]) {
       if (next[k] === usual || next[k] === undefined) delete next[k];
     }
     put(next);
@@ -156,7 +156,7 @@ function CameraWordsChoice({ cell, put, fonts, showStatus }) {
         <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           <label style={label12}>
             Font
-            <select data-testid="stream-camera-words-font" value={cell.words_font || "dejavu-sans"} onChange={(e) => set({ words_font: e.target.value })} style={{ ...box(), fontFamily: fontFamily(cell.words_font) }}>
+            <select data-testid="stream-camera-words-font" value={cell.words_font || "play"} onChange={(e) => set({ words_font: e.target.value })} style={{ ...box(), fontFamily: fontFamily(cell.words_font) }}>
               {fonts.map((f) => (
                 <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>
               ))}
@@ -198,7 +198,7 @@ function TextChoice({ card, setCard, fonts }) {
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
         <label style={label12}>
           Font
-          <select data-testid="stream-square-font" value={card.font || "dejavu-sans"} onChange={(e) => setCard({ font: e.target.value })} style={{ ...box(), fontFamily: fontFamily(card.font) }}>
+          <select data-testid="stream-square-font" value={card.font || "play"} onChange={(e) => setCard({ font: e.target.value })} style={{ ...box(), fontFamily: fontFamily(card.font) }}>
             {fonts.map((f) => (
               <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>
             ))}

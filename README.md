@@ -653,7 +653,7 @@ benchy.gcode`), brought up to date every 15 seconds.
   square. A camera square can have a colour of its own round it, and its own say over the printer's name and print
   written on it: shown or not (a tick box), and their font, colour and size (Automatic sizes them to the square).
 - **Text, Picture and Slideshow squares:** a colour of their own (or the stream's), a picture or a slideshow over it,
-  and, if you like, **words** (up to 500 characters) in a **font** (about twenty: Play (Farmhand's own), DejaVu, Liberation,
+  and, if you like, **words** (up to 500 characters) in a **font** (Play, Farmhand's own, unless you choose another of about twenty: DejaVu, Liberation,
   Roboto, Open Sans, Lato, Montserrat, Bebas Neue, Comic Neue, Fira Code) and a colour of your choosing; a Text square is just the words on
   its colour. On the canvas, drag the picture or the words to move them, and drag the corner to make them bigger or
   smaller (a picture keeps its shape; **Picture fills the square** puts it back), on the canvas or on the square in the

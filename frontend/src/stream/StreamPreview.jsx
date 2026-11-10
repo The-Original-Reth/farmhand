@@ -23,7 +23,7 @@ import { CardScreen, SquareEditor, StreamFonts, fontFamily } from "./SquareEdito
 
 // what's written under a camera, as the server writes it (services/live_stream.py status_line)
 export const statusLine = (label, p) => {
-  if (!p?.state) return `${label} · Idle`;
+  if (!p?.state) return p?.error ? `${label} · Status unknown` : `${label} · Idle`;
   let line = `${label} · ${p.state === "paused" ? "Paused" : "Printing"}`;
   if (typeof p.progress === "number") line += ` ${Math.round(p.progress)}%`;
   if (p.file) line += ` · ${String(p.file).split("/").pop().slice(0, 60)}`;

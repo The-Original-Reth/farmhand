@@ -21,7 +21,7 @@ const FONTS = [
   ["dejavu-mono", "DejaVu Sans Mono", "monospace"], ["liberation-sans", "Liberation Sans (like Arial)", "sans-serif"],
   ["roboto-black", "Roboto Black", "sans-serif"], ["bebas-neue", "Bebas Neue (capitals)", "sans-serif"], ["comic-neue", "Comic Neue", "cursive"],
 ];
-const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", font: "dejavu-sans", band: false, picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 } };
+const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", font: "play", band: false, picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 } };
 // where a card's picture and words are, as parts of the square (services/live_stream.py _picture_box, _text_box)
 const part = (v, least, most, d) => (typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(most, Math.max(least, v)) * 1e4) / 1e4 : d);
 const pictureBox = (b) => {
@@ -40,7 +40,7 @@ const cameraCell = (x) => {
   if (x.show_words === false) out.show_words = false;
   if (typeof x.words_size === "number" && Number.isFinite(x.words_size)) out.words_size = Math.round(Math.min(0.3, Math.max(0.02, x.words_size)) * 1e4) / 1e4;
   if (/^#[0-9A-Fa-f]{6}$/.test(x.words_color || "") && x.words_color.toUpperCase() !== "#FFFFFF") out.words_color = x.words_color.toUpperCase();
-  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "dejavu-sans") out.words_font = x.words_font;
+  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "play") out.words_font = x.words_font;
   return out;
 };
 
@@ -146,7 +146,7 @@ export function streamRoutes(ctx) {
         if (x.seconds != null && !(Number.isInteger(x.seconds) && x.seconds >= 3 && x.seconds <= 3600)) throw new HttpError(422, "A slideshow shows each picture for 3 to 3600 seconds.");
         return {
           ...CARD, background: hex(x.background, null), image: x.slideshow ? null : fileName(x.image), slideshow: fileName(x.slideshow),
-          seconds: x.seconds ?? 10, text, color: hex(x.color, "#FFFFFF"), font: FONTS.some(([k]) => k === x.font) ? x.font : "dejavu-sans", band: x.band === true, picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
+          seconds: x.seconds ?? 10, text, color: hex(x.color, "#FFFFFF"), font: FONTS.some(([k]) => k === x.font) ? x.font : "play", band: x.band === true, picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
         };
       }
       throw new HttpError(422, "A square can hold a camera, text, a picture or a slideshow with words over it, or nothing.");
