@@ -100,6 +100,13 @@ def _pictures_in(d: Path) -> list[str]:
 # folder all follow it): its pictures' names in the order chosen. Pictures not in it (added since) come after, in name
 # order; names in it no longer there are skipped.
 ORDER_FILE = ".farmhand-order.json"
+# A blank screen in a slideshow: no picture, just the square's colour and the words written on it. It's Farmhand's own,
+# so it lives only in the order, as "blank:1", "blank:2"... (a colon: never a file's name on Windows, so never a picture's).
+BLANK = "blank:"
+
+
+def is_blank(name) -> bool:
+    return isinstance(name, str) and name.startswith(BLANK)
 
 
 def _slides_in(d: Path) -> list[str]:
@@ -112,7 +119,7 @@ def _slides_in(d: Path) -> list[str]:
     if not isinstance(order, list):
         return names
     have = set(names)
-    first = [n for n in dict.fromkeys(order) if isinstance(n, str) and n in have]
+    first = [n for n in dict.fromkeys(order) if isinstance(n, str) and (n in have or is_blank(n))]  # and its blank screens
     return first + [n for n in names if n not in set(first)]
 
 
@@ -122,7 +129,7 @@ def set_order(db: Session, name: str, order: list[str]) -> list[str]:
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
     if not d.is_dir():
         raise NotFound("That slideshow isn't there.")
-    have = _pictures_in(d)
+    have = set(_slides_in(d))  # its pictures and blank screens
     missing = [n for n in order if n not in have]
     if missing:
         raise ValueError(f"“{missing[0]}” isn't one of the slideshow's pictures (Scan folder, and try again).")
@@ -130,6 +137,19 @@ def set_order(db: Session, name: str, order: list[str]) -> list[str]:
     storage.write_text_atomically(d / ORDER_FILE, json.dumps(keep, ensure_ascii=False))
     forget()
     return keep
+
+
+def add_blank(db: Session, name: str) -> str:
+    """A new blank screen at the end of a slideshow: its name in the order ("blank:3")."""
+    d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
+    if not d.is_dir():
+        raise NotFound("That slideshow isn't there.")
+    slides = _slides_in(d)
+    numbers = [int(n[len(BLANK):]) for n in slides if is_blank(n) and n[len(BLANK):].isdigit()]
+    blank = f"{BLANK}{max(numbers, default=0) + 1}"
+    storage.write_text_atomically(d / ORDER_FILE, json.dumps(slides + [blank], ensure_ascii=False))
+    forget()
+    return blank
 
 
 def windows_path(db: Session, path: str) -> str | None:
@@ -214,9 +234,9 @@ def picture_path(db: Session, slideshow: str | None, name: str) -> Path:
 
 
 def slideshow_paths(db: Session, name: str) -> list[Path]:
-    """A slideshow's pictures, in its own order ([] for one that isn't there)."""
+    """A slideshow's pictures, in its own order ([] for one that isn't there); a blank screen as its name ("blank:1")."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
-    return [d / n for n in _slides_in(d)]
+    return [n if is_blank(n) else d / n for n in _slides_in(d)]
 
 
 def _check_picture(filename: str, data: bytes) -> str:
@@ -252,7 +272,14 @@ def add_picture(db: Session, slideshow: str | None, filename: str, data: bytes) 
 
 
 def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
-    picture_path(db, slideshow, name).unlink()
+    if slideshow and is_blank(name):  # a blank screen: taken out of the order (it has no file)
+        d = folder(db) / SLIDESHOWS / _name(slideshow, "slideshow")
+        slides = _slides_in(d)
+        if name not in slides:
+            raise NotFound("That blank screen isn't there.")
+        storage.write_text_atomically(d / ORDER_FILE, json.dumps([n for n in slides if n != name], ensure_ascii=False))
+    else:
+        picture_path(db, slideshow, name).unlink()
     forget()
 
 

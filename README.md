@@ -676,7 +676,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   can't be reached so), **Rename** (renames the slideshow's folder on the server too, keeping its pictures and order;
   squares showing it, on the page and in saved layouts, follow the new name) and **Delete slideshow**;
   **Show each picture for** sets the seconds (3 to 3600); its pictures go round in the order shown (drag a picture onto another to move it there; the order is kept in the
-  slideshow's folder, so every square and the stream follow it, and pictures added later go on the end). Under the editor's
+  slideshow's folder, so every square and the stream follow it, and pictures added later go on the end). **Add blank screen** puts a screen with no picture at the end, to write
+  on: it shows the square's colour and its own words in its turn, and is moved and deleted as a picture is. Under the editor's
   canvas, **Stop** holds the picture on show (to move or resize it), **Back** and **Next** step through them and
   **Play** lets them go round again; the square in the preview shows the same picture. Text written with **This
   picture** stays with the picture on show, where you put it, and shows only while that picture does; **Every picture**

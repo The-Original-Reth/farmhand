@@ -256,6 +256,15 @@ export function streamRoutes(ctx) {
     (farm.config?.preferences?.stream_layouts || []).forEach((lay) => follow(lay.cells || []));
     return page();
   });
+  on("POST", "/stream/slideshows/:name/blanks", ({ name }) => {
+    const show = showOf(name);
+    if (!show) throw new HttpError(404, "That slideshow isn't there.");
+    const numbers = show.images.filter((x) => x.name.startsWith("blank:")).map((x) => Number(x.name.slice(6)) || 0);
+    if (!show.ordered) show.images.sort((a, b) => natural(a.name, b.name)); // kept in the order shown from now on
+    show.images.push({ name: `blank:${Math.max(0, ...numbers) + 1}`, picture: null });
+    show.ordered = true;
+    return page();
+  });
   on("PUT", "/stream/slideshows/:name/order", ({ name }, body) => {
     const show = showOf(name);
     if (!show) throw new HttpError(404, "That slideshow isn't there.");

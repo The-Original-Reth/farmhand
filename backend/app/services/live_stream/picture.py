@@ -8,6 +8,7 @@ import os
 
 from dataclasses import dataclass
 
+from .. import stream_media
 from .constants import DEFAULT_TEXT_COLOR, BORDER_WIDTH, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_RESOLUTION, FPS, HEIGHT, RESOLUTIONS, WIDTH
 from .fonts import font_file
 from .squares import SLIDE_SECONDS, _picture_box, _text_box
@@ -151,9 +152,12 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         def window(j: int) -> str:  # while picture j is on show
             return f"gte(mod(t,{period}),{j * seconds})*lt(mod(t,{period}),{(j + 1) * seconds})"
 
+        blanks = any(stream_media.is_blank(p) for p in paths)  # then even the first picture shows only in its turn
         for j, path in enumerate(paths):
+            if stream_media.is_blank(path):  # a blank screen: the square's colour (and its words) in its turn
+                continue
             chain.append(f"[{picture(path)}:v]scale={bw}:{bh}:force_original_aspect_ratio=decrease,setsar=1,fps={FPS}[c{c}i{j}]")
-            when = "" if j == 0 else f":enable='{window(j)}'"
+            when = "" if j == 0 and not blanks else f":enable='{window(j)}'"
             chain.append(f"{shown}[c{c}i{j}]overlay={at}{when}[c{c}o{j}]")
             shown = f"[c{c}o{j}]"
         last = []

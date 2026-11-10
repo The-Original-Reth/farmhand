@@ -279,6 +279,9 @@ def _local_copies(pictures: dict, folder: str) -> dict:
     for c, paths in pictures.items():
         out[c] = []
         for path in paths:
+            if stream_media.is_blank(path):  # a blank screen: no picture, just its time
+                out[c].append(path)
+                continue
             if path not in copied:
                 to = os.path.join(folder, "pictures", str(len(copied)), os.path.basename(path))
                 try:

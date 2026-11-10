@@ -793,3 +793,32 @@ def test_renaming_a_slideshow(klipper, tmp_path):
     assert r.status_code == 422 and "already a slideshow" in r.json()["detail"]
     assert api.put("/stream/slideshows/schools 2026", json={"name": "a/b"}).status_code == 422
     assert api.put("/stream/slideshows/Nope", json={"name": "Other"}).status_code == 404
+
+
+def test_a_slideshows_blank_screens(klipper):
+    from app.services import stream_media
+
+    api, _ = klipper
+    api.post("/stream/slideshows", json={"name": "Sponsors"})
+    api.post("/stream/slideshows/Sponsors/pictures", files=[("files", ("a.png", _png(), "image/png"))])
+    assert api.post("/stream/slideshows/Sponsors/blanks").status_code == 201
+    shows = api.post("/stream/slideshows/Sponsors/blanks").json()["media"]["slideshows"]
+    assert shows[0]["images"] == ["a.png", "blank:1", "blank:2"]
+    # moved like a picture, and gone through to the stream as its name (no picture to read)
+    api.put("/stream/slideshows/Sponsors/order", json={"order": ["blank:2", "a.png"]})
+    paths = stream_media.slideshow_paths(_db(api), "Sponsors")
+    assert [p if isinstance(p, str) else p.name for p in paths] == ["blank:2", "a.png", "blank:1"]
+    # deleted as a picture is: out of the order
+    shows = api.delete("/stream/slideshows/Sponsors/pictures/blank:1?confirm=true").json()["media"]["slideshows"]
+    assert shows[0]["images"] == ["blank:2", "a.png"]
+
+
+def test_a_blank_screen_in_the_picture():
+    # a picture, then a blank screen with words of its own: the picture only in its turn, the words only in theirs
+    cells = [("card", {"pictures": ["/s/a.png", "blank:1"], "seconds": 5,
+                       "picture_words": {1: {"words": "/s/t-1.txt", "text_box": {"x": 0.5, "y": 0.5, "size": 0.2}}}})]
+    cmd = live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p"))
+    graph = _graph(cmd)
+    assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"][1:] == ["/s/a.png"]  # nothing read for the blank screen
+    assert "overlay=(W-w)/2:(H-h)/2:enable='gte(mod(t,10),0)*lt(mod(t,10),5)'" in graph
+    assert "textfile=/s/t-1.txt" in graph and "enable='gte(mod(t,10),5)*lt(mod(t,10),10)'" in graph.split("textfile=/s/t-1.txt")[1]

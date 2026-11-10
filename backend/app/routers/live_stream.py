@@ -169,6 +169,14 @@ def rename_slideshow(name: str, payload: SlideshowIn, db: Session = Depends(get_
     return live_stream.page(db)
 
 
+@router.post("/slideshows/{name}/blanks", status_code=201)
+def add_blank(name: str, db: Session = Depends(get_db)):
+    """A blank screen at the end of a slideshow (its colour and the words written on it). Deleted as its pictures are."""
+    _media(lambda: stream_media.add_blank(db, name))
+    _restart_if_used(db, name)
+    return live_stream.page(db)
+
+
 @router.put("/slideshows/{name}/order")
 def order_slideshow(name: str, payload: SlideshowOrderIn, db: Session = Depends(get_db)):
     """Put a slideshow's pictures in the order chosen (kept in its folder). While live and it's shown, the stream starts again."""

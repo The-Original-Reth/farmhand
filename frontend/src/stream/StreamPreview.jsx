@@ -78,7 +78,9 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
   }, [slide.playing, slides, edited?.seconds, selected]);
   const slideCtl = editedShow && {
     at: slides ? slide.at % slides : 0, playing: slide.playing,
-    go: (at) => setSlide((s) => ({ ...s, at })), play: () => setSlide((s) => ({ ...s, playing: true })), stop: () => setSlide((s) => ({ ...s, playing: false })),
+    go: (at) => setSlide((s) => ({ ...s, at })),
+    // one picture on or back, from where it is now (so quick clicks each count), and held there
+    step: (by) => setSlide((s) => ({ playing: false, at: (((s.at % slides) + by) % slides + slides) % slides })), play: () => setSlide((s) => ({ ...s, playing: true })), stop: () => setSlide((s) => ({ ...s, playing: false })),
   };
   useEffect(() => {
     if (selected !== null && selected >= cells.length) setSelected(null); // the grid got smaller

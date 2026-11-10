@@ -96,6 +96,8 @@ export const createSlideshow = async (name) => normalizeStream(await request("/s
 export const renameSlideshow = async (show, name) => normalizeStream(await request(`/stream/slideshows/${enc(show)}`, jsonBody("PUT", { name })));
 export const removeSlideshow = async (name) => normalizeStream(await del(`/stream/slideshows/${enc(name)}`));
 export const uploadSlideshowPictures = async (show, files) => normalizeStream(await request(`/stream/slideshows/${enc(show)}/pictures`, filesBody(files)));
+// a blank screen at the end of a slideshow: its colour and the words written on it (deleted as a picture is)
+export const addSlideshowBlank = async (show) => normalizeStream(await post(`/stream/slideshows/${enc(show)}/blanks`));
 // a slideshow's pictures in the order chosen (kept in its folder)
 export const orderSlideshow = async (show, order) => normalizeStream(await request(`/stream/slideshows/${enc(show)}/order`, jsonBody("PUT", { order })));
 export const removeSlideshowPicture = async (show, name) => normalizeStream(await del(`/stream/slideshows/${enc(show)}/pictures/${enc(name)}`));

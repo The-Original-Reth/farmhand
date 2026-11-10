@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { c, fixed, ui } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
-import { orderSlideshow, scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
+import { addSlideshowBlank, orderSlideshow, scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
 import { box, help, label12 } from "./editorFields.js";
+import { isBlank, slideLabel } from "./CardScreen.jsx";
 
 // A card's picture or slideshow, from the stream folder, in the square editor (SquareEditor.jsx): choosing,
 // uploading and deleting them, and where a slideshow's folder is, to open in File Explorer.
@@ -134,6 +135,12 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
             Rename
           </button>
         )}
+        <button
+          type="button" data-testid="stream-slideshow-blank" onClick={() => ask("picture", () => addSlideshowBlank(show.name))} disabled={off || !show}
+          style={headerButton()} title={show ? "A blank screen at the end of the slideshow, to write on" : "Choose a slideshow first"}
+        >
+          Add blank screen
+        </button>
         <button type="button" data-testid="stream-slideshow-delete" onClick={() => (setRemoving("show"), setRenaming(null))} disabled={off || !show} style={headerButton()}>
           Delete slideshow
         </button>
@@ -217,7 +224,11 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
                 }}
                 title={`${i + 1}. ${n}: drag onto another picture to move it there`}
               >
-                <img src={slideshowPictureUrl(show.name, n)} alt={n} draggable={false} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain", pointerEvents: "none" }} />
+                {isBlank(n) ? (
+                  <span data-testid="stream-slide-blank" style={uiText(11, c.textMuted, { textAlign: "center", lineHeight: 1.3 })}>{slideLabel(n)}</span>
+                ) : (
+                  <img src={slideshowPictureUrl(show.name, n)} alt={n} draggable={false} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain", pointerEvents: "none" }} />
+                )}
                 <span style={{ position: "absolute", left: 3, top: 2, ...uiText(10, c.textMuted), background: fixed.pictureThumb, padding: "0 3px", borderRadius: 2 }}>{i + 1}</span>
               </div>
               {removing === n ? (
@@ -240,7 +251,8 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
       )}
       <div style={help}>
         Each slideshow is a folder in the stream folder's slideshows folder: its pictures show one after another, round and round,
-        in the order above (drag a picture onto another to move it there; new ones go on the end). Pictures copied into it yourself count too. One slideshow can be in several squares.
+        in the order above (drag a picture onto another to move it there; new ones go on the end). A blank screen shows the
+        square's colour and the words you write on it, in its turn. Pictures copied into it yourself count too. One slideshow can be in several squares.
       </div>
     </>
   );
@@ -318,14 +330,14 @@ function SlideControls({ show, slide }) {
           Play
         </button>
       )}
-      <button type="button" data-testid="stream-slideshow-back" onClick={() => (slide.stop(), slide.go((at - 1 + n) % n))} disabled={n < 2} style={headerButton()}>
+      <button type="button" data-testid="stream-slideshow-back" onClick={() => slide.step(-1)} disabled={n < 2} style={headerButton()}>
         Back
       </button>
-      <button type="button" data-testid="stream-slideshow-next" onClick={() => (slide.stop(), slide.go((at + 1) % n))} disabled={n < 2} style={headerButton()}>
+      <button type="button" data-testid="stream-slideshow-next" onClick={() => slide.step(1)} disabled={n < 2} style={headerButton()}>
         Next
       </button>
       <span data-testid="stream-slideshow-at" style={uiText(12, c.textMuted)}>
-        Picture {at + 1} of {n}: {show.images[at]}
+        {at + 1} of {n}: {slideLabel(show.images[at])}
       </span>
     </div>
   );
