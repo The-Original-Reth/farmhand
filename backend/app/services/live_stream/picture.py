@@ -6,11 +6,12 @@ it's sent.
 from __future__ import annotations
 
 import math
+import os
 
 from dataclasses import dataclass
 
 from .constants import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_RESOLUTION, FPS, HEIGHT, WIDTH
-from . import music
+from . import music, slides
 from .cards import card_square
 from .choices import auto_grid
 from .encoders import encoder_args
@@ -128,6 +129,15 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         inputs[0] += 1
         return inputs[0] - 1
 
+    lists = []  # the slideshows read as one input each (their lists cover a day: then the command ends and starts again)
+
+    def slideshow(frames: list, seconds: int) -> int:
+        path = slides.playlist(frames, seconds, look.clock, os.path.join(os.path.dirname(frames[0]), "list.txt"))
+        args.extend(["-f", "concat", "-safe", "0", "-i", path])
+        lists.append(path)
+        inputs[0] += 1
+        return inputs[0] - 1
+
     own = _cameras_own(cells, look)
     stream_words = _stream_words(look)
     parts = []
@@ -140,7 +150,7 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
             if cell and cell[0] == "camera":
                 parts.append(_camera_square(c, cell[1], own.get(cell[1], stream_words), frame, look.status_files))
             elif cell and cell[0] == "card":
-                parts.append(card_square(c, cell[1], frame, picture, clock=look.clock, font=look.font, color=look.color))
+                parts.append(card_square(c, cell[1], frame, picture, clock=look.clock, font=look.font, color=look.color, slideshow=slideshow))
             else:
                 parts.append(f"{frame.plain()},{frame.border}[c{c}]")
         parts.append(_laid_out(len(cells), cols, frame))
@@ -156,7 +166,7 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
     args += [*encoder_args(look.encoder), "-pix_fmt", "yuv420p", "-r", str(FPS),
              "-g", str(FPS * 2), "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k",
              "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
-    if look.turns_file:
+    if look.turns_file or lists:  # the timetable and the slideshows' lists cover a day
         args += ["-t", str(TURNS_FOR)]
     args += ["-f", "flv", url]
     return args

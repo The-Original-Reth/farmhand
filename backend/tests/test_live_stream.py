@@ -424,13 +424,19 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
     inputs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"][2:]
-    # read from copies in the stream's own folder, made once: never the stream folder (on the NAS, pictures being
-    # copied in clashed with ffmpeg reading them every second)
-    assert [os.path.basename(p) for p in inputs] == ["2 benchy.png", "10 frog.png", "Elves.png"]
+    # read from the stream's own folder, never the stream folder (on the NAS, pictures being copied in clashed with
+    # ffmpeg reading them every second): the slideshow as one input, its screens put together once and listed in
+    # order (each for its 4 s), and the single picture from a copy made once
+    assert [os.path.basename(p) for p in inputs] == ["list.txt", "Elves.png"]
+    assert cmd[cmd.index(inputs[0]) - 5:cmd.index(inputs[0])] == ["-f", "concat", "-safe", "0", "-i"] and "-t" in cmd
     assert not any(os.path.realpath(p).startswith(os.path.realpath(root)) for p in inputs)
-    assert [open(p, "rb").read() for p in inputs] == [_png(b"b"), _png(b"f"), _png()]
-    (root / "slideshows" / "Prints" / "10 frog.png").write_bytes(b"changed while live")
-    assert open(inputs[1], "rb").read() == _png(b"f")
+    listed = open(inputs[0], encoding="utf-8").read().splitlines()
+    shots = [os.path.basename(l[len("file '"):-1]) for l in listed if l.startswith("file ")]
+    assert shots[:4] == ["0000.png", "0001.png", "0000.png", "0001.png"] or shots[:4] == ["0001.png", "0000.png", "0001.png", "0000.png"]
+    assert listed[2:4] == [listed[2], listed[2]] or "duration 4" in listed[4]
+    assert open(inputs[1], "rb").read() == _png()
+    (root / "images" / "Elves.png").write_bytes(b"changed while live")
+    assert open(inputs[1], "rb").read() == _png()
     assert "color=c=0x123456" in _graph(cmd)  # a picture that isn't there: just its colour
     text = _graph(cmd).split("textfile=")[1].split(":reload")[0].replace("\\:", ":")
     with open(text, encoding="utf-8") as f:
@@ -664,8 +670,37 @@ def test_more_pictures_and_text_on_a_card(klipper, moonraker, ffmpeg):
     card = [p for p in graph.split(";") if p.startswith("[c1")]
     assert "gone.png" not in " ".join(cmd) and sum("drawtext" in p for p in card) == 1  # the one not there, and the empty words: left out
     # the slideshow: b.png's words only in its seconds (the second of two, 5 s each)
-    b_words = next(p for p in graph.split(";") if p.startswith("[c2o1]drawtext"))
+    b_words = next(p for p in graph.split(";") if p.startswith("[c2f]drawtext"))
     assert "enable='gte(mod(" in b_words and ",10),5)*lt(mod(" in b_words
+
+
+def test_a_slideshow_is_put_together_once(tmp_path):
+    """Each screen of a slideshow as one finished picture (its colour, its picture fitted in its box, the screen's more
+    pictures), and the list ffmpeg reads them from, starting on the screen the time of day says."""
+    from PIL import Image
+
+    from app.services.live_stream import slides
+    from app.services.live_stream.frame import Frame
+
+    for name, colour, size in (("wide.png", (255, 0, 0), (200, 100)), ("logo.png", (0, 0, 255), (50, 50))):
+        Image.new("RGB", size, colour).save(tmp_path / name)
+    frame = Frame.of("720p", 2, 2, "#000000", "#000000")  # squares 640 x 360, a 3 px border
+    cd = {"background": "#00FF00", "picture_box": {"x": 0, "y": 0, "w": 1, "h": 1},
+          "picture_boxes": {"wide.png": {"x": 0.0, "y": 0.0, "w": 0.5, "h": 0.5}}}
+    frames = slides.compose(cd, [str(tmp_path / "wide.png"), "blank:1"], {1: [{"path": str(tmp_path / "logo.png"), "box": {"x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5}}]},
+                            frame, str(tmp_path / "out"))
+    one, two = (Image.open(f).convert("RGB") for f in frames)
+    assert one.size == two.size == (640, 360)
+    # the picture in its own box (the top-left quarter inside the border), keeping its shape: 317 x 158 of red, centred
+    assert one.getpixel((20, 50)) == (255, 0, 0) and one.getpixel((20, 8)) == (0, 255, 0) and one.getpixel((600, 300)) == (0, 255, 0)
+    # the blank screen: its colour, and its own more picture in the bottom-right quarter (kept square, centred)
+    assert two.getpixel((10, 10)) == (0, 255, 0) and two.getpixel((480, 270)) == (0, 0, 255)
+
+    # the list: each screen for its seconds, starting 7 s into a 10 s round of two 5 s screens (on the second, 3 s left)
+    listed = open(slides.playlist(frames, 5, 1_000_007, str(tmp_path / "list.txt"), horizon=30), encoding="utf-8").read().splitlines()
+    assert listed[0] == "ffconcat version 1.0"
+    assert listed[1:7] == [f"file '{frames[1]}'", "duration 3", f"file '{frames[0]}'", "duration 5", f"file '{frames[1]}'", "duration 5"]
+    assert sum(float(l.split()[1]) for l in listed if l.startswith("duration")) >= 30
 
 
 def test_choosing_the_stream_folder(klipper, share):
