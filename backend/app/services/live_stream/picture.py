@@ -87,11 +87,25 @@ class Look:
     resolution: str = DEFAULT_RESOLUTION  # one of RESOLUTIONS
     border_color: str = DEFAULT_BORDER
     background: str = DEFAULT_BACKGROUND
+    encoder: str = "cpu"  # "cpu" (libx264) or "nvenc" (an NVIDIA card's own encoder; see runner.encoder)
     font: str | None = None  # the stream's words, unless a square has its own (None: DEFAULT_FONT)
     color: str | None = None  # (None: DEFAULT_TEXT_COLOR)
     cols: int | None = None
     rows: int | None = None
     cells: list | None = None
+
+
+# How the picture is compressed for sending: on the processor (libx264, fast settings for live), or on an NVIDIA card's
+# own video encoder (NVENC), which leaves the processor to read the cameras and lay out the grid. Both send H.264 at
+# the same bitrate, so YouTube and Twitch see the same stream.
+ENCODERS = {
+    "cpu": ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency"],
+    "nvenc": ["-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-rc", "cbr"],
+}
+
+
+def encoder_args(encoder: str) -> list[str]:
+    return list(ENCODERS.get(encoder, ENCODERS["cpu"]))
 
 
 def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None) -> list[str]:
@@ -249,7 +263,7 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         parts.append(f"{video}sendcmd=f={_filter_path(look.turns_file)}[timed]")
         video = "[timed]"
     args += ["-filter_complex", ";".join(parts), "-map", video, "-map", f"{n}:a"]
-    args += ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-pix_fmt", "yuv420p", "-r", str(FPS),
+    args += [*encoder_args(look.encoder), "-pix_fmt", "yuv420p", "-r", str(FPS),
              "-g", str(FPS * 2), "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k",
              "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
     if look.turns_file:

@@ -19,16 +19,46 @@ from ...errors import NotFound
 from ... import storage
 from ...models import Printer
 from .. import app_settings, print_progress, stream_media, youtube_live
-from .constants import DESTINATIONS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY, TITLE_EVERY, TITLE_TRIES
+from .constants import DESTINATIONS, FPS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY, TITLE_EVERY, TITLE_TRIES
 from .choices import settings
 from .sources import Source, sources
-from .picture import Look, TURNS_FOR, command, status_line, timetable
+from .picture import Look, TURNS_FOR, command, encoder_args, status_line, timetable
 
 # ------------------------------------------------------------------ the stream itself
 
 
 def ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
+
+
+# FARMHAND_STREAM_ENCODER: "auto" (the default: an NVIDIA card's encoder when one works here, else the processor),
+# "nvenc" or "cpu" to say which. What "auto" finds is remembered until Farmhand starts again.
+ENCODER_SETTING = "FARMHAND_STREAM_ENCODER"
+_found_encoder: dict[str, str] = {}
+
+
+def _nvenc_works(ffmpeg: str) -> bool:
+    """Whether ffmpeg can compress with an NVIDIA card here: a moment's black picture through it (no card, no driver
+    in reach, or an ffmpeg without it: no)."""
+    try:
+        r = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=black:s=256x144:r={FPS}",
+             "-frames:v", "5", *encoder_args("nvenc"), "-f", "null", "-"],
+            capture_output=True, timeout=20,
+        )
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def encoder(ffmpeg: str) -> str:
+    """"nvenc" or "cpu": how the stream is compressed (see FARMHAND_STREAM_ENCODER)."""
+    wanted = (os.environ.get(ENCODER_SETTING) or "auto").strip().lower()
+    if wanted in ("cpu", "nvenc"):
+        return wanted
+    if ffmpeg not in _found_encoder:
+        _found_encoder[ffmpeg] = "nvenc" if _nvenc_works(ffmpeg) else "cpu"
+    return _found_encoder[ffmpeg]
 
 
 def popen(args: list[str]):
@@ -43,6 +73,7 @@ class Stream:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self._encoder: str | None = None
         self._wanted = threading.Event()
         self._proc = None
         self._said: collections.deque[str] = collections.deque(maxlen=KEPT_LINES)
@@ -68,6 +99,7 @@ class Stream:
                 "cameras": list(self._labels),
                 "error": self._error,
                 "title": dict(self._title) if self._title else None,
+                "encoder": self._encoder,  # "nvenc" (an NVIDIA card) or "cpu", while live; None otherwise
             }
 
     def go_live(self, db: Session, session_factory) -> dict:
@@ -141,7 +173,10 @@ class Stream:
             return ("card", {**cell, "pictures": pictures.get(c, []), "words": text_paths.get(c), "picture_words": captions.get(c, {})})
 
         cells = [square(c, cell) for c, cell in enumerate(chosen["cells"])]
-        args = command(ffmpeg, srcs, where["url"] + key, Look(
+        enc = encoder(ffmpeg)
+        with self._lock:
+            self._encoder = enc
+        args = command(ffmpeg, srcs, where["url"] + key, Look(encoder=enc,
             status_files=files, cycle=cycle, turns_file=turns_file,
             resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
             rows=chosen["rows"], cells=cells,
@@ -160,6 +195,7 @@ class Stream:
             proc, self._proc = self._proc, None
             folder, self._dir = self._dir, None
             self._started_at = None
+            self._encoder = None
             self._title = None
         if proc is not None and proc.poll() is None:
             proc.terminate()

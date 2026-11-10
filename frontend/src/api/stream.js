@@ -39,6 +39,7 @@ const normalizeStream = (s) => ({
     cameras: s.status.cameras,
     error: s.status.error,
     title: s.status.title || null,
+    encoder: s.status.encoder || null, // "nvenc" (an NVIDIA card compresses it) or "cpu", while live
   },
   destinations: s.destinations,
   resolutions: s.resolutions,

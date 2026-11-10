@@ -299,6 +299,9 @@ With nothing chosen they default to `{storage_root}/source_models`,
 `{storage_root}/bundles` and `{storage_root}/projects`. No two may overlap. The database stores absolute
 paths, so a file stays where it is when a location changes until it is moved.
 
+- `FARMHAND_STREAM_ENCODER`: how the Stream page's picture is compressed: `auto` (the default: an NVIDIA card's
+  encoder, NVENC, when a moment's test through it works, else the processor's libx264), `nvenc` or `cpu`. The stream's
+  status says which (`status.encoder`) while live. See the README for sharing a card into a Proxmox container.
 - A chosen folder must be under `FARMHAND_STORAGE_BROWSE_ROOT` (default: the parent
   of `FARMHAND_STORAGE_ROOT`; `/data` in Docker) — the picker can't browse elsewhere,
   and `..`/symlink escapes are rejected.
