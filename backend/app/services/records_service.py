@@ -152,6 +152,73 @@ def model_documents(db: Session) -> dict[str, dict]:
     return out
 
 
+# ------------------------------------------------------------------ the Stream page's saved layouts (streams/)
+
+
+def stream_documents(db: Session, layouts: list[dict]) -> dict[str, dict]:
+    """
+    A file per saved stream layout (as the settings keep them, config_store._stream_layouts), its cameras by printer name
+    instead of number so it fits any Farmhand ({"camera": {"printer", "camera"}}; one whose printer is gone is left
+    empty). Cards are kept as they are: their pictures and slideshows are named by file and folder already.
+    """
+    names = {p.id: p.name for p in db.scalars(select(Printer))}
+    out: dict[str, dict] = {}
+    taken: set[str] = set()
+    for lay in layouts:
+        cells = []
+        for cell in lay.get("cells") or []:
+            if cell and "camera" in cell:
+                number, _, camera = str(cell["camera"]).partition(":")
+                printer = names.get(int(number)) if number.isdigit() else None
+                cells.append({"camera": {"printer": printer, "camera": camera}} if printer else None)
+            else:
+                cells.append(cell or None)
+        out[records_store.file_stem(lay["name"], taken)] = {
+            **records_store.header(records_store.STREAMS_DIR, lay["name"]),
+            "cols": lay.get("cols"), "rows": lay.get("rows"), "cells": cells,
+            **{k: lay.get(k) for k in ("layout", "seconds_all", "seconds_each", "show_status", "border_color", "background")},
+        }
+    return out
+
+
+def write_streams(db: Session, folder, layouts: list[dict], check_all: bool = True) -> dict:
+    """Make streams/ hold exactly the saved layouts: a file each, and the file of one deleted removed."""
+    return records_store.write_records(folder, records_store.STREAMS_DIR, stream_documents(db, layouts), check_all=check_all)
+
+
+def read_streams(db: Session, folder) -> tuple[list[dict], list[str]]:
+    """
+    The layouts in streams/, in the settings' own shape: their cameras in this Farmhand's printer numbers (matched by
+    name; one whose printer isn't here is left empty), cards as they are, and a warning for each file that couldn't be
+    used. A file from before the grid (a list of cameras) is read as that list.
+    """
+    records, warnings = records_store.read_records(folder, records_store.STREAMS_DIR)
+    here = {p.name: p.id for p in db.scalars(select(Printer))}
+
+    def camera(cam) -> str | None:
+        if isinstance(cam, dict) and isinstance(cam.get("camera"), str) and here.get(cam.get("printer")) is not None:
+            return f"{here[cam['printer']]}:{cam['camera']}"
+        return None
+
+    layouts = []
+    for rec in records:
+        lay = {"name": rec["name"].strip(), **{k: rec.get(k) for k in ("cols", "rows", "layout", "seconds_all", "seconds_each",
+                                                                         "show_status", "border_color", "background")}}
+        if isinstance(rec.get("cells"), list):
+            cells = []
+            for cell in rec["cells"]:
+                if isinstance(cell, dict) and "camera" in cell:
+                    key = camera(cell.get("camera"))
+                    cells.append({"camera": key} if key else None)
+                else:
+                    cells.append(cell if isinstance(cell, dict) else None)
+            lay["cells"] = cells
+        else:
+            lay["cameras"] = [k for k in (camera(c) for c in rec.get("cameras") or []) if k]
+        layouts.append(lay)
+    return layouts, warnings
+
+
 def write_all(db: Session, folder, scope: "MirrorScope | None" = None) -> dict:
     """
     Bring the printers/ and models/ files in the settings folder up to date: all of them, checking each file (scope

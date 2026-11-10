@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -36,6 +37,10 @@ DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "s
 # monitor_max_zoom: how far in a camera can be zoomed on the Monitor page, one of MONITOR_ZOOMS
 # farm_cost_order: the Farm cost page's printers in the order they were dragged into, as printer ids (printers not in
 # it come after, by name)
+# stream_layouts: the Stream page's saved layouts, each {"name", "cols", "rows", "cells": [per square, row by row:
+# {"camera": "printer id:camera name"} | a card {"background", "image", "slideshow", "seconds", "text", "color", "size",
+# "position"} | None], "background" (the stream's colour), "layout": "grid" | "cycle", "seconds_all",
+# "seconds_each", "show_status", "border_color"}, in the order saved; names are unique (any case)
 # tool_links: the websites listed on the Tools page, in the order given, each {"name", "url"} (url http or https).
 # Until a list is saved, the Klipper ones below are shown; a list saved empty stays empty.
 DEFAULT_TOOL_LINKS = [
@@ -60,7 +65,7 @@ DEFAULT_TOOL_LINKS = [
 #   energy_price_months: {"2026-03": 0.14}: a month's own price, typed in its row; it wins over the history
 DEFAULT_PREFERENCES = {
     "model_sort": {"key": "name", "dir": "asc"}, "printer_sort": {"key": "name", "dir": "asc"}, "monitor_order": [],
-    "monitor_max_zoom": 4, "farm_cost_order": [],
+    "monitor_max_zoom": 4, "farm_cost_order": [], "stream_layouts": [],
     "tool_links": DEFAULT_TOOL_LINKS,
     "energy_price_per_kwh": None, "energy_price_history": [], "energy_price_months": {},
     "time_zone": None,
@@ -75,6 +80,9 @@ MAX_MONITOR_CAMERAS = 500
 MAX_PRINTERS_ORDERED = 500
 MONITOR_ZOOMS = (2, 3, 4, 6, 8)
 MAX_TOOL_LINKS = 200
+MAX_STREAM_LAYOUTS = 50
+MAX_STREAM_SIDE = 5  # the stream's grid is 1x1 to 5x5 (services/live_stream.py)
+STREAM_SECONDS = {"seconds_all": (0, 3600, 30), "seconds_each": (3, 3600, 20)}  # (least, most, default)
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -120,6 +128,7 @@ def normalize_preferences(raw) -> dict:
         "monitor_max_zoom": p["monitor_max_zoom"] if type(p.get("monitor_max_zoom")) is int and p["monitor_max_zoom"] in MONITOR_ZOOMS
         else DEFAULT_PREFERENCES["monitor_max_zoom"],
         "farm_cost_order": _printer_ids(p.get("farm_cost_order")),
+        "stream_layouts": _stream_layouts(p.get("stream_layouts")),
         "tool_links": _tool_links(p.get("tool_links")),
         "energy_price_per_kwh": _energy_price(p.get("energy_price_per_kwh")),
         "energy_price_history": _price_history(p.get("energy_price_history")),
@@ -225,6 +234,64 @@ def _camera_keys(raw) -> list[str]:
     return out
 
 
+def _stream_cell(raw) -> dict | None:
+    """A saved layout's square: a camera, or a card (as services/live_stream.py _cell keeps them), or None."""
+    from .services.live_stream import _cell  # the same rules as the Stream page's own squares
+
+    if isinstance(raw, dict) and isinstance(raw.get("camera"), str) and 0 < len(raw["camera"]) <= 200:
+        return {"camera": raw["camera"]}
+    cell = _cell(raw)
+    if cell and "camera" not in cell:
+        cell["text"] = cell["text"].strip()[:500]
+    return cell
+
+
+def _stream_layouts(raw) -> list[dict]:
+    """
+    The Stream page's saved layouts: each named (trimmed, up to 60 characters, unique in any case), its grid 1x1 to 5x5
+    with what's in each square (a camera, each once; a logo; or nothing), its timings within the Stream page's limits
+    (else the defaults) and its border colour. One saved before the grid (a list of cameras) gets the grid they made.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    side = lambda v: v if type(v) is int and 1 <= v <= MAX_STREAM_SIDE else None  # noqa: E731
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name").strip() if isinstance(item.get("name"), str) else ""
+        if not name or len(name) > 60 or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        cols, rows = side(item.get("cols")), side(item.get("rows"))
+        if cols and rows and isinstance(item.get("cells"), list):
+            cells = [_stream_cell(c) for c in item["cells"][: cols * rows]]
+        else:
+            cameras = _camera_keys(item.get("cameras"))[: MAX_STREAM_SIDE * MAX_STREAM_SIDE]
+            cols = min(MAX_STREAM_SIDE, max(1, math.ceil(math.sqrt(len(cameras)))))  # a grid just big enough
+            rows = min(MAX_STREAM_SIDE, max(1, math.ceil(len(cameras) / cols)))
+            cells = [{"camera": k} for k in cameras]
+        cells += [None] * (cols * rows - len(cells))
+        taken: set[str] = set()
+        for i, cell in enumerate(cells):  # each camera in one square only
+            if cell and "camera" in cell:
+                if cell["camera"] in taken:
+                    cells[i] = None
+                taken.add(cell["camera"])
+        layout = {"name": name, "cols": cols, "rows": rows, "cells": cells,
+                  "layout": item.get("layout") if item.get("layout") in ("grid", "cycle") else "grid"}
+        for key, (least, most, default) in STREAM_SECONDS.items():
+            v = item.get(key)
+            layout[key] = v if type(v) is int and least <= v <= most else default
+        layout["show_status"] = item.get("show_status") is not False
+        for key in ("border_color", "background"):
+            color = item.get(key)
+            layout[key] = color.upper() if isinstance(color, str) and _HEX.match(color) else "#000000"
+        out.append(layout)
+        if len(out) >= MAX_STREAM_LAYOUTS:
+            break
+    return out
+
+
 def _printer_ids(raw) -> list[int]:
     """The Farm cost order: printer ids (whole numbers above 0), each once, in the order given."""
     ids = raw if isinstance(raw, list) else []
@@ -248,7 +315,7 @@ def _path_or_none(value) -> str | None:
 
 def build_document(
     config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
-    farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None,
+    farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None, stream_path: str | None = None,
 ) -> dict:
     """What gets written. Share entries are cut down to the fields in SHARE_FIELDS — never a password. printer_names:
     each printer's number here and its name, so the orders kept by number (Farm cost, Monitor) come back in the right
@@ -262,6 +329,7 @@ def build_document(
         "storage": {"stl_path": stl_path, "threemf_path": threemf_path, "project_path": project_path},
         "shares": [{k: s.get(k) for k in SHARE_FIELDS} for s in shares],
         "farm_cost": {"records_path": farm_cost_path},  # the folder chosen for the monthly records (null: the default)
+        "stream": {"media_path": stream_path},  # the Stream page's pictures and slideshows (null: the default)
         "printer_names": {str(k): v for k, v in (printer_names or {}).items()},
     }
 
@@ -306,6 +374,7 @@ def read_document(folder: str | os.PathLike) -> dict | None:
 
     storage = raw.get("storage") if isinstance(raw.get("storage"), dict) else {}
     farm_cost = raw.get("farm_cost") if isinstance(raw.get("farm_cost"), dict) else {}  # files from before it have none
+    stream = raw.get("stream") if isinstance(raw.get("stream"), dict) else {}
     shares = []
     for entry in (raw.get("shares") if isinstance(raw.get("shares"), list) else [])[:100]:
         if isinstance(entry, dict):
@@ -320,6 +389,7 @@ def read_document(folder: str | os.PathLike) -> dict | None:
         },
         "shares": shares,
         "farm_cost": {"records_path": _path_or_none(farm_cost.get("records_path"))},
+        "stream": {"media_path": _path_or_none(stream.get("media_path"))},
         # files from before it have none: their orders are taken as they are
         "printer_names": {
             k: v for k, v in (raw.get("printer_names") if isinstance(raw.get("printer_names"), dict) else {}).items()

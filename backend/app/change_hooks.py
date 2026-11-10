@@ -50,4 +50,4 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
         if parts[-1] == "print":
             return config_service.MirrorScope(printers=True)  # a print sent: its printer's history may have it
         return config_service.MirrorScope(models=True)
-    return None
+    return None  # /stream among them: its stream key and cameras stay out of the settings copy

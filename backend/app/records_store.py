@@ -7,6 +7,8 @@ and can be put back with Restore — the same way the model files themselves liv
     <settings folder>/printers/<name>.json      one printer: settings, notes, 1500-hour service, print history,
                                                 power meter readings
     <settings folder>/models/<name>.json        one model: its notes, and each of its 3MF files' notes and star
+    <settings folder>/streams/<name>.json       one of the Stream page's saved layouts: its cameras (by printer name),
+                                                all at once or taking turns, the timings and the words
 
 Unlike the settings file, a printer's file holds its Moonraker API key and PrusaLink password, so a restored
 printer connects straight away: keep the folder private.
@@ -28,6 +30,7 @@ RECORD_MARKER = "farmhand_record"  # the key that says "this is one of ours", an
 RECORD_VERSION = 1
 PRINTERS_DIR = "printers"
 MODELS_DIR = "models"
+STREAMS_DIR = "streams"
 MAX_RECORD_BYTES = 50_000_000  # a printer with years of history is a few MB
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9 ._()+-]")
