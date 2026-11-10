@@ -30,6 +30,7 @@ const normalizeStream = (s) => ({
     music: !!s.settings.music,
     musicVolume: s.settings.music_volume ?? 50,
     musicShuffle: s.settings.music_shuffle !== false,
+    delay: s.settings.delay ?? 60, // seconds the stream is held before YouTube gets it (0 to 120)
     title: s.settings.title,
     description: s.settings.description,
     keySet: s.settings.key_set,
@@ -51,6 +52,8 @@ const normalizeStream = (s) => ({
     heardAt: Date.now(),
     // the music going out, while live: { on, playing, track (its file name, null before the first), at (s into it) }
     music: s.status.music || null,
+    // the delay before YouTube, while live: { seconds, held (seconds held now), filling (nothing sent to YouTube yet) }
+    delay: s.status.delay || null,
   },
   destinations: s.destinations,
   resolutions: s.resolutions,
@@ -78,7 +81,7 @@ export const saveStream = async (s = {}) =>
       jsonBody("PUT", {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, show_status: s.showStatus, layout: s.layout,
         resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor, background: s.background, font: s.font, color: s.color,
-        title: s.title, description: s.description, music: s.music, music_volume: s.musicVolume, music_shuffle: s.musicShuffle,
+        title: s.title, description: s.description, music: s.music, music_volume: s.musicVolume, music_shuffle: s.musicShuffle, delay: s.delay,
         stream_key: s.streamKey || null, clear_key: !!s.clearKey, enabled: s.enabled,
       }),
     ),

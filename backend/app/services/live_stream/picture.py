@@ -73,6 +73,8 @@ class Look:
       timetable (timetable()).
     music: the sound comes in on stdin, raw, as Farmhand's music player feeds it (music.Player: the music, or silence)
       (False: a silent sound track of ffmpeg's own).
+    relay_offset: the picture goes to the relay instead of straight to `url` (relay.py): MPEG-TS on stdout, its times
+      counted from this many seconds (the stream's age when this ffmpeg starts), so they carry on across a hand-over.
     """
 
     status_files: list[str] | None = None
@@ -89,6 +91,7 @@ class Look:
     rows: int | None = None
     cells: list | None = None
     music: bool = False
+    relay_offset: float | None = None
 
 
 def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None) -> list[str]:
@@ -168,8 +171,20 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
              "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
     if look.turns_file or lists:  # the timetable and the slideshows' lists cover a day
         args += ["-t", str(TURNS_FOR)]
-    args += ["-f", "flv", url]
+    if look.relay_offset is not None:
+        args += ["-output_ts_offset", f"{look.relay_offset:.3f}", "-f", "mpegts", "pipe:1"]
+    else:
+        args += ["-f", "flv", url]
     return args
+
+
+def sender_command(ffmpeg: str, url: str) -> list[str]:
+    """The sender: the stream as the relay passes it on (MPEG-TS on stdin), played out at real time (-re: the delay's
+    buffer is taken from the front at the pace it plays) and sent to `url` as it is (-c copy: no work of its own)."""
+    # (-dts_delta_threshold 0.2: a jump of over a fifth of a second in the times, where a picture ffmpeg stalled or was started
+    # again, is taken as a break and closed up, so the buffer plays straight on instead of waiting out the jump)
+    return [ffmpeg, "-hide_banner", "-loglevel", "warning", "-re", "-dts_delta_threshold", "0.2", "-f", "mpegts", "-i", "pipe:0",
+            "-map", "0", "-c", "copy", "-bsf:a", "aac_adtstoasc", "-f", "flv", url]
 
 
 def _stream_words(look: Look) -> dict:
