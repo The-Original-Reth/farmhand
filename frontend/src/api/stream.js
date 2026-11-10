@@ -1,4 +1,4 @@
-// The Stream page: printers' cameras sent live to YouTube or Twitch by Farmhand itself, laid out in a grid of squares,
+// The Stream page: printers' cameras sent live to YouTube by Farmhand itself, laid out in a grid of squares,
 // and the YouTube broadcast's own title and description. The stream key, the Google client secret and the YouTube
 // sign-in are sent once and never come back: the page only learns whether each is there.
 import { API_BASE, del, jsonBody, post, request } from "./client.js";

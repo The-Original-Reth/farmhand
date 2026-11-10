@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class StreamSettingsIn(BaseModel):
     """What the Stream page saves. Anything left out stays as it was."""
 
-    destination: str | None = None  # "youtube" | "twitch"
+    destination: str | None = None  # "youtube" (the only one for now)
     cameras: list[str] | None = None  # "printer id:camera name": a grid just big enough for these, in this order
     show_status: bool | None = None  # each printer's name and print written under its camera
     layout: str | None = None  # "grid" (all at once) | "cycle" (taking turns)

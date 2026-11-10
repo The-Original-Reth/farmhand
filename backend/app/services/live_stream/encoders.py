@@ -1,7 +1,7 @@
 """
 How the picture is compressed for sending: on the processor (libx264, fast settings for live), or on an NVIDIA card's
 own video encoder (NVENC), which leaves the processor to read the cameras and lay out the grid. Both send H.264 at the
-same bitrate, so YouTube and Twitch see the same stream.
+same bitrate, so YouTube sees the same stream.
 """
 from __future__ import annotations
 

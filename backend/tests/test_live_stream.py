@@ -1,4 +1,4 @@
-"""The Stream page: cameras sent live to YouTube or Twitch by ffmpeg, the stream key kept to Farmhand."""
+"""The Stream page: cameras sent live to YouTube by ffmpeg, the stream key kept to Farmhand."""
 from __future__ import annotations
 
 import os
@@ -113,7 +113,7 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
     assert [r["key"] for r in page["resolutions"]] == ["720p", "1080p", "1440p"] and page["resolutions"][2]["label"].startswith("2K")
     assert (page["media"]["images"], page["media"]["slideshows"], page["media"]["music"], page["media"]["error"]) == ([], [], [], None)
     assert page["status"]["live"] is False
-    assert [d["key"] for d in page["destinations"]] == ["youtube", "twitch"]
+    assert [d["key"] for d in page["destinations"]] == ["youtube"]  # (Twitch for later)
     assert page["youtube"] == {"client_set": False, "client_id": None, "signed_in": False, "channel": None, "signing_in": None, "error": None}
 
     # a list of cameras makes a grid just big enough for them
@@ -132,9 +132,20 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
     assert (s["cols"], s["rows"], s["cells"], s["cameras"], s["border_color"]) == (3, 2, cells, ["2:Camera", "1:Bed"], "#FF8800")
 
     # a blank key leaves the saved one; clear_key forgets it
-    assert api.put("/stream", json={"stream_key": "", "destination": "twitch"}).json()["settings"]["key_set"] is True
+    assert api.put("/stream", json={"stream_key": "", "destination": "youtube"}).json()["settings"]["key_set"] is True
     s = api.put("/stream", json={"clear_key": True}).json()["settings"]
-    assert s["key_set"] is False and s["destination"] == "twitch" and s["layout"] == "cycle"
+    assert s["key_set"] is False and s["destination"] == "youtube" and s["layout"] == "cycle"
+    # Twitch is gone for now: refused, and a setup saved with it is read as YouTube
+    assert "YouTube Live" in api.put("/stream", json={"destination": "twitch"}).json()["detail"]
+    import json as _json
+
+    from app.services import app_settings
+
+    db = _db(api)
+    raw = _json.loads(app_settings.get(db, live_stream.SETTINGS_KEY))
+    app_settings.put(db, live_stream.SETTINGS_KEY, _json.dumps({**raw, "destination": "twitch"}))
+    db.commit()
+    assert api.get("/stream").json()["settings"]["destination"] == "youtube"
 
 
 def test_settings_from_before_the_grid_become_one(klipper):
@@ -214,11 +225,11 @@ def test_going_live_sends_the_chosen_cameras_to_youtube(klipper, moonraker, ffmp
 def test_progress_is_written_under_each_camera(klipper, moonraker, ffmpeg):
     api, pid = klipper
     moonraker.webcams = [_cam()]
-    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "destination": "twitch"})
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"]})
     assert api.post("/stream/start").status_code == 200
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
-    assert cmd[-1].startswith("rtmps://live.twitch.tv/app/")
+    assert cmd[-1] == "rtmps://a.rtmps.youtube.com/live2/" + KEY
     graph = _graph(cmd)
     assert "drawtext=" in graph and "reload=1" in graph and "expansion=none" in graph and "xstack" not in graph
 

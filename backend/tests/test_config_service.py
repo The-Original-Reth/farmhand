@@ -499,6 +499,9 @@ def test_the_stream_pages_setup_is_saved_and_loaded(db_session, share, other_far
     assert doc["cells"][0] == {"camera": {"printer": "VT 1190", "camera": "Bed"}, "words_color": "#FF0000"}
     assert "abcd-efgh-1234" not in json.dumps(doc) and "key" not in " ".join(doc)  # the stream key never leaves Farmhand
 
+    # (one saved while Farmhand still streamed to Twitch: the rest comes back, to YouTube)
+    (folder / "stream-setup.json").write_text(json.dumps({**doc, "destination": "twitch"}), encoding="utf-8")
+
     # Load all on another Farmhand: the page comes back, its camera followed to this Farmhand's printer by name
     db2 = other_farmhand
     printer_service.create_printer(db2, name="Shelf", kind=None, wired_ip=None, wireless_ip=None)
@@ -507,6 +510,7 @@ def test_the_stream_pages_setup_is_saved_and_loaded(db_session, share, other_far
     out = svc.restore(db2)
     assert "stream setup" in out["restored"]
     got = live_stream.settings(db2)
+    assert got["destination"] == "youtube"
     vt_here = next(p.id for p in printer_service.list_printers(db2) if p.name == "VT 1190")
     assert (got["title"], got["font"], got["color"], got["resolution"]) == ("Live from the farm", "lato", "#00FF00", "720p")
     assert got["cells"][0] == {"camera": f"{vt_here}:Bed", "words_color": "#FF0000"} and got["cells"][1]["text"] == "Hi"

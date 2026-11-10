@@ -188,7 +188,6 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
 
 const WHERE_KEY = {
   youtube: "In YouTube Studio: Create → Go live → Stream, then Copy next to Stream key.",
-  twitch: "In the Twitch Creator Dashboard: Settings → Stream, then Copy next to Primary Stream key.",
 };
 const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
 
@@ -277,11 +276,16 @@ export function WhereToPanel({ destination, destinations, onDestination, streamK
       <div style={heading}>Where to</div>
       <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10 })}>
         <span style={{ width: 90 }}>Stream to</span>
-        <select data-testid="stream-destination" value={destination} onChange={(e) => onDestination(e.target.value)} style={{ ...fieldBox(), padding: "6px 8px" }}>
-          {destinations.map((d) => (
-            <option key={d.key} value={d.key}>{d.label}</option>
-          ))}
-        </select>
+        {/* a choice only once there's more than one (YouTube Live for now) */}
+        {destinations.length > 1 ? (
+          <select data-testid="stream-destination" value={destination} onChange={(e) => onDestination(e.target.value)} style={{ ...fieldBox(), padding: "6px 8px" }}>
+            {destinations.map((d) => (
+              <option key={d.key} value={d.key}>{d.label}</option>
+            ))}
+          </select>
+        ) : (
+          <span data-testid="stream-destination" style={uiText(13, c.text)}>{destinations[0]?.label}</span>
+        )}
       </label>
       <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" })}>
         <span style={{ width: 90 }}>Stream key</span>
