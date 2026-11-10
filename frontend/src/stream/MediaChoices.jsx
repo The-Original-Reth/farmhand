@@ -215,14 +215,16 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
                 moveTo(n);
               }}
               onDragEnd={() => (setMoving(null), setOverPic(null))}
+              onDoubleClick={() => slide && (slide.stop(), slide.go(i))} // the one to work on: held on the canvas and the preview
               style={{ width: 96, display: "flex", flexDirection: "column", gap: 3, opacity: moving === n ? 0.4 : 1, cursor: busy ? "default" : "grab" }}
             >
               <div
                 style={{
                   position: "relative", height: 54, background: fixed.pictureThumb, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
-                  outline: overPic === n && moving !== n ? `2px solid ${c.amber}` : "none",
+                  // where it would go while dragging; else the one on show, being worked on while held
+                  outline: overPic === n && moving !== n ? `2px solid ${c.amber}` : slide && !slide.playing && slide.at % show.images.length === i ? `2px solid ${c.teal}` : "none",
                 }}
-                title={`${i + 1}. ${n}: drag onto another picture to move it there`}
+                title={`${i + 1}. ${slideLabel(n)}: double-click to work on it; drag onto another picture to move it there`}
               >
                 {isBlank(n) ? (
                   <span data-testid="stream-slide-blank" style={uiText(11, c.textMuted, { textAlign: "center", lineHeight: 1.3 })}>{slideLabel(n)}</span>
@@ -251,7 +253,8 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
       )}
       <div style={help}>
         Each slideshow is a folder in the stream folder's slideshows folder: its pictures show one after another, round and round,
-        in the order above (drag a picture onto another to move it there; new ones go on the end). A blank screen shows the
+        in the order above (double-click one to work on it; drag a picture onto another to move it there; new ones go on the
+        end). A blank screen shows the
         square's colour and the words you write on it, in its turn. Pictures copied into it yourself count too. One slideshow can be in several squares.
       </div>
     </>
