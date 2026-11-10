@@ -212,6 +212,27 @@ export function StreamSwitch({ on, onTurn, busy }) {
   );
 }
 
+// Mute, beside the stream's switch: the music silent on this page only (the stream keeps playing it). Kept in this
+// browser.
+export function MuteSwitch({ muted, onMute }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={uiText(14, c.heading, { fontWeight: 600 })}>Mute</span>
+      <button
+        type="button" role="switch" aria-checked={muted} data-testid="stream-mute" onClick={() => onMute(!muted)}
+        title={muted ? "Unmute the music on this page" : "Mute the music on this page only: the stream keeps playing it"}
+        style={{
+          position: "relative", width: 40, height: 22, borderRadius: 11, border: `1px solid ${muted ? c.amber : c.borderStrong}`, padding: 0,
+          background: muted ? c.amber : c.panelAlt, cursor: "pointer", flexShrink: 0,
+        }}
+      >
+        <span style={{ position: "absolute", top: 2, left: muted ? 20 : 2, width: 16, height: 16, borderRadius: 8, background: muted ? c.bg : c.textMuted, transition: "left 0.15s" }} />
+      </button>
+      <span style={uiText(12, muted ? c.amber : c.textFaint)}>{muted ? "Music muted here" : "Music heard here"}</span>
+    </div>
+  );
+}
+
 // On air or not, and the button that changes it. `destLabel(key)`: a destination's name; `destination`: the one chosen;
 // `off`: the switch at the top is off, so there's no going live until it's on.
 export function LiveStatusPanel({ status, destLabel, destination, busy, onStart, onStop, off = false }) {
