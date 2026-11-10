@@ -40,6 +40,13 @@ def _turn(cam: dict) -> list[str]:
     return out
 
 
+# An MJPEG stream sends no times of its own: ffmpeg would count its frames as if 25 came every second, and a camera
+# sending two a second would have the whole grid wait for it, the stream falling far behind real time while the other
+# cameras' frames piled up in memory. Each frame is given the time it arrived instead: a slow camera just changes less
+# often in its square.
+MJPEG = ["-use_wallclock_as_timestamps", "1", "-f", "mpjpeg"]
+
+
 def input_args(printer: Printer, cam: dict) -> list[str]:
     """How ffmpeg reads this camera, or ValueError saying why it can't."""
     name = f"{printer.name}'s camera" if cam.get("name") in (None, "Camera") else f"{printer.name}'s {cam['name']} camera"
@@ -48,7 +55,7 @@ def input_args(printer: Printer, cam: dict) -> list[str]:
     stream = cam.get("stream_url")
     # an MJPEG stream; Mainsail's "adaptive" service shows snapshots in the browser, but its address is the same stream
     if stream and (cam.get("mjpeg") or cam.get("service") == "mjpegstreamer-adaptive" or "action=stream" in stream):
-        return ["-f", "mpjpeg", "-i", stream]
+        return [*MJPEG, "-i", stream]
     if stream and cam.get("service") == "webrtc-go2rtc":
         # go2rtc on the printer: the same camera over RTSP, on go2rtc's own RTSP port
         parts = urlsplit(stream)
@@ -57,7 +64,7 @@ def input_args(printer: Printer, cam: dict) -> list[str]:
             return ["-rtsp_transport", "tcp", "-i", f"rtsp://{parts.hostname}:8554/{quote(src, safe='')}"]
     if stream and cam.get("service") == "webrtc-camerastreamer" and stream.rstrip("/").endswith("/webrtc"):
         # camera-streamer serves the same camera as MJPEG beside its WebRTC page
-        return ["-f", "mpjpeg", "-i", stream.rstrip("/")[: -len("webrtc")] + "stream"]
+        return [*MJPEG, "-i", stream.rstrip("/")[: -len("webrtc")] + "stream"]
     raise ValueError(
         f"{name} only plays in a browser (WebRTC), which Farmhand can't send to a stream. "
         "In Mainsail (Settings → Webcams) give it the MJPEG streamer service, or leave it out of the stream."
