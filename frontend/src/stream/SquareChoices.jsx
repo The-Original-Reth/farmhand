@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { box, colourBox, help, label12 } from "./editorFields.js";
@@ -95,15 +96,52 @@ export function CameraWordsChoice({ cell, put, fonts, showStatus, streamText }) 
   );
 }
 
-// Words over the square, if you like: what they say, their font, colour and size (also set by dragging on the canvas)
-export function TextChoice({ card, setCard, fonts, streamText }) {
-  const tb = card.text_box || MIDDLE;
+// Words over the square, if you like: what they say, their font, colour and size (also set by dragging on the canvas).
+// On a slideshow they're written on the picture on show (`slideName`) and stay with it, shown only while it is; or, with
+// Every picture, on each one that has no words of its own.
+export function TextChoice({ card, setCard, fonts, streamText, slideName = null }) {
+  const [forEvery, setForEvery] = useState(false);
+  const captions = card.captions || {};
+  const onPicture = !!(card.slideshow && slideName) && !forEvery;
+  const cap = onPicture ? captions[slideName] : null;
+  const text = onPicture ? cap?.text || "" : card.text;
+  const tb = (onPicture ? cap?.text_box : null) || card.text_box || MIDDLE;
+  const setCaption = (next) => {
+    const all = { ...captions };
+    if (next) all[slideName] = next;
+    else delete all[slideName];
+    setCard({ captions: all });
+  };
+  const setText = (v) => (onPicture ? setCaption(v ? { text: v, text_box: tb } : null) : setCard({ text: v }));
+  const setBox = (b) => (onPicture ? cap && setCaption({ ...cap, text_box: b }) : setCard({ text_box: b }));
+  const mine = Object.keys(captions).length;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${c.border}`, paddingTop: 8 }}>
-      <div style={uiText(12, c.textMuted)}>Text <span style={uiText(11, c.textFaint)}>(leave empty for none · {card.text.length}/500)</span></div>
+      {card.slideshow && slideName && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={uiText(12, c.textMuted)}>Text for</span>
+          <button
+            type="button" data-testid="stream-text-for-picture" onClick={() => setForEvery(false)}
+            style={{ ...headerButton(), color: onPicture ? c.amber : c.textMuted, borderColor: onPicture ? c.amber : c.border }}
+          >
+            This picture ({slideName})
+          </button>
+          <button
+            type="button" data-testid="stream-text-for-every" onClick={() => setForEvery(true)}
+            style={{ ...headerButton(), color: !onPicture ? c.amber : c.textMuted, borderColor: !onPicture ? c.amber : c.border }}
+          >
+            Every picture
+          </button>
+          <span style={uiText(11, c.textFaint)}>
+            {onPicture ? "stays with this picture, shown only while it is" : `shown on the pictures without their own${mine ? ` (${mine} have their own)` : ""}`}
+          </span>
+        </div>
+      )}
+      <div style={uiText(12, c.textMuted)}>Text <span style={uiText(11, c.textFaint)}>(leave empty for none · {text.length}/500)</span></div>
       <textarea
-        data-testid="stream-square-text" value={card.text} maxLength={500} rows={2} placeholder="Words to show on this square"
-        onChange={(e) => setCard({ text: e.target.value })} style={{ ...box(), resize: "vertical", lineHeight: 1.4 }}
+        data-testid="stream-square-text" value={text} maxLength={500} rows={2}
+        placeholder={onPicture ? `Words for ${slideName}` : "Words to show on this square"}
+        onChange={(e) => setText(e.target.value)} style={{ ...box(), resize: "vertical", lineHeight: 1.4 }}
       />
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
         <label style={label12}>
@@ -119,14 +157,14 @@ export function TextChoice({ card, setCard, fonts, streamText }) {
           Size
           <input
             data-testid="stream-square-text-size" type="range" min={2} max={60} value={Math.round(tb.size * 100)}
-            onChange={(e) => setCard({ text_box: { ...tb, size: Number(e.target.value) / 100 } })}
+            onChange={(e) => setBox({ ...tb, size: Number(e.target.value) / 100 })}
           />
         </label>
-        <button type="button" onClick={() => setCard({ text_box: { ...tb, x: 0.5, y: 0.5 } })} style={headerButton()}>
+        <button type="button" onClick={() => setBox({ ...tb, x: 0.5, y: 0.5 })} style={headerButton()}>
           Centre text
         </button>
-        {card.text && (
-          <button type="button" data-testid="stream-square-delete-text" onClick={() => setCard({ text: "" })} style={{ ...headerButton(), color: c.danger, borderColor: c.danger }}>
+        {text && (
+          <button type="button" data-testid="stream-square-delete-text" onClick={() => setText("")} style={{ ...headerButton(), color: c.danger, borderColor: c.danger }}>
             Delete text
           </button>
         )}

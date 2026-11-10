@@ -675,8 +675,10 @@ benchy.gcode`), brought up to date every 15 seconds.
   into File Explorer: a web page can't open File Explorer itself, and a stream folder that isn't on a network share
   can't be reached so) and **Delete slideshow**;
   **Show each picture for** sets the seconds (3 to 3600); its pictures go round in name order. Under the editor's
-  canvas, **Stop** holds the picture on show (to move or resize it), **Next** goes to the next one and **Play** lets
-  them go round again. **Delete picture**
+  canvas, **Stop** holds the picture on show (to move or resize it), **Back** and **Next** step through them and
+  **Play** lets them go round again; the square in the preview shows the same picture. Text written with **This
+  picture** stays with the picture on show, where you put it, and shows only while that picture does; **Every picture**
+  is the text shown on the pictures without their own. **Delete picture**
   and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the
   stream each picture is read and fitted once a second and shown in its own seconds, so a slideshow costs very little.
 - **Layout** (in Defaults): the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds

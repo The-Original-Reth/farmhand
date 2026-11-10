@@ -11,7 +11,7 @@ export const FONTS = [
 export const DEFAULT_FONT = "play";
 export const CARD = {
   background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false,
-  picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 },
+  picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 }, captions: {},
 };
 
 export const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v || "") ? v.toUpperCase() : d);
@@ -52,4 +52,10 @@ export const cardCell = (x) => ({
   text: typeof x.text === "string" ? x.text.trim().slice(0, 500) : "", color: hex(x.color, null), // null: the stream's
   font: FONTS.some(([k]) => k === x.font) ? x.font : null, band: x.band === true,
   picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
+  // a slideshow's pictures' own words, kept with the picture they were written on
+  captions: x.slideshow && x.captions && typeof x.captions === "object"
+    ? Object.fromEntries(Object.entries(x.captions)
+      .filter(([name, cap]) => fileName(name) && cap && typeof cap.text === "string" && cap.text.trim())
+      .map(([name, cap]) => [name, { text: cap.text.trim().slice(0, 500), text_box: textBox(cap.text_box) }]))
+    : {},
 });

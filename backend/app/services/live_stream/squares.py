@@ -20,7 +20,8 @@ OLD_SIZES = {"small": 1 / 12, "medium": 1 / 8, "large": 1 / 5}
 OLD_PLACES = {"top": 0.18, "middle": 0.5, "bottom": 0.82}
 SLIDE_SECONDS = (3, 3600, 10)  # (least, most, default): how long each picture of a slideshow is shown
 PICTURE_NAME = re.compile(r"^[^/\\\0]{1,120}$")
-CARD_KEYS = ("background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box")
+CARD_KEYS = ("background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box", "captions")
+MAX_CAPTIONS = 500  # a slideshow's pictures with words of their own
 
 
 def _color(v, default: str | None) -> str | None:
@@ -78,12 +79,27 @@ def _camera_cell(raw: dict) -> dict:
     return out
 
 
+def _captions(raw) -> dict:
+    """A slideshow's pictures' own words: {picture's file name: {"text", "text_box"}}, those with words only (the text as
+    written; check_cells trims it and says when it's too long)."""
+    out = {}
+    if isinstance(raw, dict):
+        for name, cap in raw.items():
+            if len(out) >= MAX_CAPTIONS:
+                break
+            if _named(name) and isinstance(cap, dict) and isinstance(cap.get("text"), str) and cap["text"].strip():
+                out[name] = {"text": cap["text"], "text_box": _text_box(cap.get("text_box"))}
+    return out
+
+
 def _cell(raw) -> dict | None:
     """
     A square as kept: {"camera": "printer id:camera name"}; a card, {"background": its colour (None: the stream's),
     "image": a picture's file name in the stream folder's images | None, "slideshow": a slideshow's folder name | None,
     "seconds": each slideshow picture's, "text": words over it ("" none), "color", "font" (one of FONTS), "band" (a dark band behind the words), "picture_box": {x, y, w, h} where the
-    picture is fitted, "text_box": {x, y, size} the words' centre and height (all parts of the square, 0 to 1)}; or None (empty: the stream's background colour). Missing parts get defaults.
+    picture is fitted, "text_box": {x, y, size} the words' centre and height (all parts of the square, 0 to 1), "captions": a
+    slideshow's pictures' own words, {picture's name: {text, text_box}}, shown instead of "text" while that picture is}; or
+    None (empty: the stream's background colour). Missing parts get defaults.
     """
     if not isinstance(raw, dict):
         return None
@@ -105,6 +121,7 @@ def _cell(raw) -> dict | None:
         "picture_box": _picture_box(raw.get("picture_box")),
         "text_box": _text_box(raw.get("text_box"), raw.get("size"), raw.get("position")),
     }
+    card["captions"] = _captions(raw.get("captions")) if card["slideshow"] else {}
     if card["slideshow"]:
         card["image"] = None
     return card

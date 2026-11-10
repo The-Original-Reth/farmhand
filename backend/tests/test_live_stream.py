@@ -389,7 +389,7 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     cells = [{"camera": f"{pid}:Bed"}, {"slideshow": "Prints", "seconds": 4, "text": " Live! ", "text_box": {"x": 0.5, "y": 0.1}}, {"image": "Elves.png"},
              {"image": "gone.png", "background": "#123456"}]
     s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
-    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": None, "font": None, "band": False,
+    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": None, "font": None, "band": False, "captions": {},
                              "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125}}
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
@@ -711,3 +711,24 @@ def test_the_stream_can_be_turned_off(klipper, moonraker, ffmpeg):
     assert r.status_code == 422 and "turned off" in r.json()["detail"]
     assert api.put("/stream", json={"enabled": True}).json()["settings"]["enabled"] is True
     assert api.post("/stream/start").json()["status"]["live"] is True
+
+
+def test_a_slideshow_pictures_own_words():
+    cell = live_stream._cell({"slideshow": "Prints", "text": "Every one", "captions": {
+        "b.png": {"text": "Benchy", "text_box": {"x": 0.2, "y": 0.8, "size": 0.1}}, "c.png": {"text": "  "}, "../x": {"text": "no"}}})
+    assert cell["captions"] == {"b.png": {"text": "Benchy", "text_box": {"x": 0.2, "y": 0.8, "size": 0.1}}}  # words only, good names only
+    assert live_stream._cell({"image": "a.png", "captions": {"a.png": {"text": "x"}}})["captions"] == {}  # a slideshow's only
+    # b's own words only while b shows (5 to 10 s of every 15); the card's words while a and c show
+    cells = [("card", {"pictures": ["/s/a.png", "/s/b.png", "/s/c.png"], "seconds": 5, "words": "/s/t.txt",
+                       "picture_words": {1: {"words": "/s/t-1.txt", "text_box": {"x": 0.2, "y": 0.8, "size": 0.1}}}})]
+    graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
+    card_words = graph.split("textfile=/s/t.txt")[1].split("[c0]")[0].split(",drawtext")[0]
+    assert "enable='gte(mod(t,15),0)*lt(mod(t,15),5)+gte(mod(t,15),10)*lt(mod(t,15),15)'" in card_words
+    own = graph.split("textfile=/s/t-1.txt")[1]
+    assert "x=256-text_w/2:y=576-text_h/2" in own and "enable='gte(mod(t,15),5)*lt(mod(t,15),10)'" in own
+
+
+def test_too_long_words_on_a_slideshow_picture(klipper):
+    api, _ = klipper
+    r = api.put("/stream", json={"cols": 1, "rows": 1, "cells": [{"slideshow": "Prints", "captions": {"b.png": {"text": "x" * 501}}}]})
+    assert r.status_code == 422 and "b.png" in r.json()["detail"]

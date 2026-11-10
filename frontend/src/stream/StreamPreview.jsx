@@ -64,6 +64,22 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [turning, cycle?.all, cycle?.each, n]);
+  // the slideshow in the square being edited: which picture is on show, and whether it goes round on its own; the square
+  // here and the editor's canvas show the same one
+  const [slide, setSlide] = useState({ at: 0, playing: true });
+  useEffect(() => setSlide({ at: 0, playing: true }), [selected]);
+  const edited = selected !== null && squares[selected]?.type === "card" ? squares[selected].cell : null;
+  const editedShow = edited?.slideshow ? media.slideshows.find((x) => x.name === edited.slideshow) : null;
+  const slides = editedShow?.images.length || 0;
+  useEffect(() => {
+    if (!slide.playing || slides < 2) return;
+    const timer = setInterval(() => setSlide((s) => ({ ...s, at: (s.at + 1) % slides })), Math.max(1, Number(edited?.seconds) || 10) * 1000);
+    return () => clearInterval(timer);
+  }, [slide.playing, slides, edited?.seconds, selected]);
+  const slideCtl = editedShow && {
+    at: slides ? slide.at % slides : 0, playing: slide.playing,
+    go: (at) => setSlide((s) => ({ ...s, at })), play: () => setSlide((s) => ({ ...s, playing: true })), stop: () => setSlide((s) => ({ ...s, playing: false })),
+  };
   useEffect(() => {
     if (selected !== null && selected >= cells.length) setSelected(null); // the grid got smaller
   }, [cells.length, selected]);
@@ -150,7 +166,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
             >
               {sq ? (
                 <Screen
-                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} inset={alone === i ? 0 : inset} edit={editHere && "quiet"}
+                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} inset={alone === i ? 0 : inset} edit={editHere && "quiet"} slide={selected === i ? slideCtl : null}
                   onChange={(what) => change({ cells: cells.map((x, j) => (j === i ? { ...x, ...what } : x)) })}
                 />
               ) : (
@@ -164,7 +180,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
       </div>
       {selected !== null && selected < cells.length ? (
         <SquareEditor
-          cells={cells} i={selected} onCells={(next) => change({ cells: next })} cameras={cameras} media={media} fonts={fonts} label={label} streamBackground={back} streamText={words} inset={inset}
+          cells={cells} i={selected} onCells={(next) => change({ cells: next })} cameras={cameras} media={media} fonts={fonts} label={label} streamBackground={back} streamText={words} inset={inset} slide={slideCtl}
           aspect={(16 * rows) / (9 * cols)} onSave={onSave} dirty={dirty} saving={busy === "save"}
           showStatus={showStatus} ask={ask} busy={busy} onDone={() => setSelected(null)} screen={<Screen sq={squares[selected]} showStatus={showStatus} big media={media} back={back} words={words} />}
         />
@@ -183,7 +199,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
 
 // What a square shows: a camera, or a card (its colour, picture or slideshow, and words); nothing (the stream's colour)
 // when null
-function Screen({ sq, showStatus, big, media, back, words = {}, inset = 0, edit = false, onChange }) {
+function Screen({ sq, showStatus, big, media, back, words = {}, inset = 0, edit = false, onChange, slide = null }) {
   if (!sq) return null;
   if (sq.type === "camera") {
     return (
@@ -192,7 +208,7 @@ function Screen({ sq, showStatus, big, media, back, words = {}, inset = 0, edit 
       </div>
     );
   }
-  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} />;
+  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} slide={slide || null} />;
   return null;
 }
 
