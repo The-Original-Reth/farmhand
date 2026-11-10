@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { c, fixed, fs, ui } from "../theme.js";
-import { fieldBox, uiText } from "../styles.js";
+import { fieldBox, headerButton, uiText } from "../styles.js";
 import { CameraPicture } from "../monitor/players.jsx";
 import { GridSize, swapped } from "./StreamSquares.jsx";
 import { CardScreen, StreamFonts, fontFamily } from "./CardScreen.jsx";
@@ -45,7 +45,7 @@ export const turnAt = (seconds, n, cycle) => {
   return { one, left: cycle.all + (one + 1) * cycle.each - at };
 };
 
-export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null }) {
+export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -122,12 +122,26 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
       <StreamFonts fonts={fonts} />
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
         <div style={uiText(14, c.heading, { fontWeight: 600 })}>Preview</div>
+        {/* whether it shows what the server does (or will, going live): only with nothing changed and not saved */}
+        <span
+          data-testid="stream-in-step"
+          title={clock !== null ? "Slideshows and taking turns keep the server's time of day, as the stream does" : "Changes not saved yet: the preview plays them on its own time"}
+          style={uiText(11, clock !== null ? c.green : c.amber, { border: `1px solid ${clock !== null ? c.green : c.amber}`, borderRadius: 3, padding: "1px 6px", whiteSpace: "nowrap" })}
+        >
+          {clock === null ? "Not in step: save to match the server" : serverClock.live ? "In step with the stream" : "In step with the server"}
+        </span>
         {live && (
           <span style={{ ...ui, fontSize: fs(11), fontWeight: 700, letterSpacing: 0.5, color: c.danger, border: `1px solid ${c.danger}`, borderRadius: 3, padding: "1px 6px" }}>
             LIVE
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <button
+          type="button" data-testid="stream-revert" onClick={onRevert} disabled={!dirty || !onRevert} style={headerButton()}
+          title="Back to the last saved setup: every change not saved yet goes"
+        >
+          Revert
+        </button>
         <GridSize shown={shown} change={change} />
         <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 6 })}>
           Resolution

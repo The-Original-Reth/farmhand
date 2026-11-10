@@ -646,7 +646,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   pictures and the borders, so you can check it before going live. Slideshows and taking turns keep the server's time
   of day, on the stream and in the preview alike: with nothing changed and not saved yet, the preview shows the same
   slideshow picture and turn as the stream (or, not live, the ones going live will start on), whenever you open the
-  page, and says so under it. YouTube shows the stream's picture a few seconds later.
+  page; beside *Preview* it says *In step with the server* (or *the stream*), or *Not in step* while there are changes
+  not saved. **Revert**, before the grid's size, puts the page back to the last saved setup. YouTube shows the stream's picture a few seconds later.
 - **Squares:** above the preview, choose the grid's size (1 to 5 squares across and 1 to 5 down) and the
   resolution. In the preview, click a square to edit it, and drag a square onto another to swap them; taking turns
   waits on the whole grid while you do. The square's editor, under the preview, shows it as a canvas in the square's
@@ -682,7 +683,9 @@ benchy.gcode`), brought up to date every 15 seconds.
   slideshow's folder, so every square and the stream follow it, and pictures added later go on the end). **Add blank screen** puts a screen with no picture at the end, to write
   on: it shows the square's colour and its own words in its turn, and is moved and deleted as a picture is. Under the editor's
   canvas, **Stop** holds the picture on show (to move or resize it), **Back** and **Next** step through them (or double-click one in the list to work on it) and
-  **Play** lets them go round again; the square in the preview shows the same picture. Text written with **This
+  **Play** lets them go round again; the square in the preview shows the same picture. A slideshow picture moved or
+  resized on the canvas changes on its own (the others keep their size and place), as does **Picture fills the
+  square**. Text written with **This
   picture** stays with the picture on show, where you put it, and shows only while that picture does; **Every picture**
   is the text shown on the pictures without their own. **Delete picture**
   and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the

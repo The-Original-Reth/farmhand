@@ -7,7 +7,7 @@ import { slideshowPictureUrl, streamFontUrl, streamPictureUrl } from "../api.js"
 
 export const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
 export const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
-export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {} };
+export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {}, picture_boxes: {} };
 // a slideshow's blank screen ("blank:2": Farmhand's own, no picture, just the square's colour and its words), and the
 // name a slide is shown by
 export const isBlank = (name) => typeof name === "string" && name.startsWith("blank:");
@@ -24,7 +24,8 @@ const clamp = (v, least, most) => Math.round(Math.min(most, Math.max(least, v)) 
 // What a card looks like, in the preview and on the editor's canvas, as the stream draws it: its colour, its picture
 // (or slideshow, on this page's own clock) fitted into its box, and its words over that, centred on their spot and sized
 // to the square. `edit`: on the editor's canvas, and on the preview's square being edited, where the picture and the words are dragged to move them and by their corner
-// handle to resize them, `onChange({ picture_box } | { text_box })` taking each step ("quiet": on the preview, where the
+// handle to resize them, `onChange({ picture_box } | { picture_boxes } | { text_box })` taking each step (a slideshow's
+// picture is resized or moved on its own, in picture_boxes by its name) ("quiet": on the preview, where the
 // outline and corner only show while the picture or words are pointed at). `streamText`: { font, color }, the stream's
 // words', for a card that has none of its own. `slide`: { at (which picture) }, a slideshow gone through by
 // hand (StreamPreview keeps it, so the preview's square and the canvas show the same picture); without it the slideshow
@@ -60,7 +61,10 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
     return () => clearInterval(timer);
   }, [card.slideshow, count, card.seconds, !!slide, clock !== null]);
   const src = show && count ? (isBlank(show.images[shot % count]) ? null : slideshowPictureUrl(show.name, show.images[shot % count])) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
-  const pb = card.picture_box || FULL_BOX;
+  // a slideshow's picture on show: its own size and place when it has been resized or moved on its own, else the card's
+  const onShow = show && count && !isBlank(show.images[shot % count]) ? show.images[shot % count] : null;
+  const pb = (onShow && card.picture_boxes?.[onShow]) || card.picture_box || FULL_BOX;
+  const setPictureBox = (b) => (card.slideshow && onShow ? onChange({ picture_boxes: { ...card.picture_boxes, [onShow]: b } }) : onChange({ picture_box: b }));
   // the part of the square inside its border, in px: a picture's box is a part of it (so the border never covers it)
   const edge = inset * size.h;
   const iw = Math.max(1, size.w - 2 * edge), ih = Math.max(1, size.h - 2 * edge);
@@ -102,7 +106,7 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
     const px_ = (e.clientX - d.x) / iw; // the picture moves within the part inside the border
     const py_ = (e.clientY - d.y) / ih;
     const f = d.from;
-    if (d.what === "picture") onChange({ picture_box: { ...f, x: clamp(f.x + px_, 0, 1 - f.w), y: clamp(f.y + py_, 0, 1 - f.h) } });
+    if (d.what === "picture") setPictureBox({ ...f, x: clamp(f.x + px_, 0, 1 - f.w), y: clamp(f.y + py_, 0, 1 - f.h) });
     else if (d.what === "text") setTextBox({ ...f, x: clamp(f.x + dx, 0, 1), y: clamp(f.y + dy, 0, 1) });
     else if (d.what === "textSize") setTextBox({ ...f, size: clamp(f.size + dy, 0.02, 0.6) });
     else {
@@ -113,7 +117,7 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
         h = 1 - f.y;
         if (natural) w = (h * ih * natural) / iw;
       }
-      onChange({ picture_box: { ...f, w: clamp(w, 0.05, 1 - f.x), h: clamp(h, 0.05, 1 - f.y) } });
+      setPictureBox({ ...f, w: clamp(w, 0.05, 1 - f.x), h: clamp(h, 0.05, 1 - f.y) });
     }
   };
   const dragged = useRef(false); // a move just ended: the click that ends it isn't a click on the square

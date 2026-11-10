@@ -390,7 +390,7 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     cells = [{"camera": f"{pid}:Bed"}, {"slideshow": "Prints", "seconds": 4, "text": " Live! ", "text_box": {"x": 0.5, "y": 0.1}}, {"image": "Elves.png"},
              {"image": "gone.png", "background": "#123456"}]
     s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
-    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": None, "font": None, "band": False, "captions": {},
+    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": None, "font": None, "band": False, "captions": {}, "picture_boxes": {},
                              "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125}}
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
@@ -884,3 +884,15 @@ def test_the_page_is_told_the_servers_time(klipper):
     api, _ = klipper
     before = time.time()
     assert before - 1 <= api.get("/stream").json()["status"]["server_time"] <= time.time() + 1
+
+
+def test_a_slideshow_picture_resized_on_its_own():
+    cell = live_stream._cell({"slideshow": "Prints", "picture_boxes": {"b.png": {"x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5}, "../x": {"w": 1}}})
+    assert cell["picture_boxes"] == {"b.png": {"x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5}}
+    assert live_stream._cell({"image": "a.png", "picture_boxes": {"a.png": {"w": 0.5}}})["picture_boxes"] == {}  # a slideshow's only
+    # b in its own box (the lower right quarter, inside the border); a and c as the card's (the whole square)
+    cells = [("card", {"pictures": ["/s/a.png", "/s/b.png", "/s/c.png"], "seconds": 5,
+                       "picture_boxes": {"b.png": {"x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5}}})]
+    graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
+    assert "[1:v]scale=1274:714:" in graph and "[3:v]scale=1274:714:" in graph
+    assert "[2:v]scale=637:357:" in graph and "overlay=640+(637-w)/2:360+(357-h)/2:enable=" in graph
