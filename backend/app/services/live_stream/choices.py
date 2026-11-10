@@ -14,7 +14,8 @@ from .constants import DEFAULT_TEXT_COLOR
 from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
 from .squares import SLIDE_SECONDS, TEXT_MAX, _cell, _color
 
-# ------------------------------------------------------------------ what's chosen
+# the stream's own colours, as a refusal names them
+COLOURS = {"border_color": "the border's colour", "color": "the colour of the stream's words", "background": "the stream's background colour"}
 
 
 def _seconds(raw: dict, name: str) -> int:
@@ -28,8 +29,18 @@ def auto_grid(n: int) -> tuple[int, int]:
     cols = min(MAX_SIDE, max(1, math.ceil(math.sqrt(n))))
     return cols, min(MAX_SIDE, max(1, math.ceil(n / cols)))
 
+
 def _side(v) -> int | None:
     return v if type(v) is int and 1 <= v <= MAX_SIDE else None
+
+
+def _saved(db: Session) -> dict:
+    """The settings as kept, unchecked ({} when there are none, or they can't be read)."""
+    try:
+        raw = json.loads(app_settings.get(db, SETTINGS_KEY) or "{}")
+    except ValueError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
 
 
 def settings(db: Session) -> dict:
@@ -41,10 +52,7 @@ def settings(db: Session) -> dict:
     streams), title, description, key_set}.
     The key itself is never given. Settings from before the grid (a list of cameras) come back as the grid they made.
     """
-    try:
-        raw = json.loads(app_settings.get(db, SETTINGS_KEY) or "{}")
-    except ValueError:
-        raw = {}
+    raw = _saved(db)
     destination = raw.get("destination") if raw.get("destination") in DESTINATIONS else DEFAULT_DESTINATION
     text = lambda name: raw.get(name) if isinstance(raw.get(name), str) else ""  # noqa: E731
     if isinstance(raw.get("cells"), list) and _side(raw.get("cols")) and _side(raw.get("rows")):
@@ -158,24 +166,17 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
         now["cells"] = [{"camera": k} for k in keys] + [None] * (now["cols"] * now["rows"] - len(keys))
     if show_status is not None:
         now["show_status"] = bool(show_status)
-    if border_color is not None:
-        if not isinstance(border_color, str) or not COLOR.match(border_color):
-            raise ValueError("Choose the border's colour with the colour picker (#RRGGBB).")
-        now["border_color"] = border_color.upper()
+    for name, value in (("border_color", border_color), ("color", color), ("background", background)):
+        if value is not None:
+            if not isinstance(value, str) or not COLOR.match(value):
+                raise ValueError(f"Choose {COLOURS[name]} with the colour picker (#RRGGBB).")
+            now[name] = value.upper()
     if enabled is not None:
         now["enabled"] = bool(enabled)
     if font is not None:
         if font not in FONTS:
             raise ValueError("Choose one of the fonts listed for the stream's words.")
         now["font"] = font
-    if color is not None:
-        if not isinstance(color, str) or not COLOR.match(color):
-            raise ValueError("Choose the colour of the stream's words with the colour picker (#RRGGBB).")
-        now["color"] = color.upper()
-    if background is not None:
-        if not isinstance(background, str) or not COLOR.match(background):
-            raise ValueError("Choose the stream's background colour with the colour picker (#RRGGBB).")
-        now["background"] = background.upper()
     if resolution is not None:
         if resolution not in RESOLUTIONS:
             raise ValueError("Choose 720p, 1080p or 2K.")
@@ -220,11 +221,8 @@ def rename_slideshow(db: Session, old: str, new: str) -> int:
                 n += 1
         return n
 
-    try:
-        raw = json.loads(app_settings.get(db, SETTINGS_KEY) or "{}")
-    except ValueError:
-        raw = {}
-    changed = follow(raw.get("cells") or []) if isinstance(raw, dict) else 0
+    raw = _saved(db)
+    changed = follow(raw.get("cells") or [])
     if changed:
         app_settings.put(db, SETTINGS_KEY, json.dumps(raw))
         db.commit()

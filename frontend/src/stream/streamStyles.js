@@ -1,7 +1,11 @@
 import { c } from "../theme.js";
-import { fieldBox, uiText } from "../styles.js";
+import { fieldBox, panelBox, uiText } from "../styles.js";
 
-// The fields of the square editor (SquareEditor.jsx and the choices it shows), so they look alike.
+// The Stream page's own look, so its panels and the square editor's fields look alike.
+
+export const panel = () => panelBox({ padding: 16, display: "flex", flexDirection: "column", gap: 12 });
+export const heading = uiText(14, c.heading, { fontWeight: 600 });
+export const subheading = uiText(13, c.heading, { fontWeight: 600 });
 
 export const help = uiText(12, c.textFaint, { lineHeight: 1.5 });
 export const box = () => ({ ...fieldBox(), padding: "5px 8px" });

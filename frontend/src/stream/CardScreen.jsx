@@ -1,19 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { c, fixed, fs, ui } from "../theme.js";
 import { slideshowPictureUrl, streamFontUrl, streamPictureUrl } from "../api.js";
+import { FULL_BOX, MIDDLE, fontFamily, isBlank } from "./shapes.js";
 
 // What a card looks like (CardScreen), in the preview and on the editor's canvas, and the stream's fonts: what a
 // card is made of (CARD), and each font loaded from the server so the words look here as on the stream.
-
-export const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
-export const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
-export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {}, picture_boxes: {} };
-// a slideshow's blank screen ("blank:2": Farmhand's own, no picture, just the square's colour and its words), and the
-// name a slide is shown by
-export const isBlank = (name) => typeof name === "string" && name.startsWith("blank:");
-export const slideLabel = (name) => (isBlank(name) ? `Blank screen ${name.slice(6)}` : name);
-// the page's own name for one of the stream's fonts (StreamFonts loads each from the server)
-export const fontFamily = (key) => `"fh-stream-${key || "play"}", sans-serif`;
 
 // The stream's fonts, loaded from the server so the words look here as they do on the stream: `fonts` [{ key, generic }]
 export function StreamFonts({ fonts }) {

@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { c, fixed, ui } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { addSlideshowBlank, orderSlideshow, scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
-import { box, help, label12 } from "./editorFields.js";
-import { isBlank, slideLabel } from "./CardScreen.jsx";
+import { box, help, label12 } from "./streamStyles.js";
+import { isBlank, slideLabel } from "./shapes.js";
 
 // A card's picture or slideshow, from the stream folder, in the square editor (SquareEditor.jsx): choosing,
 // uploading and deleting them, and where a slideshow's folder is, to open in File Explorer.
@@ -65,20 +65,7 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
   const [name, setName] = useState(null); // the new slideshow's name being typed; null when not making one
   const [removing, setRemoving] = useState(null); // "show" | a picture's name, asking "Delete?"
   const [renaming, setRenaming] = useState(null); // the chosen slideshow's new name being typed; null when not renaming
-  const [moving, setMoving] = useState(null); // the picture being dragged to a new place
-  const [overPic, setOverPic] = useState(null); // the picture it would take the place of
   const show = media.slideshows.find((x) => x.name === card.slideshow) || null;
-  // the picture dragged takes the place of the one it's dropped on (the slideshow's order is kept in its folder)
-  const moveTo = (target) => {
-    const from = show.images.indexOf(moving);
-    const to = show.images.indexOf(target);
-    setMoving(null);
-    setOverPic(null);
-    if (from < 0 || to < 0 || from === to) return;
-    const order = [...show.images];
-    order.splice(to, 0, order.splice(from, 1)[0]);
-    ask("picture", () => orderSlideshow(show.name, order));
-  };
   const create = async () => {
     const n = (name || "").trim();
     if (!n) return;
@@ -111,7 +98,7 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
         {media.slideshows.map((x) => <option key={x.name} value={x.name}>{x.name} ({x.images.length})</option>)}
       </select>
       <input ref={input} data-testid="stream-slideshow-file" type="file" multiple accept="image/png,image/jpeg,image/webp" style={{ display: "none" }} onChange={(e) => addPictures([...e.target.files])} />
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={row}>
         <button type="button" data-testid="stream-slideshow-new" onClick={() => (setName(""), setRemoving(null), setRenaming(null))} disabled={off} style={headerButton()}>
           New slideshow
         </button>
@@ -149,36 +136,20 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
       </div>
       {opening && <OpenFolder media={media} show={show} />}
       {name !== null && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            data-testid="stream-slideshow-name" autoFocus value={name} maxLength={100} placeholder="The new slideshow's name" onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => (e.key === "Enter" ? create() : e.key === "Escape" && setName(null))} style={{ ...box(), width: 200 }}
-          />
-          <button type="button" data-testid="stream-slideshow-create" onClick={create} disabled={off || !name.trim()} style={headerButton()}>
-            Make it
-          </button>
-          <button type="button" onClick={() => setName(null)} style={headerButton()}>
-            Cancel
-          </button>
-        </div>
+        <NameRow
+          testid="stream-slideshow-name" saveTestid="stream-slideshow-create" saveLabel="Make it" placeholder="The new slideshow's name"
+          value={name} onValue={setName} onSave={create} onCancel={() => setName(null)} off={off}
+        />
       )}
       {renaming !== null && show && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            data-testid="stream-slideshow-new-name" autoFocus value={renaming} maxLength={100} placeholder="The slideshow's new name" onChange={(e) => setRenaming(e.target.value)}
-            onFocus={(e) => e.target.select()} onKeyDown={(e) => (e.key === "Enter" ? rename() : e.key === "Escape" && setRenaming(null))} style={{ ...box(), width: 200 }}
-          />
-          <button type="button" data-testid="stream-slideshow-rename-save" onClick={rename} disabled={off || !renaming.trim()} style={headerButton()}>
-            Rename
-          </button>
-          <button type="button" onClick={() => setRenaming(null)} style={headerButton()}>
-            Cancel
-          </button>
-          <span style={uiText(12, c.textFaint)}>Its folder on the server is renamed too, and squares and saved layouts showing it follow.</span>
-        </div>
+        <NameRow
+          testid="stream-slideshow-new-name" saveTestid="stream-slideshow-rename-save" saveLabel="Rename" placeholder="The slideshow's new name" selectAll
+          value={renaming} onValue={setRenaming} onSave={rename} onCancel={() => setRenaming(null)} off={off}
+          note="Its folder on the server is renamed too, and squares and saved layouts showing it follow."
+        />
       )}
       {removing === "show" && show && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={row}>
           <span style={uiText(12, c.textMuted)}>Delete the slideshow “{show.name}” and its {show.images.length} pictures?</span>
           <button type="button" onClick={() => ask("picture", () => removeSlideshow(show.name)).then(() => setRemoving(null))} style={{ ...headerButton(), color: c.danger, borderColor: c.danger }}>
             Delete
@@ -197,60 +168,7 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
         seconds <span style={uiText(11, c.textFaint)}>(3 to 3600)</span>
       </label>
       {show && show.images.length > 0 && slide && <SlideControls show={show} slide={slide} />}
-      {show && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {show.images.length === 0 && <span style={uiText(12, c.textFaint)}>No pictures in it yet: Add pictures or Open folder.</span>}
-          {show.images.map((n, i) => (
-            <div
-              key={n} data-testid="stream-slide-thumb" draggable={!busy}
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", n);
-                setMoving(n);
-              }}
-              onDragEnter={() => moving && setOverPic(n)}
-              onDragOver={(e) => moving && e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                moveTo(n);
-              }}
-              onDragEnd={() => (setMoving(null), setOverPic(null))}
-              onDoubleClick={() => slide && (slide.stop(), slide.go(i))} // the one to work on: held on the canvas and the preview
-              style={{ width: 96, display: "flex", flexDirection: "column", gap: 3, opacity: moving === n ? 0.4 : 1, cursor: busy ? "default" : "grab" }}
-            >
-              <div
-                style={{
-                  position: "relative", height: 54, background: fixed.pictureThumb, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
-                  // where it would go while dragging; else the one on show, being worked on while held
-                  outline: overPic === n && moving !== n ? `2px solid ${c.amber}` : slide && !slide.playing && slide.at % show.images.length === i ? `2px solid ${c.teal}` : "none",
-                }}
-                title={`${i + 1}. ${slideLabel(n)}: double-click to work on it; drag onto another picture to move it there`}
-              >
-                {isBlank(n) ? (
-                  <span data-testid="stream-slide-blank" style={uiText(11, c.textMuted, { textAlign: "center", lineHeight: 1.3 })}>{slideLabel(n)}</span>
-                ) : (
-                  <img src={slideshowPictureUrl(show.name, n)} alt={n} draggable={false} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain", pointerEvents: "none" }} />
-                )}
-                <span style={{ position: "absolute", left: 3, top: 2, ...uiText(10, c.textMuted), background: fixed.pictureThumb, padding: "0 3px", borderRadius: 2 }}>{i + 1}</span>
-              </div>
-              {removing === n ? (
-                <div style={{ display: "flex", gap: 3 }}>
-                  <button type="button" onClick={() => ask("picture", () => removeSlideshowPicture(show.name, n)).then(() => setRemoving(null))} style={{ ...headerButton(), color: c.danger, borderColor: c.danger, padding: "0 5px" }}>
-                    Delete
-                  </button>
-                  <button type="button" onClick={() => setRemoving(null)} style={{ ...headerButton(), padding: "0 5px" }}>
-                    Keep
-                  </button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setRemoving(n)} title={n} style={{ ...headerButton(), justifyContent: "center", padding: "0 5px" }}>
-                  Delete
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      {show && <SlideThumbs show={show} slide={slide} ask={ask} busy={busy} removing={removing} setRemoving={setRemoving} />}
       <div style={help}>
         Each slideshow is a folder in the stream folder's slideshows folder: its pictures show one after another, round and round,
         in the order above (double-click one to work on it; drag a picture onto another to move it there; new ones go on the
@@ -258,6 +176,101 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
         square's colour and the words you write on it, in its turn. Pictures copied into it yourself count too. One slideshow can be in several squares.
       </div>
     </>
+  );
+}
+
+const row = { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" };
+
+// A name typed for a slideshow (a new one's, or the chosen one's new name): Enter saves it, Escape cancels.
+// `selectAll`: the name there is selected to start with, to type over.
+function NameRow({ testid, saveTestid, saveLabel, placeholder, value, onValue, onSave, onCancel, off, note = null, selectAll = false }) {
+  return (
+    <div style={row}>
+      <input
+        data-testid={testid} autoFocus value={value} maxLength={100} placeholder={placeholder} onChange={(e) => onValue(e.target.value)}
+        onFocus={selectAll ? (e) => e.target.select() : undefined} onKeyDown={(e) => (e.key === "Enter" ? onSave() : e.key === "Escape" && onCancel())}
+        style={{ ...box(), width: 200 }}
+      />
+      <button type="button" data-testid={saveTestid} onClick={onSave} disabled={off || !value.trim()} style={headerButton()}>
+        {saveLabel}
+      </button>
+      <button type="button" onClick={onCancel} style={headerButton()}>
+        Cancel
+      </button>
+      {note && <span style={uiText(12, c.textFaint)}>{note}</span>}
+    </div>
+  );
+}
+
+// A slideshow's pictures, in its order: double-click one to work on it (held on the canvas and the preview), drag one
+// onto another to move it there (the order is kept in the slideshow's folder), delete one (`removing`: the one asking
+// "Delete?").
+function SlideThumbs({ show, slide, ask, busy, removing, setRemoving }) {
+  const [moving, setMoving] = useState(null); // the picture being dragged to a new place
+  const [overPic, setOverPic] = useState(null); // the picture it would take the place of
+  const moveTo = (target) => {
+    const from = show.images.indexOf(moving);
+    const to = show.images.indexOf(target);
+    setMoving(null);
+    setOverPic(null);
+    if (from < 0 || to < 0 || from === to) return;
+    const order = [...show.images];
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    ask("picture", () => orderSlideshow(show.name, order));
+  };
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {show.images.length === 0 && <span style={uiText(12, c.textFaint)}>No pictures in it yet: Add pictures or Open folder.</span>}
+      {show.images.map((n, i) => (
+        <div
+          key={n} data-testid="stream-slide-thumb" draggable={!busy}
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", n);
+            setMoving(n);
+          }}
+          onDragEnter={() => moving && setOverPic(n)}
+          onDragOver={(e) => moving && e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            moveTo(n);
+          }}
+          onDragEnd={() => (setMoving(null), setOverPic(null))}
+          onDoubleClick={() => slide && (slide.stop(), slide.go(i))} // the one to work on: held on the canvas and the preview
+          style={{ width: 96, display: "flex", flexDirection: "column", gap: 3, opacity: moving === n ? 0.4 : 1, cursor: busy ? "default" : "grab" }}
+        >
+          <div
+            style={{
+              position: "relative", height: 54, background: fixed.pictureThumb, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
+              // where it would go while dragging; else the one on show, being worked on while held
+              outline: overPic === n && moving !== n ? `2px solid ${c.amber}` : slide && !slide.playing && slide.at % show.images.length === i ? `2px solid ${c.teal}` : "none",
+            }}
+            title={`${i + 1}. ${slideLabel(n)}: double-click to work on it; drag onto another picture to move it there`}
+          >
+            {isBlank(n) ? (
+              <span data-testid="stream-slide-blank" style={uiText(11, c.textMuted, { textAlign: "center", lineHeight: 1.3 })}>{slideLabel(n)}</span>
+            ) : (
+              <img src={slideshowPictureUrl(show.name, n)} alt={n} draggable={false} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain", pointerEvents: "none" }} />
+            )}
+            <span style={{ position: "absolute", left: 3, top: 2, ...uiText(10, c.textMuted), background: fixed.pictureThumb, padding: "0 3px", borderRadius: 2 }}>{i + 1}</span>
+          </div>
+          {removing === n ? (
+            <div style={{ display: "flex", gap: 3 }}>
+              <button type="button" onClick={() => ask("picture", () => removeSlideshowPicture(show.name, n)).then(() => setRemoving(null))} style={{ ...headerButton(), color: c.danger, borderColor: c.danger, padding: "0 5px" }}>
+                Delete
+              </button>
+              <button type="button" onClick={() => setRemoving(null)} style={{ ...headerButton(), padding: "0 5px" }}>
+                Keep
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setRemoving(n)} title={n} style={{ ...headerButton(), justifyContent: "center", padding: "0 5px" }}>
+              Delete
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
-import { box, colourBox, help, label12 } from "./editorFields.js";
-import { FULL_BOX, MIDDLE, fontFamily, isBlank, slideLabel } from "./CardScreen.jsx";
+import { box, colourBox, help, label12 } from "./streamStyles.js";
+import { FULL_BOX, MIDDLE, fontFamily, isBlank, slideLabel } from "./shapes.js";
 
 // What a camera square and a card's words can be set to, in the square editor (SquareEditor.jsx).
 

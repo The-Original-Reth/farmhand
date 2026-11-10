@@ -1,47 +1,15 @@
 import { c } from "../theme.js";
-import { fontFamily } from "./CardScreen.jsx";
+import { MAX_SIDE, autoGrid, fontFamily, resized } from "./shapes.js";
+import { heading, help, panel, subheading } from "./streamStyles.js";
 import { LayoutPanel } from "./StreamPanels.jsx";
-import { fieldBox, headerButton, panelBox, uiText } from "../styles.js";
+import { fieldBox, headerButton, uiText } from "../styles.js";
 
 // The Stream page's grid. The grid is 1x1 to 5x5 squares; each holds a camera, words, an image, a slideshow or nothing
 // (chosen in the preview's square editor, SquareEditor.jsx, and swapped by dragging in the preview). Every square has a
 // border round it, in a colour of your choosing.
-export const MAX_SIDE = 5;
 const SIDES = [1, 2, 3, 4, 5];
 
-const panel = () => panelBox({ padding: 16, display: "flex", flexDirection: "column", gap: 12 });
-const heading = uiText(14, c.heading, { fontWeight: 600 });
-const subheading = uiText(13, c.heading, { fontWeight: 600 });
 const part = { display: "flex", flexDirection: "column", gap: 12 };
-const help = uiText(12, c.textFaint, { lineHeight: 1.5 });
-
-// The smallest near-square grid for n squares, as the server works it out (services/live_stream/choices.py auto_grid)
-export const autoGrid = (n) => {
-  const cols = Math.min(MAX_SIDE, Math.max(1, Math.ceil(Math.sqrt(n))));
-  return { cols, rows: Math.min(MAX_SIDE, Math.max(1, Math.ceil(n / cols))) };
-};
-
-// The squares of a cols x rows grid made from those of another size: each stays where it was (row and column) when it
-// still fits; ones that don't move into the first empty squares, and are left out when there are none.
-export const resized = (cells, from, cols, rows) => {
-  const out = Array(cols * rows).fill(null);
-  const left = [];
-  cells.forEach((cell, i) => {
-    const r = Math.floor(i / from.cols);
-    const col = i % from.cols;
-    if (r < rows && col < cols) out[r * cols + col] = cell;
-    else if (cell) left.push(cell);
-  });
-  for (let i = 0; i < out.length && left.length; i++) if (!out[i]) out[i] = left.shift();
-  return out;
-};
-
-// The squares with a and b swapped
-export const swapped = (cells, a, b) => {
-  const next = [...cells];
-  [next[a], next[b]] = [next[b], next[a]];
-  return next;
-};
 
 // The grid's size, above the preview: 1 to 5 squares across and down. Squares that still fit keep their place.
 export function GridSize({ shown, change }) {

@@ -69,7 +69,7 @@ def ffmpeg(monkeypatch):
     fake = FakeFfmpeg()
     monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(live_stream.runner, "popen", fake)
-    monkeypatch.setenv(live_stream.runner.ENCODER_SETTING, "cpu")  # no trying a real ffmpeg for an NVIDIA card
+    monkeypatch.setenv(live_stream.encoders.ENCODER_SETTING, "cpu")  # no trying a real ffmpeg for an NVIDIA card
     return fake
 
 
@@ -826,7 +826,7 @@ def test_a_blank_screen_in_the_picture():
 
 
 def test_the_stream_is_compressed_by_an_nvidia_card_when_one_works(monkeypatch):
-    from app.services.live_stream import runner
+    from app.services.live_stream import encoders as runner
 
     monkeypatch.delenv(runner.ENCODER_SETTING, raising=False)
     runner._found_encoder.clear()
