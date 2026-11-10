@@ -92,6 +92,8 @@ export const scanStreamFolder = async () => normalizeStream(await post("/stream/
 export const uploadStreamPictures = async (files) => normalizeStream(await request("/stream/pictures", filesBody(files)));
 export const removeStreamPicture = async (name) => normalizeStream(await del(`/stream/pictures/${enc(name)}`));
 export const createSlideshow = async (name) => normalizeStream(await request("/stream/slideshows", jsonBody("POST", { name })));
+// a slideshow's new name: its folder is renamed, and every square showing it (on the page and in saved layouts) follows
+export const renameSlideshow = async (show, name) => normalizeStream(await request(`/stream/slideshows/${enc(show)}`, jsonBody("PUT", { name })));
 export const removeSlideshow = async (name) => normalizeStream(await del(`/stream/slideshows/${enc(name)}`));
 export const uploadSlideshowPictures = async (show, files) => normalizeStream(await request(`/stream/slideshows/${enc(show)}/pictures`, filesBody(files)));
 // a slideshow's pictures in the order chosen (kept in its folder)

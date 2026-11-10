@@ -181,6 +181,9 @@ export function useSavedSettings() {
     setToolLinks(r.config.preferences.tool_links);
   };
   // The Stream page's saved layouts, as a whole list (saved, replaced or deleted there): an error is shown there
+  // a slideshow renamed: the server has already changed the saved layouts' squares showing it; the list here follows
+  const slideshowRenamed = (old, name) =>
+    setStreamLayouts((list) => list.map((lay) => ({ ...lay, cells: (lay.cells || []).map((x) => (x && !x.camera && x.slideshow === old ? { ...x, slideshow: name } : x)) })));
   const saveStreamLayouts = async (next) => {
     const r = await saveConfig({ preferences: { stream_layouts: next } });
     setStreamLayouts(r.config.preferences.stream_layouts);
@@ -218,7 +221,7 @@ export function useSavedSettings() {
     monitor: { order: monitorOrder, saveOrder: saveMonitorOrder, maxZoom: monitorMaxZoom, changeMaxZoom: changeMonitorMaxZoom },
     farmCost: { order: farmCostOrder, changeOrder: changeFarmCostOrder },
     tools: { links: toolLinks, save: saveToolLinks },
-    streamLayouts: { list: streamLayouts, save: saveStreamLayouts },
+    streamLayouts: { list: streamLayouts, save: saveStreamLayouts, renamed: slideshowRenamed },
     energy: { prices: energyPrices, changePrice: changeEnergyPrice, changeMonthPrice },
   };
 }

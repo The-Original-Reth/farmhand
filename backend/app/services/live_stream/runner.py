@@ -110,7 +110,10 @@ class Stream:
                                else {"state": "failed", "message": "Sign in to YouTube (below) for Farmhand to set the title and description."})
             self._wanted.set()
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
-        # each card's words, as a file ffmpeg reads (its pictures are read where they are, in the stream folder)
+        # ffmpeg reads each picture again every second: it reads copies made here once, never the stream folder (on
+        # the NAS, that's a hundred files opened a second, and pictures being copied in clash with it)
+        pictures = _local_copies(pictures, folder)
+        # each card's words, as a file ffmpeg reads
         text_paths = {}
         captions = {}  # square -> {its picture's place in the slideshow: {"words": file, "text_box"}}
         for c, cell in cards.items():
@@ -264,6 +267,28 @@ def _card_pictures(db: Session, cards) -> dict:
                 out[c] = [str(stream_media.picture_path(db, None, cell["image"]))]
         except (NotFound, ValueError, storage.StorageUnavailableError, OSError):
             out[c] = []
+    return out
+
+
+def _local_copies(pictures: dict, folder: str) -> dict:
+    """The cards' pictures copied once into the stream's own folder, each under its own name (a slideshow picture's
+    words go by it): {square: [copies]}. One picture in several squares is copied once; one that can't be read now
+    (being copied in, say) is left out, as one not there is."""
+    copied: dict[str, str | None] = {}
+    out = {}
+    for c, paths in pictures.items():
+        out[c] = []
+        for path in paths:
+            if path not in copied:
+                to = os.path.join(folder, "pictures", str(len(copied)), os.path.basename(path))
+                try:
+                    os.makedirs(os.path.dirname(to), exist_ok=True)
+                    shutil.copyfile(path, to)
+                    copied[path] = to
+                except OSError:
+                    copied[path] = None
+            if copied[path]:
+                out[c].append(copied[path])
     return out
 
 

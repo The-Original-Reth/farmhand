@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";
 import { c } from "../theme.js";
 import { cancelButton, fieldBox, headerButton, panelBox, primaryButton, uiText } from "../styles.js";
-import { errorText, getStream, saveStream, startStream, stopStream } from "../api.js";
+import { errorText, getStream, renameSlideshow, saveStream, startStream, stopStream } from "../api.js";
 import { useData } from "../data.jsx";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
@@ -28,7 +28,7 @@ const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-d
 const printerOf = (key) => Number(key.slice(0, key.indexOf(":")));
 const cameraOf = (key) => key.slice(key.indexOf(":") + 1);
 
-export function StreamSection({ layouts = [], onSaveLayouts }) {
+export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed }) {
   const { printers } = useData();
   const active = printers.filter((p) => !p.decommissioned);
   const [page, setPageFirst] = useState(null); // (set below; here so the switch can quiet the page's other askers)
@@ -100,6 +100,15 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
     } finally {
       setBusy(null);
     }
+  };
+  // a slideshow renamed (its folder on the server, and the saved squares and layouts showing it): squares changed here
+  // and not saved yet follow too. The page as the server answered, or null when it couldn't.
+  const renameShow = async (old, name) => {
+    const p = await ask("picture", () => renameSlideshow(old, name));
+    if (!p) return null;
+    setDraft((d) => d && { ...d, cells: d.cells.map((x) => (x && !x.camera && x.slideshow === old ? { ...x, slideshow: name } : x)) });
+    onSlideshowRenamed?.(old, name);
+    return p;
   };
   // everything on the page that's saved with Save (a blank number box is sent as it is, for the server to say why not)
   const sendAll = () =>
@@ -219,7 +228,7 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
         <StreamPreview
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
-          ask={ask} busy={busy} onSave={saveNow} dirty={changed}
+          ask={ask} busy={busy} onSave={saveNow} dirty={changed} onRenameSlideshow={renameShow}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
       </div>

@@ -673,7 +673,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   keep looking at the folder). A slideshow is chosen from a list, with **New slideshow** (asks its name), **Add pictures**, **Open folder**
   (shows the slideshow's folder as Windows reaches it, `\\server\share\stream\slideshows\…`, with **Copy**, to paste
   into File Explorer: a web page can't open File Explorer itself, and a stream folder that isn't on a network share
-  can't be reached so) and **Delete slideshow**;
+  can't be reached so), **Rename** (renames the slideshow's folder on the server too, keeping its pictures and order;
+  squares showing it, on the page and in saved layouts, follow the new name) and **Delete slideshow**;
   **Show each picture for** sets the seconds (3 to 3600); its pictures go round in the order shown (drag a picture onto another to move it there; the order is kept in the
   slideshow's folder, so every square and the stream follow it, and pictures added later go on the end). Under the editor's
   canvas, **Stop** holds the picture on show (to move or resize it), **Back** and **Next** step through them and
@@ -682,6 +683,10 @@ benchy.gcode`), brought up to date every 15 seconds.
   is the text shown on the pictures without their own. **Delete picture**
   and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the
   stream each picture is read and fitted once a second and shown in its own seconds, so a slideshow costs very little.
+  Going live copies the pictures once from the stream folder onto Farmhand's own disk, and the stream reads only those
+  copies: a stream folder on the NAS isn't read while live, so copying pictures into it then is safe. Pictures added
+  or changed by hand while live show once the stream starts again (Stop, then Go live); ones added or deleted on the
+  Stream page start it again themselves.
 - **Layout** (in Defaults): the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
   (0 skips it), then each camera full-screen, in square order, for *Stay on each camera* seconds, round and round.
   The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one

@@ -205,3 +205,31 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
     app_settings.put(db, SETTINGS_KEY, json.dumps({k: now[k] for k in SAVED}))
     db.commit()
     return settings(db)
+
+
+def rename_slideshow(db: Session, old: str, new: str) -> int:
+    """A slideshow's folder was renamed: every square showing it, on the Stream page and in each saved layout, shows it
+    by its new name. How many squares changed."""
+    from .. import config_service  # (it reads these settings itself)
+
+    def follow(cells) -> int:
+        n = 0
+        for c in cells:
+            if isinstance(c, dict) and "camera" not in c and c.get("slideshow") == old:
+                c["slideshow"] = new
+                n += 1
+        return n
+
+    try:
+        raw = json.loads(app_settings.get(db, SETTINGS_KEY) or "{}")
+    except ValueError:
+        raw = {}
+    changed = follow(raw.get("cells") or []) if isinstance(raw, dict) else 0
+    if changed:
+        app_settings.put(db, SETTINGS_KEY, json.dumps(raw))
+        db.commit()
+    layouts = config_service.get_config(db)["preferences"]["stream_layouts"]
+    in_layouts = sum(follow(lay["cells"]) for lay in layouts)
+    if in_layouts:
+        config_service.save_config(db, {"preferences": {"stream_layouts": layouts}})
+    return changed + in_layouts

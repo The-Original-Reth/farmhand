@@ -52,7 +52,7 @@ function SectionPage({ section, nav, compare, settings }) {
     case "monitor":
       return <MonitorSection order={monitor.order} onSave={monitor.saveOrder} maxZoom={monitor.maxZoom} onMaxZoom={monitor.changeMaxZoom} />;
     case "stream":
-      return <StreamSection layouts={streamLayouts.list} onSaveLayouts={streamLayouts.save} />;
+      return <StreamSection layouts={streamLayouts.list} onSaveLayouts={streamLayouts.save} onSlideshowRenamed={streamLayouts.renamed} />;
     case "tools":
       return <ToolsSection links={tools.links} onSave={tools.save} />;
     case "appearance":

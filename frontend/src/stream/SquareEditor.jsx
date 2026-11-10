@@ -22,7 +22,7 @@ import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
 
 const KINDS = [["camera", "Camera"], ["text", "Text"], ["picture", "Picture"], ["slideshow", "Slideshow"], ["empty", "Empty"]];
 export const kindOf = (cell) => (!cell ? "empty" : cell.camera ? "camera" : cell.slideshow ? "slideshow" : cell.image ? "picture" : "text");
-export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, slide = null, showStatus = true, label, screen, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground }) {
+export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, slide = null, showStatus = true, label, screen, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground, onRenameSlideshow }) {
   const cell = cells[i];
   const [kind, setKind] = useState(kindOf(cell));
   useEffect(() => setKind(kindOf(cells[i])), [i]); // another square clicked
@@ -78,7 +78,7 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
         <div style={{ flex: "1 1 280px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           {kind === "camera" && <CameraChoice cells={cells} i={i} onCells={onCells} cameras={cameras} label={label} />}
           {kind === "picture" && <PictureChoice card={card} setCard={setCard} media={media} ask={ask} busy={busy} />}
-          {kind === "slideshow" && <SlideshowChoice card={card} setCard={setCard} media={media} ask={ask} busy={busy} slide={slide} />}
+          {kind === "slideshow" && <SlideshowChoice card={card} setCard={setCard} media={media} ask={ask} busy={busy} slide={slide} onRename={onRenameSlideshow} />}
           {(isCard || (kind === "camera" && cell?.camera)) && (
             <label style={label12}>
               <input
