@@ -4,7 +4,18 @@
 // ---- a card
 export const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
 export const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
-export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {}, picture_boxes: {} };
+export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {}, picture_boxes: {}, layers: [], slide_layers: {} };
+// More pictures and words on a card, each placed on its own over what it shows: { type: "picture", image: a picture's
+// file name, box: { x, y, w, h } } | { type: "text", text, box: { x, y, size }, font, color, band }. A Text or Picture
+// square's are card.layers; a slideshow's are each screen's own, card.slide_layers[the picture's name, or "blank:N"].
+export const MAX_LAYERS = 12;
+export const newPicture = (image) => ({ type: "picture", image, box: { x: 0.3, y: 0.25, w: 0.4, h: 0.5 } });
+export const newText = () => ({ type: "text", text: "New text", box: { x: 0.5, y: 0.5, size: 0.1 }, font: null, color: null, band: false });
+// the extra pictures and words on what a card shows now (`slideName`: the slideshow's screen on show), and how to change them
+export const layersOf = (card, slideName) =>
+  card.slideshow ? (slideName ? card.slide_layers?.[slideName] || [] : null) : card.layers || [];
+export const layersChange = (card, slideName, next) =>
+  card.slideshow ? { slide_layers: { ...card.slide_layers, [slideName]: next } } : { layers: next };
 // a slideshow's blank screen ("blank:2": Farmhand's own, no picture, just the square's colour and its words), and the
 // name a slide is shown by
 export const isBlank = (name) => typeof name === "string" && name.startsWith("blank:");

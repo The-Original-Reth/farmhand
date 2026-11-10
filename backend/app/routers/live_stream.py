@@ -126,8 +126,12 @@ def _media(call):
 
 def _restart_if_used(db: Session, slideshow: str | None, image: str | None = None) -> None:
     """Pictures changed: the stream starts again with them, when it's live and a square shows them."""
+    def on_it(c) -> bool:  # (its own picture, or one of its more pictures, a slideshow screen's too)
+        layers = [*(c.get("layers") or []), *(x for ls in (c.get("slide_layers") or {}).values() for x in ls)]
+        return c.get("image") == image or any(x.get("type") == "picture" and x.get("image") == image for x in layers)
+
     for c in live_stream.settings(db)["cells"]:
-        if c and "camera" not in c and ((slideshow and c.get("slideshow") == slideshow) or (image and c.get("image") == image)):
+        if c and "camera" not in c and ((slideshow and c.get("slideshow") == slideshow) or (image and on_it(c))):
             _restart_if_live(db)
             return
 

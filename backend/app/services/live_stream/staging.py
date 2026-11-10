@@ -71,6 +71,7 @@ def squares(db: Session, chosen: dict, folder: str) -> list:
     cards = {c: cell for c, cell in enumerate(chosen["cells"]) if cell and "camera" not in cell}
     pictures = local_copies(card_pictures(db, cards), folder)
     place = {k: i for i, k in enumerate(chosen["cameras"])}
+    copied: dict = {}  # the cards' more pictures, each copied once
     out = []
     for c, cell in enumerate(chosen["cells"]):
         if not cell:
@@ -89,5 +90,43 @@ def squares(db: Session, chosen: dict, folder: str) -> list:
                     file = os.path.join(folder, f"text-{c}-{j}.txt")
                     write_atomically(file, cap["text"])
                     own[j] = {"words": file, "text_box": cap.get("text_box")}
-            out.append(("card", {**cell, "pictures": pictures.get(c, []), "words": words, "picture_words": own}))
+            # its more pictures and pieces of text: the card's own, and each slideshow screen's (by its place in it)
+            layers = staged_layers(db, cell.get("layers") or [], folder, f"{c}", copied)
+            screens = {}
+            for j, path in enumerate(pictures.get(c, [])):
+                got = staged_layers(db, (cell.get("slide_layers") or {}).get(os.path.basename(path)) or [], folder, f"{c}-{j}", copied)
+                if got:
+                    screens[j] = got
+            out.append(("card", {**cell, "pictures": pictures.get(c, []), "words": words, "picture_words": own, "layers": layers,
+                                 "screen_layers": screens}))
+    return out
+
+
+def staged_layers(db: Session, layers: list, folder: str, tag: str, copied: dict) -> list[dict]:
+    """A card's (or a slideshow screen's) more pictures and pieces of text as ffmpeg takes them, in their order: a
+    picture copied once into the stream's own folder ({"type": "picture", "path", "box"}; one not chosen, not there or
+    unreadable is left out), a piece of text as a file ({"type": "text", "words": file, "box", "font", "color", "band"};
+    an empty one is left out). `copied`: the pictures copied so far, {stream folder path: copy}."""
+    out = []
+    for k, layer in enumerate(layers):
+        if layer.get("type") == "picture" and layer.get("image"):
+            try:
+                path = str(stream_media.picture_path(db, None, layer["image"]))
+            except (NotFound, ValueError, storage.StorageUnavailableError, OSError):
+                continue
+            if path not in copied:
+                to = os.path.join(folder, "pictures", f"layer-{len(copied)}", os.path.basename(path))
+                try:
+                    os.makedirs(os.path.dirname(to), exist_ok=True)
+                    shutil.copyfile(path, to)
+                    copied[path] = to
+                except OSError:
+                    copied[path] = None
+            if copied[path]:
+                out.append({"type": "picture", "path": copied[path], "box": layer.get("box")})
+        elif layer.get("type") == "text" and (layer.get("text") or "").strip():
+            file = os.path.join(folder, f"layer-{tag}-{k}.txt")
+            write_atomically(file, layer["text"].strip())
+            out.append({"type": "text", "words": file, "box": layer.get("box"), "font": layer.get("font"), "color": layer.get("color"),
+                        "band": layer.get("band") is True})
     return out

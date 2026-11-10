@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { c, fixed, fs, ui } from "../theme.js";
 import { slideshowPictureUrl, streamFontUrl, streamPictureUrl } from "../api.js";
-import { FULL_BOX, MIDDLE, fontFamily, isBlank } from "./shapes.js";
+import { FULL_BOX, MIDDLE, fontFamily, isBlank, layersChange, layersOf } from "./shapes.js";
 
 // What a card looks like (CardScreen), in the preview and on the editor's canvas, and the stream's fonts: what a
 // card is made of (CARD), and each font loaded from the server so the words look here as on the stream.
@@ -23,7 +23,9 @@ const clamp = (v, least, most) => Math.round(Math.min(most, Math.max(least, v)) 
 // plays on its own, or, with `clock` (seconds the stream has run, while live), shows the picture the stream shows now.
 // A slideshow picture with words of its own (card.captions) shows those instead of the card's.
 // `inset`: the square's border, as a part of its height: the picture is fitted inside it, as the stream fits it.
-export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null, clock = null, still = false }) {
+// `layer`, `onLayer(i)`: the extra picture or words (card.layers, or a blank screen's) chosen in the editor; clicking one
+// on the canvas chooses it.
+export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null, clock = null, still = false, layer = null, onLayer = null }) {
   const [el, setEl] = useState(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [ownShot, setOwnShot] = useState(0);
@@ -77,6 +79,9 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
   const tb = (cap ? cap.text_box : card.text_box) || MIDDLE;
   const words = (cap ? cap.text : card.text)?.trim();
   const setTextBox = (b) => (cap ? onChange({ captions: { ...card.captions, [name]: { ...cap, text_box: b } } }) : onChange({ text_box: b }));
+  // the extra pictures and words on a blank surface (a Text square, or a slideshow's blank screen on show)
+  const layers = layersOf(card, name) || [];
+  const setLayerBox = (i, b) => onChange(layersChange(card, name, layers.map((l, j) => (j === i ? { ...l, box: b } : l))));
   const px = Math.max(6, size.h * tb.size);
 
   const start = (what) => (e) => {
@@ -86,7 +91,10 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); // the text box typed in lets go
     window.getSelection()?.removeAllRanges();
     dragged.current = false;
-    drag.current = { what, x: e.clientX, y: e.clientY, from: what.startsWith("picture") ? shown : tb }; // the box closes round the picture
+    const li = what.startsWith("layer") ? Number(what.split(":")[1]) : null;
+    if (li !== null) onLayer?.(li);
+    // the box closes round the picture
+    drag.current = { what, li, x: e.clientX, y: e.clientY, from: li !== null ? layers[li].box : what.startsWith("picture") ? shown : tb };
     el.setPointerCapture(e.pointerId);
   };
   const move = (e) => {
@@ -97,6 +105,16 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
     const px_ = (e.clientX - d.x) / iw; // the picture moves within the part inside the border
     const py_ = (e.clientY - d.y) / ih;
     const f = d.from;
+    if (d.li !== null) {
+      const l = layers[d.li];
+      if (!l) return;
+      if (d.what.startsWith("layerSize")) {
+        if (l.type === "text") setLayerBox(d.li, { ...f, size: clamp(f.size + dy, 0.02, 0.6) });
+        else setLayerBox(d.li, { ...f, w: clamp(f.w + dx, 0.05, 1 - f.x), h: clamp(f.h + dy, 0.05, 1 - f.y) });
+      } else if (l.type === "text") setLayerBox(d.li, { ...f, x: clamp(f.x + dx, 0, 1), y: clamp(f.y + dy, 0, 1) });
+      else setLayerBox(d.li, { ...f, x: clamp(f.x + dx, 0, 1 - f.w), y: clamp(f.y + dy, 0, 1 - f.h) });
+      return;
+    }
     if (d.what === "picture") setPictureBox({ ...f, x: clamp(f.x + px_, 0, 1 - f.w), y: clamp(f.y + py_, 0, 1 - f.h) });
     else if (d.what === "text") setTextBox({ ...f, x: clamp(f.x + dx, 0, 1), y: clamp(f.y + dy, 0, 1) });
     else if (d.what === "textSize") setTextBox({ ...f, size: clamp(f.size + dy, 0.02, 0.6) });
@@ -161,6 +179,46 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
           {card.slideshow ? "No pictures in the slideshow yet" : "Picture not in the stream folder"}
         </div>
       ) : null}
+      {layers.map((l, i) => {
+        const chosen = edit && edit !== "quiet" && layer === i;
+        const on = edit && (chosen || hover === `layer:${i}` || drag.current?.li === i);
+        const look = { cursor: edit ? "move" : undefined, outline: on ? `1px ${chosen ? "solid" : "dashed"} ${c.amber}` : undefined, pointerEvents: edit ? "auto" : "none" };
+        const corner = on && (
+          <div
+            data-testid="stream-canvas-layer-size" title="Drag to make it bigger or smaller" onPointerDown={start(`layerSize:${i}`)}
+            style={{ position: "absolute", right: l.type === "text" ? -7 : 0, bottom: l.type === "text" ? -7 : 0, width: 12, height: 12, background: c.amber, border: `1px solid ${fixed.cameraText}`, cursor: "nwse-resize", pointerEvents: "auto" }}
+          />
+        );
+        const hold = { onPointerDown: start(`layer:${i}`), onPointerEnter: () => setHover(`layer:${i}`), onPointerLeave: () => setHover(null), onClick: edit ? (e) => e.stopPropagation() : undefined };
+        if (l.type === "picture") {
+          const b = l.box;
+          return (
+            <div key={i} data-testid="stream-canvas-layer" {...hold}
+              style={{ position: "absolute", left: `${(edge + b.x * iw) / (size.w || 1) * 100}%`, top: `${(edge + b.y * ih) / (size.h || 1) * 100}%`, width: `${(b.w * iw) / (size.w || 1) * 100}%`, height: `${(b.h * ih) / (size.h || 1) * 100}%`, ...look }}>
+              {l.image && media.images.includes(l.image) ? (
+                <img src={streamPictureUrl(l.image)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
+              ) : (
+                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(10), color: fixed.cameraMessage, border: `1px dashed ${fixed.cameraMessage}`, boxSizing: "border-box" }}>
+                  {l.image ? "Not in the stream folder" : "Choose a picture"}
+                </div>
+              )}
+              {corner}
+            </div>
+          );
+        }
+        const lpx = Math.max(6, size.h * l.box.size);
+        return (
+          <div key={i} data-testid="stream-canvas-layer" {...hold}
+            style={{
+              position: "absolute", left: `${l.box.x * 100}%`, top: `${l.box.y * 100}%`, transform: "translate(-50%, -50%)",
+              color: l.color || streamText.color || "#FFFFFF", fontFamily: fontFamily(l.font || streamText.font), fontSize: lpx, lineHeight: 1.25, textAlign: "center", whiteSpace: "pre",
+              background: l.band ? fixed.cameraBadge : "transparent", padding: l.band ? `0 ${lpx / 5}px` : 0, ...look,
+            }}>
+            {l.text.trim() || " "}
+            {corner}
+          </div>
+        );
+      })}
       {words && (
         <div
           data-testid="stream-canvas-text" onPointerDown={start("text")} onPointerEnter={() => setHover("text")} onPointerLeave={() => setHover(null)} onClick={edit ? (e) => e.stopPropagation() : undefined}

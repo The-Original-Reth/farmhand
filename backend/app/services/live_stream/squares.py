@@ -20,8 +20,10 @@ OLD_SIZES = {"small": 1 / 12, "medium": 1 / 8, "large": 1 / 5}
 OLD_PLACES = {"top": 0.18, "middle": 0.5, "bottom": 0.82}
 SLIDE_SECONDS = (3, 3600, 10)  # (least, most, default): how long each picture of a slideshow is shown
 PICTURE_NAME = re.compile(r"^[^/\\\0]{1,120}$")
-CARD_KEYS = ("background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box", "captions", "picture_boxes")
+CARD_KEYS = ("background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box", "captions", "picture_boxes",
+             "layers", "slide_layers")
 MAX_CAPTIONS = 500  # a slideshow's pictures with words of their own
+MAX_LAYERS = 12  # more pictures and pieces of text on a card, or on one of a slideshow's screens
 
 
 def _color(v, default: str | None) -> str | None:
@@ -105,6 +107,41 @@ def _picture_boxes(raw) -> dict:
     return out
 
 
+def _layer(raw) -> dict | None:
+    """One more picture or piece of text on a card, placed on its own: {"type": "picture", "image": a picture's file name
+    in the stream folder's images (None: not chosen yet), "box": {x, y, w, h}} | {"type": "text", "text", "box": {x, y,
+    size}, "font" (None: the stream's), "color" (None: the stream's), "band"}. The text as written (check_cells trims it
+    and says when it's too long)."""
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("type") == "picture":
+        return {"type": "picture", "image": _named(raw.get("image")), "box": _picture_box(raw.get("box"))}
+    if raw.get("type") == "text" and isinstance(raw.get("text"), str):
+        return {"type": "text", "text": raw["text"], "box": _text_box(raw.get("box")),
+                "font": raw.get("font") if raw.get("font") in FONTS else None, "color": _color(raw.get("color"), None), "band": raw.get("band") is True}
+    return None
+
+
+def _layers(raw) -> list[dict]:
+    """A card's (or a slideshow screen's) more pictures and pieces of text, in the order they're drawn (anything else
+    sent is left out)."""
+    return [x for x in (_layer(r) for r in raw) if x] if isinstance(raw, list) else []
+
+
+def _slide_layers(raw) -> dict:
+    """A slideshow's screens' own more pictures and pieces of text, {a picture's file name, or "blank:N": [layers]},
+    those that have some."""
+    out = {}
+    if isinstance(raw, dict):
+        for name, layers in raw.items():
+            if len(out) >= MAX_CAPTIONS:
+                break
+            got = _layers(layers)
+            if _named(name) and got:
+                out[name] = got
+    return out
+
+
 def _cell(raw) -> dict | None:
     """
     A square as kept: {"camera": "printer id:camera name"}; a card, {"background": its colour (None: the stream's),
@@ -112,7 +149,9 @@ def _cell(raw) -> dict | None:
     "seconds": each slideshow picture's, "text": words over it ("" none), "color", "font" (one of FONTS), "band" (a dark band behind the words), "picture_box": {x, y, w, h} where the
     picture is fitted, "text_box": {x, y, size} the words' centre and height (all parts of the square, 0 to 1), "picture_boxes": a
     slideshow's pictures' own size and place, {picture's name: picture_box}, "captions": a
-    slideshow's pictures' own words, {picture's name: {text, text_box}}, shown instead of "text" while that picture is}; or
+    slideshow's pictures' own words, {picture's name: {text, text_box}}, shown instead of "text" while that picture is,
+    "layers": more pictures and pieces of text over it, each placed on its own (see _layer), "slide_layers": a
+    slideshow's screens' own, {picture's name or "blank:N": [layers]}, shown while that screen is}; or
     None (empty: the stream's background colour). Missing parts get defaults.
     """
     if not isinstance(raw, dict):
@@ -137,6 +176,8 @@ def _cell(raw) -> dict | None:
     }
     card["captions"] = _captions(raw.get("captions")) if card["slideshow"] else {}
     card["picture_boxes"] = _picture_boxes(raw.get("picture_boxes")) if card["slideshow"] else {}
+    card["layers"] = [] if card["slideshow"] else _layers(raw.get("layers"))
+    card["slide_layers"] = _slide_layers(raw.get("slide_layers")) if card["slideshow"] else {}
     if card["slideshow"]:
         card["image"] = None
     return card

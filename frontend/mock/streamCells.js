@@ -12,7 +12,9 @@ export const DEFAULT_FONT = "play";
 export const CARD = {
   background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false,
   picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 }, captions: {}, picture_boxes: {},
+  layers: [], slide_layers: {},
 };
+const MAX_LAYERS = 12;
 
 export const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v || "") ? v.toUpperCase() : d);
 export const fileName = (v) => (typeof v === "string" && /^[^/\\]{1,120}$/.test(v) && v !== "." && v !== ".." ? v : null);
@@ -29,6 +31,17 @@ const textBox = (b, size, position) =>
   b && typeof b === "object"
     ? { x: part(b.x, 0, 1, 0.5), y: part(b.y, 0, 1, 0.5), size: part(b.size, 0.02, 0.6, 0.125) }
     : { x: 0.5, y: { top: 0.18, bottom: 0.82 }[position] ?? 0.5, size: Math.round(({ small: 1 / 12, large: 1 / 5 }[size] ?? 0.125) * 1e4) / 1e4 };
+
+// more pictures and words on a card, each placed on its own (a slideshow's: each screen's own, by its picture's name):
+// { type: "picture", image, box: { x, y, w, h } } | { type: "text", text, box: { x, y, size }, font, color, band }
+const layersOf = (list) =>
+  (Array.isArray(list) ? list : []).slice(0, MAX_LAYERS).flatMap((l) => {
+    if (l?.type === "picture") return [{ type: "picture", image: fileName(l.image), box: pictureBox(l.box) }];
+    if (l?.type === "text" && typeof l.text === "string") {
+      return [{ type: "text", text: l.text.slice(0, 500), box: textBox(l.box), font: FONTS.some(([k]) => k === l.font) ? l.font : null, color: hex(l.color, null), band: l.band === true }];
+    }
+    return [];
+  });
 
 // a camera's square, and only what differs from the usual: its colour round it, and its words (shown, size, colour, font)
 export const cameraCell = (x) => {
@@ -55,6 +68,11 @@ export const cardCell = (x) => ({
   // a slideshow's pictures' own size and place, each resized or moved on its own
   picture_boxes: x.slideshow && x.picture_boxes && typeof x.picture_boxes === "object"
     ? Object.fromEntries(Object.entries(x.picture_boxes).filter(([name, b]) => fileName(name) && b && typeof b === "object").map(([name, b]) => [name, pictureBox(b)]))
+    : {},
+  // more pictures and words: a Text or Picture square's, and each screen's of a slideshow
+  layers: !x.slideshow ? layersOf(x.layers) : [],
+  slide_layers: x.slideshow && x.slide_layers && typeof x.slide_layers === "object"
+    ? Object.fromEntries(Object.entries(x.slide_layers).filter(([name]) => fileName(name)).map(([name, list]) => [name, layersOf(list)]).filter(([, list]) => list.length))
     : {},
   // a slideshow's pictures' own words, kept with the picture they were written on
   captions: x.slideshow && x.captions && typeof x.captions === "object"
