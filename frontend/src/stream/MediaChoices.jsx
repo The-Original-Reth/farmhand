@@ -134,7 +134,7 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRena
         <ScanFolder ask={ask} busy={busy} media={media} />
         {busy === "picture" && <span style={uiText(12, c.textFaint)}>Working…</span>}
       </div>
-      {opening && <OpenFolder media={media} show={show} />}
+      {opening && <OpenFolder media={media} rest={show ? `slideshows\\${show.name}` : "slideshows"} />}
       {name !== null && (
         <NameRow
           testid="stream-slideshow-name" saveTestid="stream-slideshow-create" saveLabel="Make it" placeholder="The new slideshow's name"
@@ -274,13 +274,13 @@ function SlideThumbs({ show, slide, ask, busy, removing, setRemoving }) {
   );
 }
 
-// Where a slideshow's folder is (or the slideshows folder, with none chosen), to open in File Explorer: a web page can't
-// open a window on this computer itself, so it's shown as Windows reaches it over the network (\\server\share\...) to
-// copy and paste into File Explorer's address bar. A stream folder that isn't on a network share can't be reached so.
-function OpenFolder({ media, show }) {
+// Where a folder in the stream folder is (`rest`: a slideshow's, "slideshows\name", or "music"), to open in File
+// Explorer: a web page can't open a window on this computer itself, so it's shown as Windows reaches it over the network
+// (\\server\share\...) to copy and paste into File Explorer's address bar. A stream folder that isn't on a network share
+// can't be reached so. `what`: what's put in it ("Pictures", "Tracks").
+export function OpenFolder({ media, rest, what = "Pictures", testid = "stream-slideshow" }) {
   const field = useRef(null);
   const [copied, setCopied] = useState(false);
-  const rest = show ? `slideshows\\${show.name}` : "slideshows";
   const where = media.windows_path ? `${media.windows_path}\\${rest}` : null;
   const copy = async () => {
     try {
@@ -304,15 +304,15 @@ function OpenFolder({ media, show }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <input
-          ref={field} data-testid="stream-slideshow-path" readOnly value={where} onFocus={(e) => e.target.select()}
+          ref={field} data-testid={`${testid}-path`} readOnly value={where} onFocus={(e) => e.target.select()}
           style={{ ...box(), flex: 1, minWidth: 0, fontFamily: "monospace" }}
         />
-        <button type="button" data-testid="stream-slideshow-copy-path" onClick={copy} style={headerButton()}>
+        <button type="button" data-testid={`${testid}-copy-path`} onClick={copy} style={headerButton()}>
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
       <div style={uiText(11, c.textFaint, { lineHeight: 1.5 })}>
-        Paste it into File Explorer's address bar (a web page can't open File Explorer itself). Pictures you put in it show up here.
+        Paste it into File Explorer's address bar (a web page can't open File Explorer itself). {what} you put in it show up here (Scan folder, for ones put in while the page is open).
       </div>
     </div>
   );

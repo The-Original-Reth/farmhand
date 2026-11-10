@@ -3,7 +3,7 @@
 // title and description. The mockup sends nothing anywhere: Go live just says it's live, after the same checks the real
 // server makes. The stream key and the Google client secret are kept only as "one is saved". Signing in to YouTube shows
 // a made-up code and counts as done a few seconds later; the stream folder is kept in memory, sample pictures standing in
-// for the files uploaded.
+// for the files uploaded (and a short tone for each track of music).
 import { HttpError } from "../core.js";
 import { FONTS, cameraCell, cardCell, fileName, isCard } from "../streamCells.js";
 
@@ -16,7 +16,18 @@ const SIGN_IN_TAKES_MS = 6000;
 const RESOLUTIONS = { "720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)" };
 const MAX_SIDE = 5;
 const PICTURES = ["frog-vt1190", "shark-v2bog", "shark-vt1190"]; // the sample pictures shown for the uploads, in turn
-const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background", "font", "color"];
+const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background", "font", "color",
+  "music", "music_volume", "music_shuffle"];
+// a track of music, as the mock plays it: two seconds of a tone (a WAV), its note by its place among the uploads
+const tone = (n) => {
+  const rate = 8000, len = rate * 2, out = Buffer.alloc(44 + len * 2);
+  out.write("RIFF", 0); out.writeUInt32LE(36 + len * 2, 4); out.write("WAVEfmt ", 8); out.writeUInt32LE(16, 16); out.writeUInt16LE(1, 20);
+  out.writeUInt16LE(1, 22); out.writeUInt32LE(rate, 24); out.writeUInt32LE(rate * 2, 28); out.writeUInt16LE(2, 32); out.writeUInt16LE(16, 34);
+  out.write("data", 36); out.writeUInt32LE(len * 2, 40);
+  const hz = [262, 330, 392, 523][n % 4];
+  for (let i = 0; i < len; i++) out.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * hz * i) / rate) * Math.min(1, (len - i) / 800)), 44 + i * 2);
+  return out;
+};
 // the stream folder when none is chosen: "stream" in the folder above the STL folder
 // a folder on the sample NAS as Windows reaches it (services/stream_media.py windows_path)
 const windowsPath = (p) => (p.startsWith("/data/nas/farm-nas/") ? `\\\\192.168.1.50\\farm\\${p.slice(19).split("/").join("\\")}` : null);
@@ -35,7 +46,8 @@ export function streamRoutes(ctx) {
     (farm.stream ??= {
       destination: "youtube", cols: 1, rows: 1, cells: [null], show_status: true, layout: "grid", resolution: "1080p", seconds_all: 30,
       seconds_each: 20, border_color: "#000000", background: "#000000", font: "play", color: "#FFFFFF", enabled: true, title: "", description: "", key_set: false,
-      images: [], slideshows: [], uploads: 0,
+      music: false, music_volume: 50, music_shuffle: true,
+      images: [], slideshows: [], tracks: [], uploads: 0,
       live: false, started_at: null, labels: [], title_status: null,
       youtube: { client_id: null, signed_in: false, channel: null, signing_in: null, error: null },
     });
@@ -54,6 +66,7 @@ export function streamRoutes(ctx) {
       settings: {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, cameras: camerasOf(s), show_status: s.show_status, layout: s.layout,
         resolution: s.resolution, seconds_all: s.seconds_all, seconds_each: s.seconds_each, border_color: s.border_color, background: s.background, font: s.font, color: s.color, enabled: s.enabled,
+        music: s.music, music_volume: s.music_volume, music_shuffle: s.music_shuffle,
         title: s.title, description: s.description, key_set: s.key_set,
       },
       status: {
@@ -66,6 +79,7 @@ export function streamRoutes(ctx) {
       media: {
         path: farm.streamFolder || streamDefault(farm), error: null, windows_path: windowsPath(farm.streamFolder || streamDefault(farm)), images: s.images.map((x) => x.name).sort(natural),
         slideshows: [...s.slideshows].sort((a, b) => natural(a.name, b.name)).map((x) => ({ name: x.name, images: x.ordered ? x.images.map((i) => i.name) : x.images.map((i) => i.name).sort(natural) })),
+        music: s.tracks.map((x) => x.name).sort(natural),
       },
       youtube: youtube(),
     };
@@ -143,6 +157,12 @@ export function streamRoutes(ctx) {
       s.cells = [...keys.map((k) => ({ camera: k })), ...Array(s.cols * s.rows - keys.length).fill(null)];
     }
     if (typeof body.show_status === "boolean") s.show_status = body.show_status;
+    if (typeof body.music === "boolean") s.music = body.music;
+    if (typeof body.music_shuffle === "boolean") s.music_shuffle = body.music_shuffle;
+    if (body.music_volume != null) {
+      if (!(Number.isInteger(body.music_volume) && body.music_volume >= 0 && body.music_volume <= 100)) throw new HttpError(422, "The music's volume has to be from 0 to 100%.");
+      s.music_volume = body.music_volume;
+    }
     if (body.background != null) {
       if (!/^#[0-9A-Fa-f]{6}$/.test(body.background)) throw new HttpError(422, "Choose the stream's background colour with the colour picker (#RRGGBB).");
       s.background = body.background.toUpperCase();
@@ -290,6 +310,29 @@ export function streamRoutes(ctx) {
   });
   fileRoutes.push([/^\/stream\/pictures\/([^/]+)$/, (m) => png(state().images.find((x) => x.name === decodeURIComponent(m[1]))?.picture)]);
   fileRoutes.push([/^\/stream\/slideshows\/([^/]+)\/pictures\/([^/]+)$/, (m) => png(showOf(m[1])?.images.find((x) => x.name === decodeURIComponent(m[2]))?.picture)]);
+
+  // the music: MP3s, kept in memory by name; each plays as a short tone
+  on("POST", "/stream/music", (_, body) => {
+    const s = state();
+    for (const name of body.files || []) {
+      if (!/\.mp3$/i.test(name)) throw new HttpError(422, "The music has to be MP3 files.");
+      let candidate = name;
+      for (let n = 2; s.tracks.some((x) => x.name.toLowerCase() === candidate.toLowerCase()); n++) candidate = name.replace(/(\.[^.]+)$/, ` (${n})$1`);
+      s.tracks.push({ name: candidate, note: s.uploads++ });
+    }
+    return page();
+  });
+  on("DELETE", "/stream/music/:name", ({ name }, _b, q) => {
+    confirm(q);
+    const s = state();
+    if (!s.tracks.some((x) => x.name === decodeURIComponent(name))) throw new HttpError(404, "That track isn't there.");
+    s.tracks = s.tracks.filter((x) => x.name !== decodeURIComponent(name));
+    return page();
+  });
+  fileRoutes.push([/^\/stream\/music\/([^/]+)$/, (m) => {
+    const t = state().tracks.find((x) => x.name === decodeURIComponent(m[1]));
+    return t && { body: tone(t.note), type: "audio/wav" };
+  }]);
 
   // where the stream folder is (Settings)
   const locationOut = () => {

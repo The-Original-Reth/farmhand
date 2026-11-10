@@ -5,6 +5,7 @@ words, and each slideshow picture's own, as files; and the grid's squares as the
 from __future__ import annotations
 
 import os
+import random
 import shutil
 
 from sqlalchemy.orm import Session
@@ -20,6 +21,24 @@ def write_atomically(path: str, text: str) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(text)
     os.replace(tmp, path)
+
+
+# How many tracks the music's playlist lists: round after round of them, enough for a day of 10-second tracks (ffmpeg
+# starts again after a day). ffmpeg's own looping (-stream_loop) fails with a playlist once it comes round again.
+PLAYLIST_LENGTH = 8640
+
+
+def playlist(tracks: list, path: str, shuffle: bool) -> str:
+    """The music's tracks as ffmpeg's concat reads them, round after round (each round in a new order when `shuffle`),
+    written to `path`: the path."""
+    tracks = [str(t).replace("'", "'\\''") for t in tracks]  # concat's own quoting: ' as '\''
+    lines = ["ffconcat version 1.0"]
+    for _ in range(-(-PLAYLIST_LENGTH // len(tracks)) if tracks else 0):
+        if shuffle:
+            random.shuffle(tracks)
+        lines += [f"file '{t}'" for t in tracks]
+    write_atomically(path, "\n".join(lines) + "\n")
+    return path
 
 
 def card_pictures(db: Session, cards: dict) -> dict:

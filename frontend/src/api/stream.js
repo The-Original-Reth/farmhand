@@ -5,10 +5,11 @@ import { API_BASE, del, jsonBody, post, request } from "./client.js";
 
 // { settings: { destination, cols, rows, cells: [per square, row by row: { camera: "printer id:camera name" } | a card
 // { background, image, slideshow, seconds, text, color, picture_box: { x, y, w, h }, text_box: { x, y, size } (parts of the square) }; a camera may have its own background too | null], cameras (the cameras in square order), showStatus, layout: "grid" | "cycle", resolution,
-// secondsAll, secondsEach, borderColor: "#RRGGBB", background (the stream's colour), font and color (its words'), title, description, keySet },
+// secondsAll, secondsEach, borderColor: "#RRGGBB", background (the stream's colour), font and color (its words'), music (the stream folder's music
+// played, or a silent sound track), musicVolume (0 to 100), musicShuffle, title, description, keySet },
 // status: { live, onAir, startedAt, destination, cameras: [labels], error, title: { state: "waiting" | "done" |
 // "failed", message } | null }, destinations: [{ key, label }], resolutions: [{ key: "720p" | "1080p" | "1440p", label }], fonts: [{ key, label, generic }] (what a square's words can be written in),
-// media: { path, windows_path (the stream folder as Windows reaches it over the network, or null), images: [file names], slideshows: [{ name, images: [file names] }], error } (the stream folder), youtube: { clientSet, clientId, signedIn, channel, signingIn: { userCode, verificationUrl } |
+// media: { path, windows_path (the stream folder as Windows reaches it over the network, or null), images: [file names], slideshows: [{ name, images: [file names] }], music: [MP3s' file names], error } (the stream folder), youtube: { clientSet, clientId, signedIn, channel, signingIn: { userCode, verificationUrl } |
 // null, error } }
 const normalizeStream = (s) => ({
   settings: {
@@ -26,6 +27,9 @@ const normalizeStream = (s) => ({
     background: s.settings.background,
     font: s.settings.font, // the stream's words: every square's and camera's unless it has its own
     color: s.settings.color,
+    music: !!s.settings.music,
+    musicVolume: s.settings.music_volume ?? 50,
+    musicShuffle: s.settings.music_shuffle !== false,
     title: s.settings.title,
     description: s.settings.description,
     keySet: s.settings.key_set,
@@ -49,7 +53,7 @@ const normalizeStream = (s) => ({
   destinations: s.destinations,
   resolutions: s.resolutions,
   fonts: s.fonts || [],
-  media: s.media,
+  media: { ...s.media, music: s.media.music || [] },
   youtube: {
     clientSet: s.youtube.client_set,
     clientId: s.youtube.client_id,
@@ -63,7 +67,7 @@ const normalizeStream = (s) => ({
 export const getStream = async () => normalizeStream(await request("/stream"));
 
 // Save what's given: { destination, cols, rows, cells (the three together), showStatus, layout, resolution, secondsAll,
-// secondsEach, borderColor, background, font, color, title, description, streamKey (blank: keep the saved one),
+// secondsEach, borderColor, background, font, color, music, musicVolume, musicShuffle, title, description, streamKey (blank: keep the saved one),
 // clearKey, enabled (the page's switch: false stops the stream) }. While live, a new picture starts the stream again; a new title is set on YouTube straight away.
 export const saveStream = async (s = {}) =>
   normalizeStream(
@@ -72,7 +76,7 @@ export const saveStream = async (s = {}) =>
       jsonBody("PUT", {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, show_status: s.showStatus, layout: s.layout,
         resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor, background: s.background, font: s.font, color: s.color,
-        title: s.title, description: s.description,
+        title: s.title, description: s.description, music: s.music, music_volume: s.musicVolume, music_shuffle: s.musicShuffle,
         stream_key: s.streamKey || null, clear_key: !!s.clearKey, enabled: s.enabled,
       }),
     ),
@@ -107,6 +111,12 @@ export const addSlideshowBlank = async (show) => normalizeStream(await post(`/st
 // a slideshow's pictures in the order chosen (kept in its folder)
 export const orderSlideshow = async (show, order) => normalizeStream(await request(`/stream/slideshows/${enc(show)}/order`, jsonBody("PUT", { order })));
 export const removeSlideshowPicture = async (show, name) => normalizeStream(await del(`/stream/slideshows/${enc(show)}/pictures/${enc(name)}`));
+
+// The stream's music: MP3s in the stream folder's music folder (uploads under 50 MB), played one after another, round
+// and round. Tracks added or deleted while live play from the next time the stream starts.
+export const streamTrackUrl = (name) => `${API_BASE}/stream/music/${enc(name)}`;
+export const uploadStreamMusic = async (files) => normalizeStream(await request("/stream/music", filesBody(files)));
+export const removeStreamTrack = async (name) => normalizeStream(await del(`/stream/music/${enc(name)}`));
 
 // Where the stream folder is (Settings): { path, isDefault, defaultPath, status: { exists, writable, markerOk, ready } }.
 // setStreamLocation(null) goes back to the default; a folder that can't be used is refused with the reason.

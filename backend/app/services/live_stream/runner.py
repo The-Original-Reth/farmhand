@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from ...models import Printer
-from .. import app_settings, print_progress, youtube_live
+from .. import app_settings, print_progress, stream_media, youtube_live
 from . import staging
 from .constants import DESTINATIONS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY, TITLE_EVERY, TITLE_TRIES
 from .choices import settings
@@ -120,6 +120,7 @@ class Stream:
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
         cells = staging.squares(db, chosen, folder)
         turns_file = os.path.join(folder, "turns.txt") if cycle else None
+        tracks = stream_media.track_paths(db) if chosen["music"] else []  # none: a silent sound track
         enc = encoder(ffmpeg)
         with self._lock:
             self._encoder = enc
@@ -130,10 +131,11 @@ class Stream:
             midnight 1970, as the page counts them, so the stream shows what the page shows."""
             if turns_file:
                 write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
+            music = staging.playlist(tracks, os.path.join(folder, "music.txt"), chosen["music_shuffle"]) if tracks else None
             return command(ffmpeg, srcs, url, Look(encoder=enc, clock=clock,
                 status_files=files, cycle=cycle, turns_file=turns_file,
                 resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
-                rows=chosen["rows"], cells=cells,
+                rows=chosen["rows"], cells=cells, music=music, music_volume=chosen["music_volume"],
             ))
 
         threading.Thread(target=self._keep_running, args=(gen, make), name="stream", daemon=True).start()
@@ -201,7 +203,7 @@ class Stream:
             if not self._current(gen):
                 return
             if code == 0 and "-t" in args and time.monotonic() - started >= TURNS_FOR - 60:
-                continue  # the day's timetable of turns is done: started again at once, from the top
+                continue  # the day's timetable of turns or playlist is done: started again at once, from the top
             with self._lock:
                 last = next((l for l in reversed(self._said) if l), None)
                 self._error = f"The stream stopped (ffmpeg exit {code}): {last or 'no reason given'}. Trying again in {RETRY_SECONDS} s."

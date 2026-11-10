@@ -694,6 +694,13 @@ benchy.gcode`), brought up to date every 15 seconds.
   copies: a stream folder on the NAS isn't read while live, so copying pictures into it then is safe. Pictures added
   or changed by hand while live show once the stream starts again (Stop, then Go live); ones added or deleted on the
   Stream page start it again themselves.
+- **Music:** MP3s in the stream folder's `music` folder, played on the stream one after another and round again, in
+  place of the silent sound track. Free music for streams such as [StreamBeats](https://www.streambeats.com/) can be
+  downloaded and added with **Add tracks** (under 50 MB each), or copied into the folder by hand and found with
+  **Scan folder** (**Open folder** shows the folder as Windows reaches it over the network, with **Copy**, to paste into File Explorer). **Play music on the stream**, the **Volume** (its middle sounds about half as loud) and **Shuffle**
+  (a new order each round; off, name order) are saved with Save. Each track's ▶ plays it on the page at the volume
+  chosen, and **Delete** removes its file. With music on but no tracks, the stream stays silent. Tracks added or deleted
+  while live play from the next time the stream starts; changing the music's settings while live starts it again.
 - **Layout** (in Defaults): the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
   (0 skips it), then each camera full-screen, in square order, for *Stay on each camera* seconds, round and round.
   The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one

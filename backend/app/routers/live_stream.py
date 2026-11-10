@@ -19,9 +19,9 @@ from .common import require_confirm
 # key, the Google client secret and the YouTube sign-in go in and never come back out: answers only say they're there.
 router = APIRouter(prefix="/stream", tags=["stream"])
 
-# Changing one of these while live means the picture changes, so the stream starts again
+# Changing one of these while live means the picture (or the sound) changes, so the stream starts again
 PICTURE = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color",
-           "background", "font", "color", "key_set")
+           "background", "font", "color", "key_set", "music", "music_volume", "music_shuffle")
 
 
 def _restart_if_live(db: Session) -> None:
@@ -66,6 +66,7 @@ def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
             seconds_all=payload.seconds_all, seconds_each=payload.seconds_each, resolution=payload.resolution,
             border_color=payload.border_color, background=payload.background, font=payload.font, color=payload.color, enabled=payload.enabled, cols=payload.cols, rows=payload.rows, cells=payload.cells,
             title=payload.title, description=payload.description,
+            music=payload.music, music_volume=payload.music_volume, music_shuffle=payload.music_shuffle,
             stream_key=payload.stream_key, clear_key=payload.clear_key,
         )
         live = live_stream.stream.status()["live"]
@@ -235,6 +236,33 @@ def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(Fals
     require_confirm(confirm)
     _media(lambda: stream_media.remove_picture(db, name, picture))
     _restart_if_used(db, name)
+    return live_stream.page(db)
+
+
+# ------------------------------------------------------------------ the music: MP3s in the stream folder's music/
+# Tracks added or deleted while live are played from the next time the stream starts: it isn't stopped for them.
+
+
+@router.get("/music/{name}")
+def get_track(name: str, db: Session = Depends(get_db)):
+    """A track, for the page to play it."""
+    path = _media(lambda: stream_media.track_path(db, name))
+    return FileResponse(path, media_type=stream_media.TRACK_TYPES[path.suffix.lower()], headers={"Cache-Control": "no-cache"})
+
+
+@router.post("/music", status_code=201)
+async def add_tracks(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """MP3s into the music (under 50 MB each; bigger ones can be copied in by hand)."""
+    for file in files:
+        data = await file.read(stream_media.TRACK_MAX + 1)
+        _media(lambda: stream_media.add_track(db, file.filename or "", data))
+    return live_stream.page(db)
+
+
+@router.delete("/music/{name}")
+def delete_track(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    require_confirm(confirm)
+    _media(lambda: stream_media.remove_track(db, name))
     return live_stream.page(db)
 
 

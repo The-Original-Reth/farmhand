@@ -1,5 +1,5 @@
 """
-What's chosen for the stream (kept in app_settings), checked on the way in: where to, the grid and its squares, taking turns, the resolution, the colours and the YouTube title and description.
+What's chosen for the stream (kept in app_settings), checked on the way in: where to, the grid and its squares, taking turns, the resolution, the colours, the music and the YouTube title and description.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
 from .constants import DEFAULT_TEXT_COLOR
-from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
+from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_MUSIC_VOLUME, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
 from .squares import SLIDE_SECONDS, TEXT_MAX, _cell, _color
 
 # the stream's own colours, as a refusal names them
@@ -28,6 +28,10 @@ def auto_grid(n: int) -> tuple[int, int]:
     """(columns, rows) of the smallest near-square grid that holds n squares (1x1 for none)."""
     cols = min(MAX_SIDE, max(1, math.ceil(math.sqrt(n))))
     return cols, min(MAX_SIDE, max(1, math.ceil(n / cols)))
+
+
+def _volume(v) -> bool:
+    return type(v) is int and 0 <= v <= 100
 
 
 def _side(v) -> int | None:
@@ -49,7 +53,8 @@ def settings(db: Session) -> dict:
     cameras' keys in the grid, square by square), show_status, layout: "grid" | "cycle", seconds_all, seconds_each,
     resolution, border_color: "#RRGGBB", background: the stream's colour "#RRGGBB", font and color: the
     stream's words' (every square's and camera's unless it has its own), enabled: the Stream page's switch (off: nothing
-    streams), title, description, key_set}.
+    streams), music: the stream folder's music played (False: a silent sound track), music_volume (0 to 100),
+    music_shuffle: in a new order each time the stream starts (False: in name order), title, description, key_set}.
     The key itself is never given. Settings from before the grid (a list of cameras) come back as the grid they made.
     """
     raw = _saved(db)
@@ -79,6 +84,9 @@ def settings(db: Session) -> dict:
         "enabled": raw.get("enabled") is not False,  # the Stream page's switch: off, nothing streams
         "font": raw.get("font") if raw.get("font") in FONTS else DEFAULT_FONT,
         "color": _color(raw.get("color"), DEFAULT_TEXT_COLOR),
+        "music": raw.get("music") is True,
+        "music_volume": raw["music_volume"] if _volume(raw.get("music_volume")) else DEFAULT_MUSIC_VOLUME,
+        "music_shuffle": raw.get("music_shuffle", True) is not False,
         "title": text("title"),
         "description": text("description"),
         "key_set": bool(app_settings.get(db, STREAM_KEY_KEY)),
@@ -138,7 +146,7 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
 
 def save(db: Session, *, destination=None, chosen=None, show_status=None, stream_key=None, clear_key=False, layout=None,
          resolution=None, border_color=None, background=None, font=None, color=None, enabled=None, cols=None, rows=None, cells=None,
-         seconds_all=None, seconds_each=None, title=None, description=None) -> dict:
+         seconds_all=None, seconds_each=None, title=None, description=None, music=None, music_volume=None, music_shuffle=None) -> dict:
     """
     Change what's given (None: left as it is). The grid comes as cols, rows and cells together; or `chosen`, a list of
     cameras, which makes a grid just big enough for them, in that order. Anything that can't be
@@ -173,6 +181,14 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
             now[name] = value.upper()
     if enabled is not None:
         now["enabled"] = bool(enabled)
+    if music is not None:
+        now["music"] = bool(music)
+    if music_shuffle is not None:
+        now["music_shuffle"] = bool(music_shuffle)
+    if music_volume is not None:
+        if not _volume(music_volume):
+            raise ValueError("The music's volume has to be from 0 to 100%.")
+        now["music_volume"] = music_volume
     if font is not None:
         if font not in FONTS:
             raise ValueError("Choose one of the fonts listed for the stream's words.")

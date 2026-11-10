@@ -41,6 +41,7 @@ export function mockApi() {
               const m = url.pathname.match(re);
               if (m) {
                 const image = get(m);
+                if (image?.type) return send(200, image.body, image.type); // not a picture: { body, type }
                 return image ? send(200, image, "image/png") : send(404, { detail: "No thumbnail for this version" });
               }
             }
