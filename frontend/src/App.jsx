@@ -127,8 +127,8 @@ function FarmhandApp() {
           }}
         >
           <Crumb items={nav.crumbs()} onJump={nav.jumpTo} />
-          {/* in the middle of the top bar on every page: the cameras see what the printers' panels reflect */}
-          <div
+          {/* in the middle of the top bar on the Stream page: the cameras see what the printers' panels reflect */}
+          {nav.section === "stream" && <div
             data-testid="panels-warning"
             style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", pointerEvents: "none",
@@ -136,7 +136,7 @@ function FarmhandApp() {
             }}
           >
             WARNING Panels are reflective. Put on pants.
-          </div>
+          </div>}
         </div>
         <div style={{ padding: 24, paddingBottom: compare.selection.length > 0 ? 80 : 24, overflow: "auto", flex: 1 }}>
           <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} />

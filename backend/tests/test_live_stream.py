@@ -55,7 +55,10 @@ class _Proc:
 
 @pytest.fixture(autouse=True)
 def _fresh():
+    from app.services import stream_media
+
     youtube_live.reset()
+    stream_media.forget()  # what the stream folder held is remembered between looks; each test reads its own
     yield
     live_stream.stream.stop()
     youtube_live.reset()
@@ -64,8 +67,8 @@ def _fresh():
 @pytest.fixture()
 def ffmpeg(monkeypatch):
     fake = FakeFfmpeg()
-    monkeypatch.setattr(live_stream, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
-    monkeypatch.setattr(live_stream, "popen", fake)
+    monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(live_stream.runner, "popen", fake)
     return fake
 
 
@@ -87,7 +90,7 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
     page = api.get("/stream").json()
     assert page["settings"] == {
         "destination": "youtube", "cols": 1, "rows": 1, "cells": [None], "cameras": [], "show_status": True, "layout": "grid",
-        "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "title": "",
+        "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF", "enabled": True, "title": "",
         "description": "", "key_set": False,
     }
     assert [r["key"] for r in page["resolutions"]] == ["720p", "1080p", "1440p"] and page["resolutions"][2]["label"].startswith("2K")
@@ -162,7 +165,7 @@ def test_going_live_needs_a_key_cameras_and_ffmpeg(klipper, moonraker, monkeypat
     api.put("/stream", json={"stream_key": KEY})
     assert "at least one camera in the grid" in api.post("/stream/start").json()["detail"]
     api.put("/stream", json={"cameras": [f"{pid}:Bed"]})
-    monkeypatch.setattr(live_stream, "ffmpeg_path", lambda: None)
+    monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: None)
     r = api.post("/stream/start")
     assert r.status_code == 422 and "ffmpeg" in r.json()["detail"]
 
@@ -254,7 +257,7 @@ def test_the_squares_of_the_grid():
     graph = _graph(cmd)
     assert "/s/elves.png" in cmd and cmd[cmd.index("/s/elves.png") - 2] == "1"  # read once a second, not 15 times
     assert "color=c=0x000033:s=426x360:r=15,setsar=1[c0b]" in graph  # the card on the stream's colour
-    assert "[3:v]scale=426:360:force_original_aspect_ratio=decrease,setsar=1,fps=15[c0i0];[c0b][c0i0]overlay=(W-w)/2:(H-h)/2[c0o0]" in graph
+    assert "[3:v]scale=420:354:force_original_aspect_ratio=decrease,setsar=1,fps=15[c0i0];[c0b][c0i0]overlay=(W-w)/2:(H-h)/2[c0o0]" in graph
     assert "color=c=0x000033:s=426x360:r=15" in graph and "pad=426:360:(ow-iw)/2:(oh-ih)/2:color=0x000033" in graph  # empty, round cameras
     assert graph.count("drawbox=x=0:y=0:w=iw:h=ih:color=0xFF0000:t=3") == 6  # every square has its border
     assert "[c0][c1][c2][c3][c4][c5]xstack=inputs=6:layout=0_0|426_0|852_0|0_360|426_360|852_360:fill=0x000033" in graph
@@ -327,11 +330,11 @@ def test_cards_in_the_picture():
 
 
 def test_a_cards_picture_in_its_own_box():
-    # the picture fitted into the right half's lower part, a quarter of the square high
+    # the picture fitted into the right half's lower part, a quarter of the square high, inside its 3 px border
     cells = [("card", {"pictures": ["/s/a.png"], "picture_box": {"x": 0.5, "y": 0.75, "w": 0.5, "h": 0.25}})]
     graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
-    assert "scale=640:180:force_original_aspect_ratio=decrease" in graph
-    assert "overlay=640+(640-w)/2:540+(180-h)/2[c0o0]" in graph
+    assert "scale=637:178:force_original_aspect_ratio=decrease" in graph
+    assert "overlay=640+(637-w)/2:539+(178-h)/2[c0o0]" in graph
 
 
 def test_card_boxes_are_kept_inside_the_square():
@@ -367,10 +370,11 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     got = api.get("/stream/pictures/Elves.png")
     assert got.content == _png() and got.headers["content-type"] == "image/png"
     assert api.get("/stream/pictures/nope.png").status_code == 404
-    # a picture dropped in by hand counts too
+    # a picture dropped in by hand counts too, once the folder is scanned: looking at the page doesn't read it again
     root = stream_media.folder(_db(api))
     (root / "images" / "Dropped.jpg").write_bytes(b"\xff\xd8\xff..")
-    assert "Dropped.jpg" in api.get("/stream").json()["media"]["images"]
+    assert "Dropped.jpg" not in api.get("/stream").json()["media"]["images"]
+    assert "Dropped.jpg" in api.post("/stream/scan").json()["media"]["images"]
 
     # slideshows: a folder each, pictures added in name order
     assert api.post("/stream/slideshows", json={"name": "Prints"}).status_code == 201
@@ -385,7 +389,7 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     cells = [{"camera": f"{pid}:Bed"}, {"slideshow": "Prints", "seconds": 4, "text": " Live! ", "text_box": {"x": 0.5, "y": 0.1}}, {"image": "Elves.png"},
              {"image": "gone.png", "background": "#123456"}]
     s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
-    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": "#FFFFFF", "font": "play", "band": False,
+    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": None, "font": None, "band": False,
                              "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125}}
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
@@ -454,8 +458,8 @@ def test_when_ffmpeg_stops_it_says_why_without_the_key(klipper, moonraker, monke
     api, pid = klipper
     moonraker.webcams = [_cam()]
     fake = FakeFfmpeg(lines=[f"rtmps://a.rtmps.youtube.com/live2/{KEY}: Input/output error"], exits=True)
-    monkeypatch.setattr(live_stream, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
-    monkeypatch.setattr(live_stream, "popen", fake)
+    monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(live_stream.runner, "popen", fake)
     api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
     api.post("/stream/start")
     assert _wait_for(lambda: live_stream.stream.status()["error"])
@@ -616,7 +620,7 @@ def _db(api):
 
 def test_going_live_sets_the_title_once_the_broadcast_is_there(klipper, moonraker, ffmpeg, google, monkeypatch):
     api, pid = klipper
-    monkeypatch.setattr(live_stream, "TITLE_EVERY", 0.05)
+    monkeypatch.setattr(live_stream.runner, "TITLE_EVERY", 0.05)
     moonraker.webcams = [_cam()]
     _signed_in(api, google)
     api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live",
@@ -647,9 +651,9 @@ def test_a_cards_words_in_the_font_chosen(monkeypatch, tmp_path):
     # a font the server has is used; one it hasn't (or one not in the list) writes in the stream's own font
     (tmp_path / "truetype" / "lato").mkdir(parents=True)
     (tmp_path / "truetype" / "lato" / "Lato-Black.ttf").write_bytes(b"font")
-    monkeypatch.setattr(live_stream, "FONTS_DIR", str(tmp_path))
+    monkeypatch.setattr(live_stream.fonts, "FONTS_DIR", str(tmp_path))
     assert live_stream._cell({"text": "Hi", "font": "lato-black"})["font"] == "lato-black"
-    assert live_stream._cell({"text": "Hi", "font": "wingdings"})["font"] == "play"
+    assert live_stream._cell({"text": "Hi", "font": "wingdings"})["font"] is None  # not one of them: the stream's
     assert live_stream.font_file("lato-black").replace("\\", "/").endswith("truetype/lato/Lato-Black.ttf")
     assert live_stream.font_file("roboto") == live_stream.FONT
     cells = [("card", {"words": "/s/t.txt", "font": "lato-black"})]
@@ -676,7 +680,7 @@ def test_the_stream_folder_as_windows_reaches_it(db_session, monkeypatch, tmp_pa
 def test_a_camera_squares_own_words():
     assert live_stream._cell({"camera": "1:Bed", "show_words": False, "words_size": 0.9, "words_color": "#ff0000", "words_font": "lato"}) == {
         "camera": "1:Bed", "show_words": False, "words_size": 0.3, "words_color": "#FF0000", "words_font": "lato"}
-    assert live_stream._cell({"camera": "1:Bed", "show_words": True, "words_color": "#FFFFFF", "words_font": "nope"}) == {"camera": "1:Bed"}
+    assert live_stream._cell({"camera": "1:Bed", "show_words": True, "words_color": "#FFFFFF", "words_font": "nope"}) == {"camera": "1:Bed", "words_color": "#FFFFFF"}  # white chosen: kept, as the stream's may be another
     srcs = [live_stream.Source(i, f"P{i}", ["-i", f"http://cam{i}"]) for i in range(3)]
     cells = [("camera", 0, {"camera": "1:A", "show_words": False}),
              ("camera", 1, {"camera": "1:B", "words_size": 0.1, "words_color": "#FF0000"}), ("camera", 2)]
@@ -693,3 +697,17 @@ def test_a_camera_squares_own_words():
 def test_play_is_kept_with_farmhand():
     assert live_stream.font_file("play").replace("\\", "/").endswith("app/fonts/Play-Regular.ttf")
     assert os.path.isfile(live_stream.font_file("play-bold"))
+
+
+def test_the_stream_can_be_turned_off(klipper, moonraker, ffmpeg):
+    # the Stream page's switch: off stops a live stream and keeps it from going live; on, it can again
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"]})
+    assert api.post("/stream/start").json()["status"]["live"] is True
+    off = api.put("/stream", json={"enabled": False}).json()
+    assert off["settings"]["enabled"] is False and off["status"]["live"] is False
+    r = api.post("/stream/start")
+    assert r.status_code == 422 and "turned off" in r.json()["detail"]
+    assert api.put("/stream", json={"enabled": True}).json()["settings"]["enabled"] is True
+    assert api.post("/stream/start").json()["status"]["live"] is True

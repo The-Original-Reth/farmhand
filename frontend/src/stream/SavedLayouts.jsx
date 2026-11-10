@@ -12,7 +12,7 @@ const help = uiText(12, c.textFaint, { lineHeight: 1.5 });
 // A layout as the settings keep it, from the page's choices
 export const layoutOf = (name, shown) => ({
   name, cols: shown.cols, rows: shown.rows, cells: shown.cells, layout: shown.layout, seconds_all: Number(shown.secondsAll) || 0,
-  seconds_each: Number(shown.secondsEach) || 0, show_status: !!shown.showStatus, border_color: shown.borderColor, background: shown.background,
+  seconds_each: Number(shown.secondsEach) || 0, show_status: !!shown.showStatus, border_color: shown.borderColor, background: shown.background, font: shown.font, color: shown.color,
 });
 // Whether the page shows this layout now (timings only count when taking turns)
 export const sameAs = (saved, shown) => {
@@ -20,13 +20,14 @@ export const sameAs = (saved, shown) => {
   return saved.cols === now.cols && saved.rows === now.rows && JSON.stringify(saved.cells) === JSON.stringify(now.cells)
     && saved.layout === now.layout && saved.show_status === now.show_status && saved.border_color === now.border_color
     && (saved.background || "#000000") === (now.background || "#000000")
+    && (saved.font || "play") === (now.font || "play") && (saved.color || "#FFFFFF") === (now.color || "#FFFFFF")
     && (saved.layout === "grid" || (saved.seconds_all === now.seconds_all && saved.seconds_each === now.seconds_each));
 };
 const camerasOf = (l) => l.cells.filter((x) => x?.camera).map((x) => x.camera);
 // A saved layout as the page's choices (the part of them a layout holds)
 export const shownOf = (l) => ({
   cols: l.cols, rows: l.rows, cells: l.cells, layout: l.layout, secondsAll: l.seconds_all, secondsEach: l.seconds_each,
-  showStatus: l.show_status, borderColor: l.border_color, background: l.background || "#000000",
+  showStatus: l.show_status, borderColor: l.border_color, background: l.background || "#000000", font: l.font || "play", color: l.color || "#FFFFFF",
 });
 const summaryOf = (l) => {
   const n = camerasOf(l).length;

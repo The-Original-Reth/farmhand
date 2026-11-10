@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";
 import { c } from "../theme.js";
 import { cancelButton, fieldBox, headerButton, panelBox, primaryButton, uiText } from "../styles.js";
@@ -6,8 +6,8 @@ import { errorText, getStream, saveStream, startStream, stopStream } from "../ap
 import { useData } from "../data.jsx";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
-import { LayoutPanel, YouTubeAccountPanel, YouTubeTextPanel } from "./StreamPanels.jsx";
-import { SquaresPanel } from "./StreamSquares.jsx";
+import { YouTubeAccountPanel, YouTubeTextPanel } from "./StreamPanels.jsx";
+import { DefaultsPanel } from "./StreamSquares.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
 
 // The Stream page: Farmhand sends the printers' cameras live to YouTube (or Twitch) itself, laid out in a grid of
@@ -22,6 +22,8 @@ const WHERE_KEY = {
   twitch: "In the Twitch Creator Dashboard: Settings → Stream, then Copy next to Primary Stream key.",
 };
 
+const DRAFT_KEY = "farmhand-stream-draft"; // the setup as it was when the stream was turned off (never the stream key)
+
 const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
 const printerOf = (key) => Number(key.slice(0, key.indexOf(":")));
 const cameraOf = (key) => key.slice(key.indexOf(":") + 1);
@@ -29,8 +31,12 @@ const cameraOf = (key) => key.slice(key.indexOf(":") + 1);
 export function StreamSection({ layouts = [], onSaveLayouts }) {
   const { printers } = useData();
   const active = printers.filter((p) => !p.decommissioned);
-  const { cams } = usePrinterCameras(active);
-  const [page, setPage] = useState(null); // what the server says: { settings, status, destinations, resolutions, logos, youtube }
+  const [page, setPageFirst] = useState(null); // (set below; here so the switch can quiet the page's other askers)
+  const enabled = page?.settings.enabled !== false;
+  const onRef = useRef(enabled);
+  onRef.current = enabled;
+  const { cams } = usePrinterCameras(enabled ? active : []);
+  const setPage = setPageFirst; // what the server says: { settings, status, destinations, resolutions, fonts, media, youtube }
   const [draft, setDraft] = useState(null); // the choices as changed here, not saved yet (null = as saved)
   const [key, setKey] = useState(""); // a stream key typed here, not saved yet
   const [busy, setBusy] = useState(null); // "save" | "start" | "stop" | "logo" | "youtube" while the server is asked
@@ -41,16 +47,17 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
 
   const draftOrSaved = draft || page?.settings;
   const inGrid = (draftOrSaved?.cells || []).filter((x) => x?.camera).map((x) => x.camera);
-  const progress = usePrintProgress(draftOrSaved?.showStatus ? [...new Set(inGrid.map(printerOf))] : [], { keepErrors: true });
+  const progress = usePrintProgress(enabled && draftOrSaved?.showStatus ? [...new Set(inGrid.map(printerOf))] : [], { keepErrors: true });
 
   useEffect(() => {
     let live = true;
-    const ask = () =>
-      !document.hidden &&
+    // turned off, the page doesn't ask again until it's turned on (it was asked once, to know)
+    const ask = (first) =>
+      !document.hidden && (first === true || onRef.current) &&
       getStream()
         .then((p) => live && (setPage(p), setLoadError(null)))
         .catch((e) => live && setLoadError(errorText(e)));
-    ask();
+    ask(true);
     const timer = setInterval(ask, STATUS_EVERY_MS);
     return () => {
       live = false;
@@ -99,7 +106,7 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
     saveStream({
       destination: shown.destination, cols: shown.cols, rows: shown.rows, cells: shown.cells, showStatus: shown.showStatus, layout: shown.layout,
       resolution: shown.resolution, secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
-      borderColor: shown.borderColor, background: shown.background, title: shown.title, description: shown.description, streamKey: key.trim(),
+      borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color, title: shown.title, description: shown.description, streamKey: key.trim(),
     });
   // Save: the stream's settings, and the layout under the name chosen (a new one, or over one there is)
   const saveWithLayout = async ({ name, list }) => {
@@ -123,6 +130,30 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
     if (!p) return;
     setDraft(null);
     setKey("");
+  };
+  // The switch at the top. Off: the stream stops and the page rests (no cameras, nothing asked of the printers), the
+  // setup as it is here (saved or not, but never a stream key typed) kept in this browser; on: that setup comes back.
+  const turn = async (on) => {
+    if (!on) {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // (a browser that keeps nothing: the unsaved setup is lost when turned off)
+      }
+      if (await ask("save", () => saveStream({ enabled: false }))) {
+        setDraft(null);
+        setKey("");
+      }
+      return;
+    }
+    if (!(await ask("save", () => saveStream({ enabled: true })))) return;
+    try {
+      const kept = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+      if (kept) setDraft(kept);
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // (nothing kept: the saved setup)
+    }
   };
   const forgetKey = () => ask("save", () => saveStream({ clearKey: true }));
   const start = async () => {
@@ -162,7 +193,26 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
     return cell ? { type: "card", cell } : null;
   });
 
+  const head = <StreamSwitch on={enabled} onTurn={turn} busy={!!busy} />;
+  if (!enabled) {
+    return (
+      <div data-testid="stream-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {head}
+        <div data-testid="stream-off" style={panelBox({ padding: 16, maxWidth: 640 })}>
+          <div style={uiText(14, c.heading, { fontWeight: 600 })}>The stream is off</div>
+          <div style={uiText(12, c.textMuted, { marginTop: 6, lineHeight: 1.6 })}>
+            Nothing is streamed, no cameras play on this page and it doesn't ask the printers anything. Turn it on to carry on
+            where you left off, with the setup as it was, saved or not.
+          </div>
+        </div>
+        {problem && <div data-testid="stream-problem" style={uiText(13, c.danger, { lineHeight: 1.5 })}>{problem}</div>}
+      </div>
+    );
+  }
+
   return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    {head}
     <div data-testid="stream-section" style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(340px, 2fr)", gap: 20, alignItems: "start" }}>
       {/* left: what the stream looks like; right: going live and what goes into it */}
       <div style={{ minWidth: 0, position: "sticky", top: 0 }}>
@@ -245,8 +295,7 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
         {/* signing in to YouTube, for the title and description */}
         {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
 
-        <SquaresPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} />
-        <LayoutPanel shown={shown} count={inGrid.length} change={change} />
+        <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <SavedLayoutsPanel
           layouts={layouts} onSave={onSaveLayouts} saved={saved} label={label} switchTo={switchTo}
         />
@@ -271,6 +320,27 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
           </div>
         )}
       </div>
+    </div>
+    </div>
+  );
+}
+
+// The switch at the top of the page: the stream's functions on or off
+function StreamSwitch({ on, onTurn, busy }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={uiText(14, c.heading, { fontWeight: 600 })}>Stream</span>
+      <button
+        type="button" role="switch" aria-checked={on} data-testid="stream-switch" disabled={busy} onClick={() => onTurn(!on)}
+        title={on ? "Turn the stream off: it stops, and the page rests" : "Turn the stream on, as it was"}
+        style={{
+          position: "relative", width: 40, height: 22, borderRadius: 11, border: `1px solid ${on ? c.green : c.borderStrong}`, padding: 0,
+          background: on ? c.green : c.panelAlt, cursor: busy ? "default" : "pointer", flexShrink: 0,
+        }}
+      >
+        <span style={{ position: "absolute", top: 2, left: on ? 20 : 2, width: 16, height: 16, borderRadius: 8, background: on ? c.bg : c.textMuted, transition: "left 0.15s" }} />
+      </button>
+      <span style={uiText(12, on ? c.textMuted : c.textFaint)}>{on ? "On" : "Off"}</span>
     </div>
   );
 }

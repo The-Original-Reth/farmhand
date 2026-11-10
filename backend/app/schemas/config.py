@@ -43,6 +43,8 @@ class StreamLayoutData(BaseModel):
     show_status: bool = True
     border_color: str = "#000000"
     background: str = "#000000"  # the stream's own colour
+    font: str = "play"  # the stream's words, every square's and camera's unless it has its own
+    color: str = "#FFFFFF"
 
 
 class PreferencesData(BaseModel):

@@ -81,7 +81,7 @@ MAX_PRINTERS_ORDERED = 500
 MONITOR_ZOOMS = (2, 3, 4, 6, 8)
 MAX_TOOL_LINKS = 200
 MAX_STREAM_LAYOUTS = 50
-MAX_STREAM_SIDE = 5  # the stream's grid is 1x1 to 5x5 (services/live_stream.py)
+MAX_STREAM_SIDE = 5  # the stream's grid is 1x1 to 5x5 (services/live_stream/constants.py)
 STREAM_SECONDS = {"seconds_all": (0, 3600, 30), "seconds_each": (3, 3600, 20)}  # (least, most, default)
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -235,7 +235,7 @@ def _camera_keys(raw) -> list[str]:
 
 
 def _stream_cell(raw) -> dict | None:
-    """A saved layout's square: a camera, or a card (as services/live_stream.py _cell keeps them), or None."""
+    """A saved layout's square: a camera, or a card (as services/live_stream/squares.py _cell keeps them), or None."""
     from .services.live_stream import _cell  # the same rules as the Stream page's own squares
 
     if isinstance(raw, dict) and isinstance(raw.get("camera"), str) and 0 < len(raw["camera"]) <= 200:
@@ -286,6 +286,10 @@ def _stream_layouts(raw) -> list[dict]:
         for key in ("border_color", "background"):
             color = item.get(key)
             layout[key] = color.upper() if isinstance(color, str) and _HEX.match(color) else "#000000"
+        from .services.live_stream import DEFAULT_FONT, FONTS  # the stream's words' font and colour
+        layout["font"] = item.get("font") if item.get("font") in FONTS else DEFAULT_FONT
+        color = item.get("color")
+        layout["color"] = color.upper() if isinstance(color, str) and _HEX.match(color) else "#FFFFFF"
         out.append(layout)
         if len(out) >= MAX_STREAM_LAYOUTS:
             break

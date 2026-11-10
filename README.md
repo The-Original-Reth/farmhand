@@ -634,6 +634,9 @@ benchy.gcode`), brought up to date every 15 seconds.
    them) and press **Save**.
 3. Press **Go live**. YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
 
+- **The switch** beside *Stream* at the top of the page turns everything off: the stream stops (and can't go live),
+  no cameras play on the page and it stops asking the printers. Turned on again, the page is as you left it, changes
+  not saved yet included (kept in that browser; a stream key typed isn't).
 - The stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked out
   of any error message. **Forget key** removes it.
 - If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
@@ -646,30 +649,37 @@ benchy.gcode`), brought up to date every 15 seconds.
   waits on the whole grid while you do. The square's editor, under the preview, shows it as a canvas in the square's
   own shape and offers **Camera** (each camera in one square), **Text**, **Picture**, **Slideshow** or **Empty**; its
   **Save** saves the stream's settings straight away (the page's own Save also keeps them as a layout). **Add all
-  cameras** (on the right) puts every camera not in the grid yet into the empty squares, making the grid bigger if it
+  cameras** (in **Defaults**, on the right) puts every camera not in the grid yet into the empty squares, making the grid bigger if it
   has to; **Clear** empties them all. Every square has a border round it, black unless you pick another colour.
-- **Background:** the stream's own colour, in the **Squares** panel (black unless you pick another). It's every
+- **Defaults** (on the right): what every square and camera has unless it has its own, and how the grid is shown.
+  **Background:** the stream's own colour (black unless you pick another). It's every
   square's colour unless the square has its own, and shows in empty squares and round a camera that doesn't fill its
   square. A camera square can have a colour of its own round it, and its own say over the printer's name and print
   written on it: shown or not (a tick box), and their font, colour and size (Automatic sizes them to the square).
+  **Words:** the font and colour of every square's text and every camera's words (Play and white unless you pick
+  others); a square or camera can have its own instead, and **Default** goes back to these.
 - **Text, Picture and Slideshow squares:** a colour of their own (or the stream's), a picture or a slideshow over it,
-  and, if you like, **words** (up to 500 characters) in a **font** (Play, Farmhand's own, unless you choose another of about twenty: DejaVu, Liberation,
-  Roboto, Open Sans, Lato, Montserrat, Bebas Neue, Comic Neue, Fira Code) and a colour of your choosing; a Text square is just the words on
+  and, if you like, **words** (up to 500 characters) in the default font and colour (Defaults) or ones of its own (about
+  twenty fonts: Play, Farmhand's own, DejaVu, Liberation, Roboto, Open Sans, Lato, Montserrat, Bebas Neue, Comic Neue,
+  Fira Code); a Text square is just the words on
   its colour. On the canvas, drag the picture or the words to move them, and drag the corner to make them bigger or
-  smaller (a picture keeps its shape; **Picture fills the square** puts it back), on the canvas or on the square in the
+  smaller (a picture keeps its shape, and is fitted inside the square's border so the border never covers it; **Picture fills the square** puts it back), on the canvas or on the square in the
   preview; **Delete text** takes the words off. **Dark band behind it** puts a dark band
   behind the words, so they can be read over a busy picture.
 - **Pictures** are files in the **stream folder** (Settings, beside the farm cost folder; by default `stream` in the
   folder above the STL folder): single pictures in its `images` folder, each slideshow a folder of its own in
   `slideshows`. **Upload picture** and **Add pictures** write PNG, JPEG or WebP files there (under 10 MB each), and
-  pictures you copy in yourself (over the network share, say) show up too. A slideshow is chosen from a list, with **New slideshow** (asks its name), **Add pictures**, **Open folder**
+  pictures you copy in yourself (over the network share, say) show up once you press **Scan folder** (Farmhand doesn't
+  keep looking at the folder). A slideshow is chosen from a list, with **New slideshow** (asks its name), **Add pictures**, **Open folder**
   (shows the slideshow's folder as Windows reaches it, `\\server\share\stream\slideshows\…`, with **Copy**, to paste
   into File Explorer: a web page can't open File Explorer itself, and a stream folder that isn't on a network share
   can't be reached so) and **Delete slideshow**;
-  **Show each picture for** sets the seconds (3 to 3600); its pictures go round in name order. **Delete picture**
+  **Show each picture for** sets the seconds (3 to 3600); its pictures go round in name order. Under the editor's
+  canvas, **Stop** holds the picture on show (to move or resize it), **Next** goes to the next one and **Play** lets
+  them go round again. **Delete picture**
   and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the
   stream each picture is read and fitted once a second and shown in its own seconds, so a slideshow costs very little.
-- **Layout:** the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
+- **Layout** (in Defaults): the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
   (0 skips it), then each camera full-screen, in square order, for *Stay on each camera* seconds, round and round.
   The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one
   you click), so taking turns costs little more than the grid.
