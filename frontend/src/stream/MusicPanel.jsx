@@ -180,8 +180,8 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
   if (live && !onAir?.on) nowText = "The music is off on the stream (tick Play music on the stream and Save)";
   else if (live && onAir.track) nowText = `On the stream: ${onAir.track} · ${clock(at)}${onAir.playing ? "" : " (paused)"}`;
   else if (live) nowText = tracks.length ? "On the stream: starting…" : "On the stream: no tracks, so silence";
-  else if (here?.waiting) nowText = `Here: ${here.name} · starts with your first click on the page (the browser waits for one)`;
-  else if (here) nowText = `Here: ${here.name}${here.paused ? " (paused)" : ""}`;
+  else if (here?.waiting) nowText = `Playing: ${here.name} · starts with your first click on the page (the browser waits for one)`;
+  else if (here) nowText = `Playing: ${here.name}${here.paused ? " (paused)" : ""}`;
   else if (tracks.length) nowText = "Not live: the buttons play the tracks here, in this browser";
 
   const upload = async (files) => {
@@ -246,15 +246,23 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
 
       <div data-testid="stream-music-tracks" style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
         {!tracks.length && <div style={uiText(12, c.textFaint)}>{media.error ? `The stream folder can't be used now: ${media.error}` : "No tracks yet."}</div>}
-        {tracks.map((name) => (
-          <div key={name} data-testid="stream-music-track" style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 26 }}>
+        {tracks.map((name) => {
+          const on = name === (live ? onAir?.track : here?.name); // the one playing (live: the stream's)
+          return (
+          <div
+            key={name} data-testid="stream-music-track" data-playing={on || undefined}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, minHeight: 26, padding: "1px 4px", borderRadius: 3,
+              background: on ? c.amberDim : "transparent", border: `1px solid ${on ? c.amberBorder : "transparent"}`,
+            }}
+          >
             <button
               type="button" onClick={() => toggleTrack(name)} title={playing === name ? "Pause" : "Play it here, in this browser, at the volume chosen"}
               aria-label={playing === name ? `Pause ${name}` : `Play ${name}`} style={small}
             >
               {playing === name ? <Pause size={13} /> : <Play size={13} />}
             </button>
-            <span style={uiText(12, here?.name === name || (live && onAir?.track === name) ? c.heading : c.textMuted, { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={name}>
+            <span style={uiText(12, on ? c.heading : c.textMuted, { fontWeight: on ? 600 : 400, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={name}>
               {name}
             </span>
             {removing === name ? (
@@ -272,7 +280,8 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
