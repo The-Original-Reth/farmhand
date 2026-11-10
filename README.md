@@ -643,9 +643,10 @@ benchy.gcode`), brought up to date every 15 seconds.
   until you press **Stop stream**. Saving a new picture (squares, layout, pictures, colours) while live starts the stream
   again with it; a new title or description goes straight to YouTube without a restart.
 - **Preview**, on the left of the page, plays the grid in your browser as the stream lays it out, with the words, the
-  pictures and the borders, so you can check it before going live. While live (with nothing changed and not saved
-  yet), it keeps the stream's own time: the same slideshow picture and the same turn as the picture the server is
-  sending, whenever you open the page. YouTube shows that picture a few seconds later.
+  pictures and the borders, so you can check it before going live. Slideshows and taking turns keep the server's time
+  of day, on the stream and in the preview alike: with nothing changed and not saved yet, the preview shows the same
+  slideshow picture and turn as the stream (or, not live, the ones going live will start on), whenever you open the
+  page, and says so under it. YouTube shows the stream's picture a few seconds later.
 - **Squares:** above the preview, choose the grid's size (1 to 5 squares across and 1 to 5 down) and the
   resolution. In the preview, click a square to edit it, and drag a square onto another to swap them; taking turns
   waits on the whole grid while you do. The square's editor, under the preview, shows it as a canvas in the square's

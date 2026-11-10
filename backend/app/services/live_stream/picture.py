@@ -52,19 +52,24 @@ FULL_WORDS = {"size": "h/26", "foot": "h/30", "border": "h/120", "left": "w/128"
 TURNS_FOR = 24 * 3600  # the timetable of turns covers a day; ffmpeg then ends and is started again at once
 
 
-def timetable(n: int, seconds_all: int, seconds_each: int, horizon: int = TURNS_FOR) -> str:
+def timetable(n: int, seconds_all: int, seconds_each: int, horizon: int = TURNS_FOR, clock: float = 0) -> str:
     """
     Taking turns, as ffmpeg's sendcmd reads it: at each turn, which view (0: all the cameras, 1: one on its own) and
-    which camera. Covers `horizon` seconds of stream.
+    which camera. Covers `horizon` seconds of stream. `clock`: the time of day (seconds) the stream starts at: the
+    rounds are counted from midnight 1970, as the page counts them, so the stream starts on the turn the page shows.
     """
     period, turns = windows(n, seconds_all, seconds_each)
+    phase = round(clock % period, 3)
+    events = ([(0, "streamselect@view map 0;")] if seconds_all else []) + [
+        (start, f"{'streamselect@view map 1, ' if seconds_all else ''}streamselect@pick map {i};") for i, (start, _) in enumerate(turns)]
     lines = []
-    for r in range(math.ceil(horizon / period)):
-        base = r * period
-        if seconds_all:
-            lines.append(f"{base} streamselect@view map 0;")
-        for i, (start, _) in enumerate(turns):
-            lines.append(f"{base + start} {'streamselect@view map 1, ' if seconds_all else ''}streamselect@pick map {i};")
+    if phase:  # partway through a round: the turn already under way, at once
+        lines.append(f"0 {max((e for e in events if e[0] <= phase), key=lambda e: e[0])[1]}")
+    for r in range(math.ceil((horizon + phase) / period) + 1):
+        for start, cmd in events:
+            at = round(r * period + start - phase, 3)
+            if (0 < at or (at == 0 and not phase)) and at < horizon:
+                lines.append(f"{at:g} {cmd}")
     return "\n".join(lines) + "\n"
 
 
@@ -87,6 +92,7 @@ class Look:
     resolution: str = DEFAULT_RESOLUTION  # one of RESOLUTIONS
     border_color: str = DEFAULT_BORDER
     background: str = DEFAULT_BACKGROUND
+    clock: float = 0  # the time of day (seconds since 1970) at the stream's start: slideshows and turns count from it
     encoder: str = "cpu"  # "cpu" (libx264) or "nvenc" (an NVIDIA card's own encoder; see runner.encoder)
     font: str | None = None  # the stream's words, unless a square has its own (None: DEFAULT_FONT)
     color: str | None = None  # (None: DEFAULT_TEXT_COLOR)
@@ -163,8 +169,12 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         bw, bh = max(2, round(pb["w"] * iw)), max(2, round(pb["h"] * ih))
         bx, by = edge + round(pb["x"] * iw), edge + round(pb["y"] * ih)
         at = "(W-w)/2:(H-h)/2" if (bw, bh) == (iw, ih) else f"{bx}+({bw}-w)/2:{by}+({bh}-h)/2"
+        # the slideshow's time: counted from midnight 1970 (look.clock at the start), as the page counts it
+        lag = round(look.clock % period, 3) if period else 0
+        t = f"t+{lag:g}" if lag else "t"
+
         def window(j: int) -> str:  # while picture j is on show
-            return f"gte(mod(t,{period}),{j * seconds})*lt(mod(t,{period}),{(j + 1) * seconds})"
+            return f"gte(mod({t},{period}),{j * seconds})*lt(mod({t},{period}),{(j + 1) * seconds})"
 
         blanks = any(stream_media.is_blank(p) for p in paths)  # then even the first picture shows only in its turn
         for j, path in enumerate(paths):

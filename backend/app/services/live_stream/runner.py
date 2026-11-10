@@ -104,6 +104,8 @@ class Stream:
                 # how long the picture going out has run, in seconds: its slideshows and taking turns count from its
                 # start, so the page can show the same picture at the same moment (None while it isn't going out)
                 "running_for": round(time.monotonic() - self._run_started, 2) if on_air and self._run_started else None,
+                # the server's time of day: slideshows and taking turns count from it, on the stream and on the page
+                "server_time": round(time.time(), 3),
             }
 
     def go_live(self, db: Session, session_factory) -> dict:
@@ -162,12 +164,7 @@ class Stream:
                     words = os.path.join(folder, f"text-{c}-{j}.txt")
                     _write_atomically(words, cap["text"])
                     captions.setdefault(c, {})[j] = {"words": words, "text_box": cap.get("text_box")}
-        timed = timetable(len(srcs), *cycle) if cycle else ""
-        turns_file = None
-        if timed:
-            turns_file = os.path.join(folder, "turns.txt")
-            with open(turns_file, "w", encoding="utf-8") as f:
-                f.write(timed)
+        turns_file = os.path.join(folder, "turns.txt") if cycle else None
         place = {k: i for i, k in enumerate(chosen["cameras"])}
         def square(c: int, cell: dict | None):
             if not cell:
@@ -180,12 +177,20 @@ class Stream:
         enc = encoder(ffmpeg)
         with self._lock:
             self._encoder = enc
-        args = command(ffmpeg, srcs, where["url"] + key, Look(encoder=enc,
-            status_files=files, cycle=cycle, turns_file=turns_file,
-            resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
-            rows=chosen["rows"], cells=cells,
-        ))
-        threading.Thread(target=self._keep_running, args=(gen, args), name="stream", daemon=True).start()
+        url = where["url"] + key
+
+        def make(clock: float) -> list[str]:
+            """The command for an ffmpeg starting now (`clock`: the time of day): its slideshows and turns counted from
+            midnight 1970, as the page counts them, so the stream shows what the page shows."""
+            if turns_file:
+                _write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
+            return command(ffmpeg, srcs, url, Look(encoder=enc, clock=clock,
+                status_files=files, cycle=cycle, turns_file=turns_file,
+                resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
+                rows=chosen["rows"], cells=cells,
+            ))
+
+        threading.Thread(target=self._keep_running, args=(gen, make), name="stream", daemon=True).start()
         if files:
             threading.Thread(target=self._keep_words_current, args=(gen, srcs, files, session_factory), name="stream-words", daemon=True).start()
         if wants_title and creds:
@@ -224,8 +229,10 @@ class Stream:
     def _hide_key(self, text: str) -> str:
         return text.replace(self._key, "<stream key>") if self._key else text
 
-    def _keep_running(self, gen: int, args: list[str]) -> None:
+    def _keep_running(self, gen: int, make) -> None:
+        """ffmpeg, started again (with `make(time of day)`'s command, so it keeps the page's time) whenever it stops."""
         while self._current(gen):
+            args = make(time.time())
             try:
                 proc = popen(args)
             except OSError as e:
