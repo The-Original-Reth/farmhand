@@ -46,9 +46,13 @@ def _share_entries(db: Session) -> list[dict]:
 
 
 def build_document(db: Session) -> dict:
+    config = get_config(db)
+    # the Stream page's saved layouts have files of their own, in streams/ (records_service.write_streams)
+    config = {**config, "preferences": {k: v for k, v in config["preferences"].items() if k != "stream_layouts"}}
     return config_store.build_document(
-        get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
+        config, storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
         project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
+        stream_path=app_settings.get(db, "stream_media_dir"),  # services/stream_media.KEY_LOCATION
         printer_names={p.id: p.name for p in db.scalars(select(Printer))},
     )
 
@@ -66,14 +70,17 @@ def _orders_here(db: Session, prefs: dict, printer_names: dict[str, str]) -> dic
     def local(number) -> int | None:
         return here.get(printer_names.get(str(number), ""))
 
+    def cameras(keys) -> list[str]:
+        out = []
+        for key in keys or []:
+            number, sep, camera = str(key).partition(":")
+            mapped = local(number) if number.isdigit() and sep else None
+            if mapped is not None:
+                out.append(f"{mapped}:{camera}")
+        return out
+
     farm = [local(n) for n in prefs.get("farm_cost_order") or []]
-    monitor = []
-    for key in prefs.get("monitor_order") or []:
-        number, sep, camera = str(key).partition(":")
-        mapped = local(number) if number.isdigit() and sep else None
-        if mapped is not None:
-            monitor.append(f"{mapped}:{camera}")
-    return {**prefs, "farm_cost_order": [n for n in farm if n is not None], "monitor_order": monitor}
+    return {**prefs, "farm_cost_order": [n for n in farm if n is not None], "monitor_order": cameras(prefs.get("monitor_order"))}
 
 
 @dataclass
@@ -108,6 +115,7 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
         folder = storage.ensure_ready_folder(path, "settings folder")
         config_store.write_document(folder, build_document(db))
         records_service.write_all(db, folder, scope)
+        records_service.write_streams(db, folder, get_config(db)["preferences"]["stream_layouts"], check_all=scope is None)
         error = None
     except storage.StorageUnavailableError as e:
         error = str(e)

@@ -11,6 +11,7 @@ import { FolderPicker } from "./FolderPicker.jsx";
 import { useSettingsCopy } from "./useSettingsCopy.jsx";
 import { SaveLocationCard } from "./SaveLocationCard.jsx";
 import { FarmCostFolderCard } from "./FarmCostFolderCard.jsx";
+import { StreamFolderCard } from "./StreamFolderCard.jsx";
 import { ConfigLocationCard, locationProblem } from "./ConfigLocationCard.jsx";
 
 function LocationCard({ title, blurb, location, onChange, onReset }) {
@@ -217,6 +218,7 @@ export function StorageSection({ onSettingsRestored }) {
           />
           {actionError && <div style={uiText(12, c.amber)}>{actionError}</div>}
           <FarmCostFolderCard shares={sharesInfo.shares} />
+          <StreamFolderCard shares={sharesInfo.shares} />
           <ConfigLocationCard info={copy.info} error={copy.error} onChoose={copy.choose} onClear={copy.clear} />
 
           <div style={uiText(12, c.textFaint, { lineHeight: 1.7 })}>

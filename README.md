@@ -386,6 +386,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 
 **Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
+**Stream** — the cameras you choose sent live to YouTube or Twitch by Farmhand itself, no OBS needed (see "Stream")
+
 **Power** — the whole farm's energy use (see "Power")
 
 **Farm cost** — what the farm costs to run: filament and electricity, in total and per printer (see "Farm cost")
@@ -619,6 +621,84 @@ through **go2rtc** (its fourth container), and the page reaches that through the
 Anyone on your network can watch a Buddy3D's stream: the camera itself has no password on it. Farmhand's web
 page only passes through its own camera streams, never the rest of go2rtc.
 
+## Stream
+
+**Stream** (in the left-hand menu) sends printers' cameras live to **YouTube Live** (or **Twitch**) straight from
+Farmhand: no OBS, no PC left running. The picture is a grid of squares that you arrange, each holding a camera, a
+logo or nothing, and under each camera Farmhand writes the printer's name and its print (`VT 1190 · Printing 42% ·
+benchy.gcode`), brought up to date every 15 seconds.
+
+1. In **YouTube Studio**, choose **Create → Go live → Stream** and copy the **Stream key** (for Twitch: Creator
+   Dashboard → Settings → Stream → Primary Stream key).
+2. In Farmhand's **Stream** page, pick YouTube Live, paste the key, set up the squares (**Add all cameras** fills
+   them) and press **Save**.
+3. Press **Go live**. YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
+
+- The stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked out
+  of any error message. **Forget key** removes it.
+- If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
+  until you press **Stop stream**. Saving a new picture (squares, layout, pictures, colours) while live starts the stream
+  again with it; a new title or description goes straight to YouTube without a restart.
+- **Preview**, on the left of the page, plays the grid in your browser as the stream lays it out, with the words, the
+  pictures and the borders, so you can check it before going live.
+- **Squares:** above the preview, choose the grid's size (1 to 5 squares across and 1 to 5 down) and the
+  resolution. In the preview, click a square to edit it, and drag a square onto another to swap them; taking turns
+  waits on the whole grid while you do. The square's editor, under the preview, shows it on a screen of its own and
+  offers **Camera** (each camera in one square), **Colour**, **Picture**, **Slideshow** or **Empty**. **Add all
+  cameras** (on the right) puts every camera not in the grid yet into the empty squares, making the grid bigger if it
+  has to; **Clear** empties them all. Every square has a border round it, black unless you pick another colour.
+- **Background:** the stream's own colour, picked beside *Preview* (black unless you pick another). It shows in empty
+  squares and round anything that doesn't fill its square.
+- **Colour, Picture and Slideshow squares:** a colour of their own (or the stream's), a picture or a slideshow fitted
+  over it, and, if you like, **text over it** (up to 500 characters) at the top, middle or bottom, in a colour and
+  size of your choosing; over a picture the words get a dark band so they can be read.
+- **Pictures** are files in the **stream folder** (Settings, beside the farm cost folder; by default `stream` in the
+  folder above the STL folder): single pictures in its `images` folder, each slideshow a folder of its own in
+  `slideshows`. **Upload picture** and **Add pictures** write PNG, JPEG or WebP files there (under 10 MB each), and
+  pictures you copy in yourself (over the network share, say) show up too. **New slideshow** makes a folder;
+  **Show each picture for** sets the seconds (3 to 3600); its pictures go round in name order. **Delete picture**
+  and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the
+  stream each picture is read and fitted once a second and shown in its own seconds, so a slideshow costs very little.
+- **Layout:** the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
+  (0 skips it), then each camera full-screen, in square order, for *Stay on each camera* seconds, round and round.
+  The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one
+  you click), so taking turns costs little more than the grid.
+- **Resolution:** 1080p (1920×1080, the default), 720p (1280×720) or 2K (2560×1440), sent at the bitrate YouTube
+  suggests for each (4.5, 2.5 and 9 Mbit/s); the words and borders grow with the picture. 720p is easiest on a
+  Raspberry Pi; 1080p and 2K make more work for the computer, so they suit a PC or the Proxmox container.
+- **Save** saves the page and the layout with it, asking each time: **Overwrite** one of your saved layouts (the
+  one you last switched to or saved is picked to start with), or keep it as **a new layout** by name. A layout is the grid
+  (its size and squares), the whole grid or taking turns, the timings, the words and the border colour (not the key,
+  title or description).
+- **Saved layouts:** **Switch to** makes one the stream's layout straight away (while live, the stream starts again
+  with it); the one in use is marked, and two saved the same are pointed out. **Delete** removes one. They're
+  kept in Farmhand's settings and, once a settings folder is chosen, as a file each in its `streams` folder, cameras
+  by printer name, pictures and slideshows by their file and folder names, words as they are; **Load all** brings them back. The
+  pictures are in the stream folder, so another Farmhand sharing it shows them too.
+
+### The YouTube title and description
+
+With just the stream key, YouTube keeps its own title. For Farmhand to set the broadcast's **title** and
+**description**, sign it in to your channel once:
+
+1. In [Google Cloud](https://console.cloud.google.com/), make a project and turn on the **YouTube Data API v3**.
+2. Set up the **OAuth consent screen** and publish it (**In production**); a test one signs Farmhand out after 7 days.
+3. **Credentials → Create credentials → OAuth client ID**, type **TVs and Limited Input devices**. Paste its
+   client ID and secret into the Stream page and press **Save client**.
+4. Press **Sign in to YouTube**. The page shows a code: open google.com/device on any computer or phone, sign in to
+   the Google account that owns the channel and enter it. The page notices by itself. (Google warns the app isn't
+   verified: it's your own, so continue.)
+
+Then write the title and description and **Save**. When you go live, Farmhand sets them on the broadcast as soon as
+YouTube has started it (it keeps trying for 4 minutes); while live, **Set title on YouTube now** does it again.
+A field left empty leaves YouTube's own. Farmhand never sees your Google password; the client secret and the sign-in
+stay inside Farmhand like the stream key. **Sign out** forgets the sign-in and tells Google to as well.
+- Cameras are read the same way Monitor finds them: a Mainsail camera with the **MJPEG streamer** or **adaptive
+  MJPEG** service (its MJPEG stream), camera-streamer, go2rtc on the printer (its RTSP port, 8554), and a Prusa's
+  Buddy3D. A camera that only plays in a browser some other way can't be streamed; the page says which.
+- The streaming is done by ffmpeg in the API's container, on that computer's processor. A Raspberry Pi manages a
+  few cameras at 720p; a bigger machine (the Proxmox container) is happier with many, or a higher resolution.
+
 ## Power
 
 **Power** (in the sidebar, under Storage) is the whole farm's energy use: every printer's power meter and print
@@ -705,7 +785,7 @@ measures about 2.6:1, which is why the default changed. The colours live in
 ### Where settings and records are kept
 
 Farmhand's settings are: the look of the site (above); display preferences (the Models and Printers sort
-orders, the Monitor layout and zoom, the Farm cost page's printer order, the Tools page's links, and the Power
+orders, the Monitor layout and zoom, the Farm cost page's printer order, the Stream page's saved layouts, the Tools page's links, and the Power
 page's electricity prices: the average cost, its history and each month's own price); and your storage setup (the
 STL, 3MF and project files folders, the farm cost records folder, and the network shares with their SMB or NFS
 locations).
@@ -719,8 +799,10 @@ locations).
   so the settings survive a rebuild or a lost database. **Save all** writes all of it again whenever you like.
 - **Printers and models are copied there too:** a file per printer in `printers/` (its setup, notes, print
   history, energy readings, the 1500-hour service and Farmhand-kept maintenance) and a file per model in
-  `models/` (its notes, and each of its 3MF files' notes and starred version). **Load all settings** brings back what's
-  missing and never overwrites what's already there.
+  `models/` (its notes, and each of its 3MF files' notes and starred version), and a file per saved stream layout
+  in `streams/` (its cameras by printer name, all at once or taking turns, and the timings; a deleted layout's file
+  goes too). **Load all settings** brings back what's missing (a stream layout only when none here has its name)
+  and never overwrites what's already there.
 - **A printer's file holds its Moonraker API key and PrusaLink password**, so a restored printer connects straight
   away (a printer missing its key or password gets it back from its file). Keep the settings folder private.
   **A share's password is never written to it**: a restored share comes back saved but not connected and says it
@@ -736,7 +818,7 @@ locations).
   files and projects another Farmhand keeps there, and the files that Farmhand added to a project both have (a 3MF
   uploaded there, say, or a new version). "Has" means the same file on the NAS: nothing is copied, nothing comes in
   twice, and nothing already here is changed or removed. It says what it brought in, and what it left out and why
-  (a 3MF for a printer that isn't here). It's safe to run twice. The Farm cost page's printer order and the Monitor page's camera order are matched by
+  (a 3MF for a printer that isn't here). It's safe to run twice. The Farm cost page's printer order, the Monitor page's camera order and the cameras in the Stream page's saved layouts are matched by
   printer name, so they come back right on a Farmhand that numbers its printers differently (another computer, or a
   fresh install); a printer that isn't there is left out. The Tools page's links come back in the order you put them.
 - **If the share is down** the settings are still saved on the server, the page says the copy

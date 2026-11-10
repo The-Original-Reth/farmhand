@@ -14,6 +14,7 @@ import { PowerSection } from "./power/PowerSection.jsx";
 import { FarmCostSection } from "./farmcost/FarmCostSection.jsx";
 import { EnergyPricesContext } from "./lib/energyPrice.js";
 import { MonitorSection } from "./monitor/MonitorSection.jsx";
+import { StreamSection } from "./stream/StreamSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
 import { ToolsSection } from "./tools/ToolsSection.jsx";
 import { AppearancePage, Crumb, FullPageMessage, LoadingPage } from "./shell/pages.jsx";
@@ -24,7 +25,7 @@ import { useSavedSettings } from "./shell/useSavedSettings.js";
 
 // The page of the section open now
 function SectionPage({ section, nav, compare, settings }) {
-  const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, tools } = settings;
+  const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, streamLayouts, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
   switch (section) {
     case "printers":
@@ -50,6 +51,8 @@ function SectionPage({ section, nav, compare, settings }) {
       return <PowerSection prices={energy.prices} onEnergyPrice={energy.changePrice} onMonthPrice={energy.changeMonthPrice} saveState={saveState} />;
     case "monitor":
       return <MonitorSection order={monitor.order} onSave={monitor.saveOrder} maxZoom={monitor.maxZoom} onMaxZoom={monitor.changeMaxZoom} />;
+    case "stream":
+      return <StreamSection layouts={streamLayouts.list} onSaveLayouts={streamLayouts.save} />;
     case "tools":
       return <ToolsSection links={tools.links} onSave={tools.save} />;
     case "appearance":

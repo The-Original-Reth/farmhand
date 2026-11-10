@@ -5,6 +5,7 @@ export * from "./api/printers.js";
 export * from "./api/library.js";
 export * from "./api/projects.js";
 export * from "./api/farmCost.js";
+export * from "./api/stream.js";
 export * from "./api/storage.js";
 export * from "./api/settings.js";
 export * from "./api/all.js";

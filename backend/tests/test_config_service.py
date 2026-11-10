@@ -65,6 +65,56 @@ def test_every_later_change_refreshes_the_copy(db_session, share):
     assert result["ok"] and _file(folder)["appearance"]["scheme"] == "violet"
 
 
+def test_saved_stream_layouts_have_a_file_each_in_streams(db_session, share, other_farmhand):
+    from app.services import printer_service
+
+    vt = printer_service.create_printer(db_session, name="VT 1190", kind=None, wired_ip=None, wireless_ip=None)
+    v2 = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    folder = _folder(share)
+    svc.set_location(db_session, str(folder))
+    layouts = [
+        {"name": "Whole farm", "cols": 2, "rows": 2, "layout": "cycle", "seconds_all": 0, "seconds_each": 40, "border_color": "#FF0000",
+         "cells": [{"image": "Elves.png"}, {"camera": f"{vt.id}:Bed"}, None, {"camera": f"{v2.id}:Camera"}]},
+        {"name": "Night/shift", "cols": 1, "rows": 1, "cells": [{"camera": f"{v2.id}:Camera"}]},
+    ]
+    svc.save_config(db_session, {"preferences": {"stream_layouts": layouts}})
+    svc.mirror(db_session)
+    whole = json.loads((folder / "streams" / "Whole farm.json").read_text(encoding="utf-8"))
+    assert whole["farmhand_record"] == "streams" and whole["name"] == "Whole farm" and (whole["cols"], whole["rows"]) == (2, 2)
+    assert whole["cells"][0]["image"] == "Elves.png"  # a card as it is: pictures are named by file already
+    assert whole["cells"][1:] == [{"camera": {"printer": "VT 1190", "camera": "Bed"}}, None, {"camera": {"printer": "V2 BOG", "camera": "Camera"}}]
+    assert (whole["layout"], whole["seconds_all"], whole["seconds_each"], whole["show_status"], whole["border_color"]) == ("cycle", 0, 40, True, "#FF0000")
+    assert (folder / "streams" / "Night_shift.json").is_file()  # a name made safe for a file
+    assert "stream_layouts" not in _file(folder)["preferences"]  # only in streams/, not twice
+
+    # deleted on the page: its file goes too
+    svc.save_config(db_session, {"preferences": {"stream_layouts": layouts[:1]}})
+    svc.mirror(db_session)
+    assert sorted(p.name for p in (folder / "streams").iterdir()) == ["Whole farm.json"]
+
+    # Load all on another Farmhand, whose printers have other numbers: they're followed by name
+    db2 = other_farmhand
+    printer_service.create_printer(db2, name="Shelf", kind=None, wired_ip=None, wireless_ip=None)
+    v2_here = printer_service.create_printer(db2, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+    svc.save_config(db2, {"preferences": {"stream_layouts": [{"name": "WHOLE FARM", "cameras": []}, {"name": "Mine", "cameras": []}]}})
+    app_settings.put(db2, svc.KEY_LOCATION, str(folder))
+    db2.commit()
+    out = svc.restore(db2)
+    got = svc.get_config(db2)["preferences"]["stream_layouts"]
+    # one by the same name here is kept as it is (Load all only adds), so nothing new came in yet
+    assert [lay["name"] for lay in got] == ["WHOLE FARM", "Mine"] and "stream layouts" not in out["restored"]
+    svc.save_config(db2, {"preferences": {"stream_layouts": []}})
+    out = svc.restore(db2)
+    got = svc.get_config(db2)["preferences"]["stream_layouts"]
+    assert "stream layouts" in out["restored"]
+    # VT 1190 came back from its printers/ file, so its camera is here too, in this Farmhand's numbers
+    vt_here = next(p.id for p in printer_service.list_printers(db2) if p.name == "VT 1190")
+    assert got[0]["cells"][0]["image"] == "Elves.png"
+    assert {k: v for k, v in got[0].items() if k != "cells"} == {"name": "Whole farm", "cols": 2, "rows": 2, "layout": "cycle", "seconds_all": 0,
+                                                                  "seconds_each": 40, "show_status": True, "border_color": "#FF0000", "background": "#000000"}
+    assert got[0]["cells"][1:] == [{"camera": f"{vt_here}:Bed"}, None, {"camera": f"{v2_here.id}:Camera"}]
+
+
 def test_a_folder_that_isnt_on_a_share_is_refused(db_session, share, tmp_path):
     plain = tmp_path / "data" / "elsewhere"
     plain.mkdir(parents=True)
