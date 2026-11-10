@@ -72,12 +72,12 @@ const normalizeShare = (s) => ({
 
 // The save location: one place on the NAS everything goes in. { address (null until set), share (its share as the
 // shares list has one, null until set), capability (may this container mount shares), folders: { stl, threemf, project,
-// farmCost, config } }
+// farmCost, stream, config } }
 const normalizeSaveLocation = (r) => ({
   address: r.address,
   share: r.share ? normalizeShare(r.share) : null,
   capability: r.capability || null,
-  folders: { stl: r.folders.stl, threemf: r.folders.threemf, project: r.folders.project, farmCost: r.folders.farm_cost, config: r.folders.config },
+  folders: { stl: r.folders.stl, threemf: r.folders.threemf, project: r.folders.project, farmCost: r.folders.farm_cost, stream: r.folders.stream, config: r.folders.config },
 });
 
 export const getSaveLocation = async () => normalizeSaveLocation(await request("/settings/storage/save-location"));

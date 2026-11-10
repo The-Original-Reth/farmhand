@@ -1,6 +1,7 @@
 """The Stream page: cameras sent live to YouTube or Twitch by ffmpeg, the stream key kept to Farmhand."""
 from __future__ import annotations
 
+import os
 import threading
 import time
 
@@ -303,25 +304,50 @@ def test_the_timetable_of_turns():
 
 def test_cards_in_the_picture():
     srcs = [live_stream.Source(0, "P0", ["-i", "http://cam0"])]
-    words = {"words": "/s/text-1.txt", "color": "#FFFF00", "size": "large"}
+    words = {"words": "/s/text-1.txt", "color": "#FFFF00"}
     cells = [("camera", 0),
-             ("card", {"background": "#202060", **words, "position": "middle"}),  # words on a colour
-             ("card", {"pictures": ["/s/a.png", "/s/b.png", "/s/c.jpg"], "seconds": 5, **words, "position": "bottom"}),  # a slideshow
+             ("card", {"background": "#202060", **words, "text_box": {"x": 0.5, "y": 0.5, "size": 0.2}}),  # words on a colour
+             ("card", {"pictures": ["/s/a.png", "/s/b.png", "/s/c.jpg"], "seconds": 5, **words, "band": True,
+                       "text_box": {"x": 0.25, "y": 0.9, "size": 0.2}}),  # a slideshow, words low on the left
              ("card", {"pictures": ["/s/only.png"]})]  # a picture, no words
     cmd = live_stream.command("ffmpeg", srcs, "u", live_stream.Look(cols=2, rows=2, cells=cells, resolution="720p"))
     graph = _graph(cmd)
     # words in the middle of their colour, plain; at the foot of a slideshow, on a dark band
     assert "color=c=0x202060:s=640x360:r=15,setsar=1[c1b]" in graph and "textfile=/s/text-1.txt" in graph
-    assert "fontcolor=0xFFFF00" in graph and "fontsize=72" in graph and "y=(h-text_h)/2[" not in graph
+    assert "fontcolor=0xFFFF00" in graph and "fontsize=72" in graph
     first, second = graph.split("drawtext=")[1], graph.split("drawtext=")[2]
-    assert "y=(h-text_h)/2" in first and "box=1" not in first
-    assert "y=h-text_h-25" in second and "box=1:boxcolor=black@0.5" in second
+    assert "x=320-text_w/2:y=180-text_h/2" in first and "box=1" not in first
+    assert "x=160-text_w/2:y=324-text_h/2" in second and "box=1:boxcolor=black@0.5" in second
     # each picture its own input, read and fitted once a second; the first over the colour, each other over it in its seconds
     assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"][2:] == ["/s/a.png", "/s/b.png", "/s/c.jpg", "/s/only.png"]
     assert "[c2o0][c2i1]overlay=(W-w)/2:(H-h)/2:enable='gte(mod(t,15),5)*lt(mod(t,15),10)'[c2o1]" in graph
     assert "[c2o1][c2i2]overlay=(W-w)/2:(H-h)/2:enable='gte(mod(t,15),10)*lt(mod(t,15),15)'[c2o2]" in graph
     assert "[c3b][c3i0]overlay=(W-w)/2:(H-h)/2[c3o0];[c3o0]drawbox" in graph
     assert "sendcmd" not in graph and "-t" not in cmd  # nothing needs a timetable
+
+
+def test_a_cards_picture_in_its_own_box():
+    # the picture fitted into the right half's lower part, a quarter of the square high
+    cells = [("card", {"pictures": ["/s/a.png"], "picture_box": {"x": 0.5, "y": 0.75, "w": 0.5, "h": 0.25}})]
+    graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
+    assert "scale=640:180:force_original_aspect_ratio=decrease" in graph
+    assert "overlay=640+(640-w)/2:540+(180-h)/2[c0o0]" in graph
+
+
+def test_card_boxes_are_kept_inside_the_square():
+    cell = live_stream._cell({"text": "Hi", "picture_box": {"x": 0.9, "y": -1, "w": 0.5, "h": 0.01}, "text_box": {"x": 3, "y": "no", "size": 9}})
+    assert cell["picture_box"] == {"x": 0.5, "y": 0.0, "w": 0.5, "h": 0.05}
+    assert cell["text_box"] == {"x": 1.0, "y": 0.5, "size": 0.6}
+
+
+def test_a_camera_square_with_its_own_background():
+    assert live_stream._cell({"camera": "1:Bed", "background": "#00ff00"}) == {"camera": "1:Bed", "background": "#00FF00"}
+    assert live_stream._cell({"camera": "1:Bed", "background": "nope"}) == {"camera": "1:Bed"}  # none: the stream's
+    srcs = [live_stream.Source(0, "P0", ["-i", "http://cam0"]), live_stream.Source(1, "P1", ["-i", "http://cam1"])]
+    cells = [("camera", 0, "#00FF00"), ("camera", 1)]
+    graph = _graph(live_stream.command("ffmpeg", srcs, "u", live_stream.Look(cols=2, rows=1, cells=cells, resolution="720p", background="#112233")))
+    assert "[g0]scale=640:720:force_original_aspect_ratio=decrease,pad=640:720:(ow-iw)/2:(oh-ih)/2:color=0x00FF00" in graph
+    assert "[g1]scale=640:720:force_original_aspect_ratio=decrease,pad=640:720:(ow-iw)/2:(oh-ih)/2:color=0x112233" in graph
 
 
 def _png(color=b"r"):
@@ -356,11 +382,11 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
 
     # going live: a slideshow with words over it, read straight from the stream folder
     moonraker.webcams = [_cam()]
-    cells = [{"camera": f"{pid}:Bed"}, {"slideshow": "Prints", "seconds": 4, "text": " Live! ", "position": "top"}, {"image": "Elves.png"},
+    cells = [{"camera": f"{pid}:Bed"}, {"slideshow": "Prints", "seconds": 4, "text": " Live! ", "text_box": {"x": 0.5, "y": 0.1}}, {"image": "Elves.png"},
              {"image": "gone.png", "background": "#123456"}]
     s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
-    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": "#FFFFFF",
-                             "size": "medium", "position": "top"}
+    assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": "#FFFFFF", "font": "dejavu-sans", "band": False,
+                             "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125}}
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
@@ -614,3 +640,55 @@ def test_going_live_without_signing_in_says_the_title_wont_be_set(klipper, moonr
     api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live"})
     status = api.post("/stream/start").json()["status"]
     assert status["title"]["state"] == "failed" and "Sign in to YouTube" in status["title"]["message"]
+
+
+def test_a_cards_words_in_the_font_chosen(monkeypatch, tmp_path):
+    # a font the server has is used; one it hasn't (or one not in the list) writes in the stream's own font
+    (tmp_path / "truetype" / "lato").mkdir(parents=True)
+    (tmp_path / "truetype" / "lato" / "Lato-Black.ttf").write_bytes(b"font")
+    monkeypatch.setattr(live_stream, "FONTS_DIR", str(tmp_path))
+    assert live_stream._cell({"text": "Hi", "font": "lato-black"})["font"] == "lato-black"
+    assert live_stream._cell({"text": "Hi", "font": "wingdings"})["font"] == "dejavu-sans"
+    assert live_stream.font_file("lato-black").replace("\\", "/").endswith("truetype/lato/Lato-Black.ttf")
+    assert live_stream.font_file("roboto") == live_stream.FONT
+    cells = [("card", {"words": "/s/t.txt", "font": "lato-black"})]
+    graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
+    assert "Lato-Black.ttf" in graph
+
+
+def test_the_stream_folder_as_windows_reaches_it(db_session, monkeypatch, tmp_path):
+    from app import mounts
+    from app.models import NetworkShare
+    from app.services import stream_media
+
+    monkeypatch.setattr(mounts, "mount_point_for", lambda name: tmp_path / name)
+    db_session.add(NetworkShare(name="nas", protocol="smb", server="10.0.0.5", share="prints/Farmhand"))
+    db_session.add(NetworkShare(name="nfs", protocol="nfs", server="10.0.0.6", share="/export"))
+    db_session.commit()
+    (tmp_path / "nas" / "stream").mkdir(parents=True)
+    (tmp_path / "nfs").mkdir()
+    assert stream_media.windows_path(db_session, str(tmp_path / "nas" / "stream")) == "\\\\10.0.0.5\\prints\\Farmhand\\stream"
+    assert stream_media.windows_path(db_session, str(tmp_path / "nfs")) is None  # NFS: Windows doesn't reach it that way
+    assert stream_media.windows_path(db_session, str(tmp_path / "elsewhere")) is None
+
+
+def test_a_camera_squares_own_words():
+    assert live_stream._cell({"camera": "1:Bed", "show_words": False, "words_size": 0.9, "words_color": "#ff0000", "words_font": "play"}) == {
+        "camera": "1:Bed", "show_words": False, "words_size": 0.3, "words_color": "#FF0000", "words_font": "play"}
+    assert live_stream._cell({"camera": "1:Bed", "show_words": True, "words_color": "#FFFFFF", "words_font": "nope"}) == {"camera": "1:Bed"}
+    srcs = [live_stream.Source(i, f"P{i}", ["-i", f"http://cam{i}"]) for i in range(3)]
+    cells = [("camera", 0, {"camera": "1:A", "show_words": False}),
+             ("camera", 1, {"camera": "1:B", "words_size": 0.1, "words_color": "#FF0000"}), ("camera", 2)]
+    look = live_stream.Look(cols=3, rows=1, cells=cells, resolution="720p", status_files=["/s/0.txt", "/s/1.txt", "/s/2.txt"], cycle=(10, 5))
+    graph = _graph(live_stream.command("ffmpeg", srcs, "u", look))
+    tiles = {i: graph.split(f"[g{i}]scale")[1].split(f"[c{i}]")[0] for i in range(3)}
+    assert "drawtext" not in tiles[0]  # its words turned off
+    assert "fontsize=72:fontcolor=0xFF0000" in tiles[1]  # a tenth of its 720-high square, in red
+    assert "fontcolor=0xFFFFFF" in tiles[2]  # as usual
+    # on its own, taking turns: the same choices
+    assert "[s0]drawtext" not in graph and "[s1]drawtext" in graph and "fontsize=h*0.1:fontcolor=0xFF0000" in graph
+
+
+def test_play_is_kept_with_farmhand():
+    assert live_stream.font_file("play").replace("\\", "/").endswith("app/fonts/Play-Regular.ttf")
+    assert os.path.isfile(live_stream.font_file("play-bold"))

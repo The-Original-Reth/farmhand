@@ -38,8 +38,8 @@ DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "s
 # farm_cost_order: the Farm cost page's printers in the order they were dragged into, as printer ids (printers not in
 # it come after, by name)
 # stream_layouts: the Stream page's saved layouts, each {"name", "cols", "rows", "cells": [per square, row by row:
-# {"camera": "printer id:camera name"} | a card {"background", "image", "slideshow", "seconds", "text", "color", "size",
-# "position"} | None], "background" (the stream's colour), "layout": "grid" | "cycle", "seconds_all",
+# {"camera": "printer id:camera name"} | a card {"background", "image", "slideshow", "seconds", "text", "color", "picture_box",
+# "text_box"} | None], "background" (the stream's colour), "layout": "grid" | "cycle", "seconds_all",
 # "seconds_each", "show_status", "border_color"}, in the order saved; names are unique (any case)
 # tool_links: the websites listed on the Tools page, in the order given, each {"name", "url"} (url http or https).
 # Until a list is saved, the Klipper ones below are shown; a list saved empty stays empty.
@@ -239,7 +239,7 @@ def _stream_cell(raw) -> dict | None:
     from .services.live_stream import _cell  # the same rules as the Stream page's own squares
 
     if isinstance(raw, dict) and isinstance(raw.get("camera"), str) and 0 < len(raw["camera"]) <= 200:
-        return {"camera": raw["camera"]}
+        return {**_cell({**raw, "camera": "0:x"}), "camera": raw["camera"]}  # its own choices, as the Stream page keeps them
     cell = _cell(raw)
     if cell and "camera" not in cell:
         cell["text"] = cell["text"].strip()[:500]

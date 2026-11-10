@@ -109,8 +109,8 @@ def test_the_stream_pages_saved_layouts(client):
     layouts = r.json()["config"]["preferences"]["stream_layouts"]
     assert [lay["name"] for lay in layouts] == ["Whole farm", "Vorons", "Too big"]
     # a camera in one square only; anything else in a square: empty
-    picture = {"background": None, "image": "a.png", "slideshow": None, "seconds": 10, "text": "", "color": "#FFFFFF", "size": "medium",
-               "position": "middle"}
+    picture = {"background": None, "image": "a.png", "slideshow": None, "seconds": 10, "text": "", "color": "#FFFFFF", "font": "dejavu-sans", "band": False,
+               "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.5, "size": 0.125}}
     assert layouts[0] == {"name": "Whole farm", "cols": 3, "rows": 2, "layout": "cycle", "seconds_all": 0, "seconds_each": 45,
                           "show_status": False, "border_color": "#FF8800", "background": "#000000",
                           "cells": [{"camera": "1:Bed"}, picture, None, None, {"camera": "2:Camera"}, None]}
@@ -128,12 +128,13 @@ def test_saved_stream_layouts_keep_cards(client):
     cells = [{"text": " Hello ", "color": "#ff0000"}, {"slideshow": "Prints", "seconds": 1}, {"logo": 3}, {"image": "a.png", "position": "top"}]
     r = c.put("/settings/config", json={"preferences": {"stream_layouts": [{"name": "Signs", "cols": 2, "rows": 2, "cells": cells, "background": "#102030"}]}})
     lay = r.json()["config"]["preferences"]["stream_layouts"][0]
-    card = {"background": None, "image": None, "slideshow": None, "seconds": 10, "text": "", "color": "#FFFFFF", "size": "medium", "position": "middle"}
+    card = {"background": None, "image": None, "slideshow": None, "seconds": 10, "text": "", "color": "#FFFFFF", "font": "dejavu-sans", "band": False,
+            "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.5, "size": 0.125}}
     assert lay["cells"] == [
         {**card, "text": "Hello", "color": "#FF0000"},
         {**card, "slideshow": "Prints"},  # seconds out of range: the default
         None,  # a logo of before the stream folder: empty
-        {**card, "image": "a.png", "position": "top"},
+        {**card, "image": "a.png", "text_box": {"x": 0.5, "y": 0.18, "size": 0.125}},  # a place of before: its spot
     ]
     assert lay["background"] == "#102030"
 

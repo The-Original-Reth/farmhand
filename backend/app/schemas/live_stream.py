@@ -18,7 +18,7 @@ class StreamSettingsIn(BaseModel):
     cols: int | None = None  # the grid: 1 to 5 squares across...
     rows: int | None = None  # ...and down
     # each square, row by row: {"camera": "id:name"}, a card {"background", "image", "slideshow", "seconds", "text", "color",
-    # "size", "position"} (see services/live_stream._cell) or null (empty)
+    # "picture_box", "text_box"} (see services/live_stream._cell) or null (empty)
     cells: list[dict | None] | None = None
     title: str | None = Field(None, max_length=1000)  # the YouTube broadcast's title ("" : leave YouTube's as it is)
     description: str | None = Field(None, max_length=20000)  # and its description

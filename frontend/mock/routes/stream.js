@@ -16,8 +16,38 @@ const RESOLUTIONS = { "720p": "720p (1280×720)", "1080p": "1080p (1920×1080)",
 const MAX_SIDE = 5;
 const PICTURES = ["frog-vt1190", "shark-v2bog", "shark-vt1190"]; // the sample pictures shown for the uploads, in turn
 const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background"];
-const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", size: "medium", position: "middle" };
-const STREAM_DEFAULT = "/data/storage/stream";
+const FONTS = [
+  ["dejavu-sans", "DejaVu Sans", "sans-serif"], ["play", "Play (Farmhand's own)", "sans-serif"], ["dejavu-sans-bold", "DejaVu Sans Bold", "sans-serif"], ["dejavu-serif", "DejaVu Serif", "serif"],
+  ["dejavu-mono", "DejaVu Sans Mono", "monospace"], ["liberation-sans", "Liberation Sans (like Arial)", "sans-serif"],
+  ["roboto-black", "Roboto Black", "sans-serif"], ["bebas-neue", "Bebas Neue (capitals)", "sans-serif"], ["comic-neue", "Comic Neue", "cursive"],
+];
+const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: "#FFFFFF", font: "dejavu-sans", band: false, picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 } };
+// where a card's picture and words are, as parts of the square (services/live_stream.py _picture_box, _text_box)
+const part = (v, least, most, d) => (typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(most, Math.max(least, v)) * 1e4) / 1e4 : d);
+const pictureBox = (b) => {
+  if (!b || typeof b !== "object") return { x: 0, y: 0, w: 1, h: 1 };
+  const w = part(b.w, 0.05, 1, 1), h = part(b.h, 0.05, 1, 1);
+  return { x: part(b.x, 0, 1 - w, (1 - w) / 2), y: part(b.y, 0, 1 - h, (1 - h) / 2), w, h };
+};
+const textBox = (b, size, position) =>
+  b && typeof b === "object"
+    ? { x: part(b.x, 0, 1, 0.5), y: part(b.y, 0, 1, 0.5), size: part(b.size, 0.02, 0.6, 0.125) }
+    : { x: 0.5, y: { top: 0.18, bottom: 0.82 }[position] ?? 0.5, size: Math.round(({ small: 1 / 12, large: 1 / 5 }[size] ?? 0.125) * 1e4) / 1e4 };
+const cameraCell = (x) => {
+  // a camera's square, and only what differs from the usual (services/live_stream.py _camera_cell)
+  const out = { camera: x.camera };
+  if (/^#[0-9A-Fa-f]{6}$/.test(x.background || "")) out.background = x.background.toUpperCase();
+  if (x.show_words === false) out.show_words = false;
+  if (typeof x.words_size === "number" && Number.isFinite(x.words_size)) out.words_size = Math.round(Math.min(0.3, Math.max(0.02, x.words_size)) * 1e4) / 1e4;
+  if (/^#[0-9A-Fa-f]{6}$/.test(x.words_color || "") && x.words_color.toUpperCase() !== "#FFFFFF") out.words_color = x.words_color.toUpperCase();
+  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "dejavu-sans") out.words_font = x.words_font;
+  return out;
+};
+
+// the stream folder when none is chosen: "stream" in the folder above the STL folder
+// a folder on the sample NAS as Windows reaches it (services/stream_media.py windows_path)
+const windowsPath = (p) => (p.startsWith("/data/nas/farm-nas/") ? `\\\\192.168.1.50\\farm\\${p.slice(19).split("/").join("\\")}` : null);
+const streamDefault = (farm) => `${farm.storage.stl.replace(/\/[^/]+$/, "")}/stream`;
 const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v || "") ? v.toUpperCase() : d);
 const fileName = (v) => (typeof v === "string" && /^[^/\\]{1,120}$/.test(v) && v !== "." && v !== ".." ? v : null);
 const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -34,7 +64,7 @@ export function streamRoutes(ctx) {
     (farm.stream ??= {
       destination: "youtube", cols: 1, rows: 1, cells: [null], show_status: true, layout: "grid", resolution: "1080p", seconds_all: 30,
       seconds_each: 20, border_color: "#000000", background: "#000000", title: "", description: "", key_set: false,
-      images: [], slideshows: [], uploads: 0, location: null,
+      images: [], slideshows: [], uploads: 0,
       live: false, started_at: null, labels: [], title_status: null,
       youtube: { client_id: null, signed_in: false, channel: null, signing_in: null, error: null },
     });
@@ -61,8 +91,9 @@ export function streamRoutes(ctx) {
       },
       destinations: Object.entries(DESTINATIONS).map(([key, label]) => ({ key, label })),
       resolutions: Object.entries(RESOLUTIONS).map(([key, label]) => ({ key, label })),
+      fonts: FONTS.map(([key, label, generic]) => ({ key, label, generic })), // (the mock has no font files: the page falls back)
       media: {
-        path: s.location || STREAM_DEFAULT, error: null, images: s.images.map((x) => x.name).sort(natural),
+        path: farm.streamFolder || streamDefault(farm), error: null, windows_path: windowsPath(farm.streamFolder || streamDefault(farm)), images: s.images.map((x) => x.name).sort(natural),
         slideshows: [...s.slideshows].sort((a, b) => natural(a.name, b.name)).map((x) => ({ name: x.name, images: x.images.map((i) => i.name).sort(natural) })),
       },
       youtube: youtube(),
@@ -106,7 +137,7 @@ export function streamRoutes(ctx) {
       if (typeof x.camera === "string" && CAMERA_KEY.test(x.camera)) {
         if (seen.has(x.camera)) throw new HttpError(422, "A camera can only be in one square.");
         seen.add(x.camera);
-        return { camera: x.camera };
+        return cameraCell(x);
       }
       if (["background", "image", "slideshow", "text"].some((k) => k in x)) {
         if (x.image && x.slideshow) throw new HttpError(422, "A square shows a picture or a slideshow, not both.");
@@ -115,11 +146,10 @@ export function streamRoutes(ctx) {
         if (x.seconds != null && !(Number.isInteger(x.seconds) && x.seconds >= 3 && x.seconds <= 3600)) throw new HttpError(422, "A slideshow shows each picture for 3 to 3600 seconds.");
         return {
           ...CARD, background: hex(x.background, null), image: x.slideshow ? null : fileName(x.image), slideshow: fileName(x.slideshow),
-          seconds: x.seconds ?? 10, text, color: hex(x.color, "#FFFFFF"), size: ["small", "medium", "large"].includes(x.size) ? x.size : "medium",
-          position: ["top", "middle", "bottom"].includes(x.position) ? x.position : "middle",
+          seconds: x.seconds ?? 10, text, color: hex(x.color, "#FFFFFF"), font: FONTS.some(([k]) => k === x.font) ? x.font : "dejavu-sans", band: x.band === true, picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
         };
       }
-      throw new HttpError(422, "A square can hold a camera, a colour, a picture or a slideshow with words over it, or nothing.");
+      throw new HttpError(422, "A square can hold a camera, text, a picture or a slideshow with words over it, or nothing.");
     });
   };
 
@@ -246,11 +276,11 @@ export function streamRoutes(ctx) {
   // where the stream folder is (Settings)
   const locationOut = () => {
     const s = state();
-    return { path: s.location || STREAM_DEFAULT, is_default: !s.location, default_path: STREAM_DEFAULT, status: { exists: true, writable: true, marker_ok: true, ready: true } };
+    return { path: farm.streamFolder || streamDefault(farm), is_default: !farm.streamFolder, default_path: streamDefault(farm), status: { exists: true, writable: true, marker_ok: true, ready: true } };
   };
   on("GET", "/stream/location", () => locationOut());
   on("PUT", "/stream/location", (_, body) => {
-    state().location = body.path || null;
+    farm.streamFolder = body.path || null;
     return locationOut();
   });
 

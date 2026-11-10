@@ -16,10 +16,12 @@ import os
 import re
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import storage
+from .. import mounts, storage
 from ..errors import NotFound
+from ..models import NetworkShare
 from . import app_settings
 
 STREAM_FOLDER = "stream"
@@ -92,12 +94,28 @@ def _pictures_in(d: Path) -> list[str]:
         return []
 
 
+def windows_path(db: Session, path: str) -> str | None:
+    r"""A folder as Windows reaches it over the network (\\server\share\folder), when it's on a connected SMB share;
+    None when it's in Farmhand's own storage or on an NFS share."""
+    real = os.path.realpath(path)
+    for row in db.scalars(select(NetworkShare).order_by(NetworkShare.id)):
+        if row.protocol != "smb":
+            continue
+        mount = os.path.realpath(mounts.mount_point_for(row.name))
+        if real == mount or real.startswith(mount + os.sep):
+            parts = [row.server, *row.share.strip("/").split("/"), *[p for p in real[len(mount):].split(os.sep) if p]]
+            return "\\\\" + "\\".join(parts)
+    return None
+
+
 def media(db: Session) -> dict:
-    """{path, images: [names], slideshows: [{name, images: [names]}], error}: what's in the stream folder now."""
+    """{path, windows_path (windows_path(), or None), images: [names], slideshows: [{name, images: [names]}], error}:
+    what's in the stream folder now."""
     try:
         root = folder(db)
     except storage.StorageUnavailableError as e:
-        return {"path": location_info(db)["path"], "images": [], "slideshows": [], "error": str(e)}
+        at = location_info(db)["path"]
+        return {"path": at, "windows_path": windows_path(db, at), "images": [], "slideshows": [], "error": str(e)}
     shows = []
     try:
         for e in sorted(os.scandir(root / SLIDESHOWS), key=lambda e: _natural(e.name)):
@@ -105,7 +123,7 @@ def media(db: Session) -> dict:
                 shows.append({"name": e.name, "images": _pictures_in(Path(e.path))})
     except OSError:
         pass
-    return {"path": str(root), "images": _pictures_in(root / IMAGES), "slideshows": shows, "error": None}
+    return {"path": str(root), "windows_path": windows_path(db, str(root)), "images": _pictures_in(root / IMAGES), "slideshows": shows, "error": None}
 
 
 def _name(raw: str, what: str) -> str:

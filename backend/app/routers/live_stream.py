@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from .. import database
@@ -161,6 +164,19 @@ def delete_slideshow(name: str, confirm: bool = Query(False), db: Session = Depe
     _media(lambda: stream_media.remove_slideshow(db, name))
     _restart_if_used(db, name)
     return live_stream.page(db)
+
+
+@router.get("/fonts/{key}")
+def get_font(key: str):
+    """A font a square's words can be written in, for the page to show them as the stream does. 404 when the server
+    doesn't have it (the stream then writes in its own font)."""
+    path = live_stream.font_file(key)
+    if key not in live_stream.FONTS or path == live_stream.FONT and key != live_stream.DEFAULT_FONT:
+        raise HTTPException(status_code=404, detail="That font isn't on this Farmhand.")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="That font isn't on this Farmhand.")
+    kind = "font/otf" if path.endswith(".otf") else "font/ttf"
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "max-age=86400"})
 
 
 @router.get("/slideshows/{name}/pictures/{picture}")

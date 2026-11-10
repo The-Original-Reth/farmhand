@@ -68,6 +68,47 @@ RESOLUTION_LABELS = {"720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", 
 DEFAULT_RESOLUTION = "1080p"
 WIDTH, HEIGHT, _ = RESOLUTIONS[DEFAULT_RESOLUTION]
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"  # fonts-dejavu-core, in the API's image
+FONTS_DIR = "/usr/share/fonts"
+APP_FONTS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts")  # fonts kept with Farmhand: "app:" in FONTS
+# The fonts a square's words can be written in: key -> (name, its file in FONTS_DIR (the Dockerfile installs them),
+# the kind of font the page falls back to while its own copy loads). A font the server doesn't have writes in FONT.
+FONTS = {
+    "dejavu-sans": ("DejaVu Sans", "truetype/dejavu/DejaVuSans.ttf", "sans-serif"),
+    "play": ("Play (Farmhand's own)", "app:Play-Regular.ttf", "sans-serif"),
+    "play-bold": ("Play Bold", "app:Play-Bold.ttf", "sans-serif"),
+    "dejavu-sans-bold": ("DejaVu Sans Bold", "truetype/dejavu/DejaVuSans-Bold.ttf", "sans-serif"),
+    "dejavu-serif": ("DejaVu Serif", "truetype/dejavu/DejaVuSerif.ttf", "serif"),
+    "dejavu-mono": ("DejaVu Sans Mono", "truetype/dejavu/DejaVuSansMono.ttf", "monospace"),
+    "liberation-sans": ("Liberation Sans (like Arial)", "truetype/liberation/LiberationSans-Regular.ttf", "sans-serif"),
+    "liberation-sans-bold": ("Liberation Sans Bold", "truetype/liberation/LiberationSans-Bold.ttf", "sans-serif"),
+    "liberation-serif": ("Liberation Serif (like Times New Roman)", "truetype/liberation/LiberationSerif-Regular.ttf", "serif"),
+    "roboto": ("Roboto", "truetype/roboto/unhinted/RobotoTTF/Roboto-Regular.ttf", "sans-serif"),
+    "roboto-bold": ("Roboto Bold", "truetype/roboto/unhinted/RobotoTTF/Roboto-Bold.ttf", "sans-serif"),
+    "roboto-black": ("Roboto Black", "truetype/roboto/unhinted/RobotoTTF/Roboto-Black.ttf", "sans-serif"),
+    "open-sans": ("Open Sans", "truetype/open-sans/OpenSans-Regular.ttf", "sans-serif"),
+    "open-sans-bold": ("Open Sans Bold", "truetype/open-sans/OpenSans-Bold.ttf", "sans-serif"),
+    "lato": ("Lato", "truetype/lato/Lato-Regular.ttf", "sans-serif"),
+    "lato-black": ("Lato Black", "truetype/lato/Lato-Black.ttf", "sans-serif"),
+    "montserrat": ("Montserrat", "truetype/montserrat/Montserrat-Regular.ttf", "sans-serif"),
+    "montserrat-bold": ("Montserrat Bold", "truetype/montserrat/Montserrat-Bold.ttf", "sans-serif"),
+    "montserrat-black": ("Montserrat Black", "truetype/montserrat/Montserrat-Black.ttf", "sans-serif"),
+    "bebas-neue": ("Bebas Neue (capitals)", "opentype/bebas-neue/BebasNeue-Regular.otf", "sans-serif"),
+    "comic-neue": ("Comic Neue", "opentype/comic-neue/ComicNeue-Regular.otf", "cursive"),
+    "comic-neue-bold": ("Comic Neue Bold", "opentype/comic-neue/ComicNeue-Bold.otf", "cursive"),
+    "fira-code": ("Fira Code", "truetype/firacode/FiraCode-Regular.ttf", "monospace"),
+}
+DEFAULT_FONT = "dejavu-sans"
+
+
+def font_file(key: str | None) -> str:
+    """The file a font is written with: its own when the server has it, else FONT."""
+    found = FONTS.get(key or "")
+    if found:
+        file = found[1]
+        path = os.path.join(APP_FONTS, file[4:]) if file.startswith("app:") else os.path.join(FONTS_DIR, file)
+        if os.path.isfile(path):
+            return path
+    return FONT
 RETRY_SECONDS = 10  # how long after ffmpeg stops it is started again
 STATUS_EVERY = 15  # how often the print progress written on the video is brought up to date
 KEPT_LINES = 30  # how much of what ffmpeg said is kept, to say why it stopped
@@ -99,11 +140,17 @@ def auto_grid(n: int) -> tuple[int, int]:
 
 
 TEXT_MAX = 500
-TEXT_SIZES = ("small", "medium", "large")
-TEXT_PLACES = ("top", "middle", "bottom")
+# Where a card's picture and words are, as parts of the square (0 to 1), moved and resized on the page's canvas.
+# picture_box {x, y, w, h}: the box the picture is fitted into (left, top, width, height); text_box {x, y, size}: the
+# words' centre and their height. Cards of before had a size (small/medium/large) and a place (top/middle/bottom).
+FULL_BOX = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+BOX_LEAST = 0.05
+TEXT_SIZE = (0.02, 0.6, 0.125)  # (least, most, default) height of the words
+OLD_SIZES = {"small": 1 / 12, "medium": 1 / 8, "large": 1 / 5}
+OLD_PLACES = {"top": 0.18, "middle": 0.5, "bottom": 0.82}
 SLIDE_SECONDS = (3, 3600, 10)  # (least, most, default): how long each picture of a slideshow is shown
 PICTURE_NAME = re.compile(r"^[^/\\\0]{1,120}$")
-CARD_KEYS = ("background", "image", "slideshow", "seconds", "text", "color", "size", "position")
+CARD_KEYS = ("background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box")
 
 
 def _color(v, default: str | None) -> str | None:
@@ -114,17 +161,64 @@ def _named(v) -> str | None:
     return v if isinstance(v, str) and PICTURE_NAME.match(v) and v not in (".", "..") else None
 
 
+def _part(v, least: float, most: float, default: float) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return default
+    return round(min(most, max(least, float(v))), 4)
+
+
+def _picture_box(raw) -> dict:
+    if not isinstance(raw, dict):
+        return dict(FULL_BOX)
+    w, h = _part(raw.get("w"), BOX_LEAST, 1, 1.0), _part(raw.get("h"), BOX_LEAST, 1, 1.0)
+    return {"x": _part(raw.get("x"), 0, round(1 - w, 4), round((1 - w) / 2, 4)),
+            "y": _part(raw.get("y"), 0, round(1 - h, 4), round((1 - h) / 2, 4)), "w": w, "h": h}
+
+
+def _text_box(raw, old_size=None, old_place=None) -> dict:
+    least, most, default = TEXT_SIZE
+    if not isinstance(raw, dict):
+        return {"x": 0.5, "y": round(OLD_PLACES.get(old_place, 0.5), 4), "size": round(OLD_SIZES.get(old_size, default), 4)}
+    return {"x": _part(raw.get("x"), 0, 1, 0.5), "y": _part(raw.get("y"), 0, 1, 0.5), "size": _part(raw.get("size"), least, most, default)}
+
+
+WORDS_SIZE = (0.02, 0.3)  # the height of a camera's words, as part of its square's, when chosen (none: sized to fit)
+
+
+def _camera_cell(raw: dict) -> dict:
+    """
+    A camera's square: {"camera"}, and only what differs from the usual: "background" (round its picture; none: the
+    stream's), "show_words": False (its printer's name and print not written on it), "words_size" (their height, part
+    of the square's, 0.02 to 0.3; none: sized to the square), "words_color" (none: white), "words_font" (none: DejaVu Sans).
+    """
+    out = {"camera": raw["camera"]}
+    back = _color(raw.get("background"), None)
+    if back:
+        out["background"] = back
+    if raw.get("show_words") is False:
+        out["show_words"] = False
+    size = raw.get("words_size")
+    if not isinstance(size, bool) and isinstance(size, (int, float)) and math.isfinite(size):
+        out["words_size"] = _part(size, *WORDS_SIZE, 0.06)
+    color = _color(raw.get("words_color"), None)
+    if color and color != "#FFFFFF":
+        out["words_color"] = color
+    if raw.get("words_font") in FONTS and raw["words_font"] != DEFAULT_FONT:
+        out["words_font"] = raw["words_font"]
+    return out
+
+
 def _cell(raw) -> dict | None:
     """
     A square as kept: {"camera": "printer id:camera name"}; a card, {"background": its colour (None: the stream's),
     "image": a picture's file name in the stream folder's images | None, "slideshow": a slideshow's folder name | None,
-    "seconds": each slideshow picture's, "text": words over it ("" none), "color", "size": small | medium | large,
-    "position": top | middle | bottom}; or None (empty: the stream's background colour). Missing parts get defaults.
+    "seconds": each slideshow picture's, "text": words over it ("" none), "color", "font" (one of FONTS), "band" (a dark band behind the words), "picture_box": {x, y, w, h} where the
+    picture is fitted, "text_box": {x, y, size} the words' centre and height (all parts of the square, 0 to 1)}; or None (empty: the stream's background colour). Missing parts get defaults.
     """
     if not isinstance(raw, dict):
         return None
     if isinstance(raw.get("camera"), str) and CAMERA_KEY.match(raw["camera"]):
-        return {"camera": raw["camera"]}
+        return _camera_cell(raw)
     if not any(k in raw for k in ("background", "image", "slideshow", "text")):
         return None  # anything else (a logo or folder of before the stream folder) leaves the square empty
     least, most, default = SLIDE_SECONDS
@@ -136,8 +230,10 @@ def _cell(raw) -> dict | None:
         "seconds": sec if type(sec) is int and least <= sec <= most else default,
         "text": raw["text"] if isinstance(raw.get("text"), str) else "",
         "color": _color(raw.get("color"), "#FFFFFF"),
-        "size": raw.get("size") if raw.get("size") in TEXT_SIZES else "medium",
-        "position": raw.get("position") if raw.get("position") in TEXT_PLACES else "middle",
+        "font": raw.get("font") if raw.get("font") in FONTS else DEFAULT_FONT,
+        "band": raw.get("band") is True,
+        "picture_box": _picture_box(raw.get("picture_box")),
+        "text_box": _text_box(raw.get("text_box"), raw.get("size"), raw.get("position")),
     }
     if card["slideshow"]:
         card["image"] = None
@@ -402,9 +498,12 @@ def _filter_path(path: str) -> str:
     return path.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
 
 
-def _words(path: str, size: int | str, foot: int | str, border: int | str = 6, left: int | str = 10) -> str:
-    return (f"drawtext=fontfile={_filter_path(FONT)}:textfile={_filter_path(path)}:reload=1:expansion=none"
-            f":fontsize={size}:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw={border}:x={left}:y=h-th-{foot}")
+def _words(path: str, size: int | str, foot: int | str, border: int | str = 6, left: int | str = 10, own: dict | None = None) -> str:
+    """The words under a camera; `own`: its square's choices (_camera_cell: words_color, words_font)."""
+    own = own or {}
+    color = (own.get("words_color") or "#FFFFFF").lstrip("#")
+    return (f"drawtext=fontfile={_filter_path(font_file(own.get('words_font')))}:textfile={_filter_path(path)}:reload=1:expansion=none"
+            f":fontsize={size}:fontcolor=0x{color}:box=1:boxcolor=black@0.6:boxborderw={border}:x={left}:y=h-th-{foot}")
 
 
 # The words on a camera shown on its own, taking turns: written on the camera's own picture before it's enlarged, so
@@ -432,9 +531,10 @@ def timetable(n: int, seconds_all: int, seconds_each: int, horizon: int = TURNS_
 @dataclass
 class Look:
     """
-    How the picture is put together. cells: the grid's squares row by row, each ("camera", its place in srcs), ("card",
+    How the picture is put together. cells: the grid's squares row by row, each ("camera", its place in srcs[, its square's own
+    choices (_camera_cell) | just its background colour]), ("card",
     {background, pictures: [files] (none, one picture, or a slideshow's), seconds, words: its words' file | None, color,
-    size, position}) or None (empty), cols x rows of them (None: the cameras, in a grid just big enough). background:
+    picture_box, text_box}) or None (empty), cols x rows of them (None: the cameras, in a grid just big enough). background:
     the stream's colour, behind everything. turns_file: the timetable
     of taking turns (timetable()), when the cameras take turns. The words
     under each camera (a file per camera; None: no words); taking turns ((seconds on the whole grid, on each camera), and
@@ -480,7 +580,6 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
     edge = px(BORDER_WIDTH)
     border = f"drawbox=x=0:y=0:w=iw:h=ih:color=0x{(look.border_color or DEFAULT_BORDER).lstrip('#')}:t={edge}"
     back = (look.background or DEFAULT_BACKGROUND).lstrip("#")
-    fit = f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=0x{back}"
     full_size = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x{back},setsar=1"
 
     args = [ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostdin"]
@@ -497,31 +596,39 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
 
     def card(c: int, cd: dict) -> str:
         """A card's square: its colour; its pictures fitted over it, each but the first only in its own seconds (each
-        read and fitted once a second); its words over that (on a dark band when there's a picture under them)."""
+        read and fitted once a second); its words over that (on a dark band when chosen)."""
         chain = [f"color=c=0x{(cd.get('background') or '#' + back).lstrip('#')}:s={tw}x{th}:r={FPS},setsar=1[c{c}b]"]
         shown = f"[c{c}b]"
         paths, seconds = cd.get("pictures") or [], cd.get("seconds") or SLIDE_SECONDS[2]
         period = len(paths) * seconds
+        pb = _picture_box(cd.get("picture_box"))
+        bw, bh = max(2, round(pb["w"] * tw)), max(2, round(pb["h"] * th))
+        bx, by = round(pb["x"] * tw), round(pb["y"] * th)
+        at = "(W-w)/2:(H-h)/2" if (bw, bh) == (tw, th) else f"{bx}+({bw}-w)/2:{by}+({bh}-h)/2"
         for j, path in enumerate(paths):
-            chain.append(f"[{picture(path)}:v]scale={tw}:{th}:force_original_aspect_ratio=decrease,setsar=1,fps={FPS}[c{c}i{j}]")
+            chain.append(f"[{picture(path)}:v]scale={bw}:{bh}:force_original_aspect_ratio=decrease,setsar=1,fps={FPS}[c{c}i{j}]")
             when = "" if j == 0 else f":enable='gte(mod(t,{period}),{j * seconds})*lt(mod(t,{period}),{(j + 1) * seconds})'"
-            chain.append(f"{shown}[c{c}i{j}]overlay=(W-w)/2:(H-h)/2{when}[c{c}o{j}]")
+            chain.append(f"{shown}[c{c}i{j}]overlay={at}{when}[c{c}o{j}]")
             shown = f"[c{c}o{j}]"
         last = []
         if cd.get("words"):
-            big = {"small": th // 12, "medium": th // 8, "large": th // 5}[cd.get("size") or "medium"]
-            gap = th // 14
-            y = {"top": f"{gap}", "middle": "(h-text_h)/2", "bottom": f"h-text_h-{gap}"}[cd.get("position") or "middle"]
-            band = f":box=1:boxcolor=black@0.5:boxborderw={max(px(4), big // 5)}" if paths else ""
-            last.append(f"drawtext=fontfile={_filter_path(FONT)}:textfile={_filter_path(cd['words'])}:reload=1:expansion=none"
+            tb = _text_box(cd.get("text_box"), cd.get("size"), cd.get("position"))
+            big = round(tb["size"] * th)
+            band = f":box=1:boxcolor=black@0.5:boxborderw={max(px(4), big // 5)}" if cd.get("band") else ""
+            last.append(f"drawtext=fontfile={_filter_path(font_file(cd.get('font')))}:textfile={_filter_path(cd['words'])}:reload=1:expansion=none"
                         f":fontsize={max(px(10), big)}:fontcolor=0x{(cd.get('color') or '#FFFFFF').lstrip('#')}:line_spacing={big // 4}"
-                        f":x=(w-text_w)/2:y={y}{band}")
+                        f":x={round(tb['x'] * tw)}-text_w/2:y={round(tb['y'] * th)}-text_h/2{band}")
         last.append(border)
         chain.append(f"{shown}{','.join(last)}[c{c}]")
         return ";".join(chain)
 
     # the words under a camera, sized to its square (20 px in a quarter of a 720p picture)
     small = max(px(11), min(th // 18, tw // 32))
+    # each camera's own square choices, by its place in srcs: ("camera", place, its cell or just its colour (tests))
+    camera_own = {}
+    for cell in cells or []:
+        if cell and cell[0] == "camera" and len(cell) > 2 and cell[2]:
+            camera_own[cell[1]] = cell[2] if isinstance(cell[2], dict) else {"background": cell[2]}
     foot, left = small * 2 // 3 + edge, small // 2 + edge
     parts = []
     for i, s in enumerate(srcs):
@@ -533,9 +640,15 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         for c, cell in enumerate(cells):
             if cell and cell[0] == "camera":
                 i = cell[1]
-                chain = [f"scale={tw}:{th}:force_original_aspect_ratio=decrease", fit]
-                if look.status_files:
-                    chain.append(_words(look.status_files[i], small, foot, px(6), left))
+                mine = camera_own.get(i, {})
+                colour = (mine.get("background") or "#" + back).lstrip("#")  # the square's own colour round it
+                chain = [f"scale={tw}:{th}:force_original_aspect_ratio=decrease", f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=0x{colour}"]
+                if look.status_files and mine.get("show_words", True):
+                    if mine.get("words_size"):
+                        size = max(px(8), round(mine["words_size"] * th))
+                        chain.append(_words(look.status_files[i], size, size * 2 // 3 + edge, max(2, size // 3), size // 2 + edge, mine))
+                    else:
+                        chain.append(_words(look.status_files[i], small, foot, px(6), left, mine))
                 parts.append(f"[g{i}]{','.join(chain)},{border}[c{c}]")
             elif cell and cell[0] == "card":
                 parts.append(card(c, cell[1]))
@@ -553,7 +666,15 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         picked = ""
         for i in range(n):
             if look.status_files:
-                parts.append(f"[s{i}]{_words(look.status_files[i], **FULL_WORDS)}[w{i}]")
+                mine = camera_own.get(i, {})
+                if not mine.get("show_words", True):
+                    picked += f"[s{i}]"
+                    continue
+                full = FULL_WORDS
+                if mine.get("words_size"):  # its own size, as part of the camera's own picture's height
+                    f = mine["words_size"]
+                    full = {"size": f"h*{f}", "foot": f"h*{f * 2 / 3:.4f}", "border": f"h*{f / 3:.4f}", "left": f"h*{f / 2:.4f}"}
+                parts.append(f"[s{i}]{_words(look.status_files[i], **full, own=mine)}[w{i}]")
                 picked += f"[w{i}]"
             else:
                 picked += f"[s{i}]"
@@ -687,7 +808,7 @@ class Stream:
             if not cell:
                 return None
             if "camera" in cell:
-                return ("camera", place[cell["camera"]])
+                return ("camera", place[cell["camera"]], cell)
             return ("card", {**cell, "pictures": pictures.get(c, []), "words": text_paths.get(c)})
 
         cells = [square(c, cell) for c, cell in enumerate(chosen["cells"])]
@@ -841,12 +962,13 @@ stream = Stream()
 
 def page(db: Session) -> dict:
     """Everything the Stream page shows: {settings, media (the stream folder's pictures and slideshows, stream_media.media),
-    status, destinations, resolutions, youtube}."""
+    status, destinations, resolutions, fonts (what a square's words can be written in), youtube}."""
     return {
         "settings": settings(db),
         "media": stream_media.media(db),
         "status": stream.status(),
         "destinations": [{"key": k, "label": v["label"]} for k, v in DESTINATIONS.items()],
         "resolutions": [{"key": k, "label": RESOLUTION_LABELS[k]} for k in RESOLUTIONS],
+        "fonts": [{"key": k, "label": v[0], "generic": v[2]} for k, v in FONTS.items()],
         "youtube": youtube_live.account(db),
     }

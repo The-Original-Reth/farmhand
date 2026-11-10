@@ -117,6 +117,13 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
     setChoosing(false);
     return true;
   };
+  // Save in a square's editor: the stream's settings now (as Go live saves them), no layout asked for
+  const saveNow = async () => {
+    const p = await ask("save", sendAll);
+    if (!p) return;
+    setDraft(null);
+    setKey("");
+  };
   const forgetKey = () => ask("save", () => saveStream({ clearKey: true }));
   const start = async () => {
     if (changed) {
@@ -150,7 +157,7 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
     if (cell?.camera) {
       const id = printerOf(cell.camera);
       const cam = (cams[id]?.webcams || []).find((x) => x.name === cameraOf(cell.camera)) || null;
-      return { type: "camera", key: cell.camera, label: label(cell.camera), cam, print: progress[id] || null };
+      return { type: "camera", key: cell.camera, label: label(cell.camera), cam, print: progress[id] || null, background: cell.background || null, cell };
     }
     return cell ? { type: "card", cell } : null;
   });
@@ -161,8 +168,8 @@ export function StreamSection({ layouts = [], onSaveLayouts }) {
       <div style={{ minWidth: 0, position: "sticky", top: 0 }}>
         <StreamPreview
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
-          cameras={cameras} media={page.media} label={label}
-          ask={ask} busy={busy}
+          cameras={cameras} media={page.media} fonts={page.fonts} label={label}
+          ask={ask} busy={busy} onSave={saveNow} dirty={changed}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
       </div>

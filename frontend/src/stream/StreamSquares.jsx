@@ -59,7 +59,8 @@ export function GridSize({ shown, change }) {
 }
 
 // The rest of the grid's choices (the squares themselves are set in the preview): filling it with every camera,
-// emptying it, the words under each camera and the border's colour. `cameras`: every camera there is, [{ key, label }];
+// emptying it, the words under each camera, the stream's background colour (each square's unless it has its own) and the
+// border's colour. `cameras`: every camera there is, [{ key, label }];
 // `change(what)` changes the page's choices (saved with its Save).
 export function SquaresPanel({ shown, change, cameras, finding }) {
   const { cols, rows, cells } = shown;
@@ -96,6 +97,18 @@ export function SquaresPanel({ shown, change, cameras, finding }) {
       <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8 })}>
         <input data-testid="stream-show-status" type="checkbox" checked={shown.showStatus} onChange={(e) => change({ showStatus: e.target.checked })} />
         Write each printer's name and print progress under its camera
+      </label>
+      <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" })}>
+        <input
+          data-testid="stream-background" type="color" value={(shown.background || "#000000").toLowerCase()} onChange={(e) => change({ background: e.target.value.toUpperCase() })}
+          style={{ width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" }}
+        />
+        Background <span style={uiText(11, c.textFaint)}>{shown.background || "#000000"} · every square's, unless the square has its own</span>
+        {(shown.background || "#000000") !== "#000000" && (
+          <button type="button" onClick={() => change({ background: "#000000" })} style={headerButton()}>
+            Black
+          </button>
+        )}
       </label>
       <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8 })}>
         <input
