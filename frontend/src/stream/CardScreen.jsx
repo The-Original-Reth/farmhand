@@ -7,7 +7,7 @@ import { slideshowPictureUrl, streamFontUrl, streamPictureUrl } from "../api.js"
 
 export const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
 export const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
-export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE };
+export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {} };
 // the page's own name for one of the stream's fonts (StreamFonts loads each from the server)
 export const fontFamily = (key) => `"fh-stream-${key || "play"}", sans-serif`;
 
@@ -22,8 +22,9 @@ const clamp = (v, least, most) => Math.round(Math.min(most, Math.max(least, v)) 
 // to the square. `edit`: on the editor's canvas, and on the preview's square being edited, where the picture and the words are dragged to move them and by their corner
 // handle to resize them, `onChange({ picture_box } | { text_box })` taking each step ("quiet": on the preview, where the
 // outline and corner only show while the picture or words are pointed at). `streamText`: { font, color }, the stream's
-// words', for a card that has none of its own. `slide`: { at (which picture), playing,
-// go(at) }, for going through a slideshow by hand on the editor's canvas; without it the slideshow plays on its own.
+// words', for a card that has none of its own. `slide`: { at (which picture) }, a slideshow gone through by
+// hand (StreamPreview keeps it, so the preview's square and the canvas show the same picture); without it the slideshow
+// plays on its own. A slideshow picture with words of its own (card.captions) shows those instead of the card's.
 // `inset`: the square's border, as a part of its height: the picture is fitted inside it, as the stream fits it.
 export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null }) {
   const [el, setEl] = useState(null);
@@ -32,7 +33,6 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
   // `slide`: { at, playing, go(at) } when the editor goes through a slideshow by hand; else it plays on its own
   const shot = slide ? slide.at : ownShot;
   const setShot = slide ? (f) => slide.go(f(slide.at)) : setOwnShot;
-  const playing = slide ? slide.playing : true;
   const [natural, setNatural] = useState(null); // the picture's own width over height, once loaded
   const drag = useRef(null); // { what: "picture" | "pictureSize" | "text" | "textSize", x, y (where it started), from (the box then) }
   useEffect(() => {
@@ -47,10 +47,10 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
   const count = show?.images.length || 0;
   useEffect(() => {
     if (!slide) setOwnShot(0);
-    if (count < 2 || !playing) return;
+    if (slide || count < 2) return; // gone through by hand (the preview keeps the time), or nothing to go round
     const timer = setInterval(() => setShot((s) => (s + 1) % count), Math.max(1, Number(card.seconds) || 10) * 1000);
     return () => clearInterval(timer);
-  }, [card.slideshow, count, card.seconds, playing, slide?.at]);
+  }, [card.slideshow, count, card.seconds, !!slide]);
   const src = show && count ? slideshowPictureUrl(show.name, show.images[shot % count]) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
   const pb = card.picture_box || FULL_BOX;
   // the part of the square inside its border, in px: a picture's box is a part of it (so the border never covers it)
@@ -68,8 +68,12 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
   const at = size.w && size.h
     ? { x: (edge + shown.x * iw) / size.w, y: (edge + shown.y * ih) / size.h, w: (shown.w * iw) / size.w, h: (shown.h * ih) / size.h }
     : shown;
-  const tb = card.text_box || MIDDLE;
-  const words = card.text?.trim();
+  // a slideshow picture's own words (kept with it), else the card's own
+  const name = show && count ? show.images[shot % count] : null;
+  const cap = name ? card.captions?.[name] : null;
+  const tb = (cap ? cap.text_box : card.text_box) || MIDDLE;
+  const words = (cap ? cap.text : card.text)?.trim();
+  const setTextBox = (b) => (cap ? onChange({ captions: { ...card.captions, [name]: { ...cap, text_box: b } } }) : onChange({ text_box: b }));
   const px = Math.max(6, size.h * tb.size);
 
   const start = (what) => (e) => {
@@ -91,8 +95,8 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
     const py_ = (e.clientY - d.y) / ih;
     const f = d.from;
     if (d.what === "picture") onChange({ picture_box: { ...f, x: clamp(f.x + px_, 0, 1 - f.w), y: clamp(f.y + py_, 0, 1 - f.h) } });
-    else if (d.what === "text") onChange({ text_box: { ...f, x: clamp(f.x + dx, 0, 1), y: clamp(f.y + dy, 0, 1) } });
-    else if (d.what === "textSize") onChange({ text_box: { ...f, size: clamp(f.size + dy, 0.02, 0.6) } });
+    else if (d.what === "text") setTextBox({ ...f, x: clamp(f.x + dx, 0, 1), y: clamp(f.y + dy, 0, 1) });
+    else if (d.what === "textSize") setTextBox({ ...f, size: clamp(f.size + dy, 0.02, 0.6) });
     else {
       // the box keeps the picture's own shape, so its corner stays on the picture's
       let w = clamp(f.w + px_, 0.05, 1 - f.x);

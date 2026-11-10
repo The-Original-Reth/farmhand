@@ -233,8 +233,8 @@ function ScanFolder({ ask, busy, media }) {
   );
 }
 
-// Going through a slideshow on the editor's canvas: Play (round on its own), Stop (holds the picture on show, to move or
-// resize it) and Next; and which picture is on show
+// Going through a slideshow on the editor's canvas (and the preview's square with it): Play (round on its own), Stop (holds
+// the picture on show, to move or resize it, or write its own words), Back and Next; and which picture is on show
 function SlideControls({ show, slide }) {
   const n = show.images.length;
   const at = slide.at % n;
@@ -249,6 +249,9 @@ function SlideControls({ show, slide }) {
           Play
         </button>
       )}
+      <button type="button" data-testid="stream-slideshow-back" onClick={() => (slide.stop(), slide.go((at - 1 + n) % n))} disabled={n < 2} style={headerButton()}>
+        Back
+      </button>
       <button type="button" data-testid="stream-slideshow-next" onClick={() => (slide.stop(), slide.go((at + 1) % n))} disabled={n < 2} style={headerButton()}>
         Next
       </button>

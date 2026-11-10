@@ -17,17 +17,14 @@ import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
 // `cells`, `i`: the grid's squares and the one being edited; `onCells(next)` changes them. `cameras`: [{ key, label }];
 // `media`: { images, slideshows: [{ name, images }], error }; `label(key)`: a camera's name; `screen`: a camera square
 // drawn as the preview draws it; `aspect`: the square's width over its height; `onSave`, `dirty`, `saving`: saving the
-// page now, whether anything isn't saved yet; `onDone` closes the editor.
+// page now, whether anything isn't saved yet; `slide`: the slideshow gone through by hand (StreamPreview's); `onDone`
+// closes the editor.
 
 const KINDS = [["camera", "Camera"], ["text", "Text"], ["picture", "Picture"], ["slideshow", "Slideshow"], ["empty", "Empty"]];
 export const kindOf = (cell) => (!cell ? "empty" : cell.camera ? "camera" : cell.slideshow ? "slideshow" : cell.image ? "picture" : "text");
-export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, showStatus = true, label, screen, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground }) {
+export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, slide = null, showStatus = true, label, screen, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground }) {
   const cell = cells[i];
   const [kind, setKind] = useState(kindOf(cell));
-  // a slideshow on the canvas: which picture, and whether it goes round on its own (Stop holds one to adjust it)
-  const [slideAt, setSlideAt] = useState(0);
-  const [slidePlaying, setSlidePlaying] = useState(true);
-  const slide = { at: slideAt, playing: slidePlaying, go: setSlideAt, play: () => setSlidePlaying(true), stop: () => setSlidePlaying(false) };
   useEffect(() => setKind(kindOf(cells[i])), [i]); // another square clicked
   const card = cell && !cell.camera ? { ...CARD, ...cell } : { ...CARD };
   const put = (next) => onCells(cells.map((x, j) => (j === i ? next : x)));
@@ -41,6 +38,9 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
     else put({ ...card, image: null, slideshow: card.slideshow || media.slideshows[0]?.name || null });
   };
   const isCard = ["text", "picture", "slideshow"].includes(kind);
+  // the slideshow picture on show (in the preview's square and on the canvas alike): words written now go with it
+  const showNow = kind === "slideshow" && card.slideshow ? media.slideshows.find((x) => x.name === card.slideshow) : null;
+  const slideName = showNow?.images.length ? showNow.images[(slide?.at || 0) % showNow.images.length] : null;
   // the canvas: the square's own shape, no taller than 420 px
   const canvas = { position: "relative", width: "100%", maxWidth: Math.min(640, 420 * aspect), aspectRatio: String(aspect), background: fixed.camera, border: `1px solid ${c.border}`, overflow: "hidden", display: "flex" };
   const ownColour = isCard ? card.background : cell?.camera ? cell.background || null : null;
@@ -95,7 +95,7 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
               )}
             </label>
           )}
-          {isCard && <TextChoice card={card} setCard={setCard} fonts={fonts} streamText={streamText} />}
+          {isCard && <TextChoice card={card} setCard={setCard} fonts={fonts} streamText={streamText} slideName={slideName} />}
           {kind === "camera" && cell?.camera && <CameraWordsChoice cell={cell} put={put} fonts={fonts} showStatus={showStatus} streamText={streamText} />}
           {kind === "empty" && <div style={help}>Shows the stream's background colour. Choose what the square shows above.</div>}
           {media.error && kind !== "camera" && kind !== "empty" && <div style={uiText(12, c.amber, { lineHeight: 1.5 })}>The stream folder isn't available: {media.error}</div>}

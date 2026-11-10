@@ -148,19 +148,33 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         bw, bh = max(2, round(pb["w"] * iw)), max(2, round(pb["h"] * ih))
         bx, by = edge + round(pb["x"] * iw), edge + round(pb["y"] * ih)
         at = "(W-w)/2:(H-h)/2" if (bw, bh) == (iw, ih) else f"{bx}+({bw}-w)/2:{by}+({bh}-h)/2"
+        def window(j: int) -> str:  # while picture j is on show
+            return f"gte(mod(t,{period}),{j * seconds})*lt(mod(t,{period}),{(j + 1) * seconds})"
+
         for j, path in enumerate(paths):
             chain.append(f"[{picture(path)}:v]scale={bw}:{bh}:force_original_aspect_ratio=decrease,setsar=1,fps={FPS}[c{c}i{j}]")
-            when = "" if j == 0 else f":enable='gte(mod(t,{period}),{j * seconds})*lt(mod(t,{period}),{(j + 1) * seconds})'"
+            when = "" if j == 0 else f":enable='{window(j)}'"
             chain.append(f"{shown}[c{c}i{j}]overlay={at}{when}[c{c}o{j}]")
             shown = f"[c{c}o{j}]"
         last = []
-        if cd.get("words"):
-            tb = _text_box(cd.get("text_box"), cd.get("size"), cd.get("position"))
+
+        def words(file: str, tb: dict, enable: str = "") -> str:
             big = round(tb["size"] * th)
             band = f":box=1:boxcolor=black@0.5:boxborderw={max(px(4), big // 5)}" if cd.get("band") else ""
-            last.append(f"drawtext=fontfile={_filter_path(font_file(cd.get('font') or look.font))}:textfile={_filter_path(cd['words'])}:reload=1:expansion=none"
-                        f":fontsize={max(px(10), big)}:fontcolor=0x{(cd.get('color') or look.color or DEFAULT_TEXT_COLOR).lstrip('#')}:line_spacing={big // 4}"
-                        f":x={round(tb['x'] * tw)}-text_w/2:y={round(tb['y'] * th)}-text_h/2{band}")
+            return (f"drawtext=fontfile={_filter_path(font_file(cd.get('font') or look.font))}:textfile={_filter_path(file)}:reload=1:expansion=none"
+                    f":fontsize={max(px(10), big)}:fontcolor=0x{(cd.get('color') or look.color or DEFAULT_TEXT_COLOR).lstrip('#')}:line_spacing={big // 4}"
+                    f":x={round(tb['x'] * tw)}-text_w/2:y={round(tb['y'] * th)}-text_h/2{band}{enable}")
+
+        own = cd.get("picture_words") or {}  # a slideshow's pictures' own words, by their place in it
+        if cd.get("words"):
+            tb = _text_box(cd.get("text_box"), cd.get("size"), cd.get("position"))
+            rest = [j for j in range(len(paths)) if j not in own]
+            if not own:
+                last.append(words(cd["words"], tb))
+            elif rest:  # the card's words over the pictures without words of their own
+                last.append(words(cd["words"], tb, f":enable='{'+'.join(window(j) for j in rest)}'"))
+        for j, cap in sorted(own.items()):
+            last.append(words(cap["words"], _text_box(cap.get("text_box")), f":enable='{window(j)}'" if len(paths) > 1 else ""))
         last.append(border)
         chain.append(f"{shown}{','.join(last)}[c{c}]")
         return ";".join(chain)

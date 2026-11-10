@@ -112,10 +112,17 @@ class Stream:
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
         # each card's words, as a file ffmpeg reads (its pictures are read where they are, in the stream folder)
         text_paths = {}
+        captions = {}  # square -> {its picture's place in the slideshow: {"words": file, "text_box"}}
         for c, cell in cards.items():
             if cell.get("text"):
                 text_paths[c] = os.path.join(folder, f"text-{c}.txt")
                 _write_atomically(text_paths[c], cell["text"])
+            for j, path in enumerate(pictures.get(c, [])):
+                cap = (cell.get("captions") or {}).get(os.path.basename(path))
+                if cap and cap.get("text"):
+                    words = os.path.join(folder, f"text-{c}-{j}.txt")
+                    _write_atomically(words, cap["text"])
+                    captions.setdefault(c, {})[j] = {"words": words, "text_box": cap.get("text_box")}
         timed = timetable(len(srcs), *cycle) if cycle else ""
         turns_file = None
         if timed:
@@ -128,7 +135,7 @@ class Stream:
                 return None
             if "camera" in cell:
                 return ("camera", place[cell["camera"]], cell)
-            return ("card", {**cell, "pictures": pictures.get(c, []), "words": text_paths.get(c)})
+            return ("card", {**cell, "pictures": pictures.get(c, []), "words": text_paths.get(c), "picture_words": captions.get(c, {})})
 
         cells = [square(c, cell) for c, cell in enumerate(chosen["cells"])]
         args = command(ffmpeg, srcs, where["url"] + key, Look(

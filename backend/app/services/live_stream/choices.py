@@ -117,6 +117,10 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
             cell["text"] = cell["text"].strip()
             if len(cell["text"]) > TEXT_MAX:
                 raise ValueError(f"A square's text can be up to {TEXT_MAX} characters; this one has {len(cell['text'])}.")
+            for name, cap in cell["captions"].items():
+                cap["text"] = cap["text"].strip()
+                if len(cap["text"]) > TEXT_MAX:
+                    raise ValueError(f"The text on “{name}” can be up to {TEXT_MAX} characters; it has {len(cap['text'])}.")
             least, most, _ = SLIDE_SECONDS
             if raw.get("seconds") is not None and not (type(raw.get("seconds")) is int and least <= raw["seconds"] <= most):
                 raise ValueError(f"A slideshow shows each picture for {least} to {most} seconds.")
