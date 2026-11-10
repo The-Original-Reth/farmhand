@@ -694,7 +694,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   you click), so taking turns costs little more than the grid.
 - **Resolution:** 1080p (1920×1080, the default), 720p (1280×720) or 2K (2560×1440), sent at the bitrate YouTube
   suggests for each (4.5, 2.5 and 9 Mbit/s); the words and borders grow with the picture. 720p is easiest on a
-  Raspberry Pi; 1080p and 2K make more work for the computer, so they suit a PC or the Proxmox container.
+  Raspberry Pi; 1080p and 2K make more work for the computer, so they suit a PC or the Proxmox container. An NVIDIA
+  graphics card can take the compressing off the processor (below); the page then says *on the NVIDIA card* while live.
 - **Save** saves the page and the layout with it, asking each time: **Overwrite** one of your saved layouts (the
   one you last switched to or saved is picked to start with), or keep it as **a new layout** by name. A layout is the grid
   (its size and squares), the whole grid or taking turns, the timings, the words and the border colour (not the key,
@@ -704,6 +705,59 @@ benchy.gcode`), brought up to date every 15 seconds.
   kept in Farmhand's settings and, once a settings folder is chosen, as a file each in its `streams` folder, cameras
   by printer name, pictures and slideshows by their file and folder names, words as they are; **Load all** brings them back. The
   pictures are in the stream folder, so another Farmhand sharing it shows them too.
+
+### An NVIDIA card for the stream (optional)
+
+Most of the stream's work is compressing the picture into the video YouTube receives. Farmhand does that on the
+processor unless it finds an NVIDIA graphics card's own video encoder (NVENC) it can use: then it uses that, and
+says so on the page while live. Measured on a GTX 1080 Ti with four cameras and a picture, it took about half the
+processor time at 2K and nearly that at 1080p. Nothing else changes: the same video, the same bitrate.
+
+On a Proxmox LXC container (Farmhand-test, CT 106, is set up this way), with the NVIDIA driver already on the host:
+
+1. Share the card into the container. Add to `/etc/pve/lxc/<id>.conf` on the host, then restart the container:
+
+   ```
+   lxc.cgroup2.devices.allow: c 195:* rwm
+   lxc.cgroup2.devices.allow: c 234:* rwm
+   lxc.cgroup2.devices.allow: c 238:* rwm
+   lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file
+   lxc.mount.entry: /dev/nvidiactl dev/nvidiactl none bind,optional,create=file
+   lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,create=file
+   lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
+   lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
+   ```
+
+   (`ls -l /dev/nvidia*` on the host shows the numbers after `c`; these are the usual ones.)
+2. In the container, install NVIDIA's libraries at **exactly** the host's driver version (`nvidia-smi` on the host
+   says it), and hold them there so an update can't move them away from it:
+
+   ```bash
+   sudo apt install --no-install-recommends libnvidia-encode-580=<version> nvidia-utils-580=<version>
+   ```
+   ```bash
+   sudo apt-mark hold libnvidia-encode-580 nvidia-utils-580 libnvidia-compute-580 libnvidia-decode-580
+   ```
+
+   `nvidia-smi` in the container should then show the card.
+3. Beside `docker-compose.yml` in Farmhand's folder, add a `docker-compose.override.yml` (Docker reads it on its
+   own; it's yours, so updates leave it alone):
+
+   ```yaml
+   services:
+     api:
+       devices: [/dev/nvidia0, /dev/nvidiactl, /dev/nvidia-uvm, /dev/nvidia-uvm-tools]
+       volumes:
+         - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
+         - /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:ro
+         - /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:/usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:ro
+   ```
+
+   and update as usual. When the host's NVIDIA driver is updated, update the container's libraries to the same
+   version (until then the stream quietly goes back to the processor).
+
+`FARMHAND_STREAM_ENCODER` in the API's environment can say `cpu` or `nvenc` outright; the default, `auto`, tries the
+card once and remembers what it found until Farmhand starts again.
 
 ### The YouTube title and description
 

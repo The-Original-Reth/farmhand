@@ -69,6 +69,7 @@ def ffmpeg(monkeypatch):
     fake = FakeFfmpeg()
     monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(live_stream.runner, "popen", fake)
+    monkeypatch.setenv(live_stream.runner.ENCODER_SETTING, "cpu")  # no trying a real ffmpeg for an NVIDIA card
     return fake
 
 
@@ -822,3 +823,22 @@ def test_a_blank_screen_in_the_picture():
     assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"][1:] == ["/s/a.png"]  # nothing read for the blank screen
     assert "overlay=(W-w)/2:(H-h)/2:enable='gte(mod(t,10),0)*lt(mod(t,10),5)'" in graph
     assert "textfile=/s/t-1.txt" in graph and "enable='gte(mod(t,10),5)*lt(mod(t,10),10)'" in graph.split("textfile=/s/t-1.txt")[1]
+
+
+def test_the_stream_is_compressed_by_an_nvidia_card_when_one_works(monkeypatch):
+    from app.services.live_stream import runner
+
+    monkeypatch.delenv(runner.ENCODER_SETTING, raising=False)
+    runner._found_encoder.clear()
+    monkeypatch.setattr(runner, "_nvenc_works", lambda ffmpeg: True)
+    assert runner.encoder("ffmpeg") == "nvenc"
+    runner._found_encoder.clear()
+    monkeypatch.setattr(runner, "_nvenc_works", lambda ffmpeg: False)  # no card, no driver, or an ffmpeg without it
+    assert runner.encoder("ffmpeg") == "cpu"
+    monkeypatch.setenv(runner.ENCODER_SETTING, "nvenc")  # said outright: not tried
+    assert runner.encoder("ffmpeg") == "nvenc"
+    runner._found_encoder.clear()
+    cmd = live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=[None], resolution="720p", encoder="nvenc"))
+    assert cmd[cmd.index("-c:v") + 1] == "h264_nvenc" and "libx264" not in cmd and cmd[cmd.index("-b:v") + 1] == "2500k"
+    cmd = live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=[None], resolution="720p"))
+    assert cmd[cmd.index("-c:v") + 1] == "libx264"  # the processor, unless said

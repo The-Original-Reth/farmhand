@@ -239,7 +239,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
           <div style={{ flex: 1, minWidth: 220 }}>
             <div style={uiText(15, c.heading, { fontWeight: 600 })}>
               {status.live
-                ? status.error ? "Reconnecting…" : `Live on ${destLabel(status.destination)} since ${timeOf(status.startedAt)}`
+                ? status.error ? "Reconnecting…" : `Live on ${destLabel(status.destination)} since ${timeOf(status.startedAt)}${status.encoder === "nvenc" ? " · on the NVIDIA card" : status.encoder === "cpu" ? " · on the processor" : ""}`
                 : "Not streaming"}
             </div>
             <div style={uiText(12, status.error ? c.amber : c.textMuted, { marginTop: 4, lineHeight: 1.5 })}>
