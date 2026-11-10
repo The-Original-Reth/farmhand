@@ -21,7 +21,7 @@ const BACK_RESTARTS = 3; // seconds into a track after which Back starts it agai
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const small = { ...headerButton(), padding: "0 6px" };
 
-export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true, control = null }) {
+export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true, control = null, onWaiting = null, muted = false }) {
   const input = useRef(null);
   const player = useRef(null);
   const paused = useRef(false); // paused here by hand: it stays so until played again (or the switch turned on again)
@@ -34,14 +34,19 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
   const tracks = media.music || [];
   const off = !!busy || !!media.error;
   const playing = here && !here.paused ? here.name : null;
+  // the browser holding the music back until the page is clicked: the page says so by the switch, where it's seen
+  useEffect(() => onWaiting?.(!!here?.waiting), [!!here?.waiting]);
 
   const stopHere = () => {
     player.current?.pause();
     setHere(null);
   };
   useEffect(() => {
-    if (player.current) player.current.volume = musicGain(shown.musicVolume);
-  }, [shown.musicVolume, here]);
+    if (player.current) {
+      player.current.volume = musicGain(shown.musicVolume);
+      player.current.muted = muted;
+    }
+  }, [shown.musicVolume, here, muted]);
   useEffect(() => {
     if (here && !tracks.includes(here.name)) stopHere(); // deleted, or gone from the folder
   }, [tracks, here]);
@@ -51,9 +56,33 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
     const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, [live, onAir?.playing]);
+  // Live, the page plays along with the stream: the track the server is sending, from where it is, paused when it is
+  // (each look at the server brings it back in step), so you hear what viewers hear. Mute (beside the switch) silences
+  // it here only.
   useEffect(() => {
-    if (live) stopHere(); // live: the buttons are the stream's, and the music is heard there
-  }, [live]);
+    if (!live) return;
+    if (!enabled || !onAir?.on || !onAir.track) {
+      stopHere();
+      return;
+    }
+    const at = onAir.at + (onAir.playing ? Math.max(0, (Date.now() - heardAt) / 1000) : 0);
+    if (here?.name !== onAir.track) {
+      playHere(onAir.track, at, onAir.playing);
+      return;
+    }
+    const a = player.current;
+    if (!a || here.waiting) return;
+    if (!onAir.playing) {
+      a.pause();
+      if (!here.paused) setHere({ name: here.name, paused: true });
+      return;
+    }
+    if (Math.abs(a.currentTime - at) > 2) a.currentTime = at; // drifted: back in step
+    if (here.paused) {
+      a.play().catch(() => {});
+      setHere({ name: here.name, paused: false });
+    }
+  }, [live, enabled, onAir?.on, onAir?.track, onAir?.playing, heardAt]);
   // With the stream on, the music plays here all the time, as the slideshows do (live, the stream plays it instead):
   // round and round, as on the stream. The switch off, or the music unticked, stops it.
   const wanted = enabled && !live && shown.music && tracks.length > 0;
@@ -65,7 +94,7 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
     }
     if (!here && !paused.current) advance(null, 1);
   }, [wanted, enabled]);
-  latest.current = { tracks, shuffle: shown.musicShuffle };
+  latest.current = { tracks, shuffle: shown.musicShuffle, live };
   // the switch's own: start (turned on, from within its click) and stop (it couldn't be turned on)
   if (control) {
     control.current = {
@@ -89,15 +118,19 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
     }
     return playHere(list[(((i < 0 ? 0 : i + step) % list.length) + list.length) % list.length]);
   };
-  const playHere = (name) => {
+  // `at`: from that far in (playing along with the stream); `go`: false, loaded but held paused
+  const playHere = (name, at = 0, go = true) => {
     const a = player.current || (player.current = new Audio());
-    a.onended = () => advance(name, 1); // on to the next, as the stream does
+    a.onended = () => !latest.current.live && advance(name, 1); // on to the next, as the stream does (live: as it says)
+    a.onloadedmetadata = at ? () => (a.currentTime = Math.min(at, a.duration || at)) : null;
     a.src = streamTrackUrl(name);
     a.volume = musicGain(shown.musicVolume);
+    a.muted = muted;
     paused.current = false;
-    setHere({ name, paused: false });
     const asked = ++requests.current;
-    a.play().catch((e) => {
+    if (!go) return setHere({ name, paused: true });
+    setHere({ name, paused: false });
+    return a.play().catch((e) => {
       if (asked !== requests.current) return undefined; // another track asked for since: it's that one's
       if (e?.name !== "NotAllowedError") return setHere(null);
       // the browser plays sound only once the page has been clicked: it starts with the first click or key

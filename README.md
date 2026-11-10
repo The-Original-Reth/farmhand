@@ -639,6 +639,9 @@ benchy.gcode`), brought up to date every 15 seconds.
   (*Stream off: held still*). Everything else on the page still works (the squares, the music's tracks, Save), so the
   stream can be set up while it's off; changes not saved yet stay as they are. Turned on again, the slideshows and the
   music start again by themselves.
+- **Mute**, beside the switch, silences the music on this page only (the stream keeps playing it); this browser
+  remembers it. While live, the page plays along with the stream (the track it's sending, from where it is), so with
+  Mute off you hear what viewers hear.
 - The stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked out
   of any error message. **Forget key** removes it.
 - If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
@@ -648,8 +651,10 @@ benchy.gcode`), brought up to date every 15 seconds.
   pictures and the borders, so you can check it before going live. Slideshows and taking turns keep the server's time
   of day, on the stream and in the preview alike: with nothing changed and not saved yet, the preview shows the same
   slideshow picture and turn as the stream (or, not live, the ones going live will start on), whenever you open the
-  page; beside *Preview* it says *In step with the server* (or *the stream*), or *Not in step* while there are changes
-  not saved. **Revert**, before the grid's size, puts the page back to the last saved setup. YouTube shows the stream's picture a few seconds later.
+  page; beside *Preview* it says *In step with the server* (or *the stream*), or *Not in step: resync or save to match
+  the server* while there are changes not saved. **Resync**, beside it, reads the server again (the stream folder too)
+  and puts the slideshows and taking turns back on its time, keeping the changes (*In step with the server (changes
+  not saved)*, until the next change); **Save** makes the stream match. **Revert**, before the grid's size, puts the page back to the last saved setup. YouTube shows the stream's picture a few seconds later.
 - **Squares:** above the preview, choose the grid's size (1 to 5 squares across and 1 to 5 down) and the
   resolution. In the preview, click a square to edit it, and drag a square onto another to swap them; taking turns
   waits on the whole grid while you do. The square's editor, under the preview, shows it as a canvas in the square's
@@ -706,7 +711,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   track, Pause is silence until Play, and Back starts the track again (in its first 3 seconds, goes to the one before);
   the page says which track is on and how far in. Not live, the music plays on the page all the time while the
   stream is on, as the slideshows do (round and round, at the volume chosen; a browser that only plays sound after a
-  click starts it with your first click), and the buttons, like each track's ▶, work on that. Turning the stream off
+  click starts it with your first click, and says so beside the switch; allowing sound or autoplay for Farmhand's
+  address in the browser's site settings starts it straight away), and the buttons, like each track's ▶, work on that. Turning the stream off
   stops the music, on the page and on the server. **Volume** (1% steps; its middle sounds about half as loud), **Shuffle** (a new order each
   round; off, name order) and turning the music off are saved with Save, and while live the music follows at once,
   without the stream starting again. Farmhand plays the music itself and feeds it to ffmpeg as it plays, so none of

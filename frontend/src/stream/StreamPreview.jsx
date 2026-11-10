@@ -25,7 +25,7 @@ import { SquareEditor } from "./SquareEditor.jsx";
 // and saves the page (`onSave`; `dirty`: something isn't saved yet). `still`: the stream is switched off, so the
 // slideshows and taking turns hold still where they are (as the music stops).
 
-export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert, still = false }) {
+export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert, still = false, onResync = null, resynced = false }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -82,11 +82,19 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         {/* whether it shows what the server does (or will, going live): only with nothing changed and not saved */}
         <span
           data-testid="stream-in-step"
-          title={still ? "The stream is off: slideshows and taking turns hold still until it's turned on" : clock !== null ? "Slideshows and taking turns keep the server's time of day, as the stream does" : "Changes not saved yet: the preview plays them on its own time"}
+          title={still ? "The stream is off: slideshows and taking turns hold still until it's turned on" : resynced ? "Back on the server's time of day; what's changed here isn't saved yet, so the stream doesn't show it" : clock !== null ? "Slideshows and taking turns keep the server's time of day, as the stream does" : "Changes not saved yet: the preview plays them on its own time. Resync puts it back on the server's time; Save makes the stream match"}
           style={uiText(11, still ? c.textMuted : clock !== null ? c.green : c.amber, { border: `1px solid ${still ? c.border : clock !== null ? c.green : c.amber}`, borderRadius: 3, padding: "1px 6px", whiteSpace: "nowrap" })}
         >
-          {still ? "Stream off: held still" : clock === null ? "Not in step: save to match the server" : serverClock.live ? "In step with the stream" : "In step with the server"}
+          {still ? "Stream off: held still" : clock === null ? "Not in step: resync or save to match the server" : resynced ? "In step with the server (changes not saved)" : serverClock.live ? "In step with the stream" : "In step with the server"}
         </span>
+        {!still && clock === null && onResync && (
+          <button
+            type="button" data-testid="stream-resync" onClick={onResync} disabled={!!busy} style={headerButton()}
+            title="Read the server again (the stream folder too) and put the slideshows and taking turns back on its time, keeping what's changed here"
+          >
+            {busy === "resync" ? "Resyncing…" : "Resync"}
+          </button>
+        )}
         {live && (
           <span style={{ ...ui, fontSize: fs(11), fontWeight: 700, letterSpacing: 0.5, color: c.danger, border: `1px solid ${c.danger}`, borderRadius: 3, padding: "1px 6px" }}>
             LIVE

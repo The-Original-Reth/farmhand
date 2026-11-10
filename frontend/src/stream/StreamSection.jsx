@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { c } from "../theme.js";
 import { cancelButton, primaryButton, uiText } from "../styles.js";
-import { errorText, getStream, renameSlideshow, saveStream, startStream, stopStream } from "../api.js";
+import { errorText, getStream, renameSlideshow, saveStream, scanStreamFolder, startStream, stopStream } from "../api.js";
 import { useData } from "../data.jsx";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
 import { cameraOf, printerOf } from "./shapes.js";
-import { LiveStatusPanel, StreamSwitch, WhereToPanel, YouTubeAccountPanel, YouTubeTextPanel } from "./StreamPanels.jsx";
+import { LiveStatusPanel, MuteSwitch, StreamSwitch, WhereToPanel, YouTubeAccountPanel, YouTubeTextPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
@@ -18,11 +18,30 @@ import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.j
 // only knows that one is saved. Cameras are found as on Monitor (cameras.js) and named the same way ("printer id:camera
 // name").
 const STATUS_EVERY_MS = 5000;
+const MUTE_KEY = "farmhand-stream-music-muted"; // Mute, kept in this browser
+const mutedAtFirst = () => {
+  try {
+    return localStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false; // (a browser that keeps nothing: not muted)
+  }
+};
 
 export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed }) {
   const { printers } = useData();
   const active = printers.filter((p) => !p.decommissioned);
   const music = useRef(null); // the music panel's own start and stop, for the switch (MusicPanel `control`)
+  const [resynced, setResynced] = useState(false); // Resync pressed since the last change: the preview keeps the server's time, changes or not
+  const [muted, setMuted] = useState(mutedAtFirst); // Mute: the music silent on this page only (the stream keeps it)
+  const mute = (on) => {
+    setMuted(on);
+    try {
+      localStorage.setItem(MUTE_KEY, on ? "1" : "0");
+    } catch {
+      // (kept for this visit only)
+    }
+  };
+  const [musicWaits, setMusicWaits] = useState(false); // the browser holds the music back until the page is clicked
   const [page, setPage] = useState(null); // what the server says: { settings, status, destinations, resolutions, fonts, media, youtube }
   const enabled = page?.settings.enabled !== false; // the switch: off, nothing streams (the page works as ever)
   const { cams } = usePrinterCameras(active);
@@ -63,6 +82,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   const differs = !!draft && Object.keys(draft).some((k) => k !== "enabled" && JSON.stringify(draft[k]) !== JSON.stringify(saved[k]));
   const changed = differs || key.trim() !== "";
   const change = (what) => {
+    setResynced(false); // (changed again: the preview no longer matches what the server has)
     setDraft({ ...shown, ...what });
     setProblem(null);
   };
@@ -116,6 +136,11 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   };
   const forget = () => (setDraft(null), setKey(""));
   const discard = () => (forget(), setProblem(null));
+  // Resync: the server read again (its stream folder too: pictures, slideshows, tracks) and the preview's slideshows
+  // and taking turns back on its time of day, keeping what's changed here and not saved yet
+  const resync = async () => {
+    if (await ask("resync", scanStreamFolder)) setResynced(true);
+  };
   // Save: the stream's settings, and the layout under the name chosen (a new one, or over one there is)
   const saveWithLayout = async ({ name, list }) => {
     if (!(await saveAll())) return false;
@@ -171,7 +196,20 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
     return cell ? { type: "card", cell } : null;
   });
 
-  const head = <StreamSwitch on={enabled} onTurn={turn} busy={!!busy} />;
+  const head = (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <StreamSwitch on={enabled} onTurn={turn} busy={!!busy} />
+      <MuteSwitch muted={muted} onMute={mute} />
+      {musicWaits && enabled && (
+        <button
+          type="button" data-testid="stream-music-waiting" style={{ ...cancelButton(false), color: c.amber, borderColor: c.amber }}
+          title="Browsers only play a page's sound once it has been clicked. To have it start straight away, allow sound or autoplay for this address in the browser's site settings."
+        >
+          ♪ The music starts with your first click on the page
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -182,8 +220,8 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         <StreamPreview
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
-          ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard} still={!enabled}
-          serverClock={status.serverTime !== null && !changed ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}
+          ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard} still={!enabled} onResync={resync} resynced={resynced && changed}
+          serverClock={status.serverTime !== null && (!changed || resynced) ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
       </div>
@@ -206,7 +244,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
 
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
-        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} control={music} />
+        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} control={music} onWaiting={setMusicWaits} muted={muted} />
         <SavedLayoutsPanel
           layouts={layouts} onSave={onSaveLayouts} saved={saved} label={label} switchTo={switchTo}
         />
