@@ -635,8 +635,10 @@ benchy.gcode`), brought up to date every 15 seconds.
 3. Press **Go live**. YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
 
 - **The switch** beside *Stream* at the top of the page turns the stream off: ffmpeg stops on the server and **Go live**
-  waits until it's on again. Everything else on the page still works (the preview, the squares, the music, Save), so
-  the stream can be set up while it's off; changes not saved yet stay as they are.
+  waits until it's on again; the music stops, and the preview's slideshows and taking turns hold still where they are
+  (*Stream off: held still*). Everything else on the page still works (the squares, the music's tracks, Save), so the
+  stream can be set up while it's off; changes not saved yet stay as they are. Turned on again, the slideshows and the
+  music start again by themselves.
 - The stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked out
   of any error message. **Forget key** removes it.
 - If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds

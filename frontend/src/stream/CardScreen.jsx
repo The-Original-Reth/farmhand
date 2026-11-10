@@ -23,7 +23,7 @@ const clamp = (v, least, most) => Math.round(Math.min(most, Math.max(least, v)) 
 // plays on its own, or, with `clock` (seconds the stream has run, while live), shows the picture the stream shows now.
 // A slideshow picture with words of its own (card.captions) shows those instead of the card's.
 // `inset`: the square's border, as a part of its height: the picture is fitted inside it, as the stream fits it.
-export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null, clock = null }) {
+export function CardScreen({ card, media, streamBackground, streamText = {}, inset = 0, edit = false, onChange, slide = null, clock = null, still = false }) {
   const [el, setEl] = useState(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [ownShot, setOwnShot] = useState(0);
@@ -47,10 +47,10 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
   const count = show?.images.length || 0;
   useEffect(() => {
     if (!slide) setOwnShot(0);
-    if (slide || clock !== null || count < 2) return; // gone through by hand or on the stream's time, or nothing to go round
+    if (slide || clock !== null || count < 2 || still) return; // gone through by hand or on the stream's time, nothing to go round, or the stream is off
     const timer = setInterval(() => setShot((s) => (s + 1) % count), Math.max(1, Number(card.seconds) || 10) * 1000);
     return () => clearInterval(timer);
-  }, [card.slideshow, count, card.seconds, !!slide, clock !== null]);
+  }, [card.slideshow, count, card.seconds, !!slide, clock !== null, still]);
   const src = show && count ? (isBlank(show.images[shot % count]) ? null : slideshowPictureUrl(show.name, show.images[shot % count])) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
   // a slideshow's picture on show: its own size and place when it has been resized or moved on its own, else the card's
   const onShow = show && count && !isBlank(show.images[shot % count]) ? show.images[shot % count] : null;
