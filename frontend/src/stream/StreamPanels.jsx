@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Radio } from "lucide-react";
+import { Eye, EyeOff, Radio } from "lucide-react";
 import { c } from "../theme.js";
 import { cancelButton, fieldBox, headerButton, linkButton, monoText, panelBox, primaryButton, uiText } from "../styles.js";
 import { heading, help, panel } from "./streamStyles.js";
@@ -100,6 +100,51 @@ export function YouTubeTextPanel({ shown, change, status }) {
   );
 }
 
+// A client ID or secret: dots until the eye next to it is clicked. `testid`: the field's; its eye's is `${testid}-show`.
+function HiddenField({ testid, value, onChange, placeholder }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <input
+        data-testid={testid} type={shown ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} autoComplete="off"
+        placeholder={placeholder} style={{ ...fieldBox(), padding: "6px 8px", flex: 1, minWidth: 0 }}
+      />
+      <button
+        type="button" data-testid={`${testid}-show`} onClick={() => setShown(!shown)} aria-label={shown ? "Hide" : "Show"} title={shown ? "Hide it" : "Show it"}
+        style={{ ...headerButton(), padding: "0 7px" }}
+      >
+        {shown ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  );
+}
+
+// The saved client ID, as dots until the eye is clicked
+function HiddenText({ value }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: 1, minWidth: 200 }}>
+      <span data-testid="stream-youtube-client-shown" style={uiText(12, c.textMuted, { wordBreak: "break-all" })}>
+        Client: {shown ? value : "•".repeat(Math.min(24, (value || "").length || 12))}
+      </span>
+      <button
+        type="button" data-testid="stream-youtube-client-show" onClick={() => setShown(!shown)} aria-label={shown ? "Hide" : "Show"} title={shown ? "Hide it" : "Show it"}
+        style={{ ...headerButton(), padding: "0 7px" }}
+      >
+        {shown ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </span>
+  );
+}
+
+// The step-by-step guide to connecting the channel, on a page of its own (YouTubeGuide.jsx), in a new tab
+const GUIDE_URL = "/help/youtube";
+const GuideLink = () => (
+  <a data-testid="stream-youtube-guide" href={GUIDE_URL} target="_blank" rel="noreferrer" style={uiText(12, c.amber, { textDecoration: "underline" })}>
+    How to connect your YouTube channel, step by step
+  </a>
+);
+
 // Signing Farmhand in to the YouTube channel, which setting the title and description needs; while live, setting them
 // again straight away.
 export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
@@ -114,7 +159,10 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
   return (
     <div data-testid="stream-youtube-account" style={panel()}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={heading}>YouTube account</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <div style={heading}>YouTube account</div>
+          <GuideLink />
+        </div>
         {youtube.signedIn ? (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={uiText(13, c.green, { flex: 1 })}>Signed in{youtube.channel ? ` as ${youtube.channel}` : ""}</span>
@@ -142,18 +190,17 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
         ) : showClientForm ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={help}>
-              Setting the title needs Farmhand signed in to your channel, once. In{" "}
-              <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" style={{ color: c.amber }}>Google Cloud</a>: make a
-              project, turn on the YouTube Data API v3, set the OAuth consent screen to “In production” (a test one stops working after 7
-              days), then Create credentials → OAuth client ID → <b>TVs and Limited Input devices</b>. Paste its client ID and secret here.
+              Setting the title needs Farmhand signed in to your channel, once: make a small app in Google Cloud (a{" "}
+              <b>TVs and Limited Input devices</b> client) and paste its client ID and secret here. The guide above goes through it
+              step by step.
             </div>
-            <input
-              data-testid="stream-youtube-client-id" value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off"
-              placeholder={youtube.clientId || "Client ID (…apps.googleusercontent.com)"} style={{ ...fieldBox(), padding: "6px 8px" }}
+            <HiddenField
+              testid="stream-youtube-client-id" value={clientId} onChange={setClientId}
+              placeholder={youtube.clientSet ? "Client ID (saved; type to replace)" : "Client ID (…apps.googleusercontent.com)"}
             />
-            <input
-              data-testid="stream-youtube-secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off"
-              placeholder={youtube.clientSet ? "Client secret (saved; type to replace)" : "Client secret"} style={{ ...fieldBox(), padding: "6px 8px" }}
+            <HiddenField
+              testid="stream-youtube-secret" value={secret} onChange={setSecret}
+              placeholder={youtube.clientSet ? "Client secret (saved; type to replace)" : "Client secret"}
             />
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -171,7 +218,7 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={uiText(12, c.textMuted, { flex: 1, minWidth: 200, wordBreak: "break-all" })}>Client: {youtube.clientId}</span>
+            <HiddenText value={youtube.clientId} />
             <button type="button" onClick={() => setEditingClient(true)} style={linkButton(12)}>
               Change
             </button>
