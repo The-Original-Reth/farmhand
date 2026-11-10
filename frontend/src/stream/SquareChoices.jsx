@@ -2,7 +2,7 @@ import { useState } from "react";
 import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { box, colourBox, help, label12 } from "./editorFields.js";
-import { FULL_BOX, MIDDLE, fontFamily } from "./CardScreen.jsx";
+import { FULL_BOX, MIDDLE, fontFamily, isBlank, slideLabel } from "./CardScreen.jsx";
 
 // What a camera square and a card's words can be set to, in the square editor (SquareEditor.jsx).
 
@@ -124,7 +124,7 @@ export function TextChoice({ card, setCard, fonts, streamText, slideName = null 
             type="button" data-testid="stream-text-for-picture" onClick={() => setForEvery(false)}
             style={{ ...headerButton(), color: onPicture ? c.amber : c.textMuted, borderColor: onPicture ? c.amber : c.border }}
           >
-            This picture ({slideName})
+            {isBlank(slideName) ? "This blank screen" : `This picture (${slideName})`}
           </button>
           <button
             type="button" data-testid="stream-text-for-every" onClick={() => setForEvery(true)}
@@ -140,7 +140,7 @@ export function TextChoice({ card, setCard, fonts, streamText, slideName = null 
       <div style={uiText(12, c.textMuted)}>Text <span style={uiText(11, c.textFaint)}>(leave empty for none · {text.length}/500)</span></div>
       <textarea
         data-testid="stream-square-text" value={text} maxLength={500} rows={2}
-        placeholder={onPicture ? `Words for ${slideName}` : "Words to show on this square"}
+        placeholder={onPicture ? `Words for ${slideLabel(slideName)}` : "Words to show on this square"}
         onChange={(e) => setText(e.target.value)} style={{ ...box(), resize: "vertical", lineHeight: 1.4 }}
       />
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>

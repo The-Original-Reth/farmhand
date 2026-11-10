@@ -8,6 +8,10 @@ import { slideshowPictureUrl, streamFontUrl, streamPictureUrl } from "../api.js"
 export const FULL_BOX = { x: 0, y: 0, w: 1, h: 1 };
 export const MIDDLE = { x: 0.5, y: 0.5, size: 0.125 };
 export const CARD = { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false, picture_box: FULL_BOX, text_box: MIDDLE, captions: {} };
+// a slideshow's blank screen ("blank:2": Farmhand's own, no picture, just the square's colour and its words), and the
+// name a slide is shown by
+export const isBlank = (name) => typeof name === "string" && name.startsWith("blank:");
+export const slideLabel = (name) => (isBlank(name) ? `Blank screen ${name.slice(6)}` : name);
 // the page's own name for one of the stream's fonts (StreamFonts loads each from the server)
 export const fontFamily = (key) => `"fh-stream-${key || "play"}", sans-serif`;
 
@@ -51,7 +55,7 @@ export function CardScreen({ card, media, streamBackground, streamText = {}, ins
     const timer = setInterval(() => setShot((s) => (s + 1) % count), Math.max(1, Number(card.seconds) || 10) * 1000);
     return () => clearInterval(timer);
   }, [card.slideshow, count, card.seconds, !!slide]);
-  const src = show && count ? slideshowPictureUrl(show.name, show.images[shot % count]) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
+  const src = show && count ? (isBlank(show.images[shot % count]) ? null : slideshowPictureUrl(show.name, show.images[shot % count])) : card.image && media.images.includes(card.image) ? streamPictureUrl(card.image) : null;
   const pb = card.picture_box || FULL_BOX;
   // the part of the square inside its border, in px: a picture's box is a part of it (so the border never covers it)
   const edge = inset * size.h;
