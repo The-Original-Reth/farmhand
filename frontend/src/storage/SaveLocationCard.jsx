@@ -14,6 +14,7 @@ const FOLDERS = [
   ["threemf", "3MF", "3MF and G-code files"],
   ["project", "Projects", "Project files"],
   ["farmCost", "farm-cost", "Farm cost records"],
+  ["stream", "stream", "Stream pictures and slideshows"],
   ["config", "farmhand-configs", "Settings (Save all)"],
 ];
 

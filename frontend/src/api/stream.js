@@ -4,11 +4,11 @@
 import { API_BASE, del, jsonBody, post, request } from "./client.js";
 
 // { settings: { destination, cols, rows, cells: [per square, row by row: { camera: "printer id:camera name" } | a card
-// { background, image, slideshow, seconds, text, color, size, position } | null], cameras (the cameras in square order), showStatus, layout: "grid" | "cycle", resolution,
+// { background, image, slideshow, seconds, text, color, picture_box: { x, y, w, h }, text_box: { x, y, size } (parts of the square) }; a camera may have its own background too | null], cameras (the cameras in square order), showStatus, layout: "grid" | "cycle", resolution,
 // secondsAll, secondsEach, borderColor: "#RRGGBB", background (the stream's colour), title, description, keySet },
 // status: { live, onAir, startedAt, destination, cameras: [labels], error, title: { state: "waiting" | "done" |
-// "failed", message } | null }, destinations: [{ key, label }], resolutions: [{ key: "720p" | "1080p" | "1440p", label }],
-// media: { path, images: [file names], slideshows: [{ name, images: [file names] }], error } (the stream folder), youtube: { clientSet, clientId, signedIn, channel, signingIn: { userCode, verificationUrl } |
+// "failed", message } | null }, destinations: [{ key, label }], resolutions: [{ key: "720p" | "1080p" | "1440p", label }], fonts: [{ key, label, generic }] (what a square's words can be written in),
+// media: { path, windows_path (the stream folder as Windows reaches it over the network, or null), images: [file names], slideshows: [{ name, images: [file names] }], error } (the stream folder), youtube: { clientSet, clientId, signedIn, channel, signingIn: { userCode, verificationUrl } |
 // null, error } }
 const normalizeStream = (s) => ({
   settings: {
@@ -39,6 +39,7 @@ const normalizeStream = (s) => ({
   },
   destinations: s.destinations,
   resolutions: s.resolutions,
+  fonts: s.fonts || [],
   media: s.media,
   youtube: {
     clientSet: s.youtube.client_set,
@@ -79,6 +80,8 @@ const filesBody = (files) => {
   for (const file of files) form.append("files", file);
   return { method: "POST", body: form };
 };
+// a font a square's words can be written in, as the server has it (for the page to show them as the stream does)
+export const streamFontUrl = (key) => `${API_BASE}/stream/fonts/${enc(key)}`;
 export const streamPictureUrl = (name) => `${API_BASE}/stream/pictures/${enc(name)}`;
 export const slideshowPictureUrl = (show, name) => `${API_BASE}/stream/slideshows/${enc(show)}/pictures/${enc(name)}`;
 export const uploadStreamPictures = async (files) => normalizeStream(await request("/stream/pictures", filesBody(files)));

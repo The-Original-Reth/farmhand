@@ -101,7 +101,7 @@ The first things to do, in this order. Everything is done in the web page; there
    share's own login.
    Farmhand connects to it and uses a folder inside it for each kind of file, making the ones that aren't there:
    **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **farm-cost** (the
-   monthly records) and **farmhand-configs** (the settings). Folders already there are used as they are, whatever
+   monthly records), **stream** (the Stream page's pictures) and **farmhand-configs** (the settings). Folders already there are used as they are, whatever
    their capitals. Out of the box, without a save location, everything stays in Farmhand's own storage on the
    computer it runs on.
 2. **Save all**, on the same card. Farmhand writes all its settings and every printer's and model's records to
@@ -643,19 +643,29 @@ benchy.gcode`), brought up to date every 15 seconds.
   pictures and the borders, so you can check it before going live.
 - **Squares:** above the preview, choose the grid's size (1 to 5 squares across and 1 to 5 down) and the
   resolution. In the preview, click a square to edit it, and drag a square onto another to swap them; taking turns
-  waits on the whole grid while you do. The square's editor, under the preview, shows it on a screen of its own and
-  offers **Camera** (each camera in one square), **Colour**, **Picture**, **Slideshow** or **Empty**. **Add all
+  waits on the whole grid while you do. The square's editor, under the preview, shows it as a canvas in the square's
+  own shape and offers **Camera** (each camera in one square), **Text**, **Picture**, **Slideshow** or **Empty**; its
+  **Save** saves the stream's settings straight away (the page's own Save also keeps them as a layout). **Add all
   cameras** (on the right) puts every camera not in the grid yet into the empty squares, making the grid bigger if it
   has to; **Clear** empties them all. Every square has a border round it, black unless you pick another colour.
-- **Background:** the stream's own colour, picked beside *Preview* (black unless you pick another). It shows in empty
-  squares and round anything that doesn't fill its square.
-- **Colour, Picture and Slideshow squares:** a colour of their own (or the stream's), a picture or a slideshow fitted
-  over it, and, if you like, **text over it** (up to 500 characters) at the top, middle or bottom, in a colour and
-  size of your choosing; over a picture the words get a dark band so they can be read.
+- **Background:** the stream's own colour, in the **Squares** panel (black unless you pick another). It's every
+  square's colour unless the square has its own, and shows in empty squares and round a camera that doesn't fill its
+  square. A camera square can have a colour of its own round it, and its own say over the printer's name and print
+  written on it: shown or not (a tick box), and their font, colour and size (Automatic sizes them to the square).
+- **Text, Picture and Slideshow squares:** a colour of their own (or the stream's), a picture or a slideshow over it,
+  and, if you like, **words** (up to 500 characters) in a **font** (about twenty: Play (Farmhand's own), DejaVu, Liberation,
+  Roboto, Open Sans, Lato, Montserrat, Bebas Neue, Comic Neue, Fira Code) and a colour of your choosing; a Text square is just the words on
+  its colour. On the canvas, drag the picture or the words to move them, and drag the corner to make them bigger or
+  smaller (a picture keeps its shape; **Picture fills the square** puts it back), on the canvas or on the square in the
+  preview; **Delete text** takes the words off. **Dark band behind it** puts a dark band
+  behind the words, so they can be read over a busy picture.
 - **Pictures** are files in the **stream folder** (Settings, beside the farm cost folder; by default `stream` in the
   folder above the STL folder): single pictures in its `images` folder, each slideshow a folder of its own in
   `slideshows`. **Upload picture** and **Add pictures** write PNG, JPEG or WebP files there (under 10 MB each), and
-  pictures you copy in yourself (over the network share, say) show up too. **New slideshow** makes a folder;
+  pictures you copy in yourself (over the network share, say) show up too. A slideshow is chosen from a list, with **New slideshow** (asks its name), **Add pictures**, **Open folder**
+  (shows the slideshow's folder as Windows reaches it, `\\server\share\stream\slideshows\…`, with **Copy**, to paste
+  into File Explorer: a web page can't open File Explorer itself, and a stream folder that isn't on a network share
+  can't be reached so) and **Delete slideshow**;
   **Show each picture for** sets the seconds (3 to 3600); its pictures go round in name order. **Delete picture**
   and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the
   stream each picture is read and fitted once a second and shown in its own seconds, so a slideshow costs very little.
@@ -967,7 +977,7 @@ inside it) and sets every folder.
    connects straight away and **only saves the share if that works** — if not, it says why (can't reach it, wrong
    password, no share by that name, …). The domain or workgroup and the SMB / NFS version are under the card's
    **Advanced**; a change there is tried on a test connection first.
-2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, farmhand-configs). With no
+2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, stream, farmhand-configs). With no
    project files folder chosen, project files go in a **Projects** folder beside the STL folder (a `projects` folder
    already there is used), so they're on the NAS too; only while the STL folder is Farmhand's own do they stay in
    its storage. To keep one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want

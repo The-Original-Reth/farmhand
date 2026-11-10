@@ -3,6 +3,28 @@ import { withNewAverage } from "../../src/lib/energyPrice.js";
 import { notInMockup, nowUnix } from "../core.js";
 import { iso } from "../data.js";
 
+// where a card's picture and words are, as parts of the square (services/live_stream.py _picture_box, _text_box)
+const part = (v, least, most, d) => (typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(most, Math.max(least, v)) * 1e4) / 1e4 : d);
+const pictureBox = (b) => {
+  if (!b || typeof b !== "object") return { x: 0, y: 0, w: 1, h: 1 };
+  const w = part(b.w, 0.05, 1, 1), h = part(b.h, 0.05, 1, 1);
+  return { x: part(b.x, 0, 1 - w, (1 - w) / 2), y: part(b.y, 0, 1 - h, (1 - h) / 2), w, h };
+};
+const textBox = (b, size, position) =>
+  b && typeof b === "object"
+    ? { x: part(b.x, 0, 1, 0.5), y: part(b.y, 0, 1, 0.5), size: part(b.size, 0.02, 0.6, 0.125) }
+    : { x: 0.5, y: { top: 0.18, bottom: 0.82 }[position] ?? 0.5, size: Math.round(({ small: 1 / 12, large: 1 / 5 }[size] ?? 0.125) * 1e4) / 1e4 };
+const cameraCell = (x) => {
+  // a camera's square, and only what differs from the usual (services/live_stream.py _camera_cell)
+  const out = { camera: x.camera };
+  if (/^#[0-9A-Fa-f]{6}$/.test(x.background || "")) out.background = x.background.toUpperCase();
+  if (x.show_words === false) out.show_words = false;
+  if (typeof x.words_size === "number" && Number.isFinite(x.words_size)) out.words_size = Math.round(Math.min(0.3, Math.max(0.02, x.words_size)) * 1e4) / 1e4;
+  if (/^#[0-9A-Fa-f]{6}$/.test(x.words_color || "") && x.words_color.toUpperCase() !== "#FFFFFF") out.words_color = x.words_color.toUpperCase();
+  if (typeof x.words_font === "string" && x.words_font && x.words_font !== "dejavu-sans") out.words_font = x.words_font;
+  return out;
+};
+
 export function settingsRoutes(ctx) {
   const { capability, fail404, farm, location, monthOf, on, prices, projectsDefault, requireConfirm, SCAN_ROOT, scanFolders } = ctx;
 
@@ -35,15 +57,14 @@ export function settingsRoutes(ctx) {
       const side = (v) => (Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
       const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v || "") ? v.toUpperCase() : d);
       const cellOf = (x) => {
-        if (x && typeof x.camera === "string" && x.camera && x.camera.length <= 200) return { camera: x.camera };
+        if (x && typeof x.camera === "string" && x.camera && x.camera.length <= 200) return cameraCell(x);
         if (x && ["background", "image", "slideshow", "text"].some((k) => k in x)) {
           const name = (v) => (typeof v === "string" && /^[^/\\]{1,120}$/.test(v) ? v : null);
           return {
             background: hex(x.background, null), image: x.slideshow ? null : name(x.image), slideshow: name(x.slideshow),
             seconds: Number.isInteger(x.seconds) && x.seconds >= 3 && x.seconds <= 3600 ? x.seconds : 10,
-            text: typeof x.text === "string" ? x.text.trim().slice(0, 500) : "", color: hex(x.color, "#FFFFFF"),
-            size: ["small", "medium", "large"].includes(x.size) ? x.size : "medium",
-            position: ["top", "middle", "bottom"].includes(x.position) ? x.position : "middle",
+            text: typeof x.text === "string" ? x.text.trim().slice(0, 500) : "", color: hex(x.color, "#FFFFFF"), font: typeof x.font === "string" ? x.font : "dejavu-sans", band: x.band === true,
+            picture_box: pictureBox(x.picture_box), text_box: textBox(x.text_box, x.size, x.position),
           };
         }
         return null;

@@ -176,7 +176,7 @@ export function printingRoutes(ctx) {
   });
   on("GET", "/farm-cost/location", () => farmCostLocation());
   // The save location: one place on the NAS for everything, as the server sets it up (connecting to the share, and
-  // using or making STL, 3MF, Projects, farm-cost and farmhand-configs inside it). A password of "wrong" is refused, to
+  // using or making STL, 3MF, Projects, farm-cost, stream and farmhand-configs inside it). A password of "wrong" is refused, to
   // try the error.
   // the share the save location is on: the one whose server and share the address starts with
   const saveLocationShare = () => {
@@ -189,7 +189,7 @@ export function printingRoutes(ctx) {
     capability,
     folders: {
       stl: farm.storage.stl, threemf: farm.storage.threemf, project: farm.storage.project,
-      farm_cost: farm.farmCostFolder || FARM_COST_DEFAULT, config: farm.settingsFolder || null,
+      farm_cost: farm.farmCostFolder || FARM_COST_DEFAULT, stream: farm.streamFolder || `${farm.storage.stl.replace(/\/[^/]+$/, "")}/stream`, config: farm.settingsFolder || null,
     },
   });
   on("GET", "/settings/storage/save-location", () => saveLocationOut());
@@ -205,6 +205,7 @@ export function printingRoutes(ctx) {
     farm.storage.threemf = `${base}/3MF`;
     farm.storage.project = `${base}/Projects`;
     farm.farmCostFolder = `${base}/farm-cost`;
+    farm.streamFolder = `${base}/stream`;
     farm.settingsFolder = `${base}/farmhand-configs`;
     farm.saveLocation = address;
     let share = saveLocationShare();

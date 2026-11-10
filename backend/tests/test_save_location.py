@@ -7,7 +7,7 @@ import pytest
 from app import config_store, mounts, storage
 from app.models import NetworkShare
 from app.mounts import MountError
-from app.services import config_service, farm_cost
+from app.services import config_service, farm_cost, stream_media
 from app.services import network_shares_service as shares
 from app.services import save_location_service as svc
 
@@ -23,10 +23,11 @@ def test_a_new_address_connects_and_makes_every_folder(db_session, nas):
     row = db_session.query(NetworkShare).one()
     assert (row.name, row.share, row.username, row.password) == ("Farmhand", "prints/Farmhand", "alice", "s3cret!")
     base = mounts.mount_point_for("Farmhand")
-    for name in ("STL", "3MF", "Projects", "farm-cost", "farmhand-configs"):
+    for name in ("STL", "3MF", "Projects", "farm-cost", "stream", "farmhand-configs"):
         assert (base / name).is_dir()
     assert storage.custom_path("stl") == _real(base / "STL") and storage.custom_path("project") == _real(base / "Projects")
     assert farm_cost.location_info(db_session)["path"] == _real(base / "farm-cost")
+    assert stream_media.location_info(db_session)["path"] == _real(base / "stream")
     assert config_service.location_path(db_session) == _real(base / "farmhand-configs")
     assert (base / "farmhand-configs" / config_store.CONFIG_FILENAME).is_file()  # the settings copy written there
     assert out["address"] == "//10.0.0.5/prints/Farmhand" and out["config_choice"] is None

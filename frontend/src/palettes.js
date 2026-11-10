@@ -160,6 +160,7 @@ export const FIXED = {
   camera: "#000000", cameraText: "#E6E8EA", cameraMessage: "#8A9198", cameraBadge: "rgba(0,0,0,0.55)",
   backdrop: "rgba(0,0,0,0.55)", shadow: "rgba(0,0,0,0.3)",
   gold: "#F2C230", goldEdge: "#B8860B", silver: "#C9CDD3", silverEdge: "#868B93",
+  voronRed: "#ED3023", // Voron Design's red (as in the sidebar's Voron heart): the top bar's warning
 };
 
 export const FONTS = [

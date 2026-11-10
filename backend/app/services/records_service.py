@@ -170,7 +170,8 @@ def stream_documents(db: Session, layouts: list[dict]) -> dict[str, dict]:
             if cell and "camera" in cell:
                 number, _, camera = str(cell["camera"]).partition(":")
                 printer = names.get(int(number)) if number.isdigit() else None
-                cells.append({"camera": {"printer": printer, "camera": camera}} if printer else None)
+                own = {k: v for k, v in cell.items() if k != "camera"}  # its colour and words, as chosen
+                cells.append({"camera": {"printer": printer, "camera": camera}, **own} if printer else None)
             else:
                 cells.append(cell or None)
         out[records_store.file_stem(lay["name"], taken)] = {
@@ -209,7 +210,8 @@ def read_streams(db: Session, folder) -> tuple[list[dict], list[str]]:
             for cell in rec["cells"]:
                 if isinstance(cell, dict) and "camera" in cell:
                     key = camera(cell.get("camera"))
-                    cells.append({"camera": key} if key else None)
+                    own = {k: v for k, v in cell.items() if k != "camera"}  # checked again where it's kept (config_store)
+                    cells.append({"camera": key, **own} if key else None)
                 else:
                     cells.append(cell if isinstance(cell, dict) else None)
             lay["cells"] = cells
