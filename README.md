@@ -386,7 +386,7 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 
 **Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
-**Stream** — the cameras you choose sent live to YouTube or Twitch by Farmhand itself, no OBS needed (see "Stream")
+**Stream** — the cameras you choose sent live to YouTube by Farmhand itself, no OBS needed (see "Stream")
 
 **Power** — the whole farm's energy use (see "Power")
 
@@ -623,14 +623,13 @@ page only passes through its own camera streams, never the rest of go2rtc.
 
 ## Stream
 
-**Stream** (in the left-hand menu) sends printers' cameras live to **YouTube Live** (or **Twitch**) straight from
+**Stream** (in the left-hand menu) sends printers' cameras live to **YouTube Live** straight from
 Farmhand: no OBS, no PC left running. The picture is a grid of squares that you arrange, each holding a camera, a
 logo or nothing, and under each camera Farmhand writes the printer's name and its print (`VT 1190 · Printing 42% ·
 benchy.gcode`), brought up to date every 15 seconds.
 
-1. In **YouTube Studio**, choose **Create → Go live → Stream** and copy the **Stream key** (for Twitch: Creator
-   Dashboard → Settings → Stream → Primary Stream key).
-2. In Farmhand's **Stream** page, pick YouTube Live, paste the key, set up the squares (**Add all cameras** fills
+1. In **YouTube Studio**, choose **Create → Go live → Stream** and copy the **Stream key**.
+2. In Farmhand's **Stream** page, paste the key, set up the squares (**Add all cameras** fills
    them) and press **Save**.
 3. Press **Go live**. YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
 

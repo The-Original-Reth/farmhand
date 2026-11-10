@@ -156,7 +156,7 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
     now = settings(db)
     if destination is not None:
         if destination not in DESTINATIONS:
-            raise ValueError("Choose YouTube Live or Twitch.")
+            raise ValueError("Farmhand streams to YouTube Live for now.")
         now["destination"] = destination
     if cells is not None or cols is not None or rows is not None:
         now["cells"] = check_cells(db, cols if cols is not None else now["cols"], rows if rows is not None else now["rows"],

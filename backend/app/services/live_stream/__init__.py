@@ -1,5 +1,5 @@
 """
-The Stream page: printers' cameras sent live to YouTube (or Twitch) by Farmhand itself, no OBS needed.
+The Stream page: printers' cameras sent live to YouTube by Farmhand itself, no OBS needed.
 
 The picture is a grid of squares, 1x1 to 5x5, on a background colour, each square holding a camera, a "card" or nothing,
 in the order chosen, each with a border round it in the colour chosen. A card is a colour, with a picture or a slideshow

@@ -11,7 +11,7 @@ import { DefaultsPanel } from "./StreamSquares.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
 
-// The Stream page: Farmhand sends the printers' cameras live to YouTube (or Twitch) itself, laid out in a grid of
+// The Stream page: Farmhand sends the printers' cameras live to YouTube itself, laid out in a grid of
 // squares (each a camera, a logo or nothing, with a border round it) or taking turns, with each printer's name and print
 // written under its camera. No OBS needed. It can also set the YouTube broadcast's own title and description
 // (StreamPanels.jsx). The stream key is typed here once and kept on the server; it never comes back to the page, which

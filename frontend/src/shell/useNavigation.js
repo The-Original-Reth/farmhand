@@ -9,7 +9,7 @@ export const SECTIONS = [
   { key: "power", label: "Power", Icon: Zap },
   { key: "farm-cost", label: "Farm cost", Icon: CircleDollarSign }, // filament and electricity, per printer
   { key: "monitor", label: "Monitor", Icon: Cctv },
-  { key: "stream", label: "Stream", Icon: Radio }, // cameras sent live to YouTube or Twitch
+  { key: "stream", label: "Stream", Icon: Radio }, // cameras sent live to YouTube
   { key: "tools", label: "Tools", Icon: Hammer },
   { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
   { key: "appearance", label: "Appearance", Icon: Palette },

@@ -14,7 +14,7 @@ from ..schemas.live_stream import MediaLocationIn, SlideshowIn, SlideshowOrderIn
 from ..services import config_service, live_stream, stream_media, youtube_live
 from .common import require_confirm
 
-# The Stream page: printers' cameras sent live to YouTube or Twitch by Farmhand itself (see services/live_stream/),
+# The Stream page: printers' cameras sent live to YouTube by Farmhand itself (see services/live_stream/),
 # and the YouTube broadcast's title and description, set through YouTube's API (services/youtube_live.py). The stream
 # key, the Google client secret and the YouTube sign-in go in and never come back out: answers only say they're there.
 router = APIRouter(prefix="/stream", tags=["stream"])

@@ -270,6 +270,10 @@ def read_stream_setup(db: Session, folder) -> tuple[dict | None, list[str]]:
         return None, [f"{STREAM_SETUP_FILE} isn't a Stream page setup Farmhand can read, so the Stream page was left as it is."]
     here = {p.name: p.id for p in db.scalars(select(Printer))}
     setup = {k: doc.get(k) for k in STREAM_SETUP_KEYS if doc.get(k) is not None}
+    from .live_stream import DESTINATIONS
+
+    if setup.get("destination") not in DESTINATIONS:  # one Farmhand doesn't stream to now (Twitch, for later): YouTube
+        setup.pop("destination", None)
     setup["cells"] = _cells_in(here, doc["cells"])
     return setup, []
 

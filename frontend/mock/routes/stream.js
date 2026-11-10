@@ -1,4 +1,4 @@
-// The Stream page: sending a grid of cameras and cards live to YouTube or Twitch, the stream folder's pictures and
+// The Stream page: sending a grid of cameras and cards live to YouTube, the stream folder's pictures and
 // slideshows, and the YouTube broadcast's
 // title and description. The mockup sends nothing anywhere: Go live just says it's live, after the same checks the real
 // server makes. The stream key and the Google client secret are kept only as "one is saved". Signing in to YouTube shows
@@ -7,7 +7,7 @@
 import { HttpError } from "../core.js";
 import { FONTS, cameraCell, cardCell, fileName, isCard } from "../streamCells.js";
 
-const DESTINATIONS = { youtube: "YouTube Live", twitch: "Twitch" };
+const DESTINATIONS = { youtube: "YouTube Live" }; // (Twitch for later)
 const KEY_SHAPE = /^[A-Za-z0-9_\-?=&.]{4,200}$/;
 const CLIENT_ID_SHAPE = /^[A-Za-z0-9\-_.]{3,200}\.apps\.googleusercontent\.com$/;
 const CAMERA_KEY = /^\d+:.{1,100}$/;
@@ -158,7 +158,7 @@ export function streamRoutes(ctx) {
     const before = JSON.stringify(PICTURE.map((k) => s[k]));
     const titleBefore = s.title + "\n" + s.description;
     if (body.destination != null) {
-      if (!DESTINATIONS[body.destination]) throw new HttpError(422, "Choose YouTube Live or Twitch.");
+      if (!DESTINATIONS[body.destination]) throw new HttpError(422, "Farmhand streams to YouTube Live for now.");
       s.destination = body.destination;
     }
     if (body.cells != null || body.cols != null || body.rows != null) {

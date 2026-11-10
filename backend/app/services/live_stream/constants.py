@@ -8,10 +8,10 @@ import re
 SETTINGS_KEY = "live_stream"  # see settings()
 STREAM_KEY_KEY = "live_stream_key"  # the stream key itself, on its own
 
-# Where each destination takes a stream: its RTMPS address, the stream key goes on the end
+# Where each destination takes a stream: its RTMPS address, the stream key goes on the end. YouTube Live only for now
+# (Twitch comes back once YouTube is sorted out; a setup saved with it is read as YouTube)
 DESTINATIONS = {
     "youtube": {"label": "YouTube Live", "url": "rtmps://a.rtmps.youtube.com/live2/"},
-    "twitch": {"label": "Twitch", "url": "rtmps://live.twitch.tv/app/"},
 }
 DEFAULT_DESTINATION = "youtube"
 KEY_SHAPE = re.compile(r"^[A-Za-z0-9_\-?=&.]{4,200}$")
