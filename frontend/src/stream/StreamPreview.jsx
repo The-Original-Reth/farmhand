@@ -45,7 +45,7 @@ export const turnAt = (seconds, n, cycle) => {
   return { one, left: cycle.all + (one + 1) * cycle.each - at };
 };
 
-export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty }) {
+export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -182,7 +182,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         <SquareEditor
           cells={cells} i={selected} onCells={(next) => change({ cells: next })} cameras={cameras} media={media} fonts={fonts} label={label} streamBackground={back} streamText={words} inset={inset} slide={slideCtl}
           aspect={(16 * rows) / (9 * cols)} onSave={onSave} dirty={dirty} saving={busy === "save"}
-          showStatus={showStatus} ask={ask} busy={busy} onDone={() => setSelected(null)} screen={<Screen sq={squares[selected]} showStatus={showStatus} big media={media} back={back} words={words} />}
+          showStatus={showStatus} ask={ask} busy={busy} onRenameSlideshow={onRenameSlideshow} onDone={() => setSelected(null)} screen={<Screen sq={squares[selected]} showStatus={showStatus} big media={media} back={back} words={words} />}
         />
       ) : (
         <div style={uiText(12, c.textMuted, { marginTop: 6 })}>

@@ -54,15 +54,16 @@ export function PictureChoice({ card, setCard, media, ask, busy }) {
   );
 }
 
-// A slideshow (a folder of pictures in the stream folder, shown in turn): chosen from the list, and four buttons. New
+// A slideshow (a folder of pictures in the stream folder, shown in turn): chosen from the list, and five buttons. New
 // slideshow (asks its name), Add pictures (into the one chosen), Open folder (where its folder is, to open in File
-// Explorer) and Delete slideshow. Then how
+// Explorer), Rename (its folder on the server too; squares showing it follow) and Delete slideshow. Then how
 // long each picture shows, and its pictures, each with its own Delete.
-export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
+export function SlideshowChoice({ card, setCard, media, ask, busy, slide, onRename }) {
   const input = useRef(null);
   const [opening, setOpening] = useState(false); // showing where the folder is, for File Explorer
   const [name, setName] = useState(null); // the new slideshow's name being typed; null when not making one
   const [removing, setRemoving] = useState(null); // "show" | a picture's name, asking "Delete?"
+  const [renaming, setRenaming] = useState(null); // the chosen slideshow's new name being typed; null when not renaming
   const [moving, setMoving] = useState(null); // the picture being dragged to a new place
   const [overPic, setOverPic] = useState(null); // the picture it would take the place of
   const show = media.slideshows.find((x) => x.name === card.slideshow) || null;
@@ -86,6 +87,16 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
       setName(null);
     }
   };
+  const rename = async () => {
+    const n = (renaming || "").trim();
+    if (!n || !show || !onRename) return;
+    if (n === show.name) return setRenaming(null);
+    const p = await onRename(show.name, n);
+    if (p?.media.slideshows.some((x) => x.name === n)) {
+      setCard({ slideshow: n, image: null });
+      setRenaming(null);
+    }
+  };
   const addPictures = async (files) => {
     input.current.value = "";
     if (files.length && show) await ask("picture", () => uploadSlideshowPictures(show.name, files));
@@ -93,14 +104,14 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
   const off = !!busy || !!media.error;
   return (
     <>
-      <select data-testid="stream-square-slideshow" value={card.slideshow || ""} onChange={(e) => (setCard({ slideshow: e.target.value || null, image: null }), setRemoving(null))} style={box()}>
+      <select data-testid="stream-square-slideshow" value={card.slideshow || ""} onChange={(e) => (setCard({ slideshow: e.target.value || null, image: null }), setRemoving(null), setRenaming(null))} style={box()}>
         <option value="">{media.slideshows.length ? "Choose a slideshow…" : "No slideshows yet"}</option>
         {card.slideshow && !show && <option value={card.slideshow}>{card.slideshow} (not in the folder)</option>}
         {media.slideshows.map((x) => <option key={x.name} value={x.name}>{x.name} ({x.images.length})</option>)}
       </select>
       <input ref={input} data-testid="stream-slideshow-file" type="file" multiple accept="image/png,image/jpeg,image/webp" style={{ display: "none" }} onChange={(e) => addPictures([...e.target.files])} />
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" data-testid="stream-slideshow-new" onClick={() => (setName(""), setRemoving(null))} disabled={off} style={headerButton()}>
+        <button type="button" data-testid="stream-slideshow-new" onClick={() => (setName(""), setRemoving(null), setRenaming(null))} disabled={off} style={headerButton()}>
           New slideshow
         </button>
         <button
@@ -115,7 +126,15 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
         >
           Open folder
         </button>
-        <button type="button" data-testid="stream-slideshow-delete" onClick={() => setRemoving("show")} disabled={off || !show} style={headerButton()}>
+        {onRename && (
+          <button
+            type="button" data-testid="stream-slideshow-rename" onClick={() => (setRenaming(show.name), setName(null), setRemoving(null))} disabled={off || !show} style={headerButton()}
+            title={show ? `Rename “${show.name}”: its folder on the server too` : "Choose a slideshow first"}
+          >
+            Rename
+          </button>
+        )}
+        <button type="button" data-testid="stream-slideshow-delete" onClick={() => (setRemoving("show"), setRenaming(null))} disabled={off || !show} style={headerButton()}>
           Delete slideshow
         </button>
         <ScanFolder ask={ask} busy={busy} media={media} />
@@ -134,6 +153,21 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
           <button type="button" onClick={() => setName(null)} style={headerButton()}>
             Cancel
           </button>
+        </div>
+      )}
+      {renaming !== null && show && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            data-testid="stream-slideshow-new-name" autoFocus value={renaming} maxLength={100} placeholder="The slideshow's new name" onChange={(e) => setRenaming(e.target.value)}
+            onFocus={(e) => e.target.select()} onKeyDown={(e) => (e.key === "Enter" ? rename() : e.key === "Escape" && setRenaming(null))} style={{ ...box(), width: 200 }}
+          />
+          <button type="button" data-testid="stream-slideshow-rename-save" onClick={rename} disabled={off || !renaming.trim()} style={headerButton()}>
+            Rename
+          </button>
+          <button type="button" onClick={() => setRenaming(null)} style={headerButton()}>
+            Cancel
+          </button>
+          <span style={uiText(12, c.textFaint)}>Its folder on the server is renamed too, and squares and saved layouts showing it follow.</span>
         </div>
       )}
       {removing === "show" && show && (

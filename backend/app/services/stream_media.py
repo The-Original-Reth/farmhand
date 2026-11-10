@@ -267,6 +267,25 @@ def add_slideshow(db: Session, name: str) -> str:
     return name
 
 
+def rename_slideshow(db: Session, name: str, new: str) -> str:
+    """Rename a slideshow's folder (its pictures and order go with it): the new name. NotFound when it isn't there;
+    ValueError for a name another slideshow has (any case) or one a folder can't have. Only the case can change too."""
+    name, new = _name(name, "slideshow"), _name(new, "slideshow")
+    d = folder(db) / SLIDESHOWS
+    if not (d / name).is_dir():
+        raise NotFound("That slideshow isn't there.")
+    if new == name:
+        return new
+    if new.lower() != name.lower() and any(e.name.lower() == new.lower() for e in os.scandir(d)):
+        raise ValueError(f"There's already a slideshow called “{new}”.")
+    try:
+        os.rename(d / name, d / new)
+    except OSError as e:
+        raise ValueError(f"Couldn't rename the slideshow's folder: {e.strerror or e}") from None
+    forget()
+    return new
+
+
 def remove_slideshow(db: Session, name: str) -> None:
     """Delete a slideshow: its pictures, then its folder, which is only removed once nothing else is left in it."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")

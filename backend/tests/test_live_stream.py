@@ -394,8 +394,14 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
-    inputs = [cmd[i + 1].replace("\\", "/") for i, a in enumerate(cmd) if a == "-i"][2:]
-    assert [p.split("/stream/")[1] for p in inputs] == ["slideshows/Prints/2 benchy.png", "slideshows/Prints/10 frog.png", "images/Elves.png"]
+    inputs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"][2:]
+    # read from copies in the stream's own folder, made once: never the stream folder (on the NAS, pictures being
+    # copied in clashed with ffmpeg reading them every second)
+    assert [os.path.basename(p) for p in inputs] == ["2 benchy.png", "10 frog.png", "Elves.png"]
+    assert not any(os.path.realpath(p).startswith(os.path.realpath(root)) for p in inputs)
+    assert [open(p, "rb").read() for p in inputs] == [_png(b"b"), _png(b"f"), _png()]
+    (root / "slideshows" / "Prints" / "10 frog.png").write_bytes(b"changed while live")
+    assert open(inputs[1], "rb").read() == _png(b"f")
     assert "color=c=0x123456" in _graph(cmd)  # a picture that isn't there: just its colour
     text = _graph(cmd).split("textfile=")[1].split(":reload")[0].replace("\\:", ":")
     with open(text, encoding="utf-8") as f:
@@ -754,3 +760,36 @@ def test_a_slideshows_own_order(klipper, tmp_path):
     # deleting the slideshow takes its order file with it, so its folder goes too
     assert api.delete("/stream/slideshows/Sponsors?confirm=true").status_code == 200
     assert not (root / "slideshows" / "Sponsors").exists()
+
+
+def test_renaming_a_slideshow(klipper, tmp_path):
+    from app.services import stream_media
+
+    api, _ = klipper
+    api.post("/stream/slideshows", json={"name": "Given toys to"})
+    api.post("/stream/slideshows", json={"name": "Sponsors"})
+    api.post("/stream/slideshows/Given toys to/pictures", files=[("files", (n, _png(n.encode()), "image/png")) for n in ("a.png", "b.png")])
+    api.put("/stream/slideshows/Given toys to/order", json={"order": ["b.png", "a.png"]})
+    api.put("/stream", json={"cols": 2, "rows": 1, "cells": [{"slideshow": "Given toys to", "captions": {"a.png": {"text": "Hi"}}}, {"slideshow": "Sponsors"}]})
+    layout = {"name": "Evening", "cols": 1, "rows": 1, "cells": [{"slideshow": "Given toys to"}]}
+    api.put("/settings/config", json={"preferences": {"stream_layouts": [layout]}})
+
+    # the folder on the server is renamed, its pictures and their order go with it
+    page = api.put("/stream/slideshows/Given toys to", json={"name": "Schools 2026"}).json()
+    assert [s["name"] for s in page["media"]["slideshows"]] == ["Schools 2026", "Sponsors"]
+    assert page["media"]["slideshows"][0]["images"] == ["b.png", "a.png"]
+    root = stream_media.folder(_db(api)) / "slideshows"
+    assert sorted(p.name for p in root.iterdir()) == ["Schools 2026", "Sponsors"]
+    # squares showing it follow, on the page and in saved layouts; the words on its pictures stay
+    cells = page["settings"]["cells"]
+    assert cells[0]["slideshow"] == "Schools 2026" and cells[0]["captions"] == {"a.png": {"text": "Hi", "text_box": cells[0]["captions"]["a.png"]["text_box"]}}
+    assert cells[1]["slideshow"] == "Sponsors"
+    saved = api.get("/settings/config").json()["config"]["preferences"]["stream_layouts"]
+    assert saved[0]["cells"][0]["slideshow"] == "Schools 2026"
+
+    # only its case changing is fine; a name another slideshow has, or one a folder can't have, isn't
+    assert api.put("/stream/slideshows/Schools 2026", json={"name": "schools 2026"}).status_code == 200
+    r = api.put("/stream/slideshows/schools 2026", json={"name": "SPONSORS"})
+    assert r.status_code == 422 and "already a slideshow" in r.json()["detail"]
+    assert api.put("/stream/slideshows/schools 2026", json={"name": "a/b"}).status_code == 422
+    assert api.put("/stream/slideshows/Nope", json={"name": "Other"}).status_code == 404

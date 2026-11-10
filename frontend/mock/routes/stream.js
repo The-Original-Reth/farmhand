@@ -239,6 +239,23 @@ export function streamRoutes(ctx) {
     state().slideshows = state().slideshows.filter((x) => x.name !== decodeURIComponent(name));
     return page();
   });
+  // renaming a slideshow renames its folder; squares showing it, on the page and in saved layouts, follow
+  on("PUT", "/stream/slideshows/:name", ({ name }, body) => {
+    const show = showOf(name);
+    const old = decodeURIComponent(name);
+    const next = String(body.name || "").trim();
+    if (!fileName(next) || next.startsWith(".")) throw new HttpError(422, "That isn't a name a slideshow can have.");
+    if (!show) throw new HttpError(404, "That slideshow isn't there.");
+    if (next === old) return page();
+    if (next.toLowerCase() !== old.toLowerCase() && state().slideshows.some((x) => x.name.toLowerCase() === next.toLowerCase())) {
+      throw new HttpError(422, `There's already a slideshow called “${next}”.`);
+    }
+    show.name = next;
+    const follow = (cells) => cells.forEach((x) => x && !x.camera && x.slideshow === old && (x.slideshow = next));
+    follow(state().cells);
+    (farm.config?.preferences?.stream_layouts || []).forEach((lay) => follow(lay.cells || []));
+    return page();
+  });
   on("PUT", "/stream/slideshows/:name/order", ({ name }, body) => {
     const show = showOf(name);
     if (!show) throw new HttpError(404, "That slideshow isn't there.");
