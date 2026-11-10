@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { c } from "../theme.js";
 import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { errorText, getStream, renameSlideshow, saveStream, startStream, stopStream } from "../api.js";
@@ -22,6 +22,7 @@ const STATUS_EVERY_MS = 5000;
 export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed }) {
   const { printers } = useData();
   const active = printers.filter((p) => !p.decommissioned);
+  const music = useRef(null); // the music panel's own start and stop, for the switch (MusicPanel `control`)
   const [page, setPage] = useState(null); // what the server says: { settings, status, destinations, resolutions, fonts, media, youtube }
   const enabled = page?.settings.enabled !== false; // the switch: off, nothing streams (the page works as ever)
   const { cams } = usePrinterCameras(active);
@@ -130,7 +131,12 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   };
   // The switch at the top. Off: ffmpeg on the server stops and going live waits until it's on again; everything else on
   // the page works as ever (what's changed here and not saved yet stays so).
-  const turn = (on) => ask("switch", () => saveStream({ enabled: on }));
+  // (turned on, the music starts within the click itself: browsers only let a page start sound straight from a click)
+  const turn = async (on) => {
+    if (on) music.current?.start();
+    const p = await ask("switch", () => saveStream({ enabled: on }));
+    if (on && !p) music.current?.stop(); // it stayed off
+  };
   const forgetKey = () => ask("save", () => saveStream({ clearKey: true }));
   // Go live: what's changed here is saved first
   const start = async () => {
@@ -176,7 +182,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         <StreamPreview
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
-          ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard}
+          ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard} still={!enabled}
           serverClock={status.serverTime !== null && !changed ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
@@ -200,7 +206,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
 
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
-        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} />
+        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} control={music} />
         <SavedLayoutsPanel
           layouts={layouts} onSave={onSaveLayouts} saved={saved} label={label} switchTo={switchTo}
         />

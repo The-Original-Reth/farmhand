@@ -8,7 +8,7 @@ import { fontFamily, statusLine } from "./shapes.js";
 
 // What a square shows: a camera, or a card (its colour, picture or slideshow, and words); nothing (the stream's colour)
 // when null
-export function Screen({ sq, showStatus, big, media, back, words = {}, clock = null, inset = 0, edit = false, onChange, slide = null }) {
+export function Screen({ sq, showStatus, big, media, back, words = {}, clock = null, inset = 0, edit = false, onChange, slide = null, still = false }) {
   if (!sq) return null;
   if (sq.type === "camera") {
     return (
@@ -17,7 +17,7 @@ export function Screen({ sq, showStatus, big, media, back, words = {}, clock = n
       </div>
     );
   }
-  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} slide={slide || null} clock={clock} />;
+  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} slide={slide || null} clock={clock} still={still} />;
   return null;
 }
 

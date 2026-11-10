@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { c, fixed, fs, ui } from "../theme.js";
 import { fieldBox, headerButton, uiText } from "../styles.js";
 import { GridSize } from "./StreamSquares.jsx";
@@ -22,9 +22,10 @@ import { SquareEditor } from "./SquareEditor.jsx";
 // `cycle`: taking turns, { all, each } seconds (null: the whole grid all the time), on this page's own clock;
 // `cameras`, `media` (the stream folder's pictures and slideshows), `label`: what a square can hold, for its editor
 // (SquareEditor.jsx), which also uploads and deletes pictures (`ask`, `busy`: the page's own way of asking the server)
-// and saves the page (`onSave`; `dirty`: something isn't saved yet).
+// and saves the page (`onSave`; `dirty`: something isn't saved yet). `still`: the stream is switched off, so the
+// slideshows and taking turns hold still where they are (as the music stops).
 
-export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert }) {
+export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert, still = false }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -36,7 +37,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
   const n = cameraSquares.length;
   const editing = selected !== null || dragging !== null;
   const turning = !!cycle && n > 1;
-  const seconds = useSecondsSince(turning, [cycle?.all, cycle?.each, n]);
+  const seconds = useSecondsSince(turning && !still, [cycle?.all, cycle?.each, n]);
   // the slideshow in the square being edited: the square here and the editor's canvas show the same picture
   const edited = selected !== null && squares[selected]?.type === "card" ? squares[selected].cell : null;
   const editedShow = edited?.slideshow ? media.slideshows.find((x) => x.name === edited.slideshow) : null;
@@ -45,8 +46,13 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
     if (selected !== null && selected >= cells.length) setSelected(null); // the grid got smaller
   }, [cells.length, selected]);
   // with nothing changed here, the preview keeps the server's time of day (null: its own)
-  const clock = useServerClock(serverClock);
-  const { one, left } = turnAt(clock !== null ? Math.floor(clock) : seconds, n, turning && !editing ? cycle : null);
+  const running = useServerClock(still ? null : serverClock);
+  // switched off: everything holds where it was when it was switched off
+  const held = useRef({ clock: null, turn: 0 });
+  if (!still) held.current = { clock: running, turn: running !== null ? Math.floor(running) : seconds };
+  const clock = still ? null : running; // (what the badge says: in step or not)
+  const squaresClock = still ? held.current.clock : clock;
+  const { one, left } = turnAt(still ? held.current.turn : clock !== null ? Math.floor(clock) : seconds, n, turning && !editing ? cycle : null);
   const alone = one === null ? null : cameraSquares[one]; // the square shown on its own, taking turns
   const drop = (to) => {
     if (dragging !== null && dragging !== to) {
@@ -76,10 +82,10 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         {/* whether it shows what the server does (or will, going live): only with nothing changed and not saved */}
         <span
           data-testid="stream-in-step"
-          title={clock !== null ? "Slideshows and taking turns keep the server's time of day, as the stream does" : "Changes not saved yet: the preview plays them on its own time"}
-          style={uiText(11, clock !== null ? c.green : c.amber, { border: `1px solid ${clock !== null ? c.green : c.amber}`, borderRadius: 3, padding: "1px 6px", whiteSpace: "nowrap" })}
+          title={still ? "The stream is off: slideshows and taking turns hold still until it's turned on" : clock !== null ? "Slideshows and taking turns keep the server's time of day, as the stream does" : "Changes not saved yet: the preview plays them on its own time"}
+          style={uiText(11, still ? c.textMuted : clock !== null ? c.green : c.amber, { border: `1px solid ${still ? c.border : clock !== null ? c.green : c.amber}`, borderRadius: 3, padding: "1px 6px", whiteSpace: "nowrap" })}
         >
-          {clock === null ? "Not in step: save to match the server" : serverClock.live ? "In step with the stream" : "In step with the server"}
+          {still ? "Stream off: held still" : clock === null ? "Not in step: save to match the server" : serverClock.live ? "In step with the stream" : "In step with the server"}
         </span>
         {live && (
           <span style={{ ...ui, fontSize: fs(11), fontWeight: 700, letterSpacing: 0.5, color: c.danger, border: `1px solid ${c.danger}`, borderRadius: 3, padding: "1px 6px" }}>
@@ -143,7 +149,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
             >
               {sq ? (
                 <Screen
-                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} clock={clock} inset={alone === i ? 0 : inset} edit={editHere && "quiet"} slide={selected === i ? slideCtl : null}
+                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} clock={squaresClock} still={still} inset={alone === i ? 0 : inset} edit={editHere && "quiet"} slide={selected === i ? slideCtl : null}
                   onChange={(what) => change({ cells: cells.map((x, j) => (j === i ? { ...x, ...what } : x)) })}
                 />
               ) : (
@@ -163,7 +169,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         />
       ) : (
         <div style={uiText(12, c.textMuted, { marginTop: 6 })}>
-          {turning && !editing ? `Now: ${one === null ? "the whole grid" : `${squares[alone].label} (${one + 1} of ${n})`} · next in ${left} s. ` : ""}
+          {turning && !editing && !still ? `Now: ${one === null ? "the whole grid" : `${squares[alone].label} (${one + 1} of ${n})`} · next in ${left} s. ` : ""}
           Click a square to choose what's in it; drag one onto another to swap them. In the square being edited, drag its picture or words to move them.
         </div>
       )}

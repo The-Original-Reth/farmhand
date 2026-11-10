@@ -21,7 +21,7 @@ const BACK_RESTARTS = 3; // seconds into a track after which Back starts it agai
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const small = { ...headerButton(), padding: "0 6px" };
 
-export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true }) {
+export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true, control = null }) {
   const input = useRef(null);
   const player = useRef(null);
   const paused = useRef(false); // paused here by hand: it stays so until played again (or the switch turned on again)
@@ -66,6 +66,16 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
     if (!here && !paused.current) advance(null, 1);
   }, [wanted, enabled]);
   latest.current = { tracks, shuffle: shown.musicShuffle };
+  // the switch's own: start (turned on, from within its click) and stop (it couldn't be turned on)
+  if (control) {
+    control.current = {
+      start: () => {
+        paused.current = false;
+        if (!live && shown.music && tracks.length && !here) advance(null, 1);
+      },
+      stop: () => stopHere(),
+    };
+  }
 
   // the track `step` along from `name` in the list (round again at either end; shuffled, going on: any other one),
   // played here
