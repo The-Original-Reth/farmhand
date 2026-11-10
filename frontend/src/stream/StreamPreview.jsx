@@ -85,15 +85,16 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
   useEffect(() => {
     if (selected !== null && selected >= cells.length) setSelected(null); // the grid got smaller
   }, [cells.length, selected]);
-  // while the stream is going out (and nothing is changed here), the preview keeps its time: the same slideshow
-  // picture and the same turn as the picture the server is sending, moment by moment
+  // with nothing changed here, the preview keeps the server's time: slideshows and taking turns count from the time of
+  // day there, as the stream does, so it shows what the stream shows (or will start on, going live)
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!serverClock) return;
     const timer = setInterval(() => setTick((t) => t + 1), 250);
     return () => clearInterval(timer);
   }, [!!serverClock]);
-  const clock = serverClock ? serverClock.runningFor + (Date.now() - serverClock.heardAt) / 1000 : null;
+  // the server's time of day now (its, not this computer's: a clock that's a little out doesn't matter)
+  const clock = serverClock ? serverClock.serverTime + (Date.now() - serverClock.heardAt) / 1000 : null;
   const { one, left } = turnAt(clock !== null ? Math.floor(clock) : seconds, n, turning && !editing ? cycle : null);
   const alone = one === null ? null : cameraSquares[one]; // the square shown on its own, taking turns
   const drop = (to) => {
@@ -202,8 +203,10 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         </div>
       )}
       <div style={uiText(11, c.textFaint, { marginTop: 6, lineHeight: 1.5 })}>
-        {clock !== null
+        {clock !== null && serverClock.live
           ? "In step with the stream: the same slideshow pictures and turns as the picture the server is sending (YouTube shows it a few seconds later)."
+          : clock !== null
+            ? "In step with the server: going live, the stream starts on the slideshow pictures and turn shown here."
           : "Played in this browser, so you can check it before going live. What goes out is made on the server and may lag a few seconds behind."}
       </div>
     </div>

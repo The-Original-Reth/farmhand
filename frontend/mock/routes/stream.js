@@ -57,7 +57,7 @@ export function streamRoutes(ctx) {
         title: s.title, description: s.description, key_set: s.key_set,
       },
       status: {
-        live: s.live, on_air: s.live, started_at: s.started_at, running_for: s.live && s.started_at ? Math.round((Date.now() - Date.parse(s.started_at)) / 10) / 100 : null, destination: s.live ? s.destination : null, cameras: s.live ? s.labels : [],
+        live: s.live, on_air: s.live, started_at: s.started_at, running_for: s.live && s.started_at ? Math.round((Date.now() - Date.parse(s.started_at)) / 10) / 100 : null, server_time: Date.now() / 1000, destination: s.live ? s.destination : null, cameras: s.live ? s.labels : [],
         error: null, title: s.live ? s.title_status : null,
       },
       destinations: Object.entries(DESTINATIONS).map(([key, label]) => ({ key, label })),

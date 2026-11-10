@@ -229,7 +229,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
           ask={ask} busy={busy} onSave={saveNow} dirty={changed} onRenameSlideshow={renameShow}
-          serverClock={status.onAir && status.runningFor !== null && !changed ? { runningFor: status.runningFor, heardAt: status.heardAt } : null}
+          serverClock={status.serverTime !== null && !changed ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
       </div>

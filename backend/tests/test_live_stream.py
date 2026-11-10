@@ -857,3 +857,30 @@ def test_the_page_is_told_how_long_the_picture_has_run(klipper, moonraker, ffmpe
     assert first is not None and api.get("/stream").json()["status"]["running_for"] > first
     api.post("/stream/stop")
     assert api.get("/stream").json()["status"]["running_for"] is None
+
+
+def test_slideshows_and_turns_keep_the_time_of_day():
+    # going live at 125 s past a round's start: a 3 x 5 s slideshow is 5 s into b (125 mod 15 = 5); the turns of two
+    # cameras (10 s all, then 5 s each: a 20 s round) are 5 s into the whole grid's 10 s
+    cells = [("camera", 0), ("camera", 1), ("card", {"pictures": ["/s/a.png", "/s/b.png", "/s/c.png"], "seconds": 5})]
+    srcs = [live_stream.Source(i, f"P{i}", ["-i", f"http://cam{i}"]) for i in range(2)]
+    graph = _graph(live_stream.command("ffmpeg", srcs, "u", live_stream.Look(cols=3, rows=1, cells=cells, resolution="720p", clock=1_700_000_125)))
+    off = 1_700_000_125 % 15
+    assert f"enable='gte(mod(t+{off},15),5)*lt(mod(t+{off},15),10)'" in graph
+    t = live_stream.timetable(2, 10, 5, horizon=60, clock=1_700_000_125).splitlines()
+    phase = 1_700_000_125 % 20  # 5: in the whole grid's turn, which shows at once; camera 0 at 5 s, camera 1 at 10 s
+    assert phase == 5 and t[0] == "0 streamselect@view map 0;"
+    assert t[1:4] == ["5 streamselect@view map 1, streamselect@pick map 0;", "10 streamselect@view map 1, streamselect@pick map 1;",
+                      "15 streamselect@view map 0;"]
+    # partway through a camera's turn, that camera at once
+    assert live_stream.timetable(2, 10, 5, horizon=60, clock=12).splitlines()[0] == "0 streamselect@view map 1, streamselect@pick map 0;"
+    # counted from the start of a round, as before
+    assert live_stream.timetable(2, 10, 5, horizon=40, clock=0).splitlines() == [
+        "0 streamselect@view map 0;", "10 streamselect@view map 1, streamselect@pick map 0;", "15 streamselect@view map 1, streamselect@pick map 1;",
+        "20 streamselect@view map 0;", "30 streamselect@view map 1, streamselect@pick map 0;", "35 streamselect@view map 1, streamselect@pick map 1;"]
+
+
+def test_the_page_is_told_the_servers_time(klipper):
+    api, _ = klipper
+    before = time.time()
+    assert before - 1 <= api.get("/stream").json()["status"]["server_time"] <= time.time() + 1
