@@ -418,7 +418,8 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
              {"image": "gone.png", "background": "#123456"}]
     s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
     assert s["cells"][1] == {"background": None, "image": None, "slideshow": "Prints", "seconds": 4, "text": "Live!", "color": None, "font": None, "band": False, "captions": {}, "picture_boxes": {},
-                             "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125}}
+                             "picture_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "text_box": {"x": 0.5, "y": 0.1, "size": 0.125},
+                             "layers": [], "slide_layers": {}}
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
@@ -607,6 +608,64 @@ def test_the_music_with_no_tracks_is_silence_and_shuffles_each_round(monkeypatch
     finally:
         p.stop()
     assert all(sorted(r) == sorted(f"/m/{i}.mp3" for i in range(8)) for r in rounds) and len({tuple(r) for r in rounds}) > 1
+
+
+def test_more_pictures_and_text_on_a_card(klipper, moonraker, ffmpeg):
+    """A card's more pictures and pieces of text, each placed on its own: kept, checked, and drawn in their order (a
+    slideshow screen's only in that screen's seconds), their pictures read from copies."""
+    from app.services import stream_media
+
+    api, pid = klipper
+    api.post("/stream/pictures", files=[("files", ("Logo.png", _png(b"L"), "image/png")), ("files", ("Frog.png", _png(b"F"), "image/png"))])
+    api.post("/stream/slideshows", json={"name": "Prints"})
+    api.post("/stream/slideshows/Prints/pictures", files=[("files", ("a.png", _png(b"a"), "image/png")), ("files", ("b.png", _png(b"b"), "image/png"))])
+    layers = [
+        {"type": "picture", "image": "Logo.png", "box": {"x": 0.6, "y": 0.1, "w": 0.3, "h": 0.3}},
+        {"type": "text", "text": "  Frog, 20 hours ", "box": {"x": 0.3, "y": 0.9, "size": 0.06}, "font": "lato", "color": "#ffd54f", "band": True},
+        {"type": "picture", "image": "gone.png"},  # not in the stream folder: left out going live
+        {"type": "text", "text": "   "},  # no words: left out going live
+        {"type": "sticker"},  # not a kind there is: dropped
+    ]
+    screens = {"b.png": [{"type": "text", "text": "On b", "box": {"x": 0.5, "y": 0.5, "size": 0.1}}],
+               "blank:9": [{"type": "picture", "image": "Logo.png"}], "a/b": [{"type": "text", "text": "bad name"}]}
+    cells = [{"camera": f"{pid}:Bed"}, {"image": "Frog.png", "layers": layers}, {"slideshow": "Prints", "seconds": 5, "slide_layers": screens}, None]
+    s = api.put("/stream", json={"stream_key": KEY, "cols": 2, "rows": 2, "cells": cells, "show_status": False}).json()["settings"]
+    kept = s["cells"][1]["layers"]
+    assert [x["type"] for x in kept] == ["picture", "text", "picture", "text"]
+    assert kept[0] == {"type": "picture", "image": "Logo.png", "box": {"x": 0.6, "y": 0.1, "w": 0.3, "h": 0.3}}
+    assert kept[1] == {"type": "text", "text": "Frog, 20 hours", "box": {"x": 0.3, "y": 0.9, "size": 0.06}, "font": "lato", "color": "#FFD54F", "band": True}
+    assert kept[2]["box"] == {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+    assert sorted(s["cells"][2]["slide_layers"]) == ["b.png", "blank:9"] and s["cells"][2]["layers"] == []
+    # too many, or too many words, are refused with why
+    many = api.put("/stream", json={"cols": 1, "rows": 1, "cells": [{"text": "", "layers": [{"type": "text", "text": "x"}] * 13}]})
+    assert many.status_code == 422 and "Up to 12" in many.json()["detail"]
+    long = api.put("/stream", json={"cols": 1, "rows": 1, "cells": [{"slideshow": "Prints", "slide_layers": {"a.png": [{"type": "text", "text": "x" * 501}]}}]})
+    assert long.status_code == 422 and "“a.png”" in long.json()["detail"] and "500" in long.json()["detail"]
+
+    moonraker.webcams = [_cam()]
+    api.post("/stream/start")
+    assert _wait_for(lambda: ffmpeg.commands)
+    cmd = ffmpeg.commands[0]
+    graph = _graph(cmd)
+    inputs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"]
+    root = stream_media.folder(_db(api))
+    # the logo read from one copy in the stream's own folder (on the picture card and on the slideshow's blank-less screen)
+    logos = [p for p in inputs if os.path.basename(p) == "Logo.png"]
+    assert len(logos) == 1 and not os.path.realpath(logos[0]).startswith(os.path.realpath(root))
+    # the picture card: its picture, then the logo over it (in its box, kept to its shape), then its own words
+    logo_input = inputs.index(logos[0])
+    assert f"[{logo_input}:v]scale=" in graph and "[c1o0][c1L0]overlay=" in graph
+    layer_text = next(p for p in graph.split(";") if p.startswith("[c1l0]drawtext"))
+    from app.services.live_stream.words import filter_path
+
+    assert "fontcolor=0xFFD54F" in layer_text and "box=1" in layer_text and f"fontfile={filter_path(live_stream.font_file('lato'))}:" in layer_text
+    with open(layer_text.split("textfile=")[1].split(":reload")[0].replace("\\:", ":"), encoding="utf-8") as f:
+        assert f.read() == "Frog, 20 hours"
+    card = [p for p in graph.split(";") if p.startswith("[c1")]
+    assert "gone.png" not in " ".join(cmd) and sum("drawtext" in p for p in card) == 1  # the one not there, and the empty words: left out
+    # the slideshow: b.png's words only in its seconds (the second of two, 5 s each)
+    b_words = next(p for p in graph.split(";") if p.startswith("[c2o1]drawtext"))
+    assert "enable='gte(mod(" in b_words and ",10),5)*lt(mod(" in b_words
 
 
 def test_choosing_the_stream_folder(klipper, share):

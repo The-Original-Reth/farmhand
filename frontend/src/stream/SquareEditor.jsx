@@ -3,7 +3,8 @@ import { c, fixed } from "../theme.js";
 import { headerButton, panelBox, primaryButton, uiText } from "../styles.js";
 import { colourBox, help, label12 } from "./streamStyles.js";
 import { CardScreen } from "./CardScreen.jsx";
-import { CARD } from "./shapes.js";
+import { CARD, layersOf } from "./shapes.js";
+import { LayersChoice } from "./LayersChoice.jsx";
 import { CameraChoice, CameraWordsChoice, TextChoice } from "./SquareChoices.jsx";
 import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
 
@@ -22,11 +23,13 @@ import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
 // closes the editor.
 
 const KINDS = [["camera", "Camera"], ["text", "Text"], ["picture", "Picture"], ["slideshow", "Slideshow"], ["empty", "Empty"]];
+const isCardKind = (k) => ["text", "picture", "slideshow"].includes(k);
 export const kindOf = (cell) => (!cell ? "empty" : cell.camera ? "camera" : cell.slideshow ? "slideshow" : cell.image ? "picture" : "text");
 export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, slide = null, showStatus = true, label, screen, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground, onRenameSlideshow }) {
   const cell = cells[i];
   const [kind, setKind] = useState(kindOf(cell));
   useEffect(() => setKind(kindOf(cells[i])), [i]); // another square clicked
+  const [layer, setLayer] = useState(null); // the extra picture or words chosen (its place in the list)
   const card = cell && !cell.camera ? { ...CARD, ...cell } : { ...CARD };
   const put = (next) => onCells(cells.map((x, j) => (j === i ? next : x)));
   const setCard = (what) => put({ ...card, ...what });
@@ -42,6 +45,9 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
   // the slideshow picture on show (in the preview's square and on the canvas alike): words written now go with it
   const showNow = kind === "slideshow" && card.slideshow ? media.slideshows.find((x) => x.name === card.slideshow) : null;
   const slideName = showNow?.images.length ? showNow.images[(slide?.at || 0) % showNow.images.length] : null;
+  useEffect(() => setLayer(null), [i, slideName, kind]); // another square, screen or kind: none chosen
+  // more pictures and words: on any card (a slideshow's, on the screen on show)
+  const layered = isCardKind(kind) && layersOf(card, slideName) !== null;
   // the canvas: the square's own shape, no taller than 420 px
   const canvas = { position: "relative", width: "100%", maxWidth: Math.min(640, 420 * aspect), aspectRatio: String(aspect), background: fixed.camera, border: `1px solid ${c.border}`, overflow: "hidden", display: "flex" };
   const ownColour = isCard ? card.background : cell?.camera ? cell.background || null : null;
@@ -70,10 +76,16 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
           <div data-testid="stream-square-canvas" style={canvas}>
-            {isCard ? <CardScreen card={card} media={media} streamBackground={streamBackground} streamText={streamText} inset={inset} edit onChange={setCard} slide={kind === "slideshow" ? slide : null} /> : screen}
+            {isCard ? <CardScreen card={card} media={media} streamBackground={streamBackground} streamText={streamText} inset={inset} edit onChange={setCard} slide={kind === "slideshow" ? slide : null} layer={layer} onLayer={setLayer} /> : screen}
           </div>
           {isCard && (card.text.trim() || card.image || card.slideshow) && (
             <div style={uiText(11, c.textFaint)}>Drag the {card.image || card.slideshow ? "picture or words" : "words"} to move them; drag a corner to make them bigger or smaller.</div>
+          )}
+          {layered && (
+            <LayersChoice
+              card={card} setCard={setCard} media={media} slideName={slideName} fonts={fonts} streamText={streamText} ask={ask} busy={busy}
+              layer={layer} setLayer={setLayer}
+            />
           )}
         </div>
         <div style={{ flex: "1 1 280px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>

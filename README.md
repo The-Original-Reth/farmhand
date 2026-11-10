@@ -676,6 +676,12 @@ benchy.gcode`), brought up to date every 15 seconds.
   smaller (a picture keeps its shape, and is fitted inside the square's border so the border never covers it; **Picture fills the square** puts it back), on the canvas or on the square in the
   preview; **Delete text** takes the words off. **Dark band behind it** puts a dark band
   behind the words, so they can be read over a busy picture.
+- **More pictures and text on a square:** under the canvas, **Pictures and text on this square** (on a slideshow, on
+  the picture or blank screen on show, each keeping its own) has **Add picture** (one of the stream folder's pictures,
+  or a new one uploaded) and **Add text**, up to 12 in all. Each is placed on its own: drag it on the canvas to move it,
+  and by its corner to resize it; click it (on the canvas or in the list) to change it: another picture, or the words,
+  their font, colour, size and dark band. The bin takes it off. On the stream they're drawn in the list's order over
+  the square's picture, a slideshow screen's only while that screen is on.
 - **Pictures** are files in the **stream folder** (Settings, beside the farm cost folder; by default `stream` in the
   folder above the STL folder): single pictures in its `images` folder, each slideshow a folder of its own in
   `slideshows`, the music in `music` (Farmhand makes these three as soon as the Stream page looks at the folder, so

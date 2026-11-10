@@ -12,7 +12,7 @@ from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
 from .constants import DEFAULT_TEXT_COLOR
 from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_MUSIC_VOLUME, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
-from .squares import SLIDE_SECONDS, TEXT_MAX, _cell, _color
+from .squares import MAX_LAYERS, SLIDE_SECONDS, TEXT_MAX, _cell, _color
 
 # the stream's own colours, as a refusal names them
 COLOURS = {"border_color": "the border's colour", "color": "the colour of the stream's words", "background": "the stream's background colour"}
@@ -138,6 +138,14 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
                 cap["text"] = cap["text"].strip()
                 if len(cap["text"]) > TEXT_MAX:
                     raise ValueError(f"The text on “{name}” can be up to {TEXT_MAX} characters; it has {len(cap['text'])}.")
+            for where, layers in [("the square", cell["layers"]), *((f"“{n}”", ls) for n, ls in cell["slide_layers"].items())]:
+                if len(layers) > MAX_LAYERS:
+                    raise ValueError(f"Up to {MAX_LAYERS} more pictures and pieces of text can go on {where}; there are {len(layers)}.")
+                for layer in layers:
+                    if layer["type"] == "text":
+                        layer["text"] = layer["text"].strip()
+                        if len(layer["text"]) > TEXT_MAX:
+                            raise ValueError(f"A piece of text on {where} can be up to {TEXT_MAX} characters; one has {len(layer['text'])}.")
             least, most, _ = SLIDE_SECONDS
             if raw.get("seconds") is not None and not (type(raw.get("seconds")) is int and least <= raw["seconds"] <= most):
                 raise ValueError(f"A slideshow shows each picture for {least} to {most} seconds.")
