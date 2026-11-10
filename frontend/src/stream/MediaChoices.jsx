@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { c, fixed, ui } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
-import { scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
+import { orderSlideshow, scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
 import { box, help, label12 } from "./editorFields.js";
 
 // A card's picture or slideshow, from the stream folder, in the square editor (SquareEditor.jsx): choosing,
@@ -63,7 +63,20 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
   const [opening, setOpening] = useState(false); // showing where the folder is, for File Explorer
   const [name, setName] = useState(null); // the new slideshow's name being typed; null when not making one
   const [removing, setRemoving] = useState(null); // "show" | a picture's name, asking "Delete?"
+  const [moving, setMoving] = useState(null); // the picture being dragged to a new place
+  const [overPic, setOverPic] = useState(null); // the picture it would take the place of
   const show = media.slideshows.find((x) => x.name === card.slideshow) || null;
+  // the picture dragged takes the place of the one it's dropped on (the slideshow's order is kept in its folder)
+  const moveTo = (target) => {
+    const from = show.images.indexOf(moving);
+    const to = show.images.indexOf(target);
+    setMoving(null);
+    setOverPic(null);
+    if (from < 0 || to < 0 || from === to) return;
+    const order = [...show.images];
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    ask("picture", () => orderSlideshow(show.name, order));
+  };
   const create = async () => {
     const n = (name || "").trim();
     if (!n) return;
@@ -146,10 +159,32 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
       {show && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {show.images.length === 0 && <span style={uiText(12, c.textFaint)}>No pictures in it yet: Add pictures or Open folder.</span>}
-          {show.images.map((n) => (
-            <div key={n} style={{ width: 96, display: "flex", flexDirection: "column", gap: 3 }}>
-              <div style={{ height: 54, background: fixed.pictureThumb, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center" }} title={n}>
-                <img src={slideshowPictureUrl(show.name, n)} alt={n} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain" }} />
+          {show.images.map((n, i) => (
+            <div
+              key={n} data-testid="stream-slide-thumb" draggable={!busy}
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", n);
+                setMoving(n);
+              }}
+              onDragEnter={() => moving && setOverPic(n)}
+              onDragOver={(e) => moving && e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                moveTo(n);
+              }}
+              onDragEnd={() => (setMoving(null), setOverPic(null))}
+              style={{ width: 96, display: "flex", flexDirection: "column", gap: 3, opacity: moving === n ? 0.4 : 1, cursor: busy ? "default" : "grab" }}
+            >
+              <div
+                style={{
+                  position: "relative", height: 54, background: fixed.pictureThumb, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
+                  outline: overPic === n && moving !== n ? `2px solid ${c.amber}` : "none",
+                }}
+                title={`${i + 1}. ${n}: drag onto another picture to move it there`}
+              >
+                <img src={slideshowPictureUrl(show.name, n)} alt={n} draggable={false} style={{ maxWidth: "90%", maxHeight: "90%", objectFit: "contain", pointerEvents: "none" }} />
+                <span style={{ position: "absolute", left: 3, top: 2, ...uiText(10, c.textMuted), background: fixed.pictureThumb, padding: "0 3px", borderRadius: 2 }}>{i + 1}</span>
               </div>
               {removing === n ? (
                 <div style={{ display: "flex", gap: 3 }}>
@@ -170,8 +205,8 @@ export function SlideshowChoice({ card, setCard, media, ask, busy, slide }) {
         </div>
       )}
       <div style={help}>
-        Each slideshow is a folder in the stream folder's slideshows folder: its pictures show one after another, in name order, round
-        and round. Pictures copied into it yourself count too. One slideshow can be in several squares.
+        Each slideshow is a folder in the stream folder's slideshows folder: its pictures show one after another, round and round,
+        in the order above (drag a picture onto another to move it there; new ones go on the end). Pictures copied into it yourself count too. One slideshow can be in several squares.
       </div>
     </>
   );

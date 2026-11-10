@@ -40,6 +40,12 @@ class YouTubeSignOutIn(BaseModel):
     forget_client: bool = False  # also forget the client ID and secret
 
 
+class SlideshowOrderIn(BaseModel):
+    """A slideshow's pictures in the order chosen (their file names)."""
+
+    order: list[str] = Field(..., max_length=2000)
+
+
 class SlideshowIn(BaseModel):
     """A new slideshow: a folder of this name in the stream folder's slideshows."""
 

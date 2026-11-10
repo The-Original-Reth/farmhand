@@ -12,6 +12,7 @@ it's empty: never a folder with anything else in it.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -95,6 +96,42 @@ def _pictures_in(d: Path) -> list[str]:
         return []
 
 
+# A slideshow's own order, kept in its folder (so every square showing it, the stream and another Farmhand sharing the
+# folder all follow it): its pictures' names in the order chosen. Pictures not in it (added since) come after, in name
+# order; names in it no longer there are skipped.
+ORDER_FILE = ".farmhand-order.json"
+
+
+def _slides_in(d: Path) -> list[str]:
+    """A slideshow's pictures in its own order."""
+    names = _pictures_in(d)
+    try:
+        order = json.loads((d / ORDER_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return names
+    if not isinstance(order, list):
+        return names
+    have = set(names)
+    first = [n for n in dict.fromkeys(order) if isinstance(n, str) and n in have]
+    return first + [n for n in names if n not in set(first)]
+
+
+def set_order(db: Session, name: str, order: list[str]) -> list[str]:
+    """Put a slideshow's pictures in this order (its pictures' names; any left out keep their place after these).
+    ValueError for a name that isn't one of its pictures. Its order, as now kept."""
+    d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
+    if not d.is_dir():
+        raise NotFound("That slideshow isn't there.")
+    have = _pictures_in(d)
+    missing = [n for n in order if n not in have]
+    if missing:
+        raise ValueError(f"“{missing[0]}” isn't one of the slideshow's pictures (Scan folder, and try again).")
+    keep = list(dict.fromkeys(order)) + [n for n in _slides_in(d) if n not in set(order)]
+    storage.write_text_atomically(d / ORDER_FILE, json.dumps(keep, ensure_ascii=False))
+    forget()
+    return keep
+
+
 def windows_path(db: Session, path: str) -> str | None:
     r"""A folder as Windows reaches it over the network (\\server\share\folder), when it's on a connected SMB share;
     None when it's in Farmhand's own storage or on an NFS share."""
@@ -142,7 +179,7 @@ def _read(db: Session) -> dict:
     try:
         for e in sorted(os.scandir(root / SLIDESHOWS), key=lambda e: _natural(e.name)):
             if e.is_dir() and not e.name.startswith("."):
-                shows.append({"name": e.name, "images": _pictures_in(Path(e.path))})
+                shows.append({"name": e.name, "images": _slides_in(Path(e.path))})
     except OSError:
         pass
     return {"path": str(root), "windows_path": windows_path(db, str(root)), "images": _pictures_in(root / IMAGES), "slideshows": shows, "error": None}
@@ -177,9 +214,9 @@ def picture_path(db: Session, slideshow: str | None, name: str) -> Path:
 
 
 def slideshow_paths(db: Session, name: str) -> list[Path]:
-    """A slideshow's pictures, in name order ([] for one that isn't there)."""
+    """A slideshow's pictures, in its own order ([] for one that isn't there)."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
-    return [d / n for n in _pictures_in(d)]
+    return [d / n for n in _slides_in(d)]
 
 
 def _check_picture(filename: str, data: bytes) -> str:
@@ -237,6 +274,7 @@ def remove_slideshow(db: Session, name: str) -> None:
         raise NotFound("That slideshow isn't there.")
     for n in _pictures_in(d):
         (d / n).unlink(missing_ok=True)
+    (d / ORDER_FILE).unlink(missing_ok=True)  # Farmhand's own: its order
     forget()
     try:
         d.rmdir()

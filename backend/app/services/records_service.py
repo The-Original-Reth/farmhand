@@ -8,11 +8,12 @@ on models and 3MF files go back onto the models and 3MF files that match by name
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import records_store
+from .. import record_files, records_store
 from ..timeutil import as_utc, utc_iso
 from . import sub_printer_service
 from .printer_service import ensure_connection
@@ -155,6 +156,36 @@ def model_documents(db: Session) -> dict[str, dict]:
 # ------------------------------------------------------------------ the Stream page's saved layouts (streams/)
 
 
+def _cells_out(names: dict[int, str], cells) -> list:
+    """A grid's squares for a file: each camera by its printer's name ({"camera": {"printer", "camera"}}, with its own
+    colour and words; one whose printer is gone left empty), cards as they are (pictures are named by file already)."""
+    out = []
+    for cell in cells or []:
+        if cell and "camera" in cell:
+            number, _, camera = str(cell["camera"]).partition(":")
+            printer = names.get(int(number)) if number.isdigit() else None
+            own = {k: v for k, v in cell.items() if k != "camera"}  # its colour and words, as chosen
+            out.append({"camera": {"printer": printer, "camera": camera}, **own} if printer else None)
+        else:
+            out.append(cell or None)
+    return out
+
+
+def _cells_in(here: dict[str, int], cells) -> list:
+    """A file's squares in this Farmhand's printer numbers (matched by name; a camera whose printer isn't here: empty)."""
+    out = []
+    for cell in cells:
+        if isinstance(cell, dict) and "camera" in cell:
+            cam = cell.get("camera")
+            key = (f"{here[cam['printer']]}:{cam['camera']}" if isinstance(cam, dict) and isinstance(cam.get("camera"), str)
+                   and here.get(cam.get("printer")) is not None else None)
+            own = {k: v for k, v in cell.items() if k != "camera"}  # checked again where it's kept
+            out.append({"camera": key, **own} if key else None)
+        else:
+            out.append(cell if isinstance(cell, dict) else None)
+    return out
+
+
 def stream_documents(db: Session, layouts: list[dict]) -> dict[str, dict]:
     """
     A file per saved stream layout (as the settings keep them, config_store._stream_layouts), its cameras by printer name
@@ -165,15 +196,7 @@ def stream_documents(db: Session, layouts: list[dict]) -> dict[str, dict]:
     out: dict[str, dict] = {}
     taken: set[str] = set()
     for lay in layouts:
-        cells = []
-        for cell in lay.get("cells") or []:
-            if cell and "camera" in cell:
-                number, _, camera = str(cell["camera"]).partition(":")
-                printer = names.get(int(number)) if number.isdigit() else None
-                own = {k: v for k, v in cell.items() if k != "camera"}  # its colour and words, as chosen
-                cells.append({"camera": {"printer": printer, "camera": camera}, **own} if printer else None)
-            else:
-                cells.append(cell or None)
+        cells = _cells_out(names, lay.get("cells"))
         out[records_store.file_stem(lay["name"], taken)] = {
             **records_store.header(records_store.STREAMS_DIR, lay["name"]),
             "cols": lay.get("cols"), "rows": lay.get("rows"), "cells": cells,
@@ -206,19 +229,49 @@ def read_streams(db: Session, folder) -> tuple[list[dict], list[str]]:
         lay = {"name": rec["name"].strip(), **{k: rec.get(k) for k in ("cols", "rows", "layout", "seconds_all", "seconds_each",
                                                                          "show_status", "border_color", "background", "font", "color")}}
         if isinstance(rec.get("cells"), list):
-            cells = []
-            for cell in rec["cells"]:
-                if isinstance(cell, dict) and "camera" in cell:
-                    key = camera(cell.get("camera"))
-                    own = {k: v for k, v in cell.items() if k != "camera"}  # checked again where it's kept (config_store)
-                    cells.append({"camera": key, **own} if key else None)
-                else:
-                    cells.append(cell if isinstance(cell, dict) else None)
-            lay["cells"] = cells
+            lay["cells"] = _cells_in(here, rec["cells"])
         else:
             lay["cameras"] = [k for k in (camera(c) for c in rec.get("cameras") or []) if k]
         layouts.append(lay)
     return layouts, warnings
+
+
+# ------------------------------------------------------------------ the Stream page's own setup (stream-setup.json)
+
+STREAM_SETUP_FILE = "stream-setup.json"  # beside farmhand-config.json
+STREAM_SETUP_KIND = "stream-setup"
+# what's kept: everything on the page but the stream key and the YouTube sign-in, which never leave Farmhand
+STREAM_SETUP_KEYS = ("destination", "cols", "rows", "show_status", "layout", "seconds_all", "seconds_each", "resolution",
+                     "border_color", "background", "font", "color", "title", "description", "enabled")
+
+
+def stream_setup_document(db: Session) -> dict:
+    """The Stream page as it's saved now, its cameras by printer name (so another Farmhand can use it)."""
+    from .live_stream import settings  # (here, not at the top: live_stream's settings live beside this module's)
+
+    s = settings(db)
+    names = {p.id: p.name for p in db.scalars(select(Printer))}
+    return {**records_store.header(STREAM_SETUP_KIND, "Stream page"), **{k: s[k] for k in STREAM_SETUP_KEYS},
+            "cells": _cells_out(names, s["cells"])}
+
+
+def write_stream_setup(db: Session, folder) -> None:
+    record_files.write_json(Path(folder) / STREAM_SETUP_FILE, stream_setup_document(db))
+
+
+def read_stream_setup(db: Session, folder) -> tuple[dict | None, list[str]]:
+    """The Stream page's setup in the folder's file, in this Farmhand's printer numbers, ready for live_stream.save
+    (None when there's no file); and a warning when there is one that can't be used."""
+    path = Path(folder) / STREAM_SETUP_FILE
+    if not path.is_file():
+        return None, []
+    doc = record_files.read_json(path, 1_000_000)
+    if not isinstance(doc, dict) or doc.get(records_store.RECORD_MARKER) != STREAM_SETUP_KIND or not isinstance(doc.get("cells"), list):
+        return None, [f"{STREAM_SETUP_FILE} isn't a Stream page setup Farmhand can read, so the Stream page was left as it is."]
+    here = {p.name: p.id for p in db.scalars(select(Printer))}
+    setup = {k: doc.get(k) for k in STREAM_SETUP_KEYS if doc.get(k) is not None}
+    setup["cells"] = _cells_in(here, doc["cells"])
+    return setup, []
 
 
 def write_all(db: Session, folder, scope: "MirrorScope | None" = None) -> dict:

@@ -10,7 +10,7 @@ from .. import database
 from ..database import get_db
 from ..errors import answer_errors
 from .. import storage
-from ..schemas.live_stream import MediaLocationIn, SlideshowIn, StreamSettingsIn, YouTubeClientIn, YouTubeSignOutIn
+from ..schemas.live_stream import MediaLocationIn, SlideshowIn, SlideshowOrderIn, StreamSettingsIn, YouTubeClientIn, YouTubeSignOutIn
 from ..services import config_service, live_stream, stream_media, youtube_live
 from .common import require_confirm
 
@@ -156,6 +156,14 @@ def delete_picture(name: str, confirm: bool = Query(False), db: Session = Depend
 def add_slideshow(payload: SlideshowIn, db: Session = Depends(get_db)):
     """A new, empty slideshow: a folder of that name in the stream folder's slideshows. Answers the page."""
     _media(lambda: stream_media.add_slideshow(db, payload.name))
+    return live_stream.page(db)
+
+
+@router.put("/slideshows/{name}/order")
+def order_slideshow(name: str, payload: SlideshowOrderIn, db: Session = Depends(get_db)):
+    """Put a slideshow's pictures in the order chosen (kept in its folder). While live and it's shown, the stream starts again."""
+    _media(lambda: stream_media.set_order(db, name, payload.order))
+    _restart_if_used(db, name)
     return live_stream.page(db)
 
 

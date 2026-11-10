@@ -65,7 +65,7 @@ export function streamRoutes(ctx) {
       fonts: FONTS.map(([key, label, generic]) => ({ key, label, generic })), // (the mock has no font files: the page falls back)
       media: {
         path: farm.streamFolder || streamDefault(farm), error: null, windows_path: windowsPath(farm.streamFolder || streamDefault(farm)), images: s.images.map((x) => x.name).sort(natural),
-        slideshows: [...s.slideshows].sort((a, b) => natural(a.name, b.name)).map((x) => ({ name: x.name, images: x.images.map((i) => i.name).sort(natural) })),
+        slideshows: [...s.slideshows].sort((a, b) => natural(a.name, b.name)).map((x) => ({ name: x.name, images: x.ordered ? x.images.map((i) => i.name) : x.images.map((i) => i.name).sort(natural) })),
       },
       youtube: youtube(),
     };
@@ -237,6 +237,16 @@ export function streamRoutes(ctx) {
     confirm(q);
     if (!showOf(name)) throw new HttpError(404, "That slideshow isn't there.");
     state().slideshows = state().slideshows.filter((x) => x.name !== decodeURIComponent(name));
+    return page();
+  });
+  on("PUT", "/stream/slideshows/:name/order", ({ name }, body) => {
+    const show = showOf(name);
+    if (!show) throw new HttpError(404, "That slideshow isn't there.");
+    const order = Array.isArray(body.order) ? [...new Set(body.order)] : [];
+    const missing = order.find((n) => !show.images.some((x) => x.name === n));
+    if (missing) throw new HttpError(422, `“${missing}” isn't one of the slideshow's pictures (Scan folder, and try again).`);
+    show.images = [...order.map((n) => show.images.find((x) => x.name === n)), ...show.images.filter((x) => !order.includes(x.name))];
+    show.ordered = true;
     return page();
   });
   on("POST", "/stream/slideshows/:name/pictures", ({ name }, body) => {
