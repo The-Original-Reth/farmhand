@@ -21,6 +21,7 @@ class StreamSettingsIn(BaseModel):
     music: bool | None = None  # the stream folder's music played on the stream (false: a silent sound track)
     music_volume: int | None = None  # its loudness, 0 to 100
     music_shuffle: bool | None = None  # in a new order each time the stream starts (false: in name order)
+    delay: int | None = None  # seconds the stream is held before YouTube gets it (0 to 120): stalls shorter than it don't show
     cols: int | None = None  # the grid: 1 to 5 squares across...
     rows: int | None = None  # ...and down
     # each square, row by row: {"camera": "id:name"}, a card {"background", "image", "slideshow", "seconds", "text", "color",

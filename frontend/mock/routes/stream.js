@@ -45,7 +45,7 @@ export function streamRoutes(ctx) {
     (farm.stream ??= {
       destination: "youtube", cols: 1, rows: 1, cells: [null], show_status: true, layout: "grid", resolution: "1080p", seconds_all: 30,
       seconds_each: 20, border_color: "#000000", background: "#000000", font: "play", color: "#FFFFFF", enabled: true, title: "", description: "", key_set: false,
-      music: true, music_volume: 50, music_shuffle: true, player: null,
+      music: true, music_volume: 50, music_shuffle: true, player: null, delay: 60,
       images: [], slideshows: [], tracks: [], uploads: 0,
       live: false, started_at: null, labels: [], title_status: null,
       youtube: { client_id: null, signed_in: false, channel: null, signing_in: null, error: null },
@@ -65,12 +65,14 @@ export function streamRoutes(ctx) {
       settings: {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, cameras: camerasOf(s), show_status: s.show_status, layout: s.layout,
         resolution: s.resolution, seconds_all: s.seconds_all, seconds_each: s.seconds_each, border_color: s.border_color, background: s.background, font: s.font, color: s.color, enabled: s.enabled,
-        music: s.music, music_volume: s.music_volume, music_shuffle: s.music_shuffle,
+        music: s.music, music_volume: s.music_volume, music_shuffle: s.music_shuffle, delay: s.delay,
         title: s.title, description: s.description, key_set: s.key_set,
       },
       status: {
         live: s.live, on_air: s.live, started_at: s.started_at, running_for: s.live && s.started_at ? Math.round((Date.now() - Date.parse(s.started_at)) / 10) / 100 : null, server_time: Date.now() / 1000, destination: s.live ? s.destination : null, cameras: s.live ? s.labels : [],
         error: null, title: s.live ? s.title_status : null, music: s.live ? musicOut() : null,
+        // the delay's buffer while live: collecting it first, then held (the mock holds it all, steadily)
+        delay: s.live ? (() => { const went = (Date.now() - Date.parse(s.started_at)) / 1000; return { seconds: s.delay, held: Math.min(went, s.delay), filling: went < s.delay }; })() : null,
       },
       destinations: Object.entries(DESTINATIONS).map(([key, label]) => ({ key, label })),
       resolutions: Object.entries(RESOLUTIONS).map(([key, label]) => ({ key, label })),
@@ -117,9 +119,13 @@ export function streamRoutes(ctx) {
       if (!p) throw new HttpError(422, "A chosen camera's printer is gone. Untick it and save.");
       return cameras.filter((c) => c.startsWith(`${id}:`)).length > 1 ? `${p.name} · ${name}` : p.name;
     });
+    // while live already, the new layout is handed over to: the same stream goes on (its delay, its music)
+    const already = s.live;
     s.live = true;
-    s.started_at = new Date().toISOString();
-    s.player = null; // the music starts with the stream
+    if (!already) {
+      s.started_at = new Date().toISOString();
+      s.player = null; // the music starts with the stream
+    }
     s.title_status = titleOutcome();
   };
   const youtubeText = (text, most, what) => {
@@ -174,6 +180,10 @@ export function streamRoutes(ctx) {
     }
     if (typeof body.show_status === "boolean") s.show_status = body.show_status;
     if (typeof body.music === "boolean") s.music = body.music;
+    if (body.delay != null) {
+      if (!(Number.isInteger(body.delay) && body.delay >= 0 && body.delay <= 120)) throw new HttpError(422, "The stream's delay has to be from 0 to 120 seconds.");
+      s.delay = body.delay;
+    }
     if (typeof body.music_shuffle === "boolean") s.music_shuffle = body.music_shuffle;
     if (body.music_volume != null) {
       if (!(Number.isInteger(body.music_volume) && body.music_volume >= 0 && body.music_volume <= 100)) throw new HttpError(422, "The music's volume has to be from 0 to 100%.");

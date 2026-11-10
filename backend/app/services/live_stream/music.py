@@ -57,7 +57,7 @@ class Player:
         self._gen = 0  # moved on (skipped, gone back, turned off): the track being decoded is dropped
         self._heard: list[str] = []  # the tracks heard, latest last (the last is the one playing)
         self._at = 0  # bytes of the one playing heard so far
-        self._out = None
+        self._outs: list[_Out] = []  # the picture ffmpegs being fed (two while a layout's hand-over is under way)
         threading.Thread(target=self._decode, name="stream-music-decode", daemon=True).start()
         threading.Thread(target=self._write, name="stream-music-write", daemon=True).start()
 
@@ -70,9 +70,11 @@ class Player:
                     "at": round(self._at / PER_SECOND, 1)}
 
     def attach(self, out) -> None:
-        """Write to `out` (a newly started ffmpeg's stdin) from now on."""
+        """Feed `out` too (a newly started picture ffmpeg's stdin), beside any already fed; ones that have ended are
+        dropped."""
         with self._cond:
-            self._out = out
+            self._outs = [o for o in self._outs if o.alive]
+            self._outs.append(_Out(out))
 
     def stop(self) -> None:
         with self._cond:
@@ -228,28 +230,69 @@ class Player:
         return bytes(out)
 
     def _write(self) -> None:
+        """The sound, at the pace it plays, to every picture ffmpeg being fed: each through a queue of its own, so one
+        not reading yet (a new one still connecting to its cameras) never holds up the one going out."""
         due = time.monotonic()
         while True:
             with self._cond:
                 if self._ended:
+                    for o in self._outs:
+                        o.close()
                     return
-                out = self._out
-            if out is None:
+                self._outs = [o for o in self._outs if o.alive]
+                outs = list(self._outs)
+            if not outs:
                 time.sleep(0.05)
                 due = time.monotonic()
                 continue
             wait = due - time.monotonic()
             if wait > 0:
                 time.sleep(wait)
-            elif wait < -1:  # well behind (ffmpeg held it up): from now, not catching up in a rush
+            elif wait < -1:  # well behind: from now, not catching up in a rush
                 due = time.monotonic()
             chunk = self._take()
-            try:
-                out.write(chunk)
-                out.flush()
-            except (OSError, ValueError):  # that ffmpeg has ended: wait for the next one
-                with self._cond:
-                    if self._out is out:
-                        self._out = None
-                continue
+            for o in outs:
+                o.put(chunk)
             due += CHUNK / PER_SECOND
+
+
+class _Out:
+    """One picture ffmpeg's stdin, written by a thread of its own from a short queue (two seconds: older sound is dropped
+    while it isn't reading). `alive` turns False once it has ended."""
+
+    MOST = 100  # chunks of 20 ms
+
+    def __init__(self, out):
+        self._out = out
+        self._cond = threading.Condition()
+        self._queue: collections.deque[bytes] = collections.deque()
+        self.alive = True
+        threading.Thread(target=self._run, name="stream-music-out", daemon=True).start()
+
+    def put(self, chunk: bytes) -> None:
+        with self._cond:
+            self._queue.append(chunk)
+            while len(self._queue) > self.MOST:
+                self._queue.popleft()
+            self._cond.notify()
+
+    def close(self) -> None:
+        with self._cond:
+            self.alive = False
+            self._cond.notify()
+
+    def _run(self) -> None:
+        while True:
+            with self._cond:
+                while self.alive and not self._queue:
+                    self._cond.wait(0.5)
+                if not self.alive:
+                    return
+                chunk = self._queue.popleft()
+            try:
+                self._out.write(chunk)
+                self._out.flush()
+            except (OSError, ValueError):  # that ffmpeg has ended
+                with self._cond:
+                    self.alive = False
+                return

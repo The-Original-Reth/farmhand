@@ -631,7 +631,14 @@ benchy.gcode`), brought up to date every 15 seconds.
 1. In **YouTube Studio**, choose **Create → Go live → Stream** and copy the **Stream key**.
 2. In Farmhand's **Stream** page, paste the key, set up the squares (**Add all cameras** fills
    them) and press **Save**.
-3. Press **Go live**. YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
+3. Press **Go live**. Farmhand first collects the **Stream delay** (Where to; 60 seconds unless you choose another,
+   0 to 120), then YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
+
+While live, a new layout (or any change to the picture) doesn't stop the stream: Farmhand starts the new picture
+beside the one going out and switches to it at its first whole frame, on the same connection to YouTube, so viewers
+just see the layout change. The delay is a buffer before YouTube: a hiccup shorter than it (a camera, the processor
+falling behind for a moment) never reaches viewers, who see everything that much later; the status says how much of it
+is held. A new delay applies the next time you go live.
 
 - **The switch** beside *Stream* at the top of the page turns the stream off: ffmpeg stops on the server and **Go live**
   waits until it's on again; the music stops, and the preview's slideshows and taking turns hold still where they are

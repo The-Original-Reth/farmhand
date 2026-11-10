@@ -294,7 +294,12 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
           {status.error
             ? status.error
             : status.live
-              ? `${status.cameras.length} camera${status.cameras.length === 1 ? "" : "s"}: ${status.cameras.join(", ")}`
+              ? `${status.cameras.length} camera${status.cameras.length === 1 ? "" : "s"}: ${status.cameras.join(", ")}${
+                status.delay
+                  ? status.delay.filling
+                    ? ` · Collecting the ${status.delay.seconds} s delay before sending to YouTube (${Math.round(status.delay.held)} s so far)`
+                    : ` · ${Math.round(status.delay.held)} s of the ${status.delay.seconds} s delay held`
+                  : ""}`
               : off
                 ? "The stream is off: ffmpeg isn't running on the server. Set everything up as usual, and turn it on above to go live."
                 : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
@@ -317,7 +322,8 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
 }
 
 // Where it goes, and its stream key (typed here once, kept on the server: `keySet` says one is saved)
-export function WhereToPanel({ destination, destinations, onDestination, streamKey, onKey, keySet, onForgetKey, busy }) {
+// `delay`, `onDelay`: seconds the stream is held before YouTube gets it (saved with Save; applies when going live).
+export function WhereToPanel({ destination, destinations, onDestination, streamKey, onKey, keySet, onForgetKey, busy, delay = 60, onDelay, live = false }) {
   return (
     <div style={panel()}>
       <div style={heading}>Where to</div>
@@ -348,6 +354,19 @@ export function WhereToPanel({ destination, destinations, onDestination, streamK
         )}
       </label>
       <div style={help}>{WHERE_KEY[destination]} The key stays in Farmhand: it isn't shown again or written to the settings copy.</div>
+      <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" })}>
+        <span style={{ width: 90 }}>Stream delay</span>
+        <input
+          data-testid="stream-delay" type="number" min={0} max={120} step={5} value={delay}
+          onChange={(e) => onDelay(e.target.value === "" ? "" : Number(e.target.value))} style={{ ...fieldBox(), padding: "6px 8px", width: 80 }}
+        />
+        <span>seconds (0 to 120)</span>
+      </label>
+      <div style={help}>
+        Farmhand holds this much of the stream before YouTube gets it, so a hiccup shorter than that (a camera, the processor
+        falling behind for a moment) never reaches viewers. They see everything this much later.
+        {live ? " A new delay applies the next time you go live." : ""}
+      </div>
     </div>
   );
 }

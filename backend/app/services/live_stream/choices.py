@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
 from .constants import DEFAULT_TEXT_COLOR
+from .constants import DELAY
 from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_MUSIC_VOLUME, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
 from .squares import MAX_LAYERS, SLIDE_SECONDS, TEXT_MAX, _cell, _color
 
@@ -55,7 +56,8 @@ def settings(db: Session) -> dict:
     stream's words' (every square's and camera's unless it has its own), enabled: the Stream page's switch (off: nothing
     streams), music: the stream folder's music played, starting with the stream (on unless turned off; False: a silent
     sound track), music_volume (0 to 100), music_shuffle: each round in a new order (False: in name order), title,
-    description, key_set}.
+    description, key_set, delay: seconds the stream is held before YouTube gets it (0 to 120), so a stall shorter than
+    that never reaches it}.
     The key itself is never given. Settings from before the grid (a list of cameras) come back as the grid they made.
     """
     raw = _saved(db)
@@ -88,6 +90,7 @@ def settings(db: Session) -> dict:
         "music": raw.get("music") is not False,
         "music_volume": raw["music_volume"] if _volume(raw.get("music_volume")) else DEFAULT_MUSIC_VOLUME,
         "music_shuffle": raw.get("music_shuffle", True) is not False,
+        "delay": raw["delay"] if type(raw.get("delay")) is int and DELAY[0] <= raw["delay"] <= DELAY[1] else DELAY[2],
         "title": text("title"),
         "description": text("description"),
         "key_set": bool(app_settings.get(db, STREAM_KEY_KEY)),
@@ -155,7 +158,8 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
 
 def save(db: Session, *, destination=None, chosen=None, show_status=None, stream_key=None, clear_key=False, layout=None,
          resolution=None, border_color=None, background=None, font=None, color=None, enabled=None, cols=None, rows=None, cells=None,
-         seconds_all=None, seconds_each=None, title=None, description=None, music=None, music_volume=None, music_shuffle=None) -> dict:
+         seconds_all=None, seconds_each=None, title=None, description=None, music=None, music_volume=None, music_shuffle=None,
+         delay=None) -> dict:
     """
     Change what's given (None: left as it is). The grid comes as cols, rows and cells together; or `chosen`, a list of
     cameras, which makes a grid just big enough for them, in that order. Anything that can't be
@@ -194,6 +198,10 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
         now["music"] = bool(music)
     if music_shuffle is not None:
         now["music_shuffle"] = bool(music_shuffle)
+    if delay is not None:
+        if type(delay) is not int or not DELAY[0] <= delay <= DELAY[1]:
+            raise ValueError(f"The stream's delay has to be from {DELAY[0]} to {DELAY[1]} seconds.")
+        now["delay"] = delay
     if music_volume is not None:
         if not _volume(music_volume):
             raise ValueError("The music's volume has to be from 0 to 100%.")

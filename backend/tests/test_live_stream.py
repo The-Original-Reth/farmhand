@@ -21,18 +21,47 @@ def _cam(**kw):
 
 
 class FakeFfmpeg:
-    """ffmpeg as the stream starts it: remembers each command, says `lines` on stderr, runs until ended."""
+    """ffmpeg as the stream starts it: remembers each command (the picture's in `commands`, the sender's in `senders`),
+    says `lines` on stderr, runs until ended. A picture one puts out a keyframe, so a hand-over to it completes."""
 
     def __init__(self, lines=(), exits=False):
         self.commands: list[list[str]] = []
         self.procs: list = []
+        self.senders: list[list[str]] = []
+        self.sender_procs: list = []
         self.lines = list(lines)
         self.exits = exits
 
-    def __call__(self, args, feed=False):
-        self.commands.append(args)
-        self.procs.append(_Proc(self.lines, self.exits))
-        return self.procs[-1]
+    def __call__(self, args, feed=False, out=False):
+        picture = "-filter_complex" in args
+        proc = _Proc(self.lines, self.exits, picture=picture)
+        if picture:
+            self.commands.append(args)
+            self.procs.append(proc)
+        else:
+            self.senders.append(args)
+            self.sender_procs.append(proc)
+        return proc
+
+
+def _keyframe_packet() -> bytes:
+    """One MPEG-TS packet starting a keyframe of the picture (PID 0x100, random access indicator set)."""
+    return bytes([0x47, 0x41, 0x00, 0x30, 0x07, 0x40]) + bytes(182)
+
+
+class _Out:
+    """A picture ffmpeg's stdout: a keyframe, then nothing more until it's ended."""
+
+    def __init__(self, ended):
+        self._ended = ended
+        self._sent = False
+
+    def read(self, n=-1):
+        if not self._sent:
+            self._sent = True
+            return _keyframe_packet()
+        self._ended.wait()
+        return b""
 
 
 class _Sink:
@@ -49,12 +78,13 @@ class _Sink:
 
 
 class _Proc:
-    def __init__(self, lines, exits):
+    def __init__(self, lines, exits, picture=False):
         self._ended = threading.Event()
         if exits:
             self._ended.set()
         self.stderr = iter([line + "\n" for line in lines])
         self.stdin = _Sink()
+        self.stdout = _Out(self._ended) if picture else None
 
     def poll(self):
         return 1 if self._ended.is_set() else None
@@ -108,7 +138,7 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
     assert page["settings"] == {
         "destination": "youtube", "cols": 1, "rows": 1, "cells": [None], "cameras": [], "show_status": True, "layout": "grid",
         "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF", "enabled": True,
-        "music": True, "music_volume": 50, "music_shuffle": True, "title": "", "description": "", "key_set": False,
+        "music": True, "music_volume": 50, "music_shuffle": True, "delay": 60, "title": "", "description": "", "key_set": False,
     }
     assert [r["key"] for r in page["resolutions"]] == ["720p", "1080p", "1440p"] and page["resolutions"][2]["label"].startswith("2K")
     assert (page["media"]["images"], page["media"]["slideshows"], page["media"]["music"], page["media"]["error"]) == ([], [], [], None)
@@ -211,7 +241,10 @@ def test_going_live_sends_the_chosen_cameras_to_youtube(klipper, moonraker, ffmp
     assert KEY not in r.text
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
-    assert cmd[-1] == f"rtmps://a.rtmps.youtube.com/live2/{KEY}"
+    # the picture goes to the relay; the sender holds the connection to YouTube, passing the stream on as it is
+    assert cmd[-2:] == ["mpegts", "pipe:1"] and "-output_ts_offset" in cmd
+    assert _wait_for(lambda: ffmpeg.senders) and ffmpeg.senders[0][-1] == f"rtmps://a.rtmps.youtube.com/live2/{KEY}"
+    assert ffmpeg.senders[0][ffmpeg.senders[0].index("-c") + 1] == "copy" and "-re" in ffmpeg.senders[0]
     assert cmd.count("-i") == 3  # two cameras and the silent sound track
     assert "http://10.0.6.21/webcam/?action=stream" in cmd
     graph = _graph(cmd)
@@ -229,7 +262,7 @@ def test_progress_is_written_under_each_camera(klipper, moonraker, ffmpeg):
     assert api.post("/stream/start").status_code == 200
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
-    assert cmd[-1] == "rtmps://a.rtmps.youtube.com/live2/" + KEY
+    assert cmd[-1] == "pipe:1" and _wait_for(lambda: ffmpeg.senders) and ffmpeg.senders[0][-1] == "rtmps://a.rtmps.youtube.com/live2/" + KEY
     graph = _graph(cmd)
     assert "drawtext=" in graph and "reload=1" in graph and "expansion=none" in graph and "xstack" not in graph
 
@@ -701,6 +734,104 @@ def test_a_slideshow_is_put_together_once(tmp_path):
     assert listed[0] == "ffconcat version 1.0"
     assert listed[1:7] == [f"file '{frames[1]}'", "duration 3", f"file '{frames[0]}'", "duration 5", f"file '{frames[1]}'", "duration 5"]
     assert sum(float(l.split()[1]) for l in listed if l.startswith("duration")) >= 30
+
+
+def test_a_new_layout_is_handed_over_to_without_dropping_youtube(klipper, moonraker, ffmpeg):
+    """While live, a change to the picture starts a new picture ffmpeg beside the old one and hands over to it: the
+    connection to YouTube (the sender) is never started again, and the old picture is stopped once the new one has
+    taken over. The delay is chosen on the page (0 to 120 s) and said while live."""
+    api, pid = klipper
+    moonraker.webcams = [_cam(), _cam(name="Nozzle")]
+    assert "0 to 120" in api.put("/stream", json={"delay": 121}).json()["detail"]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "delay": 5})
+    api.post("/stream/start")
+    assert _wait_for(lambda: ffmpeg.commands and ffmpeg.senders)
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["on_air"])
+    delay = api.get("/stream").json()["status"]["delay"]
+    assert delay["seconds"] == 5 and delay["filling"] is True  # (nothing has gone to YouTube yet: collecting the 5 s)
+
+    # a new layout: a second picture ffmpeg, the same sender; the first picture stopped once the second took over
+    api.put("/stream", json={"cameras": [f"{pid}:Bed", f"{pid}:Nozzle"]})
+    assert _wait_for(lambda: len(ffmpeg.commands) == 2)
+    assert _wait_for(lambda: ffmpeg.procs[0].poll() is not None)
+    assert ffmpeg.procs[1].poll() is None and len(ffmpeg.senders) == 1 and ffmpeg.sender_procs[0].poll() is None
+    assert "-output_ts_offset" in ffmpeg.commands[1] and api.get("/stream").json()["status"]["on_air"]
+    # and a change of key (another connection) starts afresh, sender too
+    api.put("/stream", json={"stream_key": "wxyz-1234-5678-abcd"})
+    assert _wait_for(lambda: len(ffmpeg.senders) == 2) and ffmpeg.sender_procs[0].poll() is not None
+    assert ffmpeg.senders[1][-1].endswith("wxyz-1234-5678-abcd")
+    api.post("/stream/stop")
+    assert all(p.poll() is not None for p in ffmpeg.procs + ffmpeg.sender_procs)
+
+
+def test_the_relay_switches_at_a_keyframe_and_the_buffer_holds_the_delay():
+    from app.services.live_stream import relay
+
+    key, plain = _keyframe_packet(), bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184)
+    start_of_frame = bytes([0x47, 0x41, 0x00, 0x10]) + bytes(184)  # a frame's first packet, not a keyframe
+    assert relay.keyframe_at(plain + plain + key + plain) == 2 * 188 and relay.keyframe_at(plain + start_of_frame) is None
+    assert relay.last_frame_start(start_of_frame + plain + start_of_frame + plain) == 2 * 188
+
+    class Picture:
+        def __init__(self, chunks):
+            self.chunks, self.ended = list(chunks), threading.Event()
+            self.stdout = self
+
+        def read(self, n=-1):
+            if self.chunks:
+                return self.chunks.pop(0)
+            self.ended.wait()
+            return b""
+
+    sink = _Sink()
+    r = relay.Relay(sink)
+    old = Picture([start_of_frame + plain, start_of_frame + plain])
+    r.start(old)
+    assert _wait_for(lambda: len(sink.written) == 2 * 188)  # the first whole frame (the second held until the next starts)
+    new = Picture([plain + plain, plain + key + plain, start_of_frame])  # warming up: nothing passed on until its first keyframe
+    assert r.switch_to(new, timeout=3)
+    # from its keyframe on, once that frame is whole (the next one's start held back in turn)
+    assert _wait_for(lambda: bytes(sink.written).endswith(key + plain)) and len(sink.written) == 4 * 188
+    assert bytes(sink.written[:2 * 188]) == start_of_frame + plain and r.current() is new
+    old.ended.set()
+    new.ended.set()
+
+    buffer = relay.Buffer(0.5)
+    out = _Sink()
+    buffer.set_sink(out)
+    buffer.write(b"first")
+    time.sleep(0.2)
+    assert out.written == b"" and buffer.filling() and 0.1 <= buffer.held() <= 0.5  # held for its delay
+    assert _wait_for(lambda: out.written == b"first") and not buffer.filling()
+    buffer.write(b"then")
+    assert _wait_for(lambda: out.written == b"firstthen")  # then passed on as it comes
+    buffer.close()
+
+
+def test_the_buffer_trims_back_to_the_delay_at_a_keyframe(monkeypatch):
+    """Held well over the delay (each hand-over adds a little; a sender not taking anything adds a lot): what's older
+    is dropped back to a keyframe that leaves about the delay held, so the sender reads on from a whole picture."""
+    from app.services.live_stream import relay
+
+    monkeypatch.setattr(relay, "TRIM_OVER", 0.3)
+    stuck = threading.Event()
+
+    class Stuck(_Sink):  # a sender that takes the first piece, then nothing more
+        def write(self, data):
+            super().write(data)
+            stuck.wait(5)
+
+    buffer = relay.Buffer(0.1)
+    buffer.set_sink(Stuck())
+    plain, key = bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184), _keyframe_packet()
+    buffer.write(plain)
+    assert _wait_for(lambda: not buffer.filling())
+    buffer.write(plain + plain)  # old, and no keyframe in it: dropped
+    time.sleep(0.45)
+    buffer.write(plain + key + plain)  # fresh, with a keyframe: kept from it
+    assert buffer.held() < 0.3 and bytes(buffer._chunks[0][1]) == key + plain
+    stuck.set()
+    buffer.close()
 
 
 def test_choosing_the_stream_folder(klipper, share):

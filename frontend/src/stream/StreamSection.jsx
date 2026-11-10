@@ -126,7 +126,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
       destination: shown.destination, cols: shown.cols, rows: shown.rows, cells: shown.cells, showStatus: shown.showStatus, layout: shown.layout,
       resolution: shown.resolution, secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
       borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color, title: shown.title, description: shown.description, streamKey: key.trim(),
-      music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle,
+      music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle, delay: shown.delay === "" ? -1 : shown.delay,
     });
   // Save everything on the page: once saved, nothing here is still to be saved. The page as the server answered, or null.
   const saveAll = async () => {
@@ -239,6 +239,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         <WhereToPanel
           destination={shown.destination} destinations={page.destinations} onDestination={(destination) => change({ destination })}
           streamKey={key} onKey={(k) => (setKey(k), setProblem(null))} keySet={saved.keySet} onForgetKey={forgetKey} busy={busy}
+          delay={shown.delay} onDelay={(v) => change({ delay: v })} live={status.live}
         />
         {/* signing in to YouTube, for the title and description */}
         {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
