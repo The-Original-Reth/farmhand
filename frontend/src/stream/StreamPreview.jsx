@@ -45,7 +45,7 @@ export const turnAt = (seconds, n, cycle) => {
   return { one, left: cycle.all + (one + 1) * cycle.each - at };
 };
 
-export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow }) {
+export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -85,7 +85,16 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
   useEffect(() => {
     if (selected !== null && selected >= cells.length) setSelected(null); // the grid got smaller
   }, [cells.length, selected]);
-  const { one, left } = turnAt(seconds, n, turning && !editing ? cycle : null);
+  // while the stream is going out (and nothing is changed here), the preview keeps its time: the same slideshow
+  // picture and the same turn as the picture the server is sending, moment by moment
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!serverClock) return;
+    const timer = setInterval(() => setTick((t) => t + 1), 250);
+    return () => clearInterval(timer);
+  }, [!!serverClock]);
+  const clock = serverClock ? serverClock.runningFor + (Date.now() - serverClock.heardAt) / 1000 : null;
+  const { one, left } = turnAt(clock !== null ? Math.floor(clock) : seconds, n, turning && !editing ? cycle : null);
   const alone = one === null ? null : cameraSquares[one]; // the square shown on its own, taking turns
   const drop = (to) => {
     if (dragging !== null && dragging !== to) {
@@ -168,7 +177,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
             >
               {sq ? (
                 <Screen
-                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} inset={alone === i ? 0 : inset} edit={editHere && "quiet"} slide={selected === i ? slideCtl : null}
+                  sq={sq} showStatus={showStatus} big={alone === i} media={media} back={back} words={words} clock={clock} inset={alone === i ? 0 : inset} edit={editHere && "quiet"} slide={selected === i ? slideCtl : null}
                   onChange={(what) => change({ cells: cells.map((x, j) => (j === i ? { ...x, ...what } : x)) })}
                 />
               ) : (
@@ -193,7 +202,9 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         </div>
       )}
       <div style={uiText(11, c.textFaint, { marginTop: 6, lineHeight: 1.5 })}>
-        Played in this browser, so you can check it before going live. What goes out is made on the server and may lag a few seconds behind.
+        {clock !== null
+          ? "In step with the stream: the same slideshow pictures and turns as the picture the server is sending (YouTube shows it a few seconds later)."
+          : "Played in this browser, so you can check it before going live. What goes out is made on the server and may lag a few seconds behind."}
       </div>
     </div>
   );
@@ -201,7 +212,7 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
 
 // What a square shows: a camera, or a card (its colour, picture or slideshow, and words); nothing (the stream's colour)
 // when null
-function Screen({ sq, showStatus, big, media, back, words = {}, inset = 0, edit = false, onChange, slide = null }) {
+function Screen({ sq, showStatus, big, media, back, words = {}, clock = null, inset = 0, edit = false, onChange, slide = null }) {
   if (!sq) return null;
   if (sq.type === "camera") {
     return (
@@ -210,7 +221,7 @@ function Screen({ sq, showStatus, big, media, back, words = {}, inset = 0, edit 
       </div>
     );
   }
-  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} slide={slide || null} />;
+  if (sq.type === "card") return <CardScreen card={sq.cell} media={media} streamBackground={back} streamText={words} inset={inset} edit={edit} onChange={onChange} slide={slide || null} clock={clock} />;
   return null;
 }
 

@@ -842,3 +842,18 @@ def test_the_stream_is_compressed_by_an_nvidia_card_when_one_works(monkeypatch):
     assert cmd[cmd.index("-c:v") + 1] == "h264_nvenc" and "libx264" not in cmd and cmd[cmd.index("-b:v") + 1] == "2500k"
     cmd = live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=[None], resolution="720p"))
     assert cmd[cmd.index("-c:v") + 1] == "libx264"  # the processor, unless said
+
+
+def test_the_page_is_told_how_long_the_picture_has_run(klipper, moonraker, ffmpeg):
+    # the page shows the same slideshow picture and turn as the stream by counting from the same start
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"]})
+    assert api.get("/stream").json()["status"]["running_for"] is None  # not live
+    api.post("/stream/start")
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["on_air"])
+    first = api.get("/stream").json()["status"]["running_for"]
+    time.sleep(0.3)
+    assert first is not None and api.get("/stream").json()["status"]["running_for"] > first
+    api.post("/stream/stop")
+    assert api.get("/stream").json()["status"]["running_for"] is None

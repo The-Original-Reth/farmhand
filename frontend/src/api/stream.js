@@ -40,6 +40,9 @@ const normalizeStream = (s) => ({
     error: s.status.error,
     title: s.status.title || null,
     encoder: s.status.encoder || null, // "nvenc" (an NVIDIA card compresses it) or "cpu", while live
+    // how long the picture going out has run (s), and when that was heard: the preview counts from the same start
+    runningFor: typeof s.status.running_for === "number" ? s.status.running_for : null,
+    heardAt: Date.now(),
   },
   destinations: s.destinations,
   resolutions: s.resolutions,
