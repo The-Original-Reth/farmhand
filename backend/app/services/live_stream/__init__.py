@@ -14,7 +14,8 @@ copy, and is blanked out of anything ffmpeg says.
 
 Going live runs ffmpeg in the API's own container: it reads each camera in the grid (a Mainsail MJPEG stream, go2rtc on
 the printer, or a Buddy3D's RTSP), lays the squares out, writes each printer's name and print under its camera, adds the
-silent sound track YouTube insists on, and sends it all to the destination. If ffmpeg stops (a camera dropped, the
+music (the stream folder's MP3s, round and round) or the silent sound track YouTube insists on, and sends it all to the
+destination. If ffmpeg stops (a camera dropped, the
 network blinked) it is started again after a short wait, for as long as the stream is meant to be live.
 
 The YouTube broadcast's own title and description are set through YouTube's API (services/youtube_live.py) once the
@@ -43,7 +44,7 @@ from .. import stream_media, youtube_live
 
 
 def page(db: Session) -> dict:
-    """Everything the Stream page shows: {settings, media (the stream folder's pictures and slideshows, stream_media.media),
+    """Everything the Stream page shows: {settings, media (the stream folder's pictures, slideshows and music, stream_media.media),
     status, destinations, resolutions, fonts (what a square's words can be written in), youtube}."""
     return {
         "settings": settings(db),

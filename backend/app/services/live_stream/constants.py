@@ -42,5 +42,6 @@ DEFAULT_BACKGROUND = "#000000"  # the stream's own colour: empty squares, and ro
 BORDER_WIDTH = 3  # px round each square, on the 720-high picture
 COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 DEFAULT_TEXT_COLOR = "#FFFFFF"  # the stream's words, unless a square has its own
+DEFAULT_MUSIC_VOLUME = 50  # the music's loudness, 0 to 100 (100: as the tracks are)
 SAVED = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "title", "description", "font", "color", "enabled",
-         "resolution", "border_color", "background")
+         "resolution", "border_color", "background", "music", "music_volume", "music_shuffle")

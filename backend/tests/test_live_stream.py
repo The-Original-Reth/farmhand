@@ -91,11 +91,11 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
     page = api.get("/stream").json()
     assert page["settings"] == {
         "destination": "youtube", "cols": 1, "rows": 1, "cells": [None], "cameras": [], "show_status": True, "layout": "grid",
-        "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF", "enabled": True, "title": "",
-        "description": "", "key_set": False,
+        "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF", "enabled": True,
+        "music": False, "music_volume": 50, "music_shuffle": True, "title": "", "description": "", "key_set": False,
     }
     assert [r["key"] for r in page["resolutions"]] == ["720p", "1080p", "1440p"] and page["resolutions"][2]["label"].startswith("2K")
-    assert (page["media"]["images"], page["media"]["slideshows"], page["media"]["error"]) == ([], [], None)
+    assert (page["media"]["images"], page["media"]["slideshows"], page["media"]["music"], page["media"]["error"]) == ([], [], [], None)
     assert page["status"]["live"] is False
     assert [d["key"] for d in page["destinations"]] == ["youtube", "twitch"]
     assert page["youtube"] == {"client_set": False, "client_id": None, "signed_in": False, "channel": None, "signing_in": None, "error": None}
@@ -421,6 +421,66 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     (root / "slideshows" / "Mixed" / "notes.txt").write_text("keep me")
     assert "other files" in api.delete("/stream/slideshows/Mixed?confirm=true").json()["detail"]
     assert sorted(p.name for p in (root / "slideshows" / "Mixed").iterdir()) == ["notes.txt"]
+
+
+def test_the_music(klipper, moonraker, ffmpeg):
+    from app.services import stream_media
+
+    api, pid = klipper
+    # MP3s only, uploaded into music/ (a second of the same name numbered), or copied in by hand
+    r = api.post("/stream/music", files=[("files", ("Lofi Chill.mp3", b"ID3one", "audio/mpeg")), ("files", ("lofi chill.MP3", b"ID3two", "audio/mpeg"))])
+    assert r.status_code == 201 and r.json()["media"]["music"] == ["lofi chill (2).MP3", "Lofi Chill.mp3"]
+    assert "MP3" in api.post("/stream/music", files=[("files", ("song.flac", b"fLaC", "audio/flac"))]).json()["detail"]
+    got = api.get("/stream/music/Lofi Chill.mp3")
+    assert got.content == b"ID3one" and got.headers["content-type"] == "audio/mpeg"
+    assert api.get("/stream/music/nope.mp3").status_code == 404
+    root = stream_media.folder(_db(api))
+    (root / "music" / "It's 2 am.mp3").write_bytes(b"ID3three")
+    assert api.post("/stream/scan").json()["media"]["music"] == ["It's 2 am.mp3", "lofi chill (2).MP3", "Lofi Chill.mp3"]
+
+    # chosen on the page: on, its volume and shuffling; a volume out of range is refused
+    assert "0 to 100" in api.put("/stream", json={"music_volume": 101}).json()["detail"]
+    s = api.put("/stream", json={"music": True, "music_volume": 40, "music_shuffle": False}).json()["settings"]
+    assert (s["music"], s["music_volume"], s["music_shuffle"]) == (True, 40, False)
+
+    # live: the tracks one after another (in name order, not shuffled), read as they play and round again, at its volume
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
+    api.post("/stream/start")
+    assert _wait_for(lambda: ffmpeg.commands)
+    cmd = ffmpeg.commands[0]
+    at = cmd.index("concat")
+    assert cmd[at - 2:at + 1] == ["-re", "-f", "concat"] and "anullsrc" not in " ".join(cmd)
+    assert cmd[cmd.index("-t") + 1] == str(live_stream.TURNS_FOR)  # the playlist covers a day: then ffmpeg starts again
+    playlist = cmd[at + 4]
+    with open(playlist, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    assert lines[0] == "ffconcat version 1.0"
+    names = [os.path.basename(l[len("file '"):-1].replace(r"'\''", "'")) for l in lines[1:]]
+    assert names[:4] == ["It's 2 am.mp3", "lofi chill (2).MP3", "Lofi Chill.mp3", "It's 2 am.mp3"] and len(names) == 8640  # round and round
+    assert r"It'\''s 2 am.mp3" in lines[1]  # its quote, as concat quotes it
+    assert cmd[cmd.index("-af") + 1].endswith("volume=0.16,apad") and cmd[cmd.index("-map", cmd.index("-map") + 1) + 1] == "1:a"
+
+    # a change to the music while live starts the stream again with it; with no tracks there, it's silent
+    for name in ("It's 2 am.mp3", "lofi chill (2).MP3", "Lofi Chill.mp3"):
+        assert api.delete(f"/stream/music/{name}?confirm=true").status_code == 200
+    assert api.delete("/stream/music/Lofi Chill.mp3?confirm=true").status_code == 404
+    api.put("/stream", json={"music_volume": 60})
+    assert _wait_for(lambda: len(ffmpeg.commands) == 2)
+    assert "anullsrc" in " ".join(ffmpeg.commands[1]) and "-af" not in ffmpeg.commands[1] and "-t" not in ffmpeg.commands[1]
+
+
+def test_the_music_goes_round_in_a_new_order(tmp_path):
+    from app.services.live_stream import staging
+
+    tracks = [f"/music/{i}.mp3" for i in range(30)]
+    lines = open(staging.playlist(tracks, str(tmp_path / "m.txt"), True), encoding="utf-8").read().splitlines()[1:]
+    rounds = [lines[i:i + 30] for i in range(0, len(lines), 30)]
+    assert len(rounds) == 288 and all(sorted(r) == sorted(f"file '{t}'" for t in tracks) for r in rounds)  # each track once a round
+    assert len({tuple(r) for r in rounds[:5]}) > 1  # in a new order each round
+    in_order = open(staging.playlist(tracks, str(tmp_path / "m.txt"), False), encoding="utf-8").read().splitlines()[1:]
+    assert in_order[:31] == [f"file '{t}'" for t in tracks] + ["file '/music/0.mp3'"]
+    assert open(staging.playlist([], str(tmp_path / "m.txt"), True), encoding="utf-8").read() == "ffconcat version 1.0\n"
 
 
 def test_choosing_the_stream_folder(klipper, share):

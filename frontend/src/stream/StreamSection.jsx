@@ -8,6 +8,7 @@ import { StreamPreview } from "./StreamPreview.jsx";
 import { cameraOf, printerOf } from "./shapes.js";
 import { LiveStatusPanel, StreamSwitch, WhereToPanel, YouTubeAccountPanel, YouTubeTextPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
+import { MusicPanel } from "./MusicPanel.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
 
 // The Stream page: Farmhand sends the printers' cameras live to YouTube (or Twitch) itself, laid out in a grid of
@@ -109,6 +110,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
       destination: shown.destination, cols: shown.cols, rows: shown.rows, cells: shown.cells, showStatus: shown.showStatus, layout: shown.layout,
       resolution: shown.resolution, secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
       borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color, title: shown.title, description: shown.description, streamKey: key.trim(),
+      music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle,
     });
   // Save everything on the page: once saved, nothing here is still to be saved. The page as the server answered, or null.
   const saveAll = async () => {
@@ -236,6 +238,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
         {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
 
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
+        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} />
         <SavedLayoutsPanel
           layouts={layouts} onSave={onSaveLayouts} saved={saved} label={label} switchTo={switchTo}
         />

@@ -3,6 +3,7 @@ The Stream page's pictures, as files in the stream folder, chosen in Settings li
 
     <stream folder>/images/<name>.png                 single pictures, for a square of the grid
     <stream folder>/slideshows/<slideshow>/<name>.jpg  each slideshow a folder of pictures, shown in turn (by name)
+    <stream folder>/music/<name>.mp3                   the stream's music (StreamBeats, say), played round and round
 
 By default the stream folder is "stream" in the folder above the STL / OBJ / STEP folder, beside "farm-cost". Pictures
 uploaded on the Stream page are written there; pictures dropped in by hand (over the network share, say) count just the
@@ -27,9 +28,12 @@ from . import app_settings
 
 STREAM_FOLDER = "stream"
 KEY_LOCATION = "stream_media_dir"  # the folder chosen in Settings; none = the default
-IMAGES, SLIDESHOWS = "images", "slideshows"
+IMAGES, SLIDESHOWS, MUSIC = "images", "slideshows", "music"
 PICTURE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 PICTURE_MAX = 10 * 1024 * 1024  # an upload; pictures dropped in by hand can be any size
+# The music is MP3s only: ffmpeg plays them one after another as one long track, which needs them all the same kind
+TRACK_TYPES = {".mp3": "audio/mpeg"}
+TRACK_MAX = 50 * 1024 * 1024  # an upload; tracks copied in by hand can be any size
 NAME = re.compile(r"^[^/\\\0]{1,120}$")
 
 
@@ -75,12 +79,13 @@ def set_location(db: Session, raw: str | None) -> dict:
 
 
 def folder(db: Session, make: bool = False) -> Path:
-    """The stream folder, while it can be used (StorageUnavailableError otherwise); with `make`, its two folders made."""
+    """The stream folder, while it can be used (StorageUnavailableError otherwise); with `make`, its folders made."""
     chosen = _chosen(db)
     root = storage.ensure_ready_folder(chosen, "stream folder") if chosen else storage.named_folder(storage.ready_root("stl").parent, STREAM_FOLDER)
     if make:
         (root / IMAGES).mkdir(parents=True, exist_ok=True)
         (root / SLIDESHOWS).mkdir(parents=True, exist_ok=True)
+        (root / MUSIC).mkdir(parents=True, exist_ok=True)
     return root
 
 
@@ -88,12 +93,16 @@ def _natural(name: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
 
 
-def _pictures_in(d: Path) -> list[str]:
+def _files_in(d: Path, types: dict) -> list[str]:
     try:
-        return sorted((e.name for e in os.scandir(d) if e.is_file() and Path(e.name).suffix.lower() in PICTURE_TYPES and not e.name.startswith(".")),
+        return sorted((e.name for e in os.scandir(d) if e.is_file() and Path(e.name).suffix.lower() in types and not e.name.startswith(".")),
                       key=_natural)
     except OSError:
         return []
+
+
+def _pictures_in(d: Path) -> list[str]:
+    return _files_in(d, PICTURE_TYPES)
 
 
 # A slideshow's own order, kept in its folder (so every square showing it, the stream and another Farmhand sharing the
@@ -179,7 +188,8 @@ def forget() -> None:
 
 
 def media(db: Session, scan: bool = False) -> dict:
-    """{path, windows_path (windows_path(), or None), images: [names], slideshows: [{name, images: [names]}], error}:
+    """{path, windows_path (windows_path(), or None), images: [names], slideshows: [{name, images: [names]}], music: [the
+    tracks' names], error}:
     what's in the stream folder, as last found (read now when `scan`, or the first time)."""
     global _found
     which = _chosen(db) or str(default_folder())
@@ -194,7 +204,7 @@ def _read(db: Session) -> dict:
         root = folder(db)
     except storage.StorageUnavailableError as e:
         at = location_info(db)["path"]
-        return {"path": at, "windows_path": windows_path(db, at), "images": [], "slideshows": [], "error": str(e)}
+        return {"path": at, "windows_path": windows_path(db, at), "images": [], "slideshows": [], "music": [], "error": str(e)}
     shows = []
     try:
         for e in sorted(os.scandir(root / SLIDESHOWS), key=lambda e: _natural(e.name)):
@@ -202,7 +212,8 @@ def _read(db: Session) -> dict:
                 shows.append({"name": e.name, "images": _slides_in(Path(e.path))})
     except OSError:
         pass
-    return {"path": str(root), "windows_path": windows_path(db, str(root)), "images": _pictures_in(root / IMAGES), "slideshows": shows, "error": None}
+    return {"path": str(root), "windows_path": windows_path(db, str(root)), "images": _pictures_in(root / IMAGES), "slideshows": shows,
+            "music": _files_in(root / MUSIC, TRACK_TYPES), "error": None}
 
 
 def _name(raw: str, what: str) -> str:
@@ -326,3 +337,43 @@ def remove_slideshow(db: Session, name: str) -> None:
         d.rmdir()
     except OSError:
         raise ValueError(f"The slideshow's pictures are deleted, but its folder still holds other files, so it was left: {d}") from None
+
+
+# ------------------------------------------------------------------ the music
+
+
+def track_path(db: Session, name: str) -> Path:
+    """One of the music's tracks. NotFound when it isn't there."""
+    path = folder(db) / MUSIC / _name(name, "track")
+    if path.suffix.lower() not in TRACK_TYPES or not path.is_file():
+        raise NotFound("That track isn't there.")
+    return path
+
+
+def track_paths(db: Session) -> list[Path]:
+    """The music's tracks, in name order ([] when there are none, or the stream folder can't be used now)."""
+    try:
+        d = folder(db) / MUSIC
+    except storage.StorageUnavailableError:
+        return []
+    return [d / n for n in _files_in(d, TRACK_TYPES)]
+
+
+def add_track(db: Session, filename: str, data: bytes) -> str:
+    """Write an uploaded MP3 into the music: its name (numbered when one of that name is there)."""
+    name = Path(filename or "").name
+    if Path(name).suffix.lower() not in TRACK_TYPES:
+        raise ValueError("The music has to be MP3 files.")
+    if len(data) > TRACK_MAX:
+        raise ValueError("A track uploaded here has to be under 50 MB. Copy bigger ones into the stream folder's music folder yourself.")
+    name = _name(name, "track")
+    d = folder(db, make=True) / MUSIC
+    name = _free_name(d, name)
+    storage.write_bytes_atomically(d / name, data)
+    forget()
+    return name
+
+
+def remove_track(db: Session, name: str) -> None:
+    track_path(db, name).unlink()
+    forget()
