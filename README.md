@@ -634,9 +634,9 @@ benchy.gcode`), brought up to date every 15 seconds.
    them) and press **Save**.
 3. Press **Go live**. YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
 
-- **The switch** beside *Stream* at the top of the page turns everything off: the stream stops (and can't go live),
-  no cameras play on the page and it stops asking the printers. Turned on again, the page is as you left it, changes
-  not saved yet included (kept in that browser; a stream key typed isn't).
+- **The switch** beside *Stream* at the top of the page turns the stream off: ffmpeg stops on the server and **Go live**
+  waits until it's on again. Everything else on the page still works (the preview, the squares, the music, Save), so
+  the stream can be set up while it's off; changes not saved yet stay as they are.
 - The stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked out
   of any error message. **Forget key** removes it.
 - If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
@@ -672,7 +672,8 @@ benchy.gcode`), brought up to date every 15 seconds.
   behind the words, so they can be read over a busy picture.
 - **Pictures** are files in the **stream folder** (Settings, beside the farm cost folder; by default `stream` in the
   folder above the STL folder): single pictures in its `images` folder, each slideshow a folder of its own in
-  `slideshows`. **Upload picture** and **Add pictures** write PNG, JPEG or WebP files there (under 10 MB each), and
+  `slideshows`, the music in `music` (Farmhand makes these three as soon as the Stream page looks at the folder, so
+  they're there to copy into). **Upload picture** and **Add pictures** write PNG, JPEG or WebP files there (under 10 MB each), and
   pictures you copy in yourself (over the network share, say) show up once you press **Scan folder** (Farmhand doesn't
   keep looking at the folder). A slideshow is chosen from a list, with **New slideshow** (asks its name), **Add pictures**, **Open folder**
   (shows the slideshow's folder as Windows reaches it, `\\server\share\stream\slideshows\…`, with **Copy**, to paste
@@ -695,12 +696,18 @@ benchy.gcode`), brought up to date every 15 seconds.
   or changed by hand while live show once the stream starts again (Stop, then Go live); ones added or deleted on the
   Stream page start it again themselves.
 - **Music:** MP3s in the stream folder's `music` folder, played on the stream one after another and round again, in
-  place of the silent sound track. Free music for streams such as [StreamBeats](https://www.streambeats.com/) can be
-  downloaded and added with **Add tracks** (under 50 MB each), or copied into the folder by hand and found with
-  **Scan folder** (**Open folder** shows the folder as Windows reaches it over the network, with **Copy**, to paste into File Explorer). **Play music on the stream**, the **Volume** (its middle sounds about half as loud) and **Shuffle**
-  (a new order each round; off, name order) are saved with Save. Each track's ▶ plays it on the page at the volume
-  chosen, and **Delete** removes its file. With music on but no tracks, the stream stays silent. Tracks added or deleted
-  while live play from the next time the stream starts; changing the music's settings while live starts it again.
+  place of the silent sound track, starting with the stream (it's on unless you untick **Play music on the stream**).
+  Free music for streams such as [StreamBeats](https://www.streambeats.com/) can be downloaded and added with **Add
+  tracks** (under 50 MB each), or copied into the folder by hand and found with **Scan folder** (**Open folder** shows
+  the folder as Windows reaches it over the network, with **Copy**, to paste into File Explorer). **Back**,
+  **Play/Pause** and **Next**, beside *Play music on the stream*, work on the stream while live: Next skips to the next
+  track, Pause is silence until Play, and Back starts the track again (in its first 3 seconds, goes to the one before);
+  the page says which track is on and how far in. Not live, they play the tracks in this browser, as each track's ▶
+  does, at the volume chosen. **Volume** (1% steps; its middle sounds about half as loud), **Shuffle** (a new order each
+  round; off, name order) and turning the music off are saved with Save, and while live the music follows at once,
+  without the stream starting again. Farmhand plays the music itself and feeds it to ffmpeg as it plays, so none of
+  this interrupts the picture. Tracks added while live join the next round; with no tracks, the stream is silent.
+  **Delete** removes a track's file.
 - **Layout** (in Defaults): the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
   (0 skips it), then each camera full-screen, in square order, for *Stay on each camera* seconds, round and round.
   The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one

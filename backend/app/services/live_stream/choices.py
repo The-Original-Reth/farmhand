@@ -53,8 +53,9 @@ def settings(db: Session) -> dict:
     cameras' keys in the grid, square by square), show_status, layout: "grid" | "cycle", seconds_all, seconds_each,
     resolution, border_color: "#RRGGBB", background: the stream's colour "#RRGGBB", font and color: the
     stream's words' (every square's and camera's unless it has its own), enabled: the Stream page's switch (off: nothing
-    streams), music: the stream folder's music played (False: a silent sound track), music_volume (0 to 100),
-    music_shuffle: in a new order each time the stream starts (False: in name order), title, description, key_set}.
+    streams), music: the stream folder's music played, starting with the stream (on unless turned off; False: a silent
+    sound track), music_volume (0 to 100), music_shuffle: each round in a new order (False: in name order), title,
+    description, key_set}.
     The key itself is never given. Settings from before the grid (a list of cameras) come back as the grid they made.
     """
     raw = _saved(db)
@@ -84,7 +85,7 @@ def settings(db: Session) -> dict:
         "enabled": raw.get("enabled") is not False,  # the Stream page's switch: off, nothing streams
         "font": raw.get("font") if raw.get("font") in FONTS else DEFAULT_FONT,
         "color": _color(raw.get("color"), DEFAULT_TEXT_COLOR),
-        "music": raw.get("music") is True,
+        "music": raw.get("music") is not False,
         "music_volume": raw["music_volume"] if _volume(raw.get("music_volume")) else DEFAULT_MUSIC_VOLUME,
         "music_shuffle": raw.get("music_shuffle", True) is not False,
         "title": text("title"),

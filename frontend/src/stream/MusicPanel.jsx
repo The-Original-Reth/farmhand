@@ -1,56 +1,114 @@
 import { useEffect, useRef, useState } from "react";
-import { Music, Pause, Play } from "lucide-react";
+import { Music, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { c } from "../theme.js";
 import { headerButton, linkButton, uiText } from "../styles.js";
-import { removeStreamTrack, scanStreamFolder, streamTrackUrl, uploadStreamMusic } from "../api.js";
+import { musicControl, removeStreamTrack, scanStreamFolder, streamTrackUrl, uploadStreamMusic } from "../api.js";
 import { heading, help, label12, panel } from "./streamStyles.js";
 import { OpenFolder } from "./MediaChoices.jsx";
 
 // The stream's music: MP3s in the stream folder's music folder (StreamBeats, say), played one after another and round
-// again (shuffled each round, if chosen), in place of the silent sound track. On or off, its volume and shuffling are saved with the page's Save; tracks
-// are uploaded and deleted straight away. Each track can be played here, at the volume chosen, to hear how it sounds.
-// `shown`/`change`: the page's choices; `media`: the stream folder (media.music: the tracks' file names); `ask`, `busy`:
-// the page's own way of asking the server; `live`: the stream is meant to be going out.
+// again (shuffled each round, if chosen), in place of the silent sound track, starting with the stream. On or off, its
+// volume and shuffling are saved with the page's Save (and followed straight away while live); tracks are uploaded and
+// deleted straight away. Back, Play/Pause and Next, beside "Play music on the stream": while live, the music going out
+// (the server's music player); not live, the tracks played here in this browser, at the volume chosen, to hear how they
+// sound (each track's own ▶ too). `shown`/`change`: the page's choices; `media`: the stream folder (media.music: the
+// tracks' file names); `ask`, `busy`: the page's own way of asking the server; `live`: the stream is meant to be going
+// out; `onAir`: the music going out (status.music: { on, playing, track, at }) and `heardAt`, when that was heard.
 
 // the volume as the server plays it: the slider squared, so its middle sounds about half as loud
 export const musicGain = (volume) => (Math.max(0, Math.min(100, Number(volume) || 0)) / 100) ** 2;
+const BACK_RESTARTS = 3; // seconds into a track after which Back starts it again, as on the stream
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const small = { ...headerButton(), padding: "0 6px" };
 
-export function MusicPanel({ shown, change, media, ask, busy, live }) {
+export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0 }) {
   const input = useRef(null);
   const player = useRef(null);
-  const [playing, setPlaying] = useState(null); // the track playing here
+  const [here, setHere] = useState(null); // the track played here: { name, paused }
   const [removing, setRemoving] = useState(null); // the track asking "Delete?"
   const [opening, setOpening] = useState(false); // showing where the music folder is, for File Explorer
+  const [, tick] = useState(0); // (live: the time into the track goes on between the page's looks)
   const tracks = media.music || [];
   const off = !!busy || !!media.error;
+  const playing = here && !here.paused ? here.name : null;
 
+  const stopHere = () => {
+    player.current?.pause();
+    setHere(null);
+  };
   useEffect(() => {
     if (player.current) player.current.volume = musicGain(shown.musicVolume);
-  }, [shown.musicVolume, playing]);
+  }, [shown.musicVolume, here]);
   useEffect(() => {
-    if (playing && !tracks.includes(playing)) setPlaying(null); // deleted, or gone from the folder
-  }, [tracks, playing]);
+    if (here && !tracks.includes(here.name)) stopHere(); // deleted, or gone from the folder
+  }, [tracks, here]);
   useEffect(() => () => player.current?.pause(), []);
+  useEffect(() => {
+    if (!live || !onAir?.playing) return undefined;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [live, onAir?.playing]);
+  useEffect(() => {
+    if (live) stopHere(); // live: the buttons are the stream's, and the music is heard there
+  }, [live]);
 
-  const play = (name) => {
-    if (playing === name) {
-      player.current.pause();
-      setPlaying(null);
-      return;
-    }
+  // the track `step` along from `name` in the list (round again at either end), played here
+  const advance = (name, step) => {
+    if (!tracks.length) return;
+    const i = tracks.indexOf(name);
+    playHere(tracks[(((i < 0 ? 0 : i + step) % tracks.length) + tracks.length) % tracks.length]);
+  };
+  const playHere = (name) => {
     const a = player.current || (player.current = new Audio());
-    a.onended = () => setPlaying(null);
+    a.onended = () => advance(name, 1); // on to the next, as the stream does
     a.src = streamTrackUrl(name);
     a.volume = musicGain(shown.musicVolume);
-    a.play().catch(() => setPlaying(null));
-    setPlaying(name);
+    a.play().catch(() => setHere(null));
+    setHere({ name, paused: false });
   };
+  // each track's own ▶: play it here, or pause it
+  const toggleTrack = (name) => {
+    if (playing !== name) return playHere(name);
+    player.current.pause();
+    setHere({ name, paused: true });
+  };
+
+  // Back, Play/Pause, Next: the stream's music while live, otherwise here
+  const server = (action) => ask("music", () => musicControl(action));
+  const isPlaying = live ? !!onAir?.playing : !!playing;
+  const back = () => {
+    if (live) return server("back");
+    if (!here) return advance(tracks[0], 0);
+    if ((player.current?.currentTime || 0) > BACK_RESTARTS) return playHere(here.name);
+    return advance(here.name, -1);
+  };
+  const next = () => (live ? server("next") : advance(here ? here.name : tracks[0], here ? 1 : 0));
+  const playPause = () => {
+    if (live) return server(onAir?.playing ? "pause" : "play");
+    if (!here) return advance(tracks[0], 0);
+    if (playing) {
+      player.current.pause();
+      return setHere({ name: here.name, paused: true });
+    }
+    player.current.play().catch(() => setHere(null));
+    return setHere({ name: here.name, paused: false });
+  };
+  const liveOff = live && !onAir?.on; // live with the music off (as saved): nothing to control
+  const controlsOff = !!busy || liveOff || (!live && !tracks.length);
+  const at = onAir ? onAir.at + (onAir.playing ? Math.max(0, (Date.now() - heardAt) / 1000) : 0) : 0;
+  let nowText = "";
+  if (live && !onAir?.on) nowText = "The music is off on the stream (tick Play music on the stream and Save)";
+  else if (live && onAir.track) nowText = `On the stream: ${onAir.track} · ${clock(at)}${onAir.playing ? "" : " (paused)"}`;
+  else if (live) nowText = tracks.length ? "On the stream: starting…" : "On the stream: no tracks, so silence";
+  else if (here) nowText = `Here: ${here.name}${here.paused ? " (paused)" : ""}`;
+  else if (tracks.length) nowText = "Not live: the buttons play the tracks here, in this browser";
+
   const upload = async (files) => {
     if (files.length) await ask("music", () => uploadStreamMusic(files));
     input.current.value = "";
   };
   const remove = async (name) => {
-    if (playing === name) play(name);
+    if (here?.name === name) stopHere();
     if (await ask("music", () => removeStreamTrack(name))) setRemoving(null);
   };
 
@@ -59,15 +117,42 @@ export function MusicPanel({ shown, change, media, ask, busy, live }) {
       <div style={{ ...heading, display: "flex", alignItems: "center", gap: 6 }}>
         <Music size={15} /> Music
       </div>
-      <label style={label12}>
-        <input type="checkbox" data-testid="stream-music-on" checked={shown.music} onChange={(e) => change({ music: e.target.checked })} />
-        Play music on the stream
-      </label>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <label style={label12}>
+          <input type="checkbox" data-testid="stream-music-on" checked={shown.music} onChange={(e) => change({ music: e.target.checked })} />
+          Play music on the stream
+        </label>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            type="button" data-testid="stream-music-back" onClick={back} disabled={controlsOff} style={small} aria-label="Back"
+            title={live ? "Back, on the stream: this track from its start (in its first seconds, the one before)" : "Back (here)"}
+          >
+            <SkipBack size={13} />
+          </button>
+          <button
+            type="button" data-testid="stream-music-play" onClick={playPause} disabled={controlsOff} style={small} aria-label={isPlaying ? "Pause" : "Play"}
+            title={live ? (isPlaying ? "Pause the stream's music (silence until Play)" : "Play the stream's music") : isPlaying ? "Pause (here)" : "Play (here)"}
+          >
+            {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+          </button>
+          <button
+            type="button" data-testid="stream-music-next" onClick={next} disabled={controlsOff} style={small} aria-label="Next"
+            title={live ? "Next track, on the stream" : "Next track (here)"}
+          >
+            <SkipForward size={13} />
+          </button>
+        </div>
+      </div>
+      {nowText && (
+        <div data-testid="stream-music-now" style={uiText(12, live && onAir?.track ? c.heading : c.textMuted, { marginTop: -4 })}>
+          {nowText}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", opacity: shown.music ? 1 : 0.6 }}>
         <label style={label12}>
           Volume
           <input
-            type="range" data-testid="stream-music-volume" min={0} max={100} step={5} value={shown.musicVolume}
+            type="range" data-testid="stream-music-volume" min={0} max={100} step={1} value={shown.musicVolume}
             onChange={(e) => change({ musicVolume: Number(e.target.value) })} style={{ width: 140 }}
           />
           <span style={{ minWidth: 34 }}>{shown.musicVolume}%</span>
@@ -83,12 +168,12 @@ export function MusicPanel({ shown, change, media, ask, busy, live }) {
         {tracks.map((name) => (
           <div key={name} data-testid="stream-music-track" style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 26 }}>
             <button
-              type="button" onClick={() => play(name)} title={playing === name ? "Stop" : "Play it here, at the volume chosen"}
-              aria-label={playing === name ? `Stop ${name}` : `Play ${name}`} style={{ ...headerButton(), padding: "0 6px" }}
+              type="button" onClick={() => toggleTrack(name)} title={playing === name ? "Pause" : "Play it here, in this browser, at the volume chosen"}
+              aria-label={playing === name ? `Pause ${name}` : `Play ${name}`} style={small}
             >
               {playing === name ? <Pause size={13} /> : <Play size={13} />}
             </button>
-            <span style={uiText(12, playing === name ? c.heading : c.textMuted, { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={name}>
+            <span style={uiText(12, here?.name === name || (live && onAir?.track === name) ? c.heading : c.textMuted, { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={name}>
               {name}
             </span>
             {removing === name ? (
@@ -137,7 +222,7 @@ export function MusicPanel({ shown, change, media, ask, busy, live }) {
         </a>
         , can be downloaded and added here (under 50 MB each), or copied into the stream folder's music folder (Open folder) and found with Scan folder.
         {shown.music && !tracks.length ? " With no tracks, the stream stays silent." : ""}
-        {live ? " Tracks added or deleted while live play from the next time the stream starts." : ""}
+        {" "}The music starts with the stream{live ? "; tracks added while live join its next round" : ""}.
       </div>
     </div>
   );

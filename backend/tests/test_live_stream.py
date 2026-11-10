@@ -25,12 +25,27 @@ class FakeFfmpeg:
 
     def __init__(self, lines=(), exits=False):
         self.commands: list[list[str]] = []
+        self.procs: list = []
         self.lines = list(lines)
         self.exits = exits
 
-    def __call__(self, args):
+    def __call__(self, args, feed=False):
         self.commands.append(args)
-        return _Proc(self.lines, self.exits)
+        self.procs.append(_Proc(self.lines, self.exits))
+        return self.procs[-1]
+
+
+class _Sink:
+    """ffmpeg's stdin, as the music player writes to it: keeps what's written."""
+
+    def __init__(self):
+        self.written = bytearray()
+
+    def write(self, data):
+        self.written += data
+
+    def flush(self):
+        pass
 
 
 class _Proc:
@@ -39,6 +54,7 @@ class _Proc:
         if exits:
             self._ended.set()
         self.stderr = iter([line + "\n" for line in lines])
+        self.stdin = _Sink()
 
     def poll(self):
         return 1 if self._ended.is_set() else None
@@ -92,7 +108,7 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
     assert page["settings"] == {
         "destination": "youtube", "cols": 1, "rows": 1, "cells": [None], "cameras": [], "show_status": True, "layout": "grid",
         "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF", "enabled": True,
-        "music": False, "music_volume": 50, "music_shuffle": True, "title": "", "description": "", "key_set": False,
+        "music": True, "music_volume": 50, "music_shuffle": True, "title": "", "description": "", "key_set": False,
     }
     assert [r["key"] for r in page["resolutions"]] == ["720p", "1080p", "1440p"] and page["resolutions"][2]["label"].startswith("2K")
     assert (page["media"]["images"], page["media"]["slideshows"], page["media"]["music"], page["media"]["error"]) == ([], [], [], None)
@@ -423,8 +439,9 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     assert sorted(p.name for p in (root / "slideshows" / "Mixed").iterdir()) == ["notes.txt"]
 
 
-def test_the_music(klipper, moonraker, ffmpeg):
+def test_the_music(klipper, moonraker, ffmpeg, monkeypatch):
     from app.services import stream_media
+    from app.services.live_stream import music
 
     api, pid = klipper
     # MP3s only, uploaded into music/ (a second of the same name numbered), or copied in by hand
@@ -438,55 +455,157 @@ def test_the_music(klipper, moonraker, ffmpeg):
     (root / "music" / "It's 2 am.mp3").write_bytes(b"ID3three")
     assert api.post("/stream/scan").json()["media"]["music"] == ["It's 2 am.mp3", "lofi chill (2).MP3", "Lofi Chill.mp3"]
 
-    # chosen on the page: on, its volume and shuffling; a volume out of range is refused
+    # on unless turned off; its volume and shuffling; a volume out of range is refused; no controlling it while not live
     assert "0 to 100" in api.put("/stream", json={"music_volume": 101}).json()["detail"]
-    s = api.put("/stream", json={"music": True, "music_volume": 40, "music_shuffle": False}).json()["settings"]
+    s = api.put("/stream", json={"music_volume": 40, "music_shuffle": False}).json()["settings"]
     assert (s["music"], s["music_volume"], s["music_shuffle"]) == (True, 40, False)
+    assert "isn't live" in api.post("/stream/music/next").json()["detail"]
+    assert api.post("/stream/music/louder").status_code == 404
 
-    # live: the tracks one after another (in name order, not shuffled), read as they play and round again, at its volume
+    # live: the music starts with the stream, fed to ffmpeg's stdin as it plays (each track decoded to a tone of its own)
+    from sqlalchemy.orm import sessionmaker
+
+    from app import database
+
+    monkeypatch.setattr(music, "decoder", _fake_decoder)
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=_db(api).get_bind(), future=True))  # (the music reads the tracks itself)
     moonraker.webcams = [_cam()]
     api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
     api.post("/stream/start")
     assert _wait_for(lambda: ffmpeg.commands)
     cmd = ffmpeg.commands[0]
-    at = cmd.index("concat")
-    assert cmd[at - 2:at + 1] == ["-re", "-f", "concat"] and "anullsrc" not in " ".join(cmd)
-    assert cmd[cmd.index("-t") + 1] == str(live_stream.TURNS_FOR)  # the playlist covers a day: then ffmpeg starts again
-    playlist = cmd[at + 4]
-    with open(playlist, encoding="utf-8") as f:
-        lines = f.read().splitlines()
-    assert lines[0] == "ffconcat version 1.0"
-    names = [os.path.basename(l[len("file '"):-1].replace(r"'\''", "'")) for l in lines[1:]]
-    assert names[:4] == ["It's 2 am.mp3", "lofi chill (2).MP3", "Lofi Chill.mp3", "It's 2 am.mp3"] and len(names) == 8640  # round and round
-    assert r"It'\''s 2 am.mp3" in lines[1]  # its quote, as concat quotes it
-    assert cmd[cmd.index("-af") + 1].endswith("volume=0.16,apad") and cmd[cmd.index("-map", cmd.index("-map") + 1) + 1] == "1:a"
+    at = cmd.index("pipe:0")
+    assert cmd[at - 7:at + 1] == ["-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0"] and "anullsrc" not in " ".join(cmd)
+    assert "-t" not in cmd and "-af" not in cmd  # (no day's end: the music goes on as long as the stream)
+    assert _wait_for(lambda: (api.get("/stream").json()["status"]["music"] or {}).get("track") == "It's 2 am.mp3")
+    assert api.get("/stream").json()["status"]["music"]["playing"] is True
 
-    # a change to the music while live starts the stream again with it; with no tracks there, it's silent
+    # next and back, straight away and with no new ffmpeg
+    assert api.post("/stream/music/next").json()["status"]["music"]["track"] in (None, "It's 2 am.mp3", "lofi chill (2).MP3")
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["music"]["track"] == "lofi chill (2).MP3")
+    api.post("/stream/music/back")  # in its first seconds: the one before
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["music"]["track"] == "It's 2 am.mp3")
+    assert not api.post("/stream/music/pause").json()["status"]["music"]["playing"]
+    assert api.post("/stream/music/play").json()["status"]["music"]["playing"]
+    # its settings follow while live, again with no new ffmpeg; turned off, it can't be controlled
+    api.put("/stream", json={"music_volume": 60})
+    assert api.put("/stream", json={"music": False}).json()["status"]["music"]["on"] is False
+    assert "music is off" in api.post("/stream/music/next").json()["detail"]
+    assert len(ffmpeg.commands) == 1 and len(ffmpeg.procs[0].stdin.written) > 0
+
     for name in ("It's 2 am.mp3", "lofi chill (2).MP3", "Lofi Chill.mp3"):
         assert api.delete(f"/stream/music/{name}?confirm=true").status_code == 200
     assert api.delete("/stream/music/Lofi Chill.mp3?confirm=true").status_code == 404
-    api.put("/stream", json={"music_volume": 60})
-    assert _wait_for(lambda: len(ffmpeg.commands) == 2)
-    assert "anullsrc" in " ".join(ffmpeg.commands[1]) and "-af" not in ffmpeg.commands[1] and "-t" not in ffmpeg.commands[1]
 
 
-def test_the_music_goes_round_in_a_new_order(tmp_path):
-    from app.services.live_stream import staging
+class _Decoded:
+    """A track as the stand-in decoder gives it: a quarter of a second of one sample value, its own."""
 
-    tracks = [f"/music/{i}.mp3" for i in range(30)]
-    lines = open(staging.playlist(tracks, str(tmp_path / "m.txt"), True), encoding="utf-8").read().splitlines()[1:]
-    rounds = [lines[i:i + 30] for i in range(0, len(lines), 30)]
-    assert len(rounds) == 288 and all(sorted(r) == sorted(f"file '{t}'" for t in tracks) for r in rounds)  # each track once a round
-    assert len({tuple(r) for r in rounds[:5]}) > 1  # in a new order each round
-    in_order = open(staging.playlist(tracks, str(tmp_path / "m.txt"), False), encoding="utf-8").read().splitlines()[1:]
-    assert in_order[:31] == [f"file '{t}'" for t in tracks] + ["file '/music/0.mp3'"]
-    assert open(staging.playlist([], str(tmp_path / "m.txt"), True), encoding="utf-8").read() == "ffconcat version 1.0\n"
+    def __init__(self, value):
+        import io
+        from array import array
+
+        self.stdout = io.BytesIO(array("h", [value] * (44100 // 4 * 2)).tobytes())
+
+    def kill(self):
+        pass
+
+    def wait(self):
+        return 0
+
+
+_TONES = {}
+
+
+def _fake_decoder(ffmpeg, path):
+    return _Decoded(_TONES.setdefault(os.path.basename(path), 1000 * (len(_TONES) + 1)))
+
+
+def _player(tracks, **kw):
+    from app.services.live_stream import music
+
+    sink = _Sink()
+    p = music.Player("ffmpeg", lambda: list(tracks), **{"on": True, "shuffle": False, "volume": 100, **kw})
+    p.attach(sink)
+    return p, sink
+
+
+def test_the_music_player(monkeypatch):
+    """The music while live: written at the pace it plays, track after track and round again, skipped, gone back,
+    paused, quietened and turned off as it goes."""
+    from array import array
+
+    from app.services.live_stream import music
+
+    monkeypatch.setattr(music, "decoder", _fake_decoder)
+    _TONES.clear()
+    p, sink = _player(["/m/a.mp3", "/m/b.mp3"])
+    try:
+        start = time.monotonic()
+        assert _wait_for(lambda: p.status()["track"] == "b.mp3")
+        assert _wait_for(lambda: p.status()["track"] == "a.mp3")  # round again
+        took = time.monotonic() - start
+        # at the pace it plays: half a second of tracks took about half a second, written in whole samples
+        assert 0.4 < took < 1.5 and len(sink.written) % 4 == 0
+        assert 0.3 < len(sink.written) / music.PER_SECOND < took + 0.3
+        values = set(array("h", bytes(sink.written)))
+        assert {1000, 2000} <= values
+
+        p.next()
+        assert _wait_for(lambda: p.status()["track"] == "b.mp3")
+        p.back()  # in its first seconds: the one before
+        assert _wait_for(lambda: p.status()["track"] == "a.mp3")
+
+        p.pause()  # silence, holding its place
+        time.sleep(0.1)
+        before = len(sink.written)
+        time.sleep(0.2)
+        assert set(array("h", bytes(sink.written[before:]))) == {0} and p.status()["playing"] is False
+        p.play()
+        assert _wait_for(lambda: p.status()["playing"] and set(array("h", bytes(sink.written[-music.CHUNK:]))) - {0})
+
+        p.settings(on=True, shuffle=False, volume=50)  # a quarter as loud (squared)
+        time.sleep(0.15)
+        assert set(array("h", bytes(sink.written[-music.CHUNK:]))) <= {0, 250, 500}
+        p.settings(on=False, shuffle=False, volume=50)  # off: silence
+        time.sleep(0.15)
+        assert set(array("h", bytes(sink.written[-music.CHUNK:]))) == {0}
+    finally:
+        p.stop()
+
+
+def test_the_music_with_no_tracks_is_silence_and_shuffles_each_round(monkeypatch):
+    from array import array
+
+    from app.services.live_stream import music
+
+    monkeypatch.setattr(music, "decoder", _fake_decoder)
+    _TONES.clear()
+    p, sink = _player([])
+    try:
+        assert _wait_for(lambda: len(sink.written) > music.CHUNK * 5)
+        assert set(array("h", bytes(sink.written))) == {0} and p.status()["track"] is None
+    finally:
+        p.stop()
+    # shuffled: each round every track once, in a new order
+    rounds = []
+    p = music.Player("ffmpeg", lambda: [f"/m/{i}.mp3" for i in range(8)], on=False, shuffle=True, volume=100)  # (off: nothing decoded meanwhile)
+    try:
+        for _ in range(6):
+            rounds.append([p._next_track() for _ in range(8)])
+    finally:
+        p.stop()
+    assert all(sorted(r) == sorted(f"/m/{i}.mp3" for i in range(8)) for r in rounds) and len({tuple(r) for r in rounds}) > 1
 
 
 def test_choosing_the_stream_folder(klipper, share):
     api, _ = klipper
     r = api.put("/stream/location", json={"path": str(share)})
     assert r.status_code == 200 and r.json()["is_default"] is False and r.json()["status"]["ready"] is True
+    # looking at the page makes the stream folder's own folders, so each is there to copy into by hand
+    assert not (share / "music").exists()
+    assert api.get("/stream").json()["media"]["error"] is None
+    assert all((share / name).is_dir() for name in ("images", "slideshows", "music"))
     api.post("/stream/pictures", files=[("files", ("a.png", _png(), "image/png"))])
     assert (share / "images" / "a.png").is_file()
     assert api.put("/stream/location", json={"path": None}).json()["is_default"] is True
