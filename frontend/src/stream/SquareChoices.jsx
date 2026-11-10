@@ -169,7 +169,8 @@ export function TextChoice({ card, setCard, fonts, streamText, slideName = null 
           </button>
         )}
         {(card.image || card.slideshow) && (
-          <button type="button" data-testid="stream-square-fill" onClick={() => setCard({ picture_box: FULL_BOX })} style={headerButton()}>
+          <button type="button" data-testid="stream-square-fill" onClick={() => (card.slideshow && slideName && !isBlank(slideName) ? setCard({ picture_boxes: { ...card.picture_boxes, [slideName]: FULL_BOX } }) : setCard({ picture_box: FULL_BOX }))}
+            title={card.slideshow && slideName ? `${slideLabel(slideName)} fills the square (the other pictures keep their size)` : undefined} style={headerButton()}>
             Picture fills the square
           </button>
         )}

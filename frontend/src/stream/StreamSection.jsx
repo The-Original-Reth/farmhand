@@ -71,7 +71,8 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
 
   const saved = page.settings;
   const shown = draft || saved;
-  const changed = !!draft || key.trim() !== "";
+  const differs = !!draft && Object.keys(draft).some((k) => JSON.stringify(draft[k]) !== JSON.stringify(saved[k]));
+  const changed = differs || key.trim() !== "";
   const change = (what) => {
     setDraft({ ...shown, ...what });
     setProblem(null);
@@ -229,6 +230,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
           ask={ask} busy={busy} onSave={saveNow} dirty={changed} onRenameSlideshow={renameShow}
+          onRevert={() => (setDraft(null), setKey(""), setProblem(null))}
           serverClock={status.serverTime !== null && !changed ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
@@ -287,7 +289,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
           <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" })}>
             <span style={{ width: 90 }}>Stream key</span>
             <input
-              data-testid="stream-key" type="password" autoComplete="off" value={key} onChange={(e) => (setKey(e.target.value), setProblem(null))}
+              data-testid="stream-key" type="password" autoComplete="new-password" name="farmhand-stream-key" value={key} onChange={(e) => (setKey(e.target.value), setProblem(null))}
               placeholder={saved.keySet ? "Saved. Type a new one to replace it" : "Paste your stream key"}
               style={{ ...fieldBox(), padding: "6px 8px", flex: 1, minWidth: 240 }}
             />

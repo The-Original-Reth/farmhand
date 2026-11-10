@@ -163,12 +163,16 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         shown = f"[c{c}b]"
         paths, seconds = cd.get("pictures") or [], cd.get("seconds") or SLIDE_SECONDS[2]
         period = len(paths) * seconds
-        pb = _picture_box(cd.get("picture_box"))
-        # the picture's box is a part of the square inside its border, so the border never covers the picture
+        # the picture's box is a part of the square inside its border, so the border never covers the picture; a
+        # slideshow's picture resized or moved on its own has its own box (picture_boxes, by its file's name)
         iw, ih = tw - 2 * edge, th - 2 * edge
-        bw, bh = max(2, round(pb["w"] * iw)), max(2, round(pb["h"] * ih))
-        bx, by = edge + round(pb["x"] * iw), edge + round(pb["y"] * ih)
-        at = "(W-w)/2:(H-h)/2" if (bw, bh) == (iw, ih) else f"{bx}+({bw}-w)/2:{by}+({bh}-h)/2"
+        own_boxes = cd.get("picture_boxes") or {}
+
+        def fit(path: str) -> tuple[int, int, str]:
+            pb = _picture_box(own_boxes.get(os.path.basename(path)) or cd.get("picture_box"))
+            bw, bh = max(2, round(pb["w"] * iw)), max(2, round(pb["h"] * ih))
+            bx, by = edge + round(pb["x"] * iw), edge + round(pb["y"] * ih)
+            return bw, bh, "(W-w)/2:(H-h)/2" if (bw, bh) == (iw, ih) else f"{bx}+({bw}-w)/2:{by}+({bh}-h)/2"
         # the slideshow's time: counted from midnight 1970 (look.clock at the start), as the page counts it
         lag = round(look.clock % period, 3) if period else 0
         t = f"t+{lag:g}" if lag else "t"
@@ -180,6 +184,7 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         for j, path in enumerate(paths):
             if stream_media.is_blank(path):  # a blank screen: the square's colour (and its words) in its turn
                 continue
+            bw, bh, at = fit(path)
             chain.append(f"[{picture(path)}:v]scale={bw}:{bh}:force_original_aspect_ratio=decrease,setsar=1,fps={FPS}[c{c}i{j}]")
             when = "" if j == 0 and not blanks else f":enable='{window(j)}'"
             chain.append(f"{shown}[c{c}i{j}]overlay={at}{when}[c{c}o{j}]")
