@@ -249,7 +249,7 @@ def _api(method: str, path: str, token: str, params: dict, body: dict | None = N
         raise YouTubeError(f"YouTube couldn't be reached ({type(e).__name__}).", retry=True) from None
     if r.status_code >= 400:
         raise YouTubeError(f"YouTube said: {_google_says(r)}", retry=r.status_code >= 500)
-    return r.json()
+    return r.json() if r.content else {}  # (a delete answers with nothing)
 
 
 def _channel_name(token: str) -> str | None:
@@ -279,6 +279,114 @@ def set_broadcast_text(creds: dict, title: str, description: str) -> dict:
         snippet["tags"] = old["tags"]
     _api("PUT", "/videos", token, {"part": "snippet"}, {"id": video_id, "snippet": snippet})
     return {"video_id": video_id, "title": snippet["title"]}
+
+
+# ------------------------------------------------------------------ Farmhand's own stream and broadcasts on YouTube
+# Signed in, Farmhand runs the YouTube side itself: a live stream of its own on the channel (its stream key from YouTube,
+# any resolution), a new broadcast each time it goes live (the video's settings from the YouTube settings window; it
+# starts by itself when the stream arrives, so YouTube Studio needn't be open), ended when it stops, and the
+# broadcast's health and viewers read now and then for the Stream page.
+
+STREAM_KEY = "youtube_stream_id"  # Farmhand's own live stream on the channel
+STREAM_TITLE = "Farmhand"
+LATENCY = {"normal": "normal", "low": "low", "ultraLow": "ultraLow"}
+
+
+def own_stream(creds: dict, stream_id: str | None) -> dict:
+    """Farmhand's own live stream on the channel, made when there's none (or the one kept has gone): {id, key, url}
+    (url: the RTMPS address the key goes on the end of). It takes any resolution and frame rate, so changing them never
+    needs another."""
+    token = _access_token(creds)
+    if stream_id:
+        items = _api("GET", "/liveStreams", token, {"part": "id,cdn", "id": stream_id}).get("items") or []
+        if items:
+            return _stream_out(items[0])
+    made = _api("POST", "/liveStreams", token, {"part": "snippet,cdn,contentDetails"}, {
+        "snippet": {"title": STREAM_TITLE, "description": "Farmhand's own stream: its broadcasts are made and ended by Farmhand."},
+        "cdn": {"ingestionType": "rtmp", "resolution": "variable", "frameRate": "variable"},
+        "contentDetails": {"isReusable": True},
+    })
+    return _stream_out(made)
+
+
+def _stream_out(item: dict) -> dict:
+    info = (item.get("cdn") or {}).get("ingestionInfo") or {}
+    url = info.get("rtmpsIngestionAddress") or "rtmps://a.rtmps.youtube.com/live2"
+    return {"id": item["id"], "key": info.get("streamName") or "", "url": url.rstrip("/") + "/"}
+
+
+def _video_snippet(yt: dict, title: str, description: str) -> dict:
+    snippet = {"title": (title or "Live")[:100], "description": description or "", "categoryId": yt.get("category") or "28"}
+    if yt.get("tags"):
+        snippet["tags"] = list(yt["tags"])
+    return snippet
+
+
+def start_broadcast(creds: dict, stream_id: str, yt: dict, title: str, description: str) -> dict:
+    """A new broadcast on the channel, bound to Farmhand's own stream, set from the YouTube settings (`yt`: privacy, tags,
+    category, made_for_kids, latency, dvr, auto_start, auto_stop): {id, watch_url, studio_url}. It starts by itself
+    when the stream reaches YouTube (unless auto_start is off: then it's started in YouTube Studio)."""
+    token = _access_token(creds)
+    made = _api("POST", "/liveBroadcasts", token, {"part": "snippet,status,contentDetails"}, {
+        "snippet": {"title": (title or "Live")[:100], "description": description or "",
+                    "scheduledStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+        "status": {"privacyStatus": yt.get("privacy") or "public", "selfDeclaredMadeForKids": bool(yt.get("made_for_kids"))},
+        "contentDetails": {"enableAutoStart": yt.get("auto_start", True) is not False, "enableAutoStop": yt.get("auto_stop", True) is not False,
+                           "enableDvr": yt.get("dvr", True) is not False, "latencyPreference": LATENCY.get(yt.get("latency"), "normal"),
+                           "monitorStream": {"enableMonitorStream": False}},
+    })
+    bid = made["id"]
+    _api("POST", "/liveBroadcasts/bind", token, {"id": bid, "part": "id,contentDetails", "streamId": stream_id})
+    try:  # the tags and category live on the video (the broadcast's own id)
+        _api("PUT", "/videos", token, {"part": "snippet"}, {"id": bid, "snippet": _video_snippet(yt, title, description)})
+    except YouTubeError:
+        pass  # (the broadcast still goes ahead; the page says the tags weren't set when it reads the health)
+    return {"id": bid, "watch_url": f"https://www.youtube.com/watch?v={bid}", "studio_url": f"https://studio.youtube.com/video/{bid}/livestreaming"}
+
+
+def update_broadcast(creds: dict, broadcast_id: str, yt: dict, title: str, description: str) -> None:
+    """Change the live broadcast's title, description, tags, category, privacy and made for kids straight away."""
+    token = _access_token(creds)
+    _api("PUT", "/videos", token, {"part": "snippet,status"}, {
+        "id": broadcast_id, "snippet": _video_snippet(yt, title, description),
+        "status": {"privacyStatus": yt.get("privacy") or "public", "selfDeclaredMadeForKids": bool(yt.get("made_for_kids"))},
+    })
+
+
+def end_broadcast(creds: dict, broadcast_id: str) -> None:
+    """End the broadcast (it becomes the channel's saved video). One that never went live is deleted instead, so no
+    empty broadcast is left waiting. Never minded if YouTube has already ended it."""
+    token = _access_token(creds)
+    try:
+        _api("POST", "/liveBroadcasts/transition", token, {"broadcastStatus": "complete", "id": broadcast_id, "part": "status"})
+    except YouTubeError:
+        try:
+            items = _api("GET", "/liveBroadcasts", token, {"part": "status", "id": broadcast_id}).get("items") or []
+            life = ((items[0].get("status") or {}).get("lifeCycleStatus") if items else None) or ""
+            if life in ("created", "ready", "testStarting", "testing"):
+                _api("DELETE", "/liveBroadcasts", token, {"id": broadcast_id})
+        except YouTubeError:
+            pass
+
+
+def health(creds: dict, stream_id: str, broadcast_id: str | None) -> dict:
+    """What YouTube says now: {state: the broadcast's (created, ready, testing, live, complete...), health: good | ok |
+    bad | noData, issues: [YouTube's own warnings], viewers: watching now (None while not live)}."""
+    token = _access_token(creds)
+    out = {"state": None, "health": None, "issues": [], "viewers": None}
+    streams = _api("GET", "/liveStreams", token, {"part": "status", "id": stream_id}).get("items") or []
+    if streams:
+        h = (streams[0].get("status") or {}).get("healthStatus") or {}
+        out["health"] = h.get("status")
+        out["issues"] = [i.get("description") or i.get("reason") or i.get("type") for i in h.get("configurationIssues") or []
+                         if (i.get("severity") or "") in ("error", "warning")][:5]
+    if broadcast_id:
+        items = _api("GET", "/liveBroadcasts", token, {"part": "status", "id": broadcast_id}).get("items") or []
+        out["state"] = ((items[0].get("status") or {}).get("lifeCycleStatus")) if items else "gone"
+        videos = _api("GET", "/videos", token, {"part": "liveStreamingDetails", "id": broadcast_id}).get("items") or []
+        viewers = ((videos[0].get("liveStreamingDetails") or {}).get("concurrentViewers")) if videos else None
+        out["viewers"] = int(viewers) if viewers is not None and str(viewers).isdigit() else None
+    return out
 
 
 def reset() -> None:

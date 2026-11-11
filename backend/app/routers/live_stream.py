@@ -57,8 +57,8 @@ def stream_page(db: Session = Depends(get_db)):
 @router.put("")
 def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
     """
-    Save the stream's settings. While live: a change to the picture starts the stream again with it; a new title or
-    description is set on the YouTube broadcast straight away; turning the stream off (enabled: false) stops it.
+    Save the stream's settings. While live: a change to the picture starts the stream again with it; a new title,
+    description or YouTube setting is set on the YouTube broadcast straight away; turning the stream off (enabled: false) stops it.
     """
     with answer_errors():
         before = live_stream.settings(db)
@@ -67,7 +67,7 @@ def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
             seconds_all=payload.seconds_all, seconds_each=payload.seconds_each, resolution=payload.resolution,
             border_color=payload.border_color, background=payload.background, font=payload.font, color=payload.color, enabled=payload.enabled, cols=payload.cols, rows=payload.rows, cells=payload.cells,
             title=payload.title, description=payload.description,
-            music=payload.music, music_volume=payload.music_volume, music_shuffle=payload.music_shuffle, delay=payload.delay,
+            music=payload.music, music_volume=payload.music_volume, music_shuffle=payload.music_shuffle, delay=payload.delay, youtube=payload.youtube,
             stream_key=payload.stream_key, clear_key=payload.clear_key,
         )
         live = live_stream.stream.status()["live"]
@@ -77,9 +77,12 @@ def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
             _restart_if_live(db)
         elif live and any(before[k] != after[k] for k in MUSIC):
             live_stream.stream.music_settings(after)
-        elif (live and after["destination"] == "youtube" and (before["title"], before["description"]) != (after["title"], after["description"])
-              and youtube_live.credentials(db)):
-            _apply_title(db)
+        elif (live and after["destination"] == "youtube"
+              and (before["title"], before["description"], before["youtube"]) != (after["title"], after["description"], after["youtube"])):
+            # Farmhand's own broadcast: changed straight away; with a pasted key, just the title and description
+            if not live_stream.stream.update_broadcast(after) and youtube_live.credentials(db) and (
+                    (before["title"], before["description"]) != (after["title"], after["description"])):
+                _apply_title(db)
     return live_stream.page(db)
 
 
@@ -311,7 +314,8 @@ def youtube_sign_out(payload: YouTubeSignOutIn | None = None, db: Session = Depe
 
 @router.post("/youtube/apply")
 def youtube_apply(db: Session = Depends(get_db)):
-    """Set the saved title and description on the channel's live broadcast now. status.title says how it went."""
+    """Set the saved title, description and YouTube settings on the live broadcast now. status.title says how it went."""
     with answer_errors():
-        _apply_title(db)
+        if not live_stream.stream.update_broadcast(live_stream.settings(db)):
+            _apply_title(db)
     return live_stream.page(db)

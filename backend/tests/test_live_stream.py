@@ -140,6 +140,9 @@ def test_settings_are_saved_and_the_key_never_comes_back(klipper):
         "destination": "youtube", "cols": 1, "rows": 1, "cells": [None], "cameras": [], "show_status": True, "layout": "grid",
         "resolution": "1080p", "seconds_all": 30, "seconds_each": 20, "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF", "enabled": True,
         "music": True, "music_volume": 50, "music_shuffle": True, "delay": 60, "title": "", "description": "", "key_set": False,
+        "key_from_youtube": False,
+        "youtube": {"privacy": "public", "tags": [], "category": "28", "made_for_kids": False, "latency": "normal", "dvr": True,
+                    "auto_start": True, "auto_stop": True},
     }
     assert [r["key"] for r in page["resolutions"]] == ["720p", "1080p", "1440p"] and page["resolutions"][2]["label"].startswith("2K")
     assert (page["media"]["images"], page["media"]["slideshows"], page["media"]["music"], page["media"]["error"]) == ([], [], [], None)
@@ -1056,6 +1059,11 @@ class FakeGoogle:
         self.videos: dict[str, dict] = {}
         self.revoked: list[str] = []
         self.requests: list[httpx.Request] = []
+        self.streams: dict[str, dict] = {}  # liveStreams made, by id
+        self.made: dict[str, dict] = {}  # liveBroadcasts made, by id ({snippet, status, contentDetails, bound})
+        self.ended: list[str] = []
+        self.deleted: list[str] = []
+        self.refuse_broadcast = False
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -1084,16 +1092,53 @@ class FakeGoogle:
         path = request.url.path.removeprefix("/youtube/v3")
         if path == "/channels":
             return httpx.Response(200, json={"items": [{"snippet": {"title": "3D Printing Elves"}}]})
+        import json
+
+        params = request.url.params
+        body = json.loads(request.content) if request.content and request.method in ("POST", "PUT") else None
+        if path == "/liveStreams" and request.method == "GET":
+            return httpx.Response(200, json={"items": [self.streams[params["id"]]] if params.get("id") in self.streams else []})
+        if path == "/liveStreams" and request.method == "POST":
+            sid = f"stream-{len(self.streams) + 1}"
+            self.streams[sid] = {"id": sid, **body, "cdn": {**body["cdn"], "ingestionInfo": {
+                "streamName": f"key-{sid}", "rtmpsIngestionAddress": "rtmps://a.rtmps.youtube.com/live2"}},
+                "status": {"healthStatus": {"status": "good", "configurationIssues": [
+                    {"severity": "warning", "description": "Use a higher bitrate."}, {"severity": "info", "description": "fine"}]}}}
+            return httpx.Response(200, json=self.streams[sid])
+        if path == "/liveBroadcasts" and request.method == "POST":
+            if self.refuse_broadcast:
+                return httpx.Response(403, json={"error": {"code": 403, "message": "The user is not enabled for live streaming."}})
+            bid = f"bc-{len(self.made) + 1}"
+            self.made[bid] = {**body, "bound": None, "life": "ready"}
+            self.videos[bid] = dict(body["snippet"])
+            return httpx.Response(200, json={"id": bid, **body})
+        if path == "/liveBroadcasts/bind":
+            self.made[params["id"]]["bound"] = params["streamId"]
+            return httpx.Response(200, json={"id": params["id"]})
+        if path == "/liveBroadcasts/transition":
+            if self.made[params["id"]]["life"] != "live":
+                return httpx.Response(403, json={"error": {"code": 403, "message": "Invalid transition"}})
+            self.made[params["id"]]["life"] = "complete"
+            self.ended.append(params["id"])
+            return httpx.Response(200, json={})
+        if path == "/liveBroadcasts" and request.method == "DELETE":
+            self.deleted.append(params["id"])
+            self.made.pop(params["id"], None)
+            return httpx.Response(204)
+        if path == "/liveBroadcasts" and params.get("id"):
+            b = self.made.get(params["id"])
+            return httpx.Response(200, json={"items": [{"id": params["id"], "status": {"lifeCycleStatus": b["life"]}}] if b else []})
         if path == "/liveBroadcasts":
             return httpx.Response(200, json={"items": self.broadcasts})
+        if path == "/videos" and request.method == "GET" and params.get("part") == "liveStreamingDetails":
+            return httpx.Response(200, json={"items": [{"id": params["id"], "liveStreamingDetails": {"concurrentViewers": "7"}}]})
         if path == "/videos" and request.method == "GET":
             vid = request.url.params["id"]
             return httpx.Response(200, json={"items": [{"id": vid, "snippet": self.videos[vid]}] if vid in self.videos else []})
         if path == "/videos" and request.method == "PUT":
-            import json
-
-            body = json.loads(request.content)
             self.videos[body["id"]] = body["snippet"]
+            if body.get("status") and body["id"] in self.made:
+                self.made[body["id"]]["status"] = body["status"]
             return httpx.Response(200, json=body)
         return httpx.Response(404, json={"error": {"code": 404, "message": "Not found"}})
 
@@ -1171,25 +1216,82 @@ def _db(api):
     return next(app.dependency_overrides[get_db]())
 
 
-def test_going_live_sets_the_title_once_the_broadcast_is_there(klipper, moonraker, ffmpeg, google, monkeypatch):
+def test_going_live_signed_in_makes_the_broadcast_on_farmhands_own_stream(klipper, moonraker, ffmpeg, google):
     api, pid = klipper
-    monkeypatch.setattr(live_stream.runner, "TITLE_EVERY", 0.05)
     moonraker.webcams = [_cam()]
     _signed_in(api, google)
-    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live",
-                             "description": "Printing all day"})
+    yt = {"privacy": "unlisted", "tags": ["3D print farm", "Voron"], "category": "27", "made_for_kids": False, "latency": "low",
+          "dvr": False, "auto_start": True, "auto_stop": True}
+    page = api.put("/stream", json={"cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live", "description": "Printing all day",
+                                    "youtube": yt}).json()
+    assert page["settings"]["youtube"] == yt and page["settings"]["key_set"] is False  # no key pasted: YouTube gives one
     status = api.post("/stream/start").json()["status"]
-    assert status["title"]["state"] == "waiting"
-    time.sleep(0.2)
-    assert live_stream.stream.status()["title"]["state"] == "waiting"  # no broadcast yet: still trying
-    google.broadcasts = [{"id": "vid-1", "snippet": {"title": "Live stream"}}]
-    google.videos["vid-1"] = {"title": "Live stream", "description": "", "categoryId": "28"}
-    assert _wait_for(lambda: live_stream.stream.status()["title"]["state"] == "done")
-    assert google.videos["vid-1"]["title"] == "Farm live" and google.videos["vid-1"]["description"] == "Printing all day"
+    assert status["live"] is True and status["title"]["state"] == "done" and "unlisted" in status["title"]["message"]
 
-    # a new title saved while live goes straight to the broadcast, without starting the stream again
-    api.put("/stream", json={"title": "Night shift"})
-    assert google.videos["vid-1"]["title"] == "Night shift" and len(ffmpeg.commands) == 1
+    # Farmhand's own stream (any resolution), its key from YouTube; one broadcast bound to it, set from the settings
+    (sid, stream), = google.streams.items()
+    assert stream["cdn"]["resolution"] == "variable" and stream["contentDetails"]["isReusable"] is True
+    sender = ffmpeg.senders[0]
+    assert sender[-1] == f"rtmps://a.rtmps.youtube.com/live2/key-{sid}"
+    (bid, b), = google.made.items()
+    assert b["bound"] == sid and b["status"] == {"privacyStatus": "unlisted", "selfDeclaredMadeForKids": False}
+    assert b["contentDetails"]["enableAutoStart"] is True and b["contentDetails"]["latencyPreference"] == "low" and b["contentDetails"]["enableDvr"] is False
+    assert google.videos[bid] == {"title": "Farm live", "description": "Printing all day", "categoryId": "27", "tags": ["3D print farm", "Voron"]}
+    assert api.get("/stream").json()["settings"]["key_from_youtube"] is True
+
+    # the page shows the broadcast's links and YouTube's word on it
+    assert _wait_for(lambda: (live_stream.stream.status()["youtube"] or {}).get("health") == "good")
+    seen = live_stream.stream.status()["youtube"]
+    assert seen["watch_url"] == f"https://www.youtube.com/watch?v={bid}" and bid in seen["studio_url"]
+    assert seen["issues"] == ["Use a higher bitrate."] and seen["viewers"] == 7 and seen["state"] == "ready"
+
+    # changed while live: straight onto the broadcast going out, the stream not started again
+    n = len(ffmpeg.commands)
+    api.put("/stream", json={"title": "Night shift", "youtube": {"privacy": "public", "tags": ["night"]}})
+    assert google.videos[bid]["title"] == "Night shift" and google.videos[bid]["tags"] == ["night"]
+    assert google.made[bid]["status"]["privacyStatus"] == "public" and len(ffmpeg.commands) == n
+    assert "new title" in live_stream.stream.status()["title"]["message"]
+
+    # stopped before it ever went live on YouTube: the empty broadcast is deleted, not left waiting
+    api.post("/stream/stop")
+    assert _wait_for(lambda: google.deleted == [bid])
+
+    # the next time: the same stream (its id kept), a new broadcast; one that went live is ended instead
+    api.post("/stream/start")
+    assert len(google.streams) == 1 and len(google.made) == 1
+    (bid2, _), = google.made.items()
+    google.made[bid2]["life"] = "live"
+    api.post("/stream/stop")
+    assert _wait_for(lambda: google.ended == [bid2])
+
+
+def test_youtube_refusing_the_broadcast_says_why_and_nothing_goes_out(klipper, moonraker, ffmpeg, google):
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    _signed_in(api, google)
+    google.refuse_broadcast = True
+    api.put("/stream", json={"cameras": [f"{pid}:Bed"], "show_status": False})
+    r = api.post("/stream/start")
+    assert r.status_code == 422 and "wouldn't make the broadcast" in r.json()["detail"] and "not enabled for live streaming" in r.json()["detail"]
+    assert live_stream.stream.status()["live"] is False and not ffmpeg.senders
+
+
+def test_no_key_and_not_signed_in_says_both_ways(klipper, moonraker, ffmpeg):
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"cameras": [f"{pid}:Bed"], "show_status": False})
+    detail = api.post("/stream/start").json()["detail"]
+    assert "Sign in to YouTube" in detail and "stream key" in detail
+
+
+def test_youtube_settings_are_checked(klipper):
+    api, _ = klipper
+    assert "public, unlisted or private" in api.put("/stream", json={"youtube": {"privacy": "secret"}}).json()["detail"]
+    assert "categories" in api.put("/stream", json={"youtube": {"category": "99"}}).json()["detail"]
+    assert "< or >" in api.put("/stream", json={"youtube": {"tags": ["<b>"]}}).json()["detail"]
+    assert "500 characters" in api.put("/stream", json={"youtube": {"tags": ["x" * 300, "y" * 300]}}).json()["detail"]
+    yt = api.put("/stream", json={"youtube": {"tags": [" farm ", "farm", "", "toys"], "made_for_kids": True}}).json()["settings"]["youtube"]
+    assert yt["tags"] == ["farm", "toys"] and yt["made_for_kids"] is True and yt["privacy"] == "public"  # the rest kept
 
 
 def test_going_live_without_signing_in_says_the_title_wont_be_set(klipper, moonraker, ffmpeg):

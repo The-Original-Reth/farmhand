@@ -242,7 +242,7 @@ STREAM_SETUP_FILE = "stream-setup.json"  # beside farmhand-config.json
 STREAM_SETUP_KIND = "stream-setup"
 # what's kept: everything on the page but the stream key and the YouTube sign-in, which never leave Farmhand
 STREAM_SETUP_KEYS = ("destination", "cols", "rows", "show_status", "layout", "seconds_all", "seconds_each", "resolution",
-                     "border_color", "background", "font", "color", "title", "description", "enabled", "music", "music_volume", "music_shuffle", "delay")
+                     "border_color", "background", "font", "color", "title", "description", "enabled", "music", "music_volume", "music_shuffle", "delay", "youtube")
 
 
 def stream_setup_document(db: Session) -> dict:

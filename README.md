@@ -628,11 +628,12 @@ Farmhand: no OBS, no PC left running. The picture is a grid of squares that you 
 logo or nothing, and under each camera Farmhand writes the printer's name and its print (`VT 1190 · Printing 42% ·
 benchy.gcode`), brought up to date every 15 seconds.
 
-1. In **YouTube Studio**, choose **Create → Go live → Stream** and copy the **Stream key**.
-2. In Farmhand's **Stream** page, paste the key, set up the squares (**Add all cameras** fills
-   them) and press **Save**.
+1. Open **YouTube settings** (Where to) and sign Farmhand in to your channel (see "YouTube settings and the account"
+   below). Or, without signing in, paste a **Stream key** from YouTube Studio (**Create → Go live → Stream**).
+2. Set up the squares (**Add all cameras** fills them) and press **Save**.
 3. Press **Go live**. Farmhand first collects the **Stream delay** (Where to; 60 seconds unless you choose another,
-   0 to 120), then YouTube shows the stream in Studio a few seconds later. **Stop stream** ends it.
+   0 to 120), then sends it. Signed in, Farmhand makes the broadcast on YouTube itself and it starts by itself when
+   the video arrives, so YouTube Studio needn't be open. **Stop stream** ends it (it becomes the channel's saved video).
 
 While live, a new layout (or any change to the picture) doesn't stop the stream: Farmhand starts the new picture
 beside the one going out and switches to it at its first whole frame, on the same connection to YouTube, so viewers
@@ -653,11 +654,11 @@ is held. A new delay applies the next time you go live.
 - **Mute**, beside the switch, silences the music on this page only (the stream keeps playing it); this browser
   remembers it. While live, the page plays along with the stream (the track it's sending, from where it is), so with
   Mute off you hear what viewers hear.
-- The stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked out
-  of any error message. **Forget key** removes it.
+- A pasted stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked
+  out of any error message. **Forget key** (YouTube settings) removes it. Signed in, Farmhand doesn't need one.
 - If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
   until you press **Stop stream**. Saving a new picture (squares, layout, pictures, colours) while live starts the stream
-  again with it; a new title or description goes straight to YouTube without a restart.
+  again with it; a new title, description, tags or privacy goes straight to the broadcast without a restart.
 - **Preview**, on the left of the page, plays the grid in your browser as the stream lays it out, with the words, the
   pictures and the borders, so you can check it before going live. Slideshows and taking turns keep the server's time
   of day, on the stream and in the preview alike: with nothing changed and not saved yet, the preview shows the same
@@ -806,26 +807,42 @@ On a Proxmox LXC container (Farmhand-test, CT 106, is set up this way), with the
 `FARMHAND_STREAM_ENCODER` in the API's environment can say `cpu` or `nvenc` outright; the default, `auto`, tries the
 card once and remembers what it found until Farmhand starts again.
 
-### The YouTube title and description
+### YouTube settings and the account
 
-With just the stream key, YouTube keeps its own title. For Farmhand to set the broadcast's **title** and
-**description**, sign it in to your channel once. The **YouTube account** panel's link, *How to connect your YouTube
-channel, step by step*, opens a page (`/help/youtube`) that goes through it all. In short:
+Everything YouTube is in the **YouTube settings** window (the button under *Where to*; the line beside it sums it up):
+
+- **The video:** title (up to 100 characters), description (5000), tags (commas between them, 500 characters in all)
+  and category.
+- **Who can watch:** public (the default), unlisted or private, and *made for kids* (YouTube then turns chat off).
+  Over-18 only isn't something YouTube lets apps set: do it in YouTube Studio (Edit → Age restriction).
+- **The stream on YouTube:** latency (normal, low or ultra-low), viewers can rewind (DVR), starts by itself when the
+  video arrives, ends by itself when Farmhand stops.
+- **Stream key** (only needed when not signed in) and the **YouTube account**.
+
+**Save** in the window saves just these; while live they go straight onto the broadcast going out. Signed in, each
+**Go live** makes a new broadcast with them, on a stream of Farmhand's own on the channel (made once, called
+*Farmhand*, taking any resolution), and **Stop stream** ends it; one that never went live is deleted instead. While
+live, the status shows what YouTube says of it, read once a minute: its health (*Healthy*, *Poor*, *Not receiving video
+yet*), YouTube's warnings, how many are watching, and links to watch it and to YouTube Studio for chat and analytics.
+With just a pasted key, YouTube makes the broadcast itself from Studio's settings and Farmhand can't change it.
+
+To sign in once, the window's **YouTube account** link, *How to connect your YouTube channel, step by step*, opens a
+page (`/help/youtube`) that goes through it all. In short:
 
 1. In [Google Cloud](https://console.cloud.google.com/), make a project and turn on the **YouTube Data API v3**.
 2. In **Google Auth Platform** (it used to be the **OAuth consent screen**), press **Get started**: app name, your
    email, audience **External**. Then on **Audience** add the channel's Google account under **Test users**. Left in
    **Testing**, Google signs Farmhand out after 7 days, and you sign in again. To stay signed in, publish it (**In
    production**), which needs a home page, a privacy policy link and their domain on **Branding**.
-3. **Clients → Create client**, type **TVs and Limited Input devices**. Paste its client ID and secret into the Stream
-   page and press **Save client**. Both show as dots until you click the eye next to them.
+3. **Clients → Create client**, type **TVs and Limited Input devices**. Paste its client ID and secret into YouTube
+   settings and press **Save client**. Both show as dots until you click the eye next to them.
 4. Press **Sign in to YouTube**. The page shows a code: open google.com/device on any computer or phone, sign in to
    the Google account that owns the channel and enter it. The page notices by itself. (Google warns the app isn't
    verified: it's your own, so continue.)
 
-Then write the title and description and **Save**. When you go live, Farmhand sets them on the broadcast as soon as
-YouTube has started it (it keeps trying for 4 minutes); while live, **Set title on YouTube now** does it again.
-A field left empty leaves YouTube's own. Farmhand never sees your Google password; the client secret and the sign-in
+The channel must have live streaming turned on (YouTube asks for a phone check and can take a day the first time);
+until then Go live says YouTube wouldn't make the broadcast, and why. Farmhand asks YouTube about 2 things a minute
+while live, well inside the free daily allowance. Farmhand never sees your Google password; the client secret and the sign-in
 stay inside Farmhand like the stream key. **Sign out** forgets the sign-in and tells Google to as well.
 - Cameras are read the same way Monitor finds them: a Mainsail camera with the **MJPEG streamer** or **adaptive
   MJPEG** service (its MJPEG stream), camera-streamer, go2rtc on the printer (its RTSP port, 8554), and a Prusa's

@@ -67,39 +67,6 @@ export function LayoutPanel({ shown, count, change, bare = false }) {
   );
 }
 
-// The YouTube broadcast's own title and description (saved with the page's Save; set on YouTube once the broadcast
-// starts, or straight away while live), and signing Farmhand in to the channel, which setting them needs.
-export function YouTubeTextPanel({ shown, change, status }) {
-  const title = status.title;
-  return (
-    <div data-testid="stream-youtube-panel" style={panel()}>
-      <div style={heading}>YouTube title and description</div>
-      <label style={uiText(12, c.textMuted, { display: "flex", flexDirection: "column", gap: 4 })}>
-        <span>
-          Title <span style={uiText(11, c.textFaint)}>{shown.title.length}/100</span>
-        </span>
-        <input
-          data-testid="stream-title" value={shown.title} maxLength={100} onChange={(e) => change({ title: e.target.value })}
-          placeholder="Left empty, YouTube's own title stays" style={{ ...fieldBox(), padding: "6px 8px" }}
-        />
-      </label>
-      <label style={uiText(12, c.textMuted, { display: "flex", flexDirection: "column", gap: 4 })}>
-        Description
-        <textarea
-          data-testid="stream-description" value={shown.description} maxLength={5000} rows={4} onChange={(e) => change({ description: e.target.value })}
-          placeholder="Left empty, YouTube's own description stays" style={{ ...fieldBox(), padding: "6px 8px", resize: "vertical", lineHeight: 1.5 }}
-        />
-      </label>
-      {title && (
-        <div data-testid="stream-title-status" style={uiText(12, title.state === "failed" ? c.danger : title.state === "done" ? c.green : c.amber, { lineHeight: 1.5 })}>
-          {title.message}
-        </div>
-      )}
-      {!title && <div style={help}>Set on the YouTube broadcast once it starts; needs the YouTube account below signed in.</div>}
-    </div>
-  );
-}
-
 // A client ID or secret: dots until the eye next to it is clicked. `testid`: the field's; its eye's is `${testid}-show`.
 function HiddenField({ testid, value, onChange, placeholder }) {
   const [shown, setShown] = useState(false);
@@ -147,7 +114,8 @@ const GuideLink = () => (
 
 // Signing Farmhand in to the YouTube channel, which setting the title and description needs; while live, setting them
 // again straight away.
-export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
+// (`bare`: without its own panel round it, inside the YouTube settings window)
+export function YouTubeAccountPanel({ youtube, status, ask, busy, bare = false }) {
   const [clientId, setClientId] = useState("");
   const [secret, setSecret] = useState("");
   const [editingClient, setEditingClient] = useState(false);
@@ -157,7 +125,7 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
       (p) => p && (setClientId(""), setSecret(""), setEditingClient(false)),
     );
   return (
-    <div data-testid="stream-youtube-account" style={panel()}>
+    <div data-testid="stream-youtube-account" style={bare ? {} : panel()}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
           <div style={heading}>YouTube account</div>
@@ -168,7 +136,7 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
             <span style={uiText(13, c.green, { flex: 1 })}>Signed in{youtube.channel ? ` as ${youtube.channel}` : ""}</span>
             {status.live && (
               <button type="button" data-testid="stream-youtube-apply" onClick={() => ask("youtube", youtubeApply)} disabled={!!busy} style={headerButton()}>
-                {busy === "youtube" ? "Setting…" : "Set title on YouTube now"}
+                {busy === "youtube" ? "Setting…" : "Send to YouTube again"}
               </button>
             )}
             <button type="button" data-testid="stream-youtube-sign-out" onClick={() => ask("youtube", () => youtubeSignOut(false))} disabled={!!busy} style={headerButton()}>
@@ -233,9 +201,6 @@ export function YouTubeAccountPanel({ youtube, status, ask, busy }) {
   );
 }
 
-const WHERE_KEY = {
-  youtube: "In YouTube Studio: Create → Go live → Stream, then Copy next to Stream key.",
-};
 const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
 
 // The switch at the top of the page: the stream's functions on or off
@@ -304,6 +269,7 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
                 ? "The stream is off: ffmpeg isn't running on the server. Set everything up as usual, and turn it on above to go live."
                 : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
         </div>
+        {status.live && status.youtube && <YouTubeLiveLine yt={status.youtube} />}
       </div>
       {status.live ? (
         <button type="button" data-testid="stream-stop" onClick={onStop} disabled={!!busy} style={{ ...cancelButton(!!busy), color: c.danger, borderColor: c.danger }}>
@@ -321,9 +287,33 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
   );
 }
 
-// Where it goes, and its stream key (typed here once, kept on the server: `keySet` says one is saved)
+const HEALTH = { good: ["Healthy", "green"], ok: ["OK", "green"], bad: ["Poor", "amber"], noData: ["Not receiving video yet", "amber"] };
+const STATE = { created: "being set up", ready: "waiting for the video", testStarting: "starting", testing: "testing", liveStarting: "starting",
+  live: "live", complete: "ended", revoked: "taken down", gone: "gone" };
+
+// What YouTube says of the broadcast Farmhand made (read about once a minute): its state, health, viewers, and links
+function YouTubeLiveLine({ yt }) {
+  const [healthWord, tone] = HEALTH[yt.health] || ["Asking YouTube…", "textMuted"];
+  return (
+    <div data-testid="stream-youtube-live" style={uiText(12, c.textMuted, { marginTop: 6, lineHeight: 1.5 })}>
+      <span>
+        YouTube: <span style={{ color: c[tone], fontWeight: 600 }}>{healthWord}</span>
+        {yt.state ? ` · broadcast ${STATE[yt.state] || yt.state}` : ""}
+        {yt.viewers !== null ? ` · ${yt.viewers} watching` : ""}
+        {" · "}
+        <a href={yt.watchUrl} target="_blank" rel="noreferrer" style={{ color: c.link }}>Watch</a>
+        {" · "}
+        <a href={yt.studioUrl} target="_blank" rel="noreferrer" style={{ color: c.link }}>Chat and analytics in YouTube Studio</a>
+      </span>
+      {yt.issues.map((i) => <div key={i} style={{ color: c.amber }}>{i}</div>)}
+    </div>
+  );
+}
+
+// Where it goes, and the stream's delay (the stream key and the rest of YouTube are in the YouTube settings window)
 // `delay`, `onDelay`: seconds the stream is held before YouTube gets it (saved with Save; applies when going live).
-export function WhereToPanel({ destination, destinations, onDestination, streamKey, onKey, keySet, onForgetKey, busy, delay = 60, onDelay, live = false }) {
+// `youtubeSettings`: the YouTube settings button and its summary (the stream key, title and account are in its window).
+export function WhereToPanel({ destination, destinations, onDestination, delay = 60, onDelay, live = false, youtubeSettings = null }) {
   return (
     <div style={panel()}>
       <div style={heading}>Where to</div>
@@ -340,20 +330,7 @@ export function WhereToPanel({ destination, destinations, onDestination, streamK
           <span data-testid="stream-destination" style={uiText(13, c.text)}>{destinations[0]?.label}</span>
         )}
       </label>
-      <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" })}>
-        <span style={{ width: 90 }}>Stream key</span>
-        <input
-          data-testid="stream-key" type="password" autoComplete="new-password" name="farmhand-stream-key" value={streamKey} onChange={(e) => onKey(e.target.value)}
-          placeholder={keySet ? "Saved. Type a new one to replace it" : "Paste your stream key"}
-          style={{ ...fieldBox(), padding: "6px 8px", flex: 1, minWidth: 240 }}
-        />
-        {keySet && (
-          <button type="button" data-testid="stream-forget-key" onClick={onForgetKey} disabled={!!busy} style={headerButton()}>
-            Forget key
-          </button>
-        )}
-      </label>
-      <div style={help}>{WHERE_KEY[destination]} The key stays in Farmhand: it isn't shown again or written to the settings copy.</div>
+      {youtubeSettings}
       <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" })}>
         <span style={{ width: 90 }}>Stream delay</span>
         <input
