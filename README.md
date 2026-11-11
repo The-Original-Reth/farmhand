@@ -809,7 +809,9 @@ card once and remembers what it found until Farmhand starts again.
 
 ### YouTube settings and the account
 
-Everything YouTube is in the **YouTube settings** window (the button under *Where to*; the line beside it sums it up):
+Everything YouTube is in the **YouTube settings** window: the button under *Where to* (the line beside it sums it up)
+opens it as a browser window of its own (`/youtube-settings`), so it can be moved anywhere, another screen included,
+and left open while you use Farmhand; its **Save** shows on the Stream page straight away:
 
 - **The video:** title (up to 100 characters), description (5000), tags (commas between them, 500 characters in all)
   and category.
@@ -819,11 +821,14 @@ Everything YouTube is in the **YouTube settings** window (the button under *Wher
   video arrives, ends by itself when Farmhand stops.
 - **Stream key** (only needed when not signed in) and the **YouTube account**.
 
-**Save** in the window saves just these; while live they go straight onto the broadcast going out. Signed in, each
+**Save** in the window saves just these (changes on the Stream page not saved yet stay as they are); while live they go straight onto the broadcast going out. Signed in, each
 **Go live** makes a new broadcast with them, on a stream of Farmhand's own on the channel (made once, called
 *Farmhand*, taking any resolution), and **Stop stream** ends it; one that never went live is deleted instead. While
-live, the status shows what YouTube says of it, read once a minute: its health (*Healthy*, *Poor*, *Not receiving video
-yet*), YouTube's warnings, how many are watching, and links to watch it and to YouTube Studio for chat and analytics.
+live, the status shows what YouTube says of it, first asked 20 seconds after the delay has passed and then every 2
+minutes: its health (*Healthy*, *Poor*, *Not receiving video yet*), YouTube's warnings, how many are watching, and links
+to watch it and to YouTube Studio for chat and analytics. If YouTube ends the broadcast while Farmhand is still sending
+(its auto-stop after a long drop, or **End stream** in Studio), Farmhand makes a new one on the same stream within 2
+minutes, so a stream left running day and night always has somewhere to show; to end it, press **Stop stream**.
 With just a pasted key, YouTube makes the broadcast itself from Studio's settings and Farmhand can't change it.
 
 To sign in once, the window's **YouTube account** link, *How to connect your YouTube channel, step by step*, opens a
@@ -841,8 +846,10 @@ page (`/help/youtube`) that goes through it all. In short:
    verified: it's your own, so continue.)
 
 The channel must have live streaming turned on (YouTube asks for a phone check and can take a day the first time);
-until then Go live says YouTube wouldn't make the broadcast, and why. Farmhand asks YouTube about 2 things a minute
-while live, well inside the free daily allowance. Farmhand never sees your Google password; the client secret and the sign-in
+until then Go live says YouTube wouldn't make the broadcast, and why. While live, Farmhand asks YouTube 3 things every 2
+minutes (about 2,200 of the 10,000 free units a day); going live costs about 150, stopping 50 and each save of the YouTube
+settings while live 50. The video keeps going if the allowance runs out; only the status and Go live wait for the next
+day. Farmhand never sees your Google password; the client secret and the sign-in
 stay inside Farmhand like the stream key. **Sign out** forgets the sign-in and tells Google to as well.
 - Cameras are read the same way Monitor finds them: a Mainsail camera with the **MJPEG streamer** or **adaptive
   MJPEG** service (its MJPEG stream), camera-streamer, go2rtc on the printer (its RTSP port, 8554), and a Prusa's

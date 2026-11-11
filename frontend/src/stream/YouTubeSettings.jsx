@@ -1,16 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff, Youtube } from "lucide-react";
 import { c } from "../theme.js";
 import { cancelButton, fieldBox, headerButton, primaryButton, uiText } from "../styles.js";
-import { Modal } from "../components/common/dialogs.jsx";
+import { errorText, getStream, saveStream } from "../api.js";
 import { help, label12 } from "./streamStyles.js";
 import { YouTubeAccountPanel } from "./StreamPanels.jsx";
 
-// Everything YouTube, in a pop-up window over the Stream page (YouTubeSettingsButton opens it): the video's title,
-// description, tags and category; who can watch it; how the stream behaves on YouTube; the stream key; and the YouTube
-// account Farmhand signs in to. It works on its own copy: Save saves just these (the page's other changes not saved
-// yet stay as they are), Cancel forgets them. Saved settings go on the next broadcast; while live, the title,
-// description, tags and privacy are changed on the one going out straight away.
+// Everything YouTube, in a browser window of its own (/youtube-settings; YouTubeSettingsButton opens it), so it can be
+// moved anywhere, another screen included, and left open: the video's title, description, tags and category; who can
+// watch it; how the stream behaves on YouTube; the stream key; and the YouTube account Farmhand signs in to. Save saves
+// just these (changes on the Stream page not saved yet stay as they are) and tells the Stream page, wherever it's open,
+// to show them. Saved settings go on the next broadcast; while live, they change the one going out straight away.
+
+export const WINDOW_PATH = "/youtube-settings";
+const WINDOW_NAME = "farmhand-youtube-settings";
+// the Stream page hears the window's saves on this (any tab or window of this Farmhand, in this browser)
+export const STREAM_CHANNEL = "farmhand-stream";
+const announce = () => {
+  try {
+    const ch = new BroadcastChannel(STREAM_CHANNEL);
+    ch.postMessage("saved");
+    ch.close();
+  } catch {
+    // (an old browser: the Stream page catches up on its next look, within 5 seconds)
+  }
+};
+// Open the window (or bring it forward if it's open already)
+export const openYouTubeSettings = () => {
+  const w = window.open(WINDOW_PATH, WINDOW_NAME, "popup,width=720,height=900");
+  w?.focus();
+};
 
 export const CATEGORIES = [
   ["28", "Science & Technology"], ["27", "Education"], ["26", "Howto & Style"], ["22", "People & Blogs"], ["24", "Entertainment"], ["20", "Gaming"],
@@ -58,10 +77,75 @@ function Section({ title, children }) {
 const field = { ...fieldBox(), padding: "6px 8px" };
 const column = uiText(12, c.textMuted, { display: "flex", flexDirection: "column", gap: 4 });
 
-// The window itself. `shown`: the page's settings (title, description, youtube: {...}); `onSave(fields)`: saves just
-// these, the page as the server answered or null; `streamKey`/`onKey`: a key typed (sent with Save); `keySet`,
-// `onForgetKey`; `youtube`, `status`, `ask`, `busy`: the account's (YouTubeAccountPanel).
-export function YouTubeSettingsDialog({ shown, onSave, onClose, keySet, onForgetKey, youtube, status, ask, busy }) {
+// The window's page: reads the stream's settings (and again every 5 seconds, for the sign-in and the key; what's typed
+// here isn't touched), and saves them.
+export function YouTubeSettingsWindow() {
+  const [page, setPage] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [savedAt, setSavedAt] = useState(null);
+
+  useEffect(() => {
+    document.title = "YouTube settings · Farmhand";
+    let live = true;
+    const look = (first) =>
+      (first === true || !document.hidden) &&
+      getStream().then((p) => live && (setPage(p), setLoadError(null))).catch((e) => live && setLoadError(errorText(e)));
+    look(true);
+    const timer = setInterval(look, 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // the account panel's and the form's asks: the page as the server answered, or null (the reason shown)
+  const ask = async (what, call) => {
+    setBusy(what);
+    setProblem(null);
+    try {
+      const p = await call();
+      setPage(p);
+      announce();
+      return p;
+    } catch (e) {
+      setProblem(errorText(e));
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: c.bg, padding: "20px 16px" }}>
+      <main style={{ maxWidth: 680, margin: "0 auto" }}>
+        <div style={uiText(20, c.heading, { fontWeight: 700, display: "flex", alignItems: "center", gap: 8, marginBottom: 14 })}>
+          <Youtube size={20} /> YouTube settings
+        </div>
+        {!page ? (
+          <div style={uiText(13, loadError ? c.danger : c.textFaint)}>{loadError ? `Couldn't reach Farmhand: ${loadError}` : "Loading…"}</div>
+        ) : (
+          <YouTubeSettingsForm
+            shown={page.settings} keySet={page.settings.keySet} youtube={page.youtube} status={page.status} ask={ask} busy={busy}
+            problem={problem} savedAt={savedAt}
+            onSave={async (fields) => {
+              const p = await ask("save", () => saveStream(fields));
+              if (p) setSavedAt(new Date());
+              return p;
+            }}
+            onForgetKey={() => ask("save", () => saveStream({ clearKey: true }))}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// The settings themselves. `shown`: the stream's settings (title, description, youtube: {...}); `onSave(fields)`:
+// saves just these, the page as the server answered or null; `keySet`, `onForgetKey`; `youtube`, `status`, `ask`,
+// `busy`: the account's (YouTubeAccountPanel); `problem`: what the server last refused; `savedAt`: when last saved.
+function YouTubeSettingsForm({ shown, onSave, keySet, onForgetKey, youtube, status, ask, busy, problem, savedAt }) {
   const [form, setForm] = useState(() => ({
     title: shown.title || "", description: shown.description || "",
     tags: (shown.youtube?.tags || []).join(", "),
@@ -82,11 +166,11 @@ export function YouTubeSettingsDialog({ shown, onSave, onClose, keySet, onForget
         autoStart: form.autoStart, autoStop: form.autoStop },
     });
     setSaving(false);
-    if (p) onClose();
+    if (p) setKey("");
   };
 
   return (
-    <Modal title="YouTube settings" onClose={onClose} width={640} closeOnBackdrop={false}>
+    <div style={{ background: c.panel, border: `1px solid ${c.border}`, borderRadius: 6, padding: 16 }}>
       <div data-testid="youtube-settings-window" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={help}>
           Used for each broadcast when you go live; while live, the title, description, tags and privacy change on the one
@@ -192,13 +276,22 @@ export function YouTubeSettingsDialog({ shown, onSave, onClose, keySet, onForget
           <YouTubeAccountPanel youtube={youtube} status={status} ask={ask} busy={busy} bare />
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, borderTop: `1px solid ${c.border}`, paddingTop: 12, marginTop: 12 }}>
-        {tagsLength(tags) > TAGS_MAX && <span style={uiText(12, c.danger, { flex: 1 })}>The tags come to {tagsLength(tags)} characters; YouTube allows {TAGS_MAX}.</span>}
-        <button type="button" onClick={onClose} disabled={saving} style={cancelButton(saving)}>Cancel</button>
+      <div
+        style={{
+          position: "sticky", bottom: 0, background: c.panel, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8,
+          borderTop: `1px solid ${c.border}`, padding: "12px 0 0", marginTop: 12, flexWrap: "wrap",
+        }}
+      >
+        <span style={uiText(12, problem || tagsLength(tags) > TAGS_MAX ? c.danger : c.green, { flex: 1, minWidth: 200, lineHeight: 1.5 })}>
+          {tagsLength(tags) > TAGS_MAX
+            ? `The tags come to ${tagsLength(tags)} characters; YouTube allows ${TAGS_MAX}.`
+            : problem || (savedAt ? `Saved at ${savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${status.live ? ", and sent to the broadcast going out" : ""}.` : "")}
+        </span>
+        <button type="button" onClick={() => window.close()} disabled={saving} style={cancelButton(saving)}>Close window</button>
         <button type="button" data-testid="yt-save" onClick={save} disabled={saving || tagsLength(tags) > TAGS_MAX} style={primaryButton(saving)}>
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
-    </Modal>
+    </div>
   );
 }
