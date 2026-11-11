@@ -1237,6 +1237,14 @@ it needs through Farmhand's **plugin API**, with a token of its own, and only wh
 Writing one: see [docs/plugins.md](docs/plugins.md), and start from [plugins/hello](plugins/hello/README.md), a small
 example plugin (each printer and its print's progress, live) made to be copied.
 
+**The Stream plugin** ([plugins/stream](plugins/stream/README.md)) is the Stream page as a plugin, in a container of its
+own, so Farmhand's updates and restarts never stop the stream: the same page (grid, cards, slideshows, music, taking
+turns, YouTube sign-in or a pasted key), each camera read on its own (one that stops shows a "Camera down" square with
+the printer's name until it's back), going live again by itself after its own restart, and carrying on while Farmhand
+is down (the words under the cameras are then just the printers' names). It reads only the cameras' addresses and
+what's printing. Given the `stream:migrate` permission, it brings over the Stream page's settings, layouts, stream key
+and YouTube sign-in once, the first time it starts. For now Farmhand's own Stream page stays as it is beside it.
+
 **The Plugins page** (in the menu, under Settings) lists the plugins added and how each is doing (Farmhand asks each one
 every 30 seconds: running, running with a problem the plugin names, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the
 way the plugin's instructions say, then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.

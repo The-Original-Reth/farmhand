@@ -1,0 +1,157 @@
+# Stream: the live stream as a Farmhand plugin
+
+The Stream plugin sends printers' cameras live to **YouTube Live**, no OBS needed: Farmhand's Stream page, running in a
+container of its own, so a Farmhand update, restart or crash never stops the stream. Its page is shown inside Farmhand
+at **Stream** in the menu (`/plugins/stream/`), in Farmhand's colours, and works as the Stream page always has: the grid
+of squares, cards with pictures, slideshows and words, the music, the words under the cameras, taking turns, the
+resolution, the delay, saved layouts, YouTube sign-in and broadcasts, or a pasted stream key.
+
+What it adds over the Stream page built into Farmhand:
+
+- **Each camera is read on its own.** A camera that stops shows **Camera down** with the printer's name, in the
+  square's background colour and the chosen font and colour, and goes back to live video by itself; the other cameras
+  and the connection to YouTube carry on. Going live with a camera off works, and the page lists each camera as live
+  or down while live.
+- **It goes live again by itself** after its own restart (a reboot, a power cut, a new image), if it was live.
+- **Farmhand going down doesn't stop it.** The cameras are read at the addresses last heard of, and the words under
+  them become just the printers' names until Farmhand is back.
+- **It reads only what it needs**: the cameras' addresses (`cameras:read`) and what each printer is printing
+  (`prints:read`). It has no database: its settings, stream key, YouTube sign-in and saved layouts are in its own
+  volume (`/data/settings.json`, readable only by the plugin), and its API never answers the key or the sign-in.
+- **Moving over from the Stream page**: with `stream:migrate`, the first time it starts it brings over, once, the
+  Stream page's settings, saved layouts, stream key and YouTube sign-in. Farmhand keeps its own copy.
+
+| Path | What it is |
+|---|---|
+| `farmhand-plugin.json` | The manifest: id `stream`, port 8080, a page in Farmhand's menu, its permissions |
+| `streamer/live_stream/` | The engine, copied from Farmhand's `backend/app/services/live_stream/`; `feeders.py` (each camera's reader, the "Camera down" square) is new, `sources.py` and `runner.py` changed |
+| `streamer/stream_media.py`, `youtube_live.py`, `routes.py` | The stream folder, YouTube sign-in and the page's API, copied from Farmhand |
+| `streamer/store.py`, `farm.py`, `migrate.py`, `layouts.py`, `app.py` | The plugin's own: its settings file, reading Farmhand, the one-off move, saved layouts, the web server |
+| `page/` | The page: Farmhand's `frontend/src/stream/` copied, as a small Vite build of its own (`npm run build` puts it in `streamer/web/`) |
+| `tests/` | Tests against stand-ins for Farmhand's plugin API and ffmpeg (`python -m pytest -q`) |
+
+## Build it
+
+On the machine that will run it (Docker installed), from a copy of Farmhand's repository:
+
+```bash
+docker build -t farmhand-stream plugins/stream
+```
+
+## The stream folder
+
+The stream's pictures, slideshows and music are files in a folder you give the container at `/media` (`images/`,
+`slideshows/<name>/`, `music/`; the plugin makes them). Give it the same folder Farmhand's Stream page used (Farmhand's
+Settings page shows where, and the move from Farmhand says it too), so the squares find their pictures:
+
+- **A folder on the plugin's machine**: `-v /opt/farmhand-stream/media:/media`.
+- **A NAS share**: mount it on the plugin's machine (in `/etc/fstab`, e.g. `//nas/3d_Printing_Elves/Farmhand/stream
+  /mnt/stream cifs credentials=/root/.nas,uid=0,gid=0,iocharset=utf8 0 0`, or NFS), then `-v /mnt/stream:/media`.
+  Docker can also mount it itself with a `cifs` volume (see the compose example below).
+
+Pictures added on the page are written there; ones copied in by hand count too (press **Resync**). Set
+`STREAM_FOLDER_SHOWN_AS` to the folder as people reach it over the network (e.g. `\\nas\3d_Printing_Elves\Farmhand\stream`)
+and the page shows it, for copying files in by hand.
+
+## Run it
+
+It runs on Farmhand's machine or any other machine on the farm's network that reaches Farmhand's API port (4545) and the
+cameras. Start it first without a token, so Farmhand can read its manifest. A compose file is easiest
+(`/opt/farmhand-stream/docker-compose.yml`):
+
+```yaml
+services:
+  stream:
+    image: farmhand-stream
+    container_name: farmhand-stream
+    restart: unless-stopped        # back by itself after a reboot or a crash (and live again, if it was)
+    ports: ["8080:8080"]           # Farmhand reaches it at http://<this machine>:8080
+    env_file: stream.env           # FARMHAND_URL and FARMHAND_TOKEN, once Farmhand gives them (chmod 600)
+    volumes:
+      - farmhand-stream-data:/data            # its settings, key, YouTube sign-in and layouts
+      - /opt/farmhand-stream/media:/media     # the stream folder (see above)
+volumes:
+  farmhand-stream-data:
+```
+
+```bash
+cd /opt/farmhand-stream && touch stream.env && chmod 600 stream.env && docker compose up -d
+```
+
+### An NVIDIA card
+
+ffmpeg compresses the stream on an NVIDIA card (NVENC) when the container can reach it, leaving the processor to read
+the cameras and lay out the grid; otherwise it uses the processor (the page says which while live). The machine needs
+the NVIDIA driver's user-space libraries matching the driver in use (on an LXC container under Proxmox, the host's:
+e.g. `libnvidia-encode-580`, `nvidia-utils-580`, `libnvidia-compute-580` and `libnvidia-decode-580` at the host's
+version, held with `apt-mark hold`), and the container is given the card and the libraries ffmpeg loads:
+
+```yaml
+    devices:
+      - /dev/nvidia0
+      - /dev/nvidiactl
+      - /dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:/usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:ro
+```
+
+`FARMHAND_STREAM_ENCODER` (`auto`, `nvenc` or `cpu`) says which to use; `auto` (the default) tries the card.
+
+## Add it to Farmhand
+
+1. In Farmhand, open the **Plugins** page (in the menu, under Settings).
+2. Under **Add a plugin**, type its address, e.g. `http://192.168.10.215:8080`.
+3. Farmhand shows what Stream wants: your printers' cameras, what they're printing, and (once) the Stream page's
+   set-up. Untick **stream:migrate** to start afresh instead. Say yes.
+4. Farmhand shows `FARMHAND_URL` and `FARMHAND_TOKEN` **once**. Put them in `stream.env`:
+
+   ```
+   FARMHAND_URL=http://192.168.10.213:4545/plugin-api/v1
+   FARMHAND_TOKEN=...
+   ```
+
+   and start it again: `docker compose up -d --force-recreate`.
+
+**Stream** appears in Farmhand's menu. The first time it starts with `stream:migrate`, it brings the Stream page's set-up
+over (or press **Bring over Farmhand's Stream settings** on its page). Farmhand's own Stream page carries on beside it
+for now: don't go live on both with the same key.
+
+## Trying it out without YouTube
+
+Set `STREAM_TEST_DESTINATION` to an RTMP receiver, e.g. [MediaMTX](https://github.com/bluenviron/mediamtx)
+(`docker run -d --name mediamtx -p 1935:1935 -p 8554:8554 bluenviron/mediamtx:1.9.3`):
+
+```
+STREAM_TEST_DESTINATION=rtmp://192.168.10.215:1935/live
+```
+
+Paste any stream key on the page (e.g. `farmtest`): the stream goes to `rtmp://192.168.10.215:1935/live/farmtest`, and
+YouTube is never sent anything, signed in or not. Watch it with `ffplay rtsp://192.168.10.215:8554/live/farmtest`, or
+save a few seconds with `ffmpeg -i rtsp://192.168.10.215:8554/live/farmtest -t 10 -c copy test.mp4`.
+
+## Settings (environment variables)
+
+| Variable | What it is |
+|---|---|
+| `FARMHAND_URL`, `FARMHAND_TOKEN` | Where Farmhand's plugin API is, and this plugin's token (from the Plugins page) |
+| `PORT` | Where it listens (8080) |
+| `STREAM_DATA` | Its settings folder (`/data`: a volume) |
+| `STREAM_FOLDER` | The stream folder (`/media`: a mount) |
+| `STREAM_FOLDER_SHOWN_AS` | Optional: the stream folder as people reach it over the network, shown on the page |
+| `STREAM_TEST_DESTINATION` | Optional: an `rtmp://` address the stream goes to instead of YouTube |
+| `FARMHAND_STREAM_ENCODER` | `auto` (default), `nvenc` or `cpu` |
+
+## Developing
+
+```bash
+cd plugins/stream && pip install -r requirements-dev.txt && python -m pytest -q
+cd plugins/stream/page && npm install && npm run build     # the page, into streamer/web
+STREAM_DATA=./data STREAM_FOLDER=./media python -m streamer  # the plugin on :8080 (ffmpeg on the PATH to go live)
+cd plugins/stream/page && npm run dev                      # the page on :3638, its API passed to :8080
+```
+
+Much of the code is Farmhand's own Stream page, copied (the first commit adding this folder copies it unchanged): a
+change to one usually belongs in the other too, until Farmhand's own Stream page is removed.

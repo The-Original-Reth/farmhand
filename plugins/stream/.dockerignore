@@ -1,0 +1,8 @@
+tests/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+README.md
+page/node_modules/
+
+streamer/web/

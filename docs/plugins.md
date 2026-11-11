@@ -71,9 +71,15 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `cameras:read` | see your printers' cameras and the addresses to stream them from | `GET /cameras` |
 | `prints:read` | see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends | `GET /printers/{id}/print`, `GET /events` |
 | `farm:read` | see Farmhand's colours and the farm's time zone | `GET /farm` |
+| `stream:migrate` | take, once, a copy of Farmhand's own Stream page set-up: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its own copy) | `GET /stream/migrate`, `POST /stream/migrate` |
 
 The operator grants some or all of the permissions the manifest asks for, never more. There are no write permissions
 yet; they'll be added one at a time, when a plugin needs one.
+
+`stream:migrate` is only for a Stream plugin taking over from the Stream page built into Farmhand (like
+[`plugins/stream`](../plugins/stream/README.md)): ask for it only if that's what your plugin is. It hands over secrets
+(the stream key, the Google client secret and the YouTube sign-in), so it's granted only when the manifest asks and the
+operator leaves it ticked, and handed over just once.
 
 ## Reaching Farmhand
 
@@ -252,6 +258,40 @@ second one, whatever their hue in the scheme.
   }
 }
 ```
+
+### `GET /stream/migrate` and `POST /stream/migrate` (`stream:migrate`)
+
+Farmhand's own Stream page set-up, handed to the plugin **once**, so the operator doesn't set it all up again. Farmhand
+only reads its copy (it keeps it; it isn't changed or deleted), and records that it was handed over: a second `POST` is
+**410**, saying when. Removing the plugin on the Plugins page and adding it afresh lets it ask again.
+
+`GET` says whether it can still be handed over, with nothing secret in it:
+
+```json
+{ "available": true, "handed_over_at": null, "has_settings": true }
+```
+
+`POST` hands it over. `settings` is the Stream page's settings exactly as Farmhand keeps them (its grid and squares,
+taking turns, resolution, colours, font, music, delay, YouTube title, description and settings: see
+`backend/app/services/live_stream/choices.py`), `layouts` its saved layouts, `stream_key` the pasted key (or `null`),
+`youtube` the Google OAuth client and sign-in (each `null` when there's none), and `stream_folder` where Farmhand's
+stream folder is (its pictures, slideshows and music, for the operator to give your container the same folder):
+
+```json
+{
+  "settings": { "cols": 2, "rows": 1, "cells": [{ "camera": "1:Bed" }, null], "title": "The farm", "resolution": "1080p" },
+  "layouts": [{ "name": "Morning", "cols": 1, "rows": 1, "cells": [{ "camera": "1:Bed" }], "layout": "grid" }],
+  "stream_key": "abcd-efgh-ijkl-mnop",
+  "youtube": {
+    "client": { "client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-..." },
+    "refresh_token": "1//0g...", "channel": "Print Farm", "stream_id": "abc123"
+  },
+  "stream_folder": "/data/nas/farmhand/stream",
+  "handed_over_at": "2026-11-11T10:00:00+00:00"
+}
+```
+
+Keep what you're handed as carefully as Farmhand did: never show it on your page or answer it from your API.
 
 ## Versions
 

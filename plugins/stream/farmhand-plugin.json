@@ -1,0 +1,12 @@
+{
+  "id": "stream",
+  "name": "Stream",
+  "version": "1.0.0",
+  "farmhand_api": "1",
+  "author": "Farmhand",
+  "homepage": "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/stream",
+  "port": 8080,
+  "page": { "menu": "Stream", "icon": "video", "path": "/" },
+  "permissions": ["cameras:read", "prints:read", "stream:migrate"],
+  "health": "/health"
+}

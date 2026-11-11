@@ -403,3 +403,55 @@ def test_print_progress_feeds_events(api, moonraker):
     moonraker.live = {"filename": "Frog.gcode", "print_duration": 10.0, "progress": 0.01}
     api.get(f"/printers/{pid}/progress")
     assert [(e["type"], e["printer_name"], e["file"]) for e in heard] == [("print.started", "V2Blue", "Frog.gcode")]
+
+
+# ------------------------------------------------------------------ stream:migrate: the Stream page's set-up, once
+
+
+def _install_migrating(api) -> str:
+    asked = [*EVERYTHING, "stream:migrate"]
+    r = api.post("/plugins", json={"manifest": {**MANIFEST, "permissions": asked}, "permissions": asked})
+    assert r.status_code == 201, r.text
+    return r.json()["token"]
+
+
+def test_stream_migrate_hands_the_stream_page_over_once(api):
+    stream_key = "abcd-efgh-ijkl-mnop"
+    assert api.put("/stream", json={"stream_key": stream_key, "title": "The farm", "border_color": "#ff8800"}).status_code == 200
+    assert api.put("/stream/youtube", json={"client_id": "123-abc.apps.googleusercontent.com",
+                                            "client_secret": "GOCSPX-secret-value"}).status_code == 200
+    layout = {"name": "Morning", "cols": 1, "rows": 1, "cells": [None]}
+    assert api.put("/settings/config", json={"preferences": {"stream_layouts": [layout]}}).status_code == 200
+
+    token = _install_migrating(api)
+    state = api.get("/plugin-api/v1/stream/migrate", headers=bearer(token)).json()
+    assert state == {"available": True, "handed_over_at": None, "has_settings": True}
+
+    got = api.post("/plugin-api/v1/stream/migrate", headers=bearer(token))
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["settings"]["title"] == "The farm" and body["settings"]["border_color"] == "#FF8800"
+    assert body["stream_key"] == stream_key
+    assert body["youtube"]["client"] == {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-value"}
+    assert body["youtube"]["refresh_token"] is None
+    assert [x["name"] for x in body["layouts"]] == ["Morning"]
+    assert body["handed_over_at"]
+
+    # only once; Farmhand keeps its own copy
+    again = api.post("/plugin-api/v1/stream/migrate", headers=bearer(token))
+    assert again.status_code == 410 and "only once" in again.json()["detail"]
+    assert api.get("/plugin-api/v1/stream/migrate", headers=bearer(token)).json()["available"] is False
+    assert api.get("/stream").json()["settings"]["key_set"] is True
+
+    # removed and added again: it may ask again
+    assert api.delete("/plugins/stream?confirm=true").status_code in (200, 204)
+    token = _install_migrating(api)
+    assert api.post("/plugin-api/v1/stream/migrate", headers=bearer(token)).status_code == 200
+
+
+def test_stream_migrate_needs_its_own_permission(api):
+    token = install(api)
+    for call in (api.get, api.post):
+        r = call("/plugin-api/v1/stream/migrate", headers=bearer(token))
+        assert r.status_code == 403 and "stream:migrate" in r.json()["detail"]
+    assert "stream:migrate" in manifest.PERMISSIONS
