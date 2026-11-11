@@ -471,10 +471,32 @@ def test_a_camera_that_only_plays_in_a_browser_is_refused(klipper, moonraker, ff
     api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"]})
     r = api.post("/stream/start")
     assert r.status_code == 422 and "WebRTC" in r.json()["detail"]
+    moonraker.webcams = [_cam(), _cam(name="Nozzle")]  # (one camera of several, gone: which it became can't be told)
     api.put("/stream", json={"cameras": [f"{pid}:Gone"]})
     assert "can't be reached" in api.post("/stream/start").json()["detail"]
     api.put("/stream", json={"cameras": ["999:Bed"]})
     assert "printer is gone" in api.post("/stream/start").json()["detail"]
+
+
+def test_a_printers_only_camera_is_followed_when_renamed(klipper, moonraker, ffmpeg):
+    api, pid = klipper
+    # chosen as Bed, then switched to go2rtc in Mainsail, which named it Chamber
+    moonraker.webcams = [_cam(name="Chamber", service="webrtc-go2rtc", stream_url="http://10.0.6.33:1984/stream.html?src=chamber&mode=webrtc")]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
+    assert api.post("/stream/start").status_code == 200
+    assert _wait_for(lambda: ffmpeg.commands)
+    assert "rtsp://10.0.6.33:8554/chamber" in ffmpeg.commands[0]
+    api.post("/stream/stop")
+
+
+def test_a_renamed_camera_is_not_followed_onto_one_shown_already():
+    from app.services.live_stream.sources import followed_camera
+
+    only = [{"name": "Chamber"}]
+    assert followed_camera("Bed", only, None) == only[0]
+    assert followed_camera("Bed", only, None, {"Bed", "Chamber"}) is None  # another square shows it already
+    assert followed_camera("Bed", only, "No answer") is None  # (the printer didn't answer in full)
+    assert followed_camera("Bed", [*only, {"name": "Nozzle"}], None) is None
 
 
 def test_camera_streamer_is_read_as_mjpeg_and_a_buddy3d_over_rtsp(db_session):
