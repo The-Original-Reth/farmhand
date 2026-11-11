@@ -636,7 +636,12 @@ benchy.gcode`), brought up to date every 15 seconds.
 
 While live, a new layout (or any change to the picture) doesn't stop the stream: Farmhand starts the new picture
 beside the one going out and switches to it at its first whole frame, on the same connection to YouTube, so viewers
-just see the layout change. The delay is a buffer before YouTube: a hiccup shorter than it (a camera, the processor
+just see the layout change. It waits 3 seconds after a save first, so a burst of saves is one change (the status says
+a change is on its way), and the new picture warms up at a lower priority so the one on air keeps the processor. A
+camera that takes one viewer at a time can't be in both pictures at once: then the old picture is stopped first and
+the new one started straight away, the delay covering the few seconds that takes. A web camera that hangs up is
+connected to again by itself; an RTSP camera (a Buddy3D's) that goes quiet for 10 seconds brings a fresh picture with
+new connections, and if YouTube closes the connection Farmhand connects again 10 seconds later. The delay is a buffer before YouTube: a hiccup shorter than it (a camera, the processor
 falling behind for a moment) never reaches viewers, who see everything that much later; the status says how much of it
 is held. A new delay applies the next time you go live.
 
@@ -735,7 +740,7 @@ is held. A new delay applies the next time you go live.
   The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one
   you click), so taking turns costs little more than the grid.
 - **Resolution:** 1080p (1920×1080, the default), 720p (1280×720) or 2K (2560×1440), sent at the bitrate YouTube
-  suggests for each (4.5, 2.5 and 9 Mbit/s); the words and borders grow with the picture. 720p is easiest on a
+  suggests for each at Farmhand's 15 frames a second (2.5 Mbit/s for 1080p and 720p, 4.5 for 2K); the words and borders grow with the picture. 720p is easiest on a
   Raspberry Pi; 1080p and 2K make more work for the computer, so they suit a PC or the Proxmox container. An NVIDIA
   graphics card can take the compressing off the processor (below); the page then says *on the NVIDIA card* while live.
 - **Save** saves the page and the layout with it, asking each time: **Overwrite** one of your saved layouts (the

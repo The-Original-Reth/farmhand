@@ -66,7 +66,7 @@ def local_copies(pictures: dict, folder: str) -> dict:
     return out
 
 
-def squares(db: Session, chosen: dict, folder: str) -> list:
+def squares(db: Session, chosen: dict, folder: str, cache: str | None = None) -> list:
     """The grid's squares as the ffmpeg command takes them (picture.Look.cells): ("camera", its place among the
     cameras, its cell), ("card", its cell with its pictures' copies, its words' file and its slideshow pictures' own
     words' files), or None."""
@@ -104,7 +104,7 @@ def squares(db: Session, chosen: dict, folder: str) -> list:
                 # each screen put together once (its colour, picture and more pictures): ffmpeg reads them as one input
                 frame = Frame.of(chosen["resolution"], chosen["cols"], chosen["rows"], chosen["background"], chosen["border_color"])
                 baked = {j: [x for x in ls if x["type"] == "picture"] for j, ls in screens.items()}
-                card["frames"] = slides.compose(cell, card["pictures"], baked, frame, os.path.join(folder, "slides", str(c)))
+                card["frames"] = slides.compose(cell, card["pictures"], baked, frame, os.path.join(folder, "slides", str(c)), cache=cache)
                 card["screen_layers"] = {j: kept for j, ls in screens.items() if (kept := [x for x in ls if x["type"] != "picture"])}
             out.append(("card", card))
     return out

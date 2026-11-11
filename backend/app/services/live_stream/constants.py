@@ -23,8 +23,8 @@ FPS = 15
 # The sizes the stream can be sent at: (width, height, video bitrate as YouTube suggests for each), and their names
 RESOLUTIONS = {
     "720p": (1280, 720, 2500),
-    "1080p": (1920, 1080, 4500),
-    "1440p": (2560, 1440, 9000),
+    "1080p": (1920, 1080, 2500),  # (YouTube's own advice at 15 frames a second)
+    "1440p": (2560, 1440, 4500),
 }
 RESOLUTION_LABELS = {"720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)"}
 DEFAULT_RESOLUTION = "1080p"

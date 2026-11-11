@@ -48,6 +48,22 @@ def last_frame_start(data: bytes) -> int | None:
     return None
 
 
+def last_time(data: bytes) -> float | None:
+    """The time (seconds) of the last frame of the picture starting in `data`, from its PES header's PTS, or None."""
+    for i in range(len(data) - PACKET, -1, -PACKET):
+        p = data[i:i + PACKET]
+        if p[0] != 0x47 or not p[1] & 0x40 or (((p[1] & 0x1F) << 8) | p[2]) != VIDEO_PID:
+            continue
+        at = 4 + (1 + p[4] if (p[3] >> 4) & 0x2 else 0)
+        pes = p[at:]
+        if len(pes) < 14 or pes[:3] != b"\x00\x00\x01" or not (pes[7] >> 6) & 0x2:
+            continue
+        b = pes[9:14]
+        pts = ((b[0] >> 1) & 0x7) << 30 | b[1] << 22 | (b[2] >> 1) << 15 | b[3] << 7 | b[4] >> 1
+        return pts / 90000
+    return None
+
+
 def _read_packets(stream, size: int = CHUNK) -> bytes:
     """Up to `size` bytes from `stream`, in whole TS packets (b"" once it has ended)."""
     data = stream.read(size)
@@ -71,6 +87,7 @@ class Relay:
         self._current = None  # the picture ffmpeg going out
         self._next = None  # the one to switch to at its first keyframe
         self._switched = threading.Event()
+        self._last: float | None = None  # the time of the last frame passed on (its PTS, seconds)
 
     def set_out(self, out) -> None:
         with self._lock:
@@ -84,16 +101,27 @@ class Relay:
 
     def switch_to(self, picture, timeout: float = 20.0) -> bool:
         """Pass this one on instead, from its first keyframe; the one going out keeps going out until then. True once
-        it has taken over (the caller then stops the old one); False when it didn't within `timeout` seconds."""
+        it has taken over (the caller then stops the old one); False when it didn't within `timeout` seconds, or ended
+        first (stopped for a newer layout, or failed)."""
         self._switched.clear()
         with self._lock:
             self._next = picture
         self._read(picture)
-        return self._switched.wait(timeout)
+        self._switched.wait(timeout)
+        with self._lock:
+            if self._next is picture:
+                self._next = None
+            return self._current is picture
 
     def current(self):
         with self._lock:
             return self._current
+
+    def last_time(self) -> float | None:
+        """The time of the last frame passed on (seconds), or None before the first: a new picture's times carry on
+        from about here, so the sender, playing to the times, never waits out a jump ahead."""
+        with self._lock:
+            return self._last
 
     def _read(self, picture) -> None:
         threading.Thread(target=self._pump, args=(picture,), name="stream-relay", daemon=True).start()
@@ -110,6 +138,10 @@ class Relay:
             except (OSError, ValueError):
                 data = b""
             if not data:
+                with self._lock:
+                    if self._next is picture:  # ended before it took over: the one waiting on it hears at once
+                        self._next = None
+                        self._switched.set()
                 return
             with self._lock:
                 if self._next is picture:
@@ -131,6 +163,9 @@ class Relay:
                 if not data:
                     continue
                 out = self._out
+                t = last_time(data)
+                if t is not None:
+                    self._last = t
                 try:
                     out.write(data)
                     out.flush()

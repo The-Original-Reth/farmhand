@@ -10,6 +10,8 @@ with three hundred. The words on it (the card's, and each screen's own) stay dra
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 
 from PIL import Image
@@ -49,22 +51,45 @@ def _paste(canvas: Image.Image, path: str, box, frame: Frame, whole_if_full: boo
     canvas.alpha_composite(img, (x, y))
 
 
-def compose(cd: dict, paths: list[str], screen_pictures: dict[int, list[dict]], frame: Frame, folder: str) -> list[str]:
+def _made_from(*parts) -> str:
+    """A name for a finished screen from everything that makes it (its pictures' contents by their size and time too),
+    so one put together before (by an earlier layout this time live) is used again instead of made again."""
+    def stamp(p):
+        try:
+            st = os.stat(p)
+            return [os.path.basename(p), st.st_size, st.st_mtime_ns]
+        except (OSError, TypeError):
+            return [str(p)]
+    return hashlib.sha1(json.dumps([stamp(p) if isinstance(p, str) else p for p in parts], sort_keys=True, default=str).encode()).hexdigest()
+
+
+def compose(cd: dict, paths: list[str], screen_pictures: dict[int, list[dict]], frame: Frame, folder: str, cache: str | None = None) -> list[str]:
     """Each screen of a slideshow as one finished picture in `folder` (made): its colour (the card's, or the stream's),
     its picture in its box (the card's picture_box, or the picture's own picture_boxes; none on a blank screen) and its
-    more pictures (`screen_pictures`, {place in the slideshow: [{"path", "box"}]}). The pictures' paths, in order."""
-    os.makedirs(folder, exist_ok=True)
+    more pictures (`screen_pictures`, {place in the slideshow: [{"path", "box"}]}). The pictures' paths, in order. With
+    `cache` (a folder kept while live), each screen is kept there by what makes it, and one already there is used again:
+    a burst of layout changes doesn't put the same hundred screens together each time."""
+    os.makedirs(cache or folder, exist_ok=True)
     colour = "#" + (cd.get("background") or "#" + frame.back).lstrip("#")
     out = []
     for j, path in enumerate(paths):
+        box = None if stream_media.is_blank(path) else (cd.get("picture_boxes") or {}).get(os.path.basename(path)) or cd.get("picture_box")
+        layers = [[layer["path"], layer.get("box")] for layer in screen_pictures.get(j, [])]
+        if cache:
+            to = os.path.join(cache, _made_from(frame.tw, frame.th, frame.edge, colour, path, box, *layers) + ".png")
+            if os.path.exists(to):
+                out.append(to)
+                continue
+        else:
+            to = os.path.join(folder, f"{j:04d}.png")
         canvas = Image.new("RGBA", (frame.tw, frame.th), colour)
         if not stream_media.is_blank(path):
-            box = (cd.get("picture_boxes") or {}).get(os.path.basename(path)) or cd.get("picture_box")
             _paste(canvas, path, box, frame, whole_if_full=True)
         for layer in screen_pictures.get(j, []):
             _paste(canvas, layer["path"], layer.get("box"), frame)
-        to = os.path.join(folder, f"{j:04d}.png")
-        canvas.convert("RGB").save(to, compress_level=1)
+        tmp = to + ".new.png"
+        canvas.convert("RGB").save(tmp, compress_level=1)
+        os.replace(tmp, to)  # (whole or not at all: another layout may be reading it)
         out.append(to)
     return out
 

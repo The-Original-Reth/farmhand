@@ -57,7 +57,7 @@ class _Out:
         self._sent = False
 
     def read(self, n=-1):
-        if not self._sent:
+        if not self._sent and not self._ended.is_set():  # (one ended before it began sends nothing)
             self._sent = True
             return _keyframe_packet()
         self._ended.wait()
@@ -116,6 +116,7 @@ def ffmpeg(monkeypatch):
     monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(live_stream.runner, "popen", fake)
     monkeypatch.setenv(live_stream.encoders.ENCODER_SETTING, "cpu")  # no trying a real ffmpeg for an NVIDIA card
+    monkeypatch.setattr(live_stream.runner, "SETTLE", 0)  # (a new layout's wait for more changes: none in tests)
     return fake
 
 
@@ -340,13 +341,13 @@ def test_the_resolution(klipper, moonraker, ffmpeg):
     cmd = ffmpeg.commands[0]
     graph = _graph(cmd)
     assert "xstack=inputs=2:layout=0_0|960_0" in graph and "scale=1920:1080" in graph
-    assert cmd[cmd.index("-b:v") + 1] == "4500k" and cmd[cmd.index("-bufsize") + 1] == "9000k"
+    assert cmd[cmd.index("-b:v") + 1] == "2500k" and cmd[cmd.index("-bufsize") + 1] == "5000k"
     assert "fontsize=30" in graph  # 20 px in a quarter of a 720p picture, in step on 1080p
     # 2K: changing it while live starts the stream again at the new size
     api.put("/stream", json={"resolution": "1440p"})
     assert _wait_for(lambda: len(ffmpeg.commands) == 2)
     cmd = ffmpeg.commands[1]
-    assert "scale=2560:1440" in _graph(cmd) and cmd[cmd.index("-b:v") + 1] == "9000k"
+    assert "scale=2560:1440" in _graph(cmd) and cmd[cmd.index("-b:v") + 1] == "4500k"
     assert "t=6" in _graph(cmd)  # the borders in step too: 3 px on 720p
 
 
@@ -460,12 +461,12 @@ def test_the_stream_folder(klipper, moonraker, ffmpeg, tmp_path):
     # read from the stream's own folder, never the stream folder (on the NAS, pictures being copied in clashed with
     # ffmpeg reading them every second): the slideshow as one input, its screens put together once and listed in
     # order (each for its 4 s), and the single picture from a copy made once
-    assert [os.path.basename(p) for p in inputs] == ["list.txt", "Elves.png"]
+    assert [os.path.basename(p) for p in inputs] == ["list-0.txt", "Elves.png"]
     assert cmd[cmd.index(inputs[0]) - 5:cmd.index(inputs[0])] == ["-f", "concat", "-safe", "0", "-i"] and "-t" in cmd
     assert not any(os.path.realpath(p).startswith(os.path.realpath(root)) for p in inputs)
     listed = open(inputs[0], encoding="utf-8").read().splitlines()
     shots = [os.path.basename(l[len("file '"):-1]) for l in listed if l.startswith("file ")]
-    assert shots[:4] == ["0000.png", "0001.png", "0000.png", "0001.png"] or shots[:4] == ["0001.png", "0000.png", "0001.png", "0000.png"]
+    assert shots[0] != shots[1] and shots[:4] == [shots[0], shots[1], shots[0], shots[1]]  # two screens, in turn
     assert listed[2:4] == [listed[2], listed[2]] or "duration 4" in listed[4]
     assert open(inputs[1], "rb").read() == _png()
     (root / "images" / "Elves.png").write_bytes(b"changed while live")
@@ -834,6 +835,131 @@ def test_the_buffer_trims_back_to_the_delay_at_a_keyframe(monkeypatch):
     buffer.close()
 
 
+def test_a_burst_of_saves_while_live_is_one_hand_over(klipper, moonraker, ffmpeg, monkeypatch):
+    """Saves in quick succession while live: each waits a moment for more (SETTLE), so a burst brings one new picture,
+    not one each; the page hears a change is on its way meanwhile."""
+    api, pid = klipper
+    moonraker.webcams = [_cam(), _cam(name="Nozzle")]
+    monkeypatch.setattr(live_stream.runner, "SETTLE", 0.6)
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
+    api.post("/stream/start")
+    assert _wait_for(lambda: len(ffmpeg.commands) == 1 and api.get("/stream").json()["status"]["on_air"])
+    for cams in ([f"{pid}:Bed", f"{pid}:Nozzle"], [f"{pid}:Nozzle"], [f"{pid}:Nozzle", f"{pid}:Bed"], [f"{pid}:Bed", f"{pid}:Nozzle"]):
+        status = api.put("/stream", json={"cameras": cams}).json()["status"]
+    assert status["changing"] is True
+    assert _wait_for(lambda: len(ffmpeg.commands) == 2)
+    time.sleep(1)
+    assert len(ffmpeg.commands) == 2 and len(ffmpeg.senders) == 1  # one hand-over, the same connection
+    assert _wait_for(lambda: not api.get("/stream").json()["status"]["changing"]) and ffmpeg.procs[0].poll() is not None
+    api.post("/stream/stop")
+
+
+def test_a_lost_camera_brings_a_fresh_picture(klipper, moonraker, monkeypatch):
+    """ffmpeg says one of its cameras' inputs has ended (the camera hung up, or went quiet): a fresh picture, with new
+    connections to every camera, takes over on the same connection to YouTube. What another input says doesn't count."""
+    fake = FakeFfmpeg(lines=["[in#0/rtsp @ 0x5f] Terminating thread with return code -5 (I/O error)"])
+    monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(live_stream.runner, "popen", fake)
+    monkeypatch.setenv(live_stream.encoders.ENCODER_SETTING, "cpu")
+    monkeypatch.setattr(live_stream.runner, "SETTLE", 0)
+    monkeypatch.setattr(live_stream.runner, "REFRESH_EVERY", 0.2)
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
+    api.post("/stream/start")
+    assert _wait_for(lambda: len(fake.commands) >= 2)  # the first lost its camera: a fresh one took over
+    assert _wait_for(lambda: fake.procs[0].poll() is not None) and len(fake.senders) == 1
+    api.post("/stream/stop")
+
+    quiet = FakeFfmpeg(lines=["[in#1/s16le @ 0x5f] Terminating thread with return code 0"])  # (the sound's input: not a camera)
+    monkeypatch.setattr(live_stream.runner, "popen", quiet)
+    api.post("/stream/start")
+    assert _wait_for(lambda: quiet.commands)
+    time.sleep(0.8)
+    assert len(quiet.commands) == 1
+    api.post("/stream/stop")
+
+
+def test_a_layout_that_cant_start_beside_the_old_one_is_switched_to_directly(klipper, moonraker, ffmpeg, monkeypatch):
+    """The new layout's picture can't start beside the one going out (a camera that takes one viewer at a time refuses
+    it, and it ends): the one going out is stopped first, freeing the camera, and the new one started at once; the
+    delay's buffer covers the gap. Still the same connection to YouTube."""
+    real = ffmpeg.__call__
+    started_with = []
+
+    def picky(args, feed=False, out=False):
+        proc = real(args, feed, out)
+        if "-filter_complex" in args:
+            started_with.append([p.poll() for p in ffmpeg.procs[:-1]])  # (were the earlier pictures still going?)
+            if len(ffmpeg.commands) == 2:
+                proc.terminate()  # the warming one: refused by the camera
+        return proc
+
+    monkeypatch.setattr(live_stream.runner, "popen", picky)
+    api, pid = klipper
+    moonraker.webcams = [_cam(), _cam(name="Nozzle")]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
+    api.post("/stream/start")
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["on_air"])
+    api.put("/stream", json={"cameras": [f"{pid}:Bed", f"{pid}:Nozzle"]})
+    assert _wait_for(lambda: len(ffmpeg.commands) == 3)
+    assert started_with[1] == [None] and started_with[2][0] is not None  # tried beside it first; then the old one stopped first
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["on_air"]) and len(ffmpeg.senders) == 1
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["error"] is None)
+    api.post("/stream/stop")
+
+
+def test_the_relay_knows_the_time_of_the_last_frame_passed_on():
+    """A new picture's times carry on from the last frame passed on (not the clock), so after a break the sender,
+    playing to the times, has no jump ahead to wait out."""
+    from app.services.live_stream import relay
+
+    def frame_at(seconds):
+        pts = int(seconds * 90000)
+        b = bytes([0x21 | ((pts >> 29) & 0xE), (pts >> 22) & 0xFF, ((pts >> 14) & 0xFE) | 1, (pts >> 7) & 0xFF, ((pts << 1) & 0xFE) | 1])
+        pes = bytes([0, 0, 1, 0xE0, 0, 0, 0x80, 0x80, 5]) + b
+        return bytes([0x47, 0x41, 0x00, 0x10]) + pes + bytes(184 - len(pes))
+
+    plain = bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184)
+    assert relay.last_time(frame_at(3.0) + plain + frame_at(12.5) + plain) == 12.5 and relay.last_time(plain) is None
+    sink, ended = _Sink(), threading.Event()
+
+    class Picture:
+        def __init__(self):
+            self.chunks = [frame_at(1.0) + plain, frame_at(1.5) + plain, frame_at(2.0)]
+            self.stdout = self
+
+        def read(self, n=-1):
+            if self.chunks:
+                return self.chunks.pop(0)
+            ended.wait()
+            return b""
+
+    r = relay.Relay(sink)
+    assert r.last_time() is None
+    r.start(Picture())
+    assert _wait_for(lambda: r.last_time() == 1.5)  # (the 2.0 s frame is still being held back, not passed on)
+    ended.set()
+
+
+def test_a_dropped_connection_is_made_again_and_its_message_clears(klipper, moonraker, ffmpeg, monkeypatch):
+    """YouTube closes the connection: the sender is started again (after RETRY_SECONDS) and, once it has kept sending a
+    while, the message saying it dropped is cleared. The picture keeps going throughout."""
+    monkeypatch.setattr(live_stream.runner, "RETRY_SECONDS", 0.2)
+    monkeypatch.setattr(live_stream.runner, "SENDER_STEADY", 0.3)
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False})
+    api.post("/stream/start")
+    assert _wait_for(lambda: ffmpeg.sender_procs and api.get("/stream").json()["status"]["on_air"])
+    ffmpeg.sender_procs[0].terminate()  # YouTube hung up
+    assert _wait_for(lambda: "connection to YouTube Live dropped" in (api.get("/stream").json()["status"]["error"] or ""))
+    assert _wait_for(lambda: len(ffmpeg.senders) == 2)
+    assert _wait_for(lambda: api.get("/stream").json()["status"]["error"] is None)
+    assert len(ffmpeg.commands) == 1 and ffmpeg.procs[0].poll() is None
+    api.post("/stream/stop")
+
+
 def test_choosing_the_stream_folder(klipper, share):
     api, _ = klipper
     r = api.put("/stream/location", json={"path": str(share)})
@@ -870,10 +996,14 @@ def test_camera_streamer_is_read_as_mjpeg_and_a_buddy3d_over_rtsp(db_session):
     assert live_stream.input_args(p, {"name": "Camera", "service": "farmhand-go2rtc"})[-1] == "rtsp://10.0.6.40/live"
     # Mainsail's adaptive MJPEG shows snapshots in the browser, but its address is the MJPEG stream itself
     adaptive = {"name": "front", "service": "mjpegstreamer-adaptive", "mjpeg": False, "stream_url": "http://10.0.6.21/webcam/?action=stream"}
-    assert live_stream.input_args(p, adaptive) == ["-use_wallclock_as_timestamps", "1", "-f", "mpjpeg", "-i", "http://10.0.6.21/webcam/?action=stream"]
+    from app.services.live_stream.sources import MJPEG, RTSP
+
+    # (MJPEG: each frame timed as it arrives, and reconnected when the camera hangs up; RTSP: ends after 10 s quiet)
+    assert "-reconnect" in MJPEG and "-use_wallclock_as_timestamps" in MJPEG and RTSP[-2:] == ["-timeout", "10000000"]
+    assert live_stream.input_args(p, adaptive) == [*MJPEG, "-i", "http://10.0.6.21/webcam/?action=stream"]
     # go2rtc on the printer: the same camera over its RTSP port
     go2rtc = {"name": "Chamber", "service": "webrtc-go2rtc", "mjpeg": False, "stream_url": "http://10.0.6.33:1984/stream.html?src=chamber&mode=webrtc"}
-    assert live_stream.input_args(p, go2rtc) == ["-rtsp_transport", "tcp", "-i", "rtsp://10.0.6.33:8554/chamber"]
+    assert live_stream.input_args(p, go2rtc) == [*RTSP, "-i", "rtsp://10.0.6.33:8554/chamber"]
 
 
 def test_when_ffmpeg_stops_it_says_why_without_the_key(klipper, moonraker, monkeypatch):

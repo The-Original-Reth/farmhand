@@ -299,7 +299,7 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
                   ? status.delay.filling
                     ? ` · Collecting the ${status.delay.seconds} s delay before sending to YouTube (${Math.round(status.delay.held)} s so far)`
                     : ` · ${Math.round(status.delay.held)} s of the ${status.delay.seconds} s delay held`
-                  : ""}`
+                  : ""}${status.changing ? " · Changing to the new layout: it takes over in a few seconds, with no break" : ""}`
               : off
                 ? "The stream is off: ffmpeg isn't running on the server. Set everything up as usual, and turn it on above to go live."
                 : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
