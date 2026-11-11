@@ -11,6 +11,7 @@ import { fmtWhen } from "../lib/format.js";
 // How a plugin is doing, as its badge says it
 const STATES = {
   running: { tone: "green", label: "running" },
+  unwell: { tone: "amber", label: "running, with a problem" }, // it answered its health check saying what's wrong
   not_answering: { tone: "amber", label: "not answering" },
   unknown: { tone: "muted", label: "not asked yet" },
   off: { tone: "muted", label: "switched off" },
@@ -201,7 +202,7 @@ function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
             : `made ${fmtWhen(p.tokenCreatedAt)}, last used ${fmtWhen(p.tokenLastUsedAt, "never")}`}
         </span>
       </div>
-      {p.health.state === "not_answering" && p.health.lastError && (
+      {["unwell", "not_answering"].includes(p.health.state) && p.health.lastError && (
         <div style={uiText(12, c.amber, { marginBottom: 10, lineHeight: 1.5 })}>{p.health.lastError}</div>
       )}
 

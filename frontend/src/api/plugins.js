@@ -6,7 +6,7 @@ import { API_BASE, del, jsonBody, request } from "./client.js";
 
 // { id, name, version, author, homepage, enabled, permissions, permissionsDescribed: [{ permission, means }], address,
 // onlyFromAddress, needsToken (brought back by Load all settings: no token yet), page: { menu, icon, path } | null,
-// health: { state: "running" | "not_answering" | "unknown" | "off", lastError, lastSeenAt, checkedAt }, createdAt,
+// health: { state: "running" | "unwell" | "not_answering" | "unknown" | "off", lastError, lastSeenAt, checkedAt }, createdAt,
 // tokenCreatedAt, tokenLastUsedAt }
 const normalizePlugin = (p) => ({
   id: p.id,

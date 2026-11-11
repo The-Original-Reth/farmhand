@@ -1,7 +1,7 @@
 """
 Asking each plugin that's switched on whether it's well, every 30 seconds: GET <address><its manifest's health path>
-(its /manifest when it names none). What's found is kept on its plugin_connection row: running or not_answering, the
-last error, and when it last answered. The Plugins page and the plugin's menu page show it.
+(its /manifest when it names none). What's found is kept on its plugin_connection row: running, unwell (it answered,
+but not 2xx: it's running and says what's wrong) or not_answering, the last error, and when it last answered. The Plugins page and the plugin's menu page show it.
 """
 from __future__ import annotations
 
@@ -22,15 +22,13 @@ EVERY = 30.0
 def check(db: Session, plugin) -> str | None:
     """Ask one plugin now and keep what's found; None when it's well, else why not."""
     link = registry.connection_of(plugin)
-    error = remote.check_health(link.address, (plugin.manifest or {}).get("health"))
+    state, error = remote.check_health(link.address, (plugin.manifest or {}).get("health"))
     now = utc_now()
-    if error is None:
-        link.health, link.last_error, link.last_seen_at = "running", None, now
-    else:
-        if link.health != "not_answering":
-            log.info("The %s plugin isn't answering: %s", plugin.id, error)
-        link.health, link.last_error = "not_answering", error
-    link.checked_at = now
+    if state != "not_answering":
+        link.last_seen_at = now  # it answered, well or not
+    if error and (state, error) != (link.health, link.last_error):
+        log.info("The %s plugin is %s: %s", plugin.id, state.replace("_", " "), error)
+    link.health, link.last_error, link.checked_at = state, error, now
     db.commit()
     return error
 

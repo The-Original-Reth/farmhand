@@ -100,10 +100,21 @@ def printer_print(printer_id: int, db: Session = Depends(get_db)):
     return answers.print_of(db, require_printer(db, printer_id))
 
 
-@router.get("/events", dependencies=[Depends(needs("prints:read"))])
-async def printer_events():
+@router.get("/events")
+async def printer_events(request: Request, caller: registry.Caller = Depends(needs("prints:read"))):
+    # The stream outlives this request's database session, so each check opens one of its own (the same database:
+    # get_db, or what stands in for it in tests)
+    open_db = request.app.dependency_overrides.get(get_db, get_db)
+
+    def still_allowed() -> bool:
+        session = open_db()
+        try:
+            return registry.still_taken(next(session), caller.token_hash, "prints:read")
+        finally:
+            session.close()
+
     return StreamingResponse(
-        events.stream(), media_type="text/event-stream",
+        events.stream(still_allowed=still_allowed), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 

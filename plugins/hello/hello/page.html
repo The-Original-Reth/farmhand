@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hello</title>
+<!--
+  Farmhand's helper: sets Farmhand's colours as CSS variables (--farmhand-bg, --farmhand-panel, --farmhand-amber...)
+  and keeps them up to date. It's served by Farmhand, so this one address is absolute; opened straight on the plugin's
+  own port it isn't there, and the page falls back to the colours from GET /farm (below), then to the ones in var().
+-->
+<script src="/plugins/farmhand-plugin.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 20px;
+    background: var(--farmhand-bg, #1B1D1E); color: var(--farmhand-text-primary, #F4F5F4);
+    font-family: var(--farmhand-font, system-ui, sans-serif); font-size: 14px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; color: var(--farmhand-heading, #FFFFFF); }
+  .muted { color: var(--farmhand-text-muted, #CBCED0); }
+  .faint { color: var(--farmhand-text-faint, #A3A7AA); font-size: 12px; }
+  .banner {
+    margin: 12px 0; padding: 10px 14px; border-radius: 4px; line-height: 1.5;
+    background: var(--farmhand-danger-dim, #3A2321); border: 1px solid var(--farmhand-danger, #E27A72);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card {
+    background: var(--farmhand-panel, #232527); border: 1px solid var(--farmhand-border, #3D4042);
+    border-radius: 4px; padding: 12px 14px;
+  }
+  .stale .card { opacity: 0.55; }
+  .name { font-weight: 600; color: var(--farmhand-heading, #FFFFFF); }
+  .file { color: var(--farmhand-file-name, #6AAEF5); word-break: break-all; margin-top: 6px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--farmhand-panel-alt, #2A2C2E); margin-top: 8px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--farmhand-amber, #E39F3A); }
+  .paused .bar > div { background: var(--farmhand-teal, #69A0A6); }
+  .error { color: var(--farmhand-danger, #E27A72); margin-top: 6px; }
+  details { margin-top: 20px; }
+  summary { cursor: pointer; color: var(--farmhand-amber, #E39F3A); }
+  label { display: block; margin: 4px 0; }
+  button {
+    margin-top: 8px; padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font: inherit;
+    background: var(--farmhand-amber, #E39F3A); color: var(--farmhand-on-accent, #241A08);
+  }
+</style>
+</head>
+<body>
+  <h1>Hello</h1>
+  <div class="faint" id="status">Asking the plugin…</div>
+  <div class="banner" id="problem" hidden></div>
+  <div id="printers" class="grid"></div>
+
+  <details>
+    <summary>Choose printers</summary>
+    <div class="faint">Untick the printers you don't want here. This plugin remembers it (in its own storage), not Farmhand.</div>
+    <form id="choose"></form>
+    <button type="button" id="save">Save</button> <span class="faint" id="saved"></span>
+  </details>
+
+<script>
+// Everything this page asks for is the plugin's own: relative addresses ("api/events", not "/api/events"), so they
+// work at /plugins/hello/ inside Farmhand and on the plugin's own port alike. The page never sees Farmhand's token.
+var latest = null;
+
+function el(tag, className, text) {
+  var e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text != null) e.textContent = text; // textContent, never innerHTML: printer and file names are shown as text
+  return e;
+}
+
+function when(iso) {
+  return iso ? new Date(iso).toLocaleTimeString() : "never";
+}
+
+// Opened on its own (not inside Farmhand), take Farmhand's colours from GET /farm, as the plugin passes them on.
+function matchFarmhand(farm) {
+  if (!farm || !farm.colors || (window.farmhand && window.farmhand.theme)) return; // Farmhand's own message wins
+  var root = document.documentElement;
+  Object.keys(farm.colors).forEach(function (k) {
+    root.style.setProperty("--farmhand-" + k.replace(/[A-Z]/g, function (ch) { return "-" + ch.toLowerCase(); }), farm.colors[k]);
+  });
+  root.style.colorScheme = farm.mode === "light" ? "light" : "dark";
+}
+
+function render(s) {
+  latest = s;
+  matchFarmhand(s.farm);
+  var f = s.farmhand;
+
+  var status = f.ok ? "Up to date, " + when(f.checked_at) : "Last asked Farmhand " + when(f.checked_at);
+  status += f.live ? " · live" : " · not hearing Farmhand's events yet";
+  if (s.last_event) status += " · latest: " + describe(s.last_event);
+  document.getElementById("status").textContent = status;
+
+  var problem = document.getElementById("problem");
+  problem.hidden = !f.problem;
+  problem.textContent = f.problem
+    ? f.problem + (f.problem_kind === "down" || f.problem_kind === "busy" ? " Trying again every " + f.retry_seconds + " seconds." : "")
+    : "";
+
+  var grid = document.getElementById("printers");
+  grid.className = "grid" + (f.ok ? "" : " stale"); // what's shown while Farmhand can't be asked is the last known
+  grid.replaceChildren();
+  if (!s.printers.length) {
+    grid.append(el("div", "muted", f.checked_at && f.ok ? "No printers to show." : ""));
+  }
+  s.printers.forEach(function (p) {
+    var card = el("div", "card" + (p.state === "paused" ? " paused" : ""));
+    card.append(el("div", "name", p.name));
+    card.append(el("div", "faint", [p.kind, p.connection_type === "prusalink" ? "PrusaLink" : "Klipper"].filter(Boolean).join(" · ")));
+    if (p.error) {
+      card.append(el("div", "error", p.error));
+    } else if (p.state) {
+      var pct = Math.max(0, Math.min(100, p.progress || 0));
+      card.append(el("div", "muted", (p.state === "paused" ? "Paused at " : "Printing, ") + pct.toFixed(0) + "%"));
+      var bar = el("div", "bar"), fill = el("div");
+      fill.style.width = pct + "%";
+      bar.append(fill);
+      card.append(bar);
+      if (p.file) card.append(el("div", "file", p.file));
+    } else {
+      card.append(el("div", "muted", "Not printing"));
+    }
+    grid.append(card);
+  });
+
+  // The "Choose printers" list (left alone while it's being changed)
+  var form = document.getElementById("choose");
+  if (!form.contains(document.activeElement)) {
+    form.replaceChildren();
+    s.all_printers.forEach(function (p) {
+      var label = el("label"), box = el("input");
+      box.type = "checkbox";
+      box.value = p.id;
+      box.checked = s.hidden_printers.indexOf(p.id) < 0;
+      label.append(box, " " + p.name);
+      form.append(label);
+    });
+  }
+}
+
+function describe(e) {
+  var words = {
+    "print.started": "started", "print.paused": "paused", "print.resumed": "carried on with",
+    "print.finished": "finished", "printer.unreachable": "can't be reached", "printer.reachable": "is back",
+  }[e.type] || e.type;
+  return e.printer_name + " " + words + (e.type.indexOf("print.") === 0 && e.file ? " " + e.file : "") + " (" + when(e.at) + ")";
+}
+
+document.getElementById("save").addEventListener("click", function () {
+  var hidden = [];
+  document.querySelectorAll("#choose input").forEach(function (box) { if (!box.checked) hidden.push(Number(box.value)); });
+  fetch("api/settings", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hidden_printers: hidden }),
+  }).then(function (r) { return r.json().then(function (body) { if (!r.ok) throw new Error(body.detail); }); })
+    .then(function () { document.getElementById("saved").textContent = "Saved."; })
+    .catch(function (e) { document.getElementById("saved").textContent = "Not saved: " + e.message; });
+});
+
+// The plugin sends the whole snapshot each time it changes. EventSource reconnects by itself if the plugin restarts.
+var events = new EventSource("api/events");
+events.onmessage = function (e) { render(JSON.parse(e.data)); };
+events.onerror = function () {
+  document.getElementById("status").textContent = "Lost touch with the Hello plugin itself; reconnecting…";
+};
+// (Inside Farmhand, window.farmhand.onTheme(fn) also tells script when the colours change, e.g. to redraw a chart.)
+</script>
+</body>
+</html>

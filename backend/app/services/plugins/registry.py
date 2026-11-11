@@ -169,12 +169,18 @@ def caller(db: Session, token: str | None) -> Caller | None:
     return Caller(row.plugin_id, frozenset(row.permissions or []), row.token_hash, only_from)
 
 
+def still_taken(db: Session, token_hash: str, permission: str) -> bool:
+    """Whether the token with this hash is still taken, with this permission (for a stream opened with it)."""
+    row = db.scalars(select(PluginToken).where(PluginToken.token_hash == token_hash)).first()
+    return row is not None and row.plugin.enabled and permission in (row.permissions or [])
+
+
 def granted(plugin: Plugin) -> list[str]:
     return list(plugin.tokens[0].permissions) if plugin.tokens else []
 
 
 def health_of(plugin: Plugin) -> dict:
-    """How the plugin is doing: state running | not_answering | unknown (not asked yet) | off (switched off)."""
+    """How the plugin is doing: state running | unwell (answers, saying what's wrong) | not_answering | unknown | off."""
     link = connection_of(plugin)
     return {
         "state": "off" if not plugin.enabled else link.health,

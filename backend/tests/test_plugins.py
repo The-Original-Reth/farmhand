@@ -168,11 +168,12 @@ def test_a_plugin_switched_off_has_its_token_refused_and_its_page_closed(api, pl
 
 def test_the_health_check_keeps_how_each_plugin_is_doing(db_session, plugin):
     p, _ = registry.register_by_address(db_session, ADDRESS, [])
-    seen = p.connection.last_seen_at
     plugin.unwell = True
     health.check_all(db_session)
     h = registry.out(p)["health"]
-    assert h["state"] == "not_answering" and h["last_error"] == "The plugin answered 503 to /health: the camera reader is stuck"
+    # it's running (it answered), and says what's wrong: its page is still shown
+    assert h["state"] == "unwell" and h["last_error"] == "The plugin answered 503 to /health: the camera reader is stuck"
+    seen = p.connection.last_seen_at
     plugin.unwell, plugin.down = False, True
     health.check_all(db_session)
     h = registry.out(p)["health"]
