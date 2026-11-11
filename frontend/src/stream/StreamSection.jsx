@@ -5,7 +5,7 @@ import { errorText, getStream, renameSlideshow, saveStream, scanStreamFolder, st
 import { useData } from "../data.jsx";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
-import { cameraOf, printerOf } from "./shapes.js";
+import { cameraOf, followCameras, printerOf } from "./shapes.js";
 import { LiveStatusPanel, MuteSwitch, StreamSwitch, WhereToPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
 import { STREAM_CHANNEL, YouTubeSettingsButton, openYouTubeSettings } from "./YouTubeSettings.jsx";
@@ -91,7 +91,8 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   }
 
   const saved = page.settings;
-  const shown = draft || saved;
+  // (a printer's only camera renamed in Mainsail since its square was chosen is shown, and saved, under its new name)
+  const shown = followCameras(draft || saved, cams);
   // (the switch is saved on its own, as soon as it is turned, so it never counts as a change still to save)
   const differs = !!draft && Object.keys(draft).some((k) => k !== "enabled" && JSON.stringify(draft[k]) !== JSON.stringify(saved[k]));
   const changed = differs;
