@@ -18,7 +18,7 @@ from ...models import Printer, PrintJob
 from ...timeutil import as_utc
 from ..printer_service import record_sync_error, record_sync_ok
 from . import client
-from .client import PrusaLinkError
+from .client import PrusaLinkError, job_file_name
 
 # PrusaLink's job states, as Farmhand's history says them
 JOB_STATUS = {"PRINTING": "in_progress", "PAUSED": "in_progress", "FINISHED": "completed", "STOPPED": "cancelled", "ERROR": "error"}
@@ -64,7 +64,7 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
         # the same print already on record but not followed here (brought in by Load all from the Farmhand that was
         # watching it): carried on, not counted a second time. Its start can't be worked out again from the printer,
         # which only says how long it has been printing, not how long it was paused.
-        row = _open_record(db, printer.id, job_id, file.get("display_name") or file.get("name"))
+        row = _open_record(db, printer.id, job_id, job_file_name(current))
     if row is None:
         start = now - dt.timedelta(seconds=float(current.get("time_printing") or 0))
         row = PrintJob(printer_id=printer.id, job_id=f"{job_id}@{start:%Y%m%dT%H%M%S}", filename="", status=status, start_time=start)
@@ -77,7 +77,7 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
 
     meta = file.get("meta") if isinstance(file.get("meta"), dict) else {}
     remaining = current.get("time_remaining")
-    row.filename = file.get("display_name") or file.get("name") or row.filename or "(unnamed)"
+    row.filename = job_file_name(current) or row.filename or "(unnamed)"
     row.status = status
     row.print_duration = float(current.get("time_printing") or 0)
     row.total_duration = max(0.0, (now - as_utc(row.start_time)).total_seconds())

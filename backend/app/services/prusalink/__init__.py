@@ -7,7 +7,8 @@ that says plainly what went wrong (no address, can't connect, wrong password, bu
 """
 from __future__ import annotations
 
-from .client import PrusaLinkError, answered_at, upload_and_print, version
-from .tracking import poll, totals
+from .client import PrusaLinkError, answered_at, job_file_name, upload_and_print, version
+from .status import live_status
+from .tracking import poll
 
-__all__ = ["PrusaLinkError", "answered_at", "poll", "totals", "upload_and_print", "version"]
+__all__ = ["PrusaLinkError", "answered_at", "job_file_name", "live_status", "poll", "upload_and_print", "version"]

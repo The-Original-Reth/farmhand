@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
 from ..notes import HasNotes
+from ..timeutil import utc_now
 
 
 class Bundle(HasNotes, Base):
@@ -31,7 +32,7 @@ class Bundle(HasNotes, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     printer: Mapped["Printer"] = relationship(back_populates="bundles")
     source_model_links: Mapped[list["BundleSourceModel"]] = relationship(

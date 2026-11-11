@@ -230,6 +230,16 @@ def _add_newer(db: Session, project_id: int, folder: Path, others: list[dict]) -
     return {"project_id": project.id, "name": project.name, "files": counts, "warnings": warnings, "added": True}
 
 
+def scan_projects_folder(db: Session) -> dict:
+    """Scan projects: the models and 3MFs another Farmhand has first (projects name them), then the project files
+    folder. The projects' answer, with the library's beside it."""
+    from .. import library_records
+
+    library = library_records.import_library(db)
+    result = import_projects_folder(db)
+    return {**result, "models": library["models"], "threemfs": library["threemfs"], "library_skipped": library["skipped"]}
+
+
 def import_projects_folder(db: Session, add_missing: bool = False) -> dict:
     """
     Scan projects (see the top of this file). One named like a project already here is left out. add_missing (Load

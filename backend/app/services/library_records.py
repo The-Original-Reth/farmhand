@@ -37,10 +37,6 @@ MAX_RECORD_BYTES = 20_000_000  # a 3MF's record holds every version's slicer set
 background = record_files.BackgroundWriter("library-record", "a library record")
 
 
-def is_record(name: str) -> bool:
-    return (name.startswith(MODEL_PREFIX) or name.startswith(THREEMF_PREFIX)) and name.endswith(".json")
-
-
 def _record_folder(paths: list[tuple[str | None, int]], owner_id: int, root: Path) -> Path | None:
     """Where an owner's record goes: the {id} folder this Farmhand keeps its versions in ({root}/{id}/v{n}/...), else
     the folder of the STL / 3MF folder its files are in (another Farmhand filed them there, or they were brought in
@@ -210,7 +206,7 @@ def import_models(db: Session) -> dict:
             preview = resolve_from(root, v.get("preview"))
             db.add(SourceModelVersion(
                 source_model_id=model.id, version=n, file_path=str(path), thumbnail_path=str(preview) if preview and preview.is_file() else None,
-                note=v.get("note"), **({"uploaded_at": parse_iso(v.get("uploaded_at"))} if parse_iso(v.get("uploaded_at")) else {}),
+                note=v.get("note"), **({"uploaded_at": when} if (when := parse_iso(v.get("uploaded_at"))) else {}),
             ))
             known.add(os.path.realpath(path))
         if isinstance(doc.get("notes"), str) and doc["notes"].strip():
@@ -261,7 +257,7 @@ def import_bundles(db: Session) -> dict:
                 gcode_path=str(gcode) if threemf and gcode and gcode.is_file() else None,
                 thumbnail_path=str(preview) if preview and preview.is_file() else None,
                 settings=v.get("settings") if isinstance(v.get("settings"), dict) else {},
-                **({"uploaded_at": parse_iso(v.get("uploaded_at"))} if parse_iso(v.get("uploaded_at")) else {}),
+                **({"uploaded_at": when} if (when := parse_iso(v.get("uploaded_at"))) else {}),
             )
             db.add(row)
             db.flush()

@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from ..timeutil import utc_now
 
 
 class NetworkShare(Base):
@@ -28,4 +29,4 @@ class NetworkShare(Base):
     password: Mapped[str | None] = mapped_column(Text)
     domain: Mapped[str | None] = mapped_column(String(64))
     version: Mapped[str | None] = mapped_column(String(10))
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

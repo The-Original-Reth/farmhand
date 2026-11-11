@@ -99,7 +99,6 @@ export function DataProvider({ children }) {
       bundlesForPrinter,
       modelsForPrinter,
       bundleTitle,
-      compareLabel,
       versionIndex,
       versionLabel,
       searchIndex,

@@ -1,7 +1,7 @@
 // The Stream page: printers' cameras sent live to YouTube by Farmhand itself, laid out in a grid of squares,
 // and the YouTube broadcast's own title and description. The stream key, the Google client secret and the YouTube
 // sign-in are sent once and never come back: the page only learns whether each is there.
-import { API_BASE, del, jsonBody, post, request } from "./client.js";
+import { API_BASE, del, jsonBody, normalizeFolderLocation, post, request } from "./client.js";
 
 // { settings: { destination, cols, rows, cells: [per square, row by row: { camera: "printer id:camera name" } | a card
 // { background, image, slideshow, seconds, text, color, picture_box: { x, y, w, h }, text_box: { x, y, size } (parts of the square) }; a camera may have its own background too | null], cameras (the cameras in square order), showStatus, layout: "grid" | "cycle", resolution,
@@ -149,12 +149,8 @@ export const removeStreamTrack = async (name) => normalizeStream(await del(`/str
 
 // Where the stream folder is (Settings): { path, isDefault, defaultPath, status: { exists, writable, markerOk, ready } }.
 // setStreamLocation(null) goes back to the default; a folder that can't be used is refused with the reason.
-const normalizeLocation = (l) => ({
-  path: l.path, isDefault: l.is_default, defaultPath: l.default_path,
-  status: { exists: l.status.exists, writable: l.status.writable, markerOk: l.status.marker_ok, ready: l.status.ready },
-});
-export const getStreamLocation = async () => normalizeLocation(await request("/stream/location"));
-export const setStreamLocation = async (path) => normalizeLocation(await request("/stream/location", jsonBody("PUT", { path })));
+export const getStreamLocation = async () => normalizeFolderLocation(await request("/stream/location"));
+export const setStreamLocation = async (path) => normalizeFolderLocation(await request("/stream/location", jsonBody("PUT", { path })));
 
 // Signing in to YouTube: the Google OAuth client (a blank secret keeps the saved one), then a code to enter at
 // google.com/device (getStream finishes the sign-in once it's entered), and signing out.

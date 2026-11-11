@@ -5,6 +5,7 @@ import { toolButton } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { readStoredObject, writeStored } from "../lib/storage.js";
+import { plural } from "../lib/format.js";
 
 // Which 3MF entries show all their versions. By default an entry shows just its newest version, with a toggle for
 // the older ones. Only entries someone has explicitly opened or closed are remembered (in this browser). Shared by
@@ -35,7 +36,7 @@ export function useBundleExpansion() {
 // Shows or hides an entry's older versions — a button in its header, beside "New version"
 export function VersionsToggle({ open, olderCount, onToggle, controlsId }) {
   const [hover, setHover] = useState(false);
-  const word = `older version${olderCount === 1 ? "" : "s"}`;
+  const older = plural(olderCount, "older version");
   return (
     <button
       data-testid="versions-toggle"
@@ -54,7 +55,7 @@ export function VersionsToggle({ open, olderCount, onToggle, controlsId }) {
       }}
     >
       <ChevronRight size={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s ease" }} />
-      {open ? `Hide ${olderCount} ${word}` : `Show ${olderCount} ${word}`}
+      {open ? `Hide ${older}` : `Show ${older}`}
     </button>
   );
 }

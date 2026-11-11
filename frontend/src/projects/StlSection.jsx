@@ -5,7 +5,7 @@ import { c, fs, ui, fixed } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
 import { AddModelFileForm } from "../models/modelActions.jsx";
-import { nameCollator } from "../models/modelSort.js";
+import { nameCollator } from "../lib/order.js";
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { folderPathOf, TextField } from "../components/common/fields.jsx";
 import { DownloadButton, TrashButton } from "../components/common/ui.jsx";

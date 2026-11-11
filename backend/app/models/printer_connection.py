@@ -6,6 +6,7 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Intege
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..timeutil import utc_now
 
 
 class PrinterConnection(Base):
@@ -55,7 +56,7 @@ class PrinterServiceReminder(Base):
     interval_hours: Mapped[float] = mapped_column(Float, nullable=False, default=SERVICE_INTERVAL_HOURS)
     start_printtime: Mapped[float] = mapped_column(Float, nullable=False)  # printer's total print seconds at the start
     started_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+        DateTime(timezone=True), default=utc_now
     )
     history: Mapped[list] = mapped_column(JSON, nullable=False, default=list)  # [{done_at, printtime, hours, note}]
 
@@ -96,7 +97,7 @@ class PrinterServiceNote(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+        DateTime(timezone=True), default=utc_now
     )
 
     printer: Mapped["Printer"] = relationship(back_populates="service_note_row")  # noqa: F821
@@ -132,7 +133,7 @@ class PrintJob(Base):
     max_power_w: Mapped[float | None] = mapped_column(Float)
     auxiliary: Mapped[list | None] = mapped_column(JSON)  # everything Moonraker recorded alongside the job, as given
     synced_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+        DateTime(timezone=True), default=utc_now
     )
 
     printer: Mapped["Printer"] = relationship(back_populates="print_jobs")  # noqa: F821
@@ -159,7 +160,7 @@ class GcodeFilament(Base):
     diameter: Mapped[float | None] = mapped_column(Float)  # mm
     problem: Mapped[str | None] = mapped_column(Text)
     read_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+        DateTime(timezone=True), default=utc_now
     )
 
     printer: Mapped["Printer"] = relationship(back_populates="gcode_filaments")  # noqa: F821

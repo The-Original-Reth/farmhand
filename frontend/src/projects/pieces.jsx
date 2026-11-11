@@ -3,12 +3,13 @@ import { ChevronDown, FolderInput } from "lucide-react";
 import { c, fs, ui, fixed } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
-import { nameCollator } from "../models/modelSort.js";
+import { nameCollator } from "../lib/order.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { SearchBox } from "../components/common/fields.jsx";
 import { Row, Thumb } from "../components/common/ui.jsx";
 import { monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
 import { plural } from "../lib/format.js";
+import { searchWords } from "../lib/search.jsx";
 
 // What a project's page is built from: the pieces its sections share
 
@@ -136,7 +137,7 @@ export function PickDialog({ title, width = 560, noun, searchPlaceholder, items,
   const { putProject } = useData();
   const [query, setQuery] = useState("");
   const { busy, error, run } = useAction();
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const words = searchWords(query);
   const shown = items
     .filter((x) => words.every((w) => (x.search || x.name).toLowerCase().includes(w)))
     .sort((a, b) => nameCollator.compare(a.name, b.name));

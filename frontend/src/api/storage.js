@@ -1,16 +1,12 @@
 // The Storage page: where files go, the folder picker, network shares and the save location.
-import { jsonBody, post, request } from "./client.js";
+import { jsonBody, normalizeFolderLocation, normalizeFolderStatus, post, request } from "./client.js";
 import { normalizeFound } from "./settings.js";
 
+// a file root also says how full its disk is
 const normalizeLocation = (l) => ({
-  path: l.path,
-  defaultPath: l.default_path,
-  isDefault: l.is_default,
+  ...normalizeFolderLocation(l),
   status: {
-    exists: l.status.exists,
-    writable: l.status.writable,
-    markerOk: l.status.marker_ok,
-    ready: l.status.ready,
+    ...normalizeFolderStatus(l.status),
     freeBytes: l.status.free_bytes,
     totalBytes: l.status.total_bytes,
     separateVolume: l.status.separate_volume,

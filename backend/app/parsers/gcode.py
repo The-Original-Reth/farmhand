@@ -15,6 +15,8 @@ import re
 import struct
 import zlib
 
+GCODE_EXTENSIONS = (".gcode", ".bgcode")  # plain G-code, and Prusa's binary G-code
+
 _KEY = "physical_printer_settings_id"
 _TAIL = 1024 * 1024  # PrusaSlicer's settings block is well under this; it's always the last thing in a .gcode
 # the value is the rest of that one line (it may be empty: no physical printer was picked)

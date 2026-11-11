@@ -2,8 +2,7 @@
 import { withNewAverage } from "../../src/lib/energyPrice.js";
 import { notInMockup, nowUnix } from "../core.js";
 import { iso } from "../data.js";
-import { DEFAULT_FONT, FONTS, cameraCell, cardCell, isCard } from "../streamCells.js";
-
+import { DEFAULT_FONT, FONTS, cameraCell, cardCell, hex, isCard } from "../streamCells.js";
 
 export function settingsRoutes(ctx) {
   const { capability, fail404, farm, location, monthOf, on, prices, projectsDefault, requireConfirm, SCAN_ROOT, scanFolders } = ctx;
@@ -52,10 +51,10 @@ export function settingsRoutes(ctx) {
             seconds_all: inRange(l.seconds_all, 0, 3600, 30),
             seconds_each: inRange(l.seconds_each, 3, 3600, 20),
             show_status: l.show_status !== false,
-            border_color: /^#[0-9A-Fa-f]{6}$/.test(l.border_color || "") ? l.border_color.toUpperCase() : "#000000",
-            background: /^#[0-9A-Fa-f]{6}$/.test(l.background || "") ? l.background.toUpperCase() : "#000000",
+            border_color: hex(l.border_color, "#000000"),
+            background: hex(l.background, "#000000"),
             font: FONTS.some(([k]) => k === l.font) ? l.font : DEFAULT_FONT,
-            color: /^#[0-9A-Fa-f]{6}$/.test(l.color || "") ? l.color.toUpperCase() : "#FFFFFF",
+            color: hex(l.color, "#FFFFFF"),
           };
         })
         .filter((l) => l.name && l.name.length <= 60 && !seen.has(l.name.toLowerCase()) && seen.add(l.name.toLowerCase()))

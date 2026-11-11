@@ -17,10 +17,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import config_store, storage
-from . import app_settings
 from ..models import Bundle, BundleVersion, GcodeFilament, Printer, PrintJob
 from ..timeutil import as_utc
-from . import config_service, energy, filament_cost
+from . import app_settings, config_service, energy, filament_cost
 from .energy import zone
 
 CHUNK = 500  # prints costed at a time, so a long history isn't all held at once
@@ -141,14 +140,8 @@ def default_folder() -> Path:
 
 
 def _chosen(db: Session, rename: bool = False) -> str | None:
-    """The folder chosen in Settings, where it is now: one saved by its old name follows its rename (renamed now when
-    `rename`), and is saved by its new one."""
-    chosen = app_settings.get(db, KEY_LOCATION)
-    now = storage.current_folder(chosen, rename=rename)
-    if now != chosen:
-        app_settings.put(db, KEY_LOCATION, now)
-        db.commit()
-    return now
+    """The folder chosen in Settings, where it is now (see app_settings.current_folder)."""
+    return app_settings.current_folder(db, KEY_LOCATION, rename=rename)
 
 
 def records_folder(db: Session) -> Path:

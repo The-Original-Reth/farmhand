@@ -67,3 +67,13 @@ export const timeZone = (() => {
     return "";
   }
 })();
+// "?tz=<this browser's time zone>", or nothing when the browser doesn't say
+export const tzQuery = timeZone ? `?tz=${encodeURIComponent(timeZone)}` : "";
+
+// A chosen folder's state, as the API answers it for every "where things are saved" setting
+export const normalizeFolderStatus = (s) =>
+  s && { exists: s.exists, writable: s.writable, markerOk: s.marker_ok, ready: s.ready };
+// A folder setting with a default: { path, isDefault, defaultPath, status }
+export const normalizeFolderLocation = (l) => ({
+  path: l.path, isDefault: l.is_default, defaultPath: l.default_path, status: normalizeFolderStatus(l.status),
+});

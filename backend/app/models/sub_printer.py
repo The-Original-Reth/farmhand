@@ -6,6 +6,7 @@ from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, String, Text, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..timeutil import utc_now
 
 
 class SubPrinter(Base):
@@ -25,7 +26,7 @@ class SubPrinter(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)  # the preset's name in the slicer
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     printer: Mapped["Printer"] = relationship(back_populates="sub_printers")  # noqa: F821
     # The parts fitted to it (see SubPrinterPart), in the order they were added. They go with it.
@@ -118,7 +119,7 @@ class SubPrinterSettingsCopy(Base):
     sub_printer_id: Mapped[int] = mapped_column(ForeignKey("sub_printer.id"), primary_key=True)
     copied_from: Mapped[str] = mapped_column(String(120), nullable=False)  # the printer profile's name then
     from_file: Mapped[str | None] = mapped_column(String(255))  # the 3MF they were read from: "Frog.3mf · v3"
-    copied_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    copied_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     settings: Mapped[dict] = mapped_column(JSON, nullable=False)  # every setting, as a 3MF version's `settings`
 
     sub_printer: Mapped[SubPrinter] = relationship(back_populates="settings_copy")

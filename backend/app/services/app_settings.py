@@ -26,6 +26,20 @@ def put(db: Session, key: str, value: str | None) -> None:
 
 INSTANCE_KEY = "instance_id"
 FARM_COST_DIR_KEY = "farm_cost_dir"  # the Farm cost records folder chosen in Settings; none = the default
+STREAM_MEDIA_DIR_KEY = "stream_media_dir"  # the Stream page's folder chosen in Settings; none = the default
+
+
+def current_folder(db: Session, key: str, rename: bool = False) -> str | None:
+    """A folder chosen in Settings, where it is now: one saved by its old name follows its rename (here or by another
+    Farmhand sharing it; renamed now when `rename`), and is saved by its new one."""
+    from .. import storage
+
+    saved = get(db, key)
+    now = storage.current_folder(saved, rename=rename)
+    if now != saved:
+        put(db, key, now)
+        db.commit()
+    return now
 
 
 def instance_id(db: Session) -> str:

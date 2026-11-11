@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ... import storage
 from ...models import Project
 from ...parsers import parse_3mf
+from ...parsers.gcode import GCODE_EXTENSIONS
 from .. import printer_service
 from ..project_service import clean_component
 
@@ -20,7 +21,6 @@ CAD_EXTENSIONS = {
     ".step", ".stp", ".iges", ".igs", ".brep", ".brp", ".f3d", ".f3z", ".sldprt", ".sldasm", ".slddrw", ".scad",
     ".fcstd", ".ipt", ".iam", ".x_t", ".x_b", ".sat", ".3dm", ".blend", ".skp", ".dwg", ".dxf",
 }
-GCODE_EXTENSIONS = {".gcode", ".bgcode"}
 SKIPPED_NAMES = {"thumbs.db", "desktop.ini", ".ds_store", storage.MARKER_NAME.lower()}
 MAX_FILES = 2000  # in one project folder: more than this is very likely not a project
 OWN_FILES = "Farmhand keeps its own files there"

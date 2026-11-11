@@ -13,7 +13,7 @@ from ... import storage
 from ...config import settings
 from ...models import Bundle, BundleVersion
 from ...names import clean_file_name
-from ...parsers.gcode import printer_profile
+from ...parsers.gcode import GCODE_EXTENSIONS, printer_profile
 from .marks import star_newest_if_none
 from .queries import require_bundle, require_version
 
@@ -69,7 +69,6 @@ def _files_of(v: BundleVersion) -> list[str | None]:
     return [v.threemf_path, v.gcode_path, v.thumbnail_path, storage.preview_beside(v.threemf_path)]
 
 
-GCODE_EXTENSIONS = (".gcode", ".bgcode")  # plain G-code, and Prusa's binary G-code
 
 
 def check_gcode_name(filename: str | None) -> None:

@@ -3,7 +3,7 @@ import { HttpError, nowUnix } from "../core.js";
 import { DEFAULT_PARTS, defaultParts, iso } from "../data.js";
 
 export function printersRoutes(ctx) {
-  const { bundleOut, farm, on, printer, printerOut, requireConfirm, saveNotes } = ctx;
+  const { bundleOut, fail404, farm, on, printer, printerOut, requireConfirm, saveNotes } = ctx;
 
   on("GET", "/printers", () => [...farm.printers].sort((a, b) => a.name.localeCompare(b.name)).map(printerOut));
   // The range a scan starts with: as the real API in Docker, the /24 most of the farm's printers are on
@@ -120,7 +120,7 @@ export function printersRoutes(ctx) {
   };
   const subPrinterOf = (p, subId) => {
     const s = farm.subPrinters.find((x) => x.id === Number(subId) && x.printer_id === p.id);
-    if (!s) throw new HttpError(404, `No printer profile with id ${subId} on this printer`);
+    if (!s) fail404(`No printer profile with id ${subId} on this printer`);
     return s;
   };
   const newSubPrinter = (p, name) => {
@@ -238,7 +238,7 @@ export function printersRoutes(ctx) {
   };
   const partOf = (s, partId) => {
     const found = s.parts.find((x) => x.id === Number(partId));
-    if (!found) throw new HttpError(404, `No part with id ${partId} on this printer profile`);
+    if (!found) fail404(`No part with id ${partId} on this printer profile`);
     return found;
   };
   on("GET", "/printers/:id/sub-printers/:subId/parts", ({ id, subId }) => subPrinterOf(printer(id), subId).parts);
@@ -253,7 +253,7 @@ export function printersRoutes(ctx) {
     const s = subPrinterOf(printer(id), subId);
     const rows = Array.isArray(body) ? body : [];
     const kept = new Set(rows.map((r) => r.id).filter((x) => x != null));
-    if (s.parts.some((x) => !kept.has(x.id)) && q.get("confirm") !== "true") throw new HttpError(409, "Saving removes parts: say confirm=true");
+    if (s.parts.some((x) => !kept.has(x.id))) requireConfirm(q, "Saving removes parts: say confirm=true");
     if (kept.size !== rows.filter((r) => r.id != null).length) throw new HttpError(422, "The same part is in the list twice");
     const checked = rows.map((r) => {
       const fields = partFields(r);

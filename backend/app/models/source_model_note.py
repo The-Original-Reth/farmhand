@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..timeutil import utc_now
 
 
 class SourceModelNote(Base):
@@ -27,7 +28,7 @@ class SourceModelNote(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+        DateTime(timezone=True), default=utc_now
     )
 
     source_model: Mapped["SourceModel"] = relationship(back_populates="note_row")  # noqa: F821

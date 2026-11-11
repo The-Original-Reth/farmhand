@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
 from ..notes import HasNotes
+from ..timeutil import utc_now
 
 
 class SourceFileType(str, enum.Enum):
@@ -30,7 +31,7 @@ class SourceModel(HasNotes, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)  # original filename
     file_type: Mapped[SourceFileType] = mapped_column(Enum(SourceFileType), nullable=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     versions: Mapped[list["SourceModelVersion"]] = relationship(
         back_populates="source_model",
@@ -70,7 +71,7 @@ class SourceModelVersion(Base):
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))
     note: Mapped[str | None] = mapped_column(Text)
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     source_model: Mapped["SourceModel"] = relationship(back_populates="versions")
 

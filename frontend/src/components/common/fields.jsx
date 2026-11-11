@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Search, Upload, X } from "lucide-react";
 import { c, fs, ui } from "../../theme.js";
-import { fieldBox, monoText, uiText } from "../../styles.js";
+import { fieldBox, linkButton, monoText, uiText } from "../../styles.js";
 import { formatBytes } from "../../lib/format.js";
 import { TrashButton } from "./ui.jsx";
 
@@ -209,7 +209,7 @@ export function Dropzone({ label, compact = false, onFile, file, accept, multipl
             e.stopPropagation(); // not the file picker as well
             folderRef.current?.click();
           }}
-          style={{ ...ui, fontSize: fs(12), background: "none", border: "none", color: c.amber, textDecoration: "underline", cursor: "pointer", marginTop: 6, padding: 0 }}
+          style={{ ...linkButton(12), marginTop: 6 }}
         >
           or choose a folder
         </button>

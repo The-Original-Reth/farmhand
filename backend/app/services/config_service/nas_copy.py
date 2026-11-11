@@ -33,12 +33,7 @@ _last_mirror: dict = {"ok": None, "error": None, "at": None}
 def location_path(db: Session, rename: bool = False) -> str | None:
     """The settings folder, where it is now: one saved by its old name ("Farmhand Configs") follows its rename to
     "farmhand-configs" (here or by another Farmhand sharing it; renamed now when `rename`), and is saved by the new one."""
-    saved = app_settings.get(db, KEY_LOCATION)
-    now = storage.current_folder(saved, rename=rename)
-    if now != saved:
-        app_settings.put(db, KEY_LOCATION, now)
-        db.commit()
-    return now
+    return app_settings.current_folder(db, KEY_LOCATION, rename=rename)
 
 
 def _share_entries(db: Session) -> list[dict]:
@@ -52,7 +47,7 @@ def build_document(db: Session) -> dict:
     return config_store.build_document(
         config, storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
         project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
-        stream_path=app_settings.get(db, "stream_media_dir"),  # services/stream_media.KEY_LOCATION
+        stream_path=app_settings.get(db, app_settings.STREAM_MEDIA_DIR_KEY),
         printer_names={p.id: p.name for p in db.scalars(select(Printer))},
     )
 

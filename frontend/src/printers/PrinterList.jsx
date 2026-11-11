@@ -6,7 +6,7 @@ import { useData } from "../data.jsx";
 
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge, Row } from "../components/common/ui.jsx";
-import { nameCollator } from "../models/modelSort.js";
+import { nameCollator } from "../lib/order.js";
 import { AddPrinterForm } from "./PrinterForms.jsx";
 import { ScanPrintersDialog } from "./ScanPrintersDialog.jsx";
 import { PRINTER_SORTS } from "./printerSort.js";

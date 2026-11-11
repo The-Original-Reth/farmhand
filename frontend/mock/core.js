@@ -14,6 +14,7 @@ export class HttpError extends Error {
     this.extra = extra;
   }
 }
+export const NO_MOONRAKER = "This printer has no IP address or Moonraker address set.";
 export const notInMockup = (what) => new HttpError(501, `${what} isn't available in the mockup: it needs the real Farmhand backend.`);
 
 // A fresh mockup: the farm, the routes (none yet: each part in routes/ adds its own), and the helpers
@@ -114,9 +115,16 @@ export function createCore() {
     owner[fields.at] = iso(nowUnix());
   };
 
+  // A Klipper printer Farmhand can't reach answers 502, as the real API does
+  const reachMoonraker = (p) => {
+    if (!p.moonraker) throw new HttpError(502, NO_MOONRAKER, { kind: "no_address" });
+    if (!p.moonraker.reachable) throw new HttpError(502, p.moonraker.error, { kind: p.moonraker.error_kind });
+  };
+  // The print a printer has running now, if any
+  const runningJob = (p) => (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
   // The running job moves on with the clock and finishes once its estimate is up; the printer then shows FINISHED.
   const liveJob = (p) => {
-    const job = (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
+    const job = runningJob(p);
     if (job) {
       job.printS = Math.min(job.estimated, nowUnix() - job.start);
       job.totalS = job.printS;
@@ -141,5 +149,5 @@ export function createCore() {
     for (const key of Object.keys(farm)) delete farm[key];
     Object.assign(farm, buildFarm());
   };
-  return { farm, routes, on, printer, model, bundle, version, requireConfirm, fail404, totalsFor, synced, syncedTotals, ipOf, moonrakerUrl, mainsailUrl, prusalinkUrl, service, printerOut, modelOut, versionOut, versionDetail, bundleOut, saveNotes, liveJob, location, projectsDefault, capability, png, resetFarm };
+  return { farm, routes, on, printer, model, bundle, version, requireConfirm, fail404, totalsFor, synced, syncedTotals, ipOf, moonrakerUrl, mainsailUrl, prusalinkUrl, service, printerOut, modelOut, versionOut, versionDetail, bundleOut, saveNotes, liveJob, runningJob, reachMoonraker, location, projectsDefault, capability, png, resetFarm };
 }

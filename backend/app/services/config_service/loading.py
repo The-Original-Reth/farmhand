@@ -143,7 +143,7 @@ def restore(db: Session) -> dict:
             result["warnings"].append(f"The farm cost folder ({farm_cost_path}) wasn't put back: {e}")
 
     stream_path = _moved_onto(doc["stream"]["media_path"], same)
-    if stream_path and stream_path != app_settings.get(db, "stream_media_dir"):
+    if stream_path and stream_path != app_settings.get(db, app_settings.STREAM_MEDIA_DIR_KEY):
         from .. import stream_media  # (stream_media reads these settings itself)
 
         try:

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ... import notes as notes_helper
 from ...models import Printer, PrinterServiceNote
-from ...notes import HasNotes, NotesConflict  # noqa: F401  (NotesConflict is raised by set_service_notes)
+from ...notes import HasNotes, NotesConflict  # noqa: F401  (re-exported as moonraker.NotesConflict)
 from ..printer_service import ensure_connection
 from .client import MoonrakerError, job_totals
 

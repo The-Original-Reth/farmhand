@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -17,6 +18,9 @@ from .. import record_files, records_store
 from ..timeutil import as_utc, utc_iso
 from . import sub_printer_service
 from .printer_service import ensure_connection
+
+if TYPE_CHECKING:
+    from .config_service.nas_copy import MirrorScope
 from ..models import (
     Bundle,
     BundleNote,
@@ -39,13 +43,8 @@ from ..models import (
 
 
 def _when(value) -> dt.datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = dt.datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    return as_utc(parsed)
+    parsed = record_files.parse_iso(value)
+    return as_utc(parsed) if parsed else None
 
 
 def _num(value, default=None):
@@ -278,7 +277,7 @@ def read_stream_setup(db: Session, folder) -> tuple[dict | None, list[str]]:
     return setup, []
 
 
-def write_all(db: Session, folder, scope: "MirrorScope | None" = None) -> dict:
+def write_all(db: Session, folder, scope: MirrorScope | None = None) -> dict:
     """
     Bring the printers/ and models/ files in the settings folder up to date: all of them, checking each file (scope
     None), or just what a change touched (see config_service.MirrorScope), trusting what was last written.
@@ -500,7 +499,6 @@ def restore_all(db: Session, folder, after_printers=None) -> dict:
 
 def count_records(folder) -> dict:
     """How many printer and model files a folder holds (for describing a folder before it's chosen)."""
-    from pathlib import Path
 
     return {kind: len(list((Path(folder) / kind).glob("*.json"))) if (Path(folder) / kind).is_dir() else 0
             for kind in (records_store.PRINTERS_DIR, records_store.MODELS_DIR)}

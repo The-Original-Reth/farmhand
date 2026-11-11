@@ -119,7 +119,7 @@ function DiffValue({ settings, other, k, side, differs }) {
   );
 }
 
-export function DiffView({ left, right, onClose }) {
+export function DiffView({ left, right }) {
   // left / right are { bundle, version }: exactly the two versions that were picked
   const { versionLabel } = useData();
   const leftLabel = versionLabel(left);
@@ -163,7 +163,6 @@ export function DiffView({ left, right, onClose }) {
   }
 
   const { allKeys, grouped, differing, diffKeys } = derived;
-  const categoryOrder = CATEGORY_ORDER;
   const differsAt = (key) => differing.has(key);
   const look = `${c.bg}|${c.textPrimary}|${c.textFaint}|${c.amber}|${c.teal}|${ui.fontFamily}|${fs(10)}`; // the look, for DiffRow
   const diffCount = diffKeys.length;
@@ -261,7 +260,7 @@ export function DiffView({ left, right, onClose }) {
         />
       ) : (
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 20 }}>
-        {categoryOrder.map((cat) => {
+        {CATEGORY_ORDER.map((cat) => {
           const keys = grouped[cat];
           if (!keys || keys.length === 0) return null;
           const catDiffs = keys.filter(differsAt).length;

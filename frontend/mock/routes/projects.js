@@ -4,9 +4,8 @@ import { HttpError, nowUnix } from "../core.js";
 import { iso } from "../data.js";
 
 export function projectsRoutes(ctx) {
-  const { fail404, farm, model, on, png, printer, requireConfirm, version } = ctx;
+  const { bundle, fail404, farm, model, on, printer, requireConfirm } = ctx;
 
-  // ------------------------------------------------------------------ the farm
   // ------------------------------------------------------------------ projects: made, listed, renamed, deleted
   const project = (id) => farm.projects.find((p) => p.id === Number(id)) || fail404("Project not found");
   const projectName = (body, except) => {
@@ -173,7 +172,7 @@ export function projectsRoutes(ctx) {
   };
   on("PUT", "/projects/:id/bundles/:bid", ({ id, bid }) => {
     const p = project(id);
-    const b = farm.bundles.find((x) => x.id === Number(bid)) || fail404("Bundle not found");
+    const b = bundle(bid);
     if (!p.bundle_ids.includes(b.id)) p.bundle_ids.push(b.id);
     linkPrinter(p, b.printer_id);
     return projectOut(p);
@@ -185,8 +184,7 @@ export function projectsRoutes(ctx) {
   });
   on("PUT", "/projects/:id/printers/:pid", ({ id, pid }) => {
     const p = project(id);
-    const printer = farm.printers.find((x) => x.id === Number(pid)) || fail404("Printer not found");
-    linkPrinter(p, printer.id);
+    linkPrinter(p, printer(pid).id);
     return projectOut(p);
   });
   on("DELETE", "/projects/:id/printers/:pid", ({ id, pid }) => {
@@ -239,9 +237,9 @@ export function projectsRoutes(ctx) {
     const ver = projectGcodeVersion(id, fid, v);
     if (!ver.gcode) fail404("This version has no G-code. Upload one first.");
     const f = projectFile(id, "threemf", fid);
-    const printer = farm.printers.find((x) => x.id === f.printer_id);
-    if (!printer) throw new HttpError(422, "This 3MF has no printer to send it to.");
-    return { sent: `gcodes/${ver.gcode}`, printer: printer.name };
+    const to = farm.printers.find((x) => x.id === f.printer_id);
+    if (!to) throw new HttpError(422, "This 3MF has no printer to send it to.");
+    return { sent: `gcodes/${ver.gcode}`, printer: to.name };
   });
   const bomPartFields = (body, partial = false) => {
     const out = {};

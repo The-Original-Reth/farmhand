@@ -7,6 +7,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..timeutil import utc_now
 
 
 class BundleVersion(Base):
@@ -42,7 +43,7 @@ class BundleVersion(Base):
     slicer_display_name: Mapped[str] = mapped_column(String(100), nullable=False)  # "PrusaSlicer 2.9.5-rc1"
     printer_profile_name: Mapped[str | None] = mapped_column(String(120))  # as read from the 3MF itself
 
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     monument: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     monument_note: Mapped[str | None] = mapped_column(Text)

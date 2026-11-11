@@ -1,26 +1,25 @@
 // A printer's Moonraker or PrusaLink: connection, print history, cameras, energy, the Farm cost page, the save
 // location, the 1500-hour service and maintenance.
 import { priceForMonth } from "../../src/lib/energyPrice.js";
-import { HttpError, nowUnix } from "../core.js";
+import { HttpError, NO_MOONRAKER, nowUnix } from "../core.js";
 import { DAY, HOUR, iso } from "../data.js";
 
 export function printingRoutes(ctx) {
-  const { capability, fail404, farm, liveJob, location, mainsailUrl, moonrakerUrl, on, printer, printerOut, prusalinkUrl, requireConfirm, saveNotes, service, synced, syncedTotals, totalsFor, version } = ctx;
+  const { capability, fail404, farm, liveJob, mainsailUrl, moonrakerUrl, on, printer, printerOut, prusalinkUrl, reachMoonraker, requireConfirm, runningJob, saveNotes, synced, syncedTotals, totalsFor } = ctx;
 
   // ------------------------------------------------------------------ Moonraker: connection, history, energy, maintenance
   const reach = (p) => {
     if (p.prusalink) return; // its maintenance is kept in Farmhand: always there
-    if (!p.moonraker) throw new HttpError(502, "This printer has no IP address or Moonraker address set.", { kind: "no_address" });
-    if (!p.moonraker.reachable) throw new HttpError(502, p.moonraker.error, { kind: p.moonraker.error_kind });
+    reachMoonraker(p);
   };
   const syncState = (p) => ({ last_sync_at: synced(p).last_sync_at ?? null, last_sync_error: synced(p).last_sync_error ?? null, totals: syncedTotals(p) });
   on("GET", "/printers/:id/moonraker", ({ id }) => {
     const p = printer(id);
     const out = { moonraker_url: moonrakerUrl(p), mainsail_url: mainsailUrl(p), has_api_key: !!p.apiKey, reachable: false, klippy_state: null, moonraker_version: null, error: null, error_kind: null, ...syncState(p) };
-    if (!p.moonraker) return { ...out, error: "This printer has no IP address or Moonraker address set.", error_kind: "no_address" };
+    if (!p.moonraker) return { ...out, error: NO_MOONRAKER, error_kind: "no_address" };
     if (!p.moonraker.reachable) return { ...out, error: p.moonraker.error, error_kind: p.moonraker.error_kind };
     // A job still in progress is the print running now; it carries on from where the sample data left it
-    const job = (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
+    const job = runningJob(p);
     const printed = job && Math.min(job.estimated - 60, job.printS + (nowUnix() - (job.seenFrom ??= nowUnix())));
     const print = job && {
       state: "printing", file: job.filename, progress: Math.round((printed / job.estimated) * 1000) / 10, print_duration: printed,
@@ -39,7 +38,7 @@ export function printingRoutes(ctx) {
     // a Buddy3D's camera plays through go2rtc on the real server; the mockup has none, so it shows the sample picture
     if (p.prusalink && p.cameraAddress) return { webcams: [{ name: "Camera", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board: null };
     if (p.prusalink) return { webcams: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page", board: null };
-    if (!p.moonraker) return { webcams: [], error: "This printer has no IP address or Moonraker address set.", board: null };
+    if (!p.moonraker) return { webcams: [], error: NO_MOONRAKER, board: null };
     if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error, board: null };
     // the computer Klipper runs on: every other sample printer is a CM4
     const board = p.id % 2 ? { name: "Pi 4", model: "Raspberry Pi 4 Model B Rev 1.5", memory_gb: 4 } : { name: "CM4", model: "Raspberry Pi Compute Module 4 Rev 1.1", memory_gb: 2 };
@@ -53,8 +52,8 @@ export function printingRoutes(ctx) {
       const job = p.prusalink.reachable && p.prusalink.hasPassword ? liveJob(p) : null;
       return job ? { ...nothing, state: "printing", progress: Math.round((job.printS / job.estimated) * 1000) / 10, file: job.filename } : nothing;
     }
-    if (!p.moonraker?.reachable) return { ...nothing, error: p.moonraker?.error || "This printer has no IP address or Moonraker address set." };
-    const job = (farm.jobs[p.id] || []).find((j) => j.status === "in_progress");
+    if (!p.moonraker?.reachable) return { ...nothing, error: p.moonraker?.error || NO_MOONRAKER };
+    const job = runningJob(p);
     if (!job) return nothing;
     const printed = Math.min(job.estimated - 60, job.printS + (nowUnix() - (job.seenFrom ??= nowUnix())));
     return { ...nothing, state: "printing", progress: Math.round((printed / job.estimated) * 1000) / 10, file: job.filename };
@@ -243,8 +242,7 @@ export function printingRoutes(ctx) {
     // totalled by month as the real server does (services/energy.py), in this machine's time zone (the browser's)
     const months = {};
     const month = (t) => {
-      const d = new Date(t * 1000);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const key = monthOf(t);
       return (months[key] ??= { key, prints: 0, print_count: 0, whole: null, partial: false });
     };
     withEnergy.forEach((j) => {
@@ -317,10 +315,10 @@ export function printingRoutes(ctx) {
   const cleanReminder = (r) => {
     const out = { type: r?.type ?? null };
     for (const part of ["filament", "printtime", "date"]) {
-      const on = !!r?.[part]?.bool;
+      const enabled = !!r?.[part]?.bool;
       const value = Number(r?.[part]?.value);
-      if (on && !(value > 0)) throw new HttpError(422, `The ${part === "printtime" ? "print time" : part === "date" ? "days" : part} reminder must be more than 0`);
-      out[part] = { bool: on, value: on ? value : null };
+      if (enabled && !(value > 0)) throw new HttpError(422, `The ${part === "printtime" ? "print time" : part === "date" ? "days" : part} reminder must be more than 0`);
+      out[part] = { bool: enabled, value: enabled ? value : null };
     }
     if (out.type && !["filament", "printtime", "date"].some((k) => out[k].bool)) throw new HttpError(422, "Pick at least one of filament, print time or days for the reminder");
     return out;

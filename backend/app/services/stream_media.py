@@ -27,7 +27,7 @@ from ..models import NetworkShare
 from . import app_settings
 
 STREAM_FOLDER = "stream"
-KEY_LOCATION = "stream_media_dir"  # the folder chosen in Settings; none = the default
+KEY_LOCATION = app_settings.STREAM_MEDIA_DIR_KEY  # the folder chosen in Settings; none = the default
 IMAGES, SLIDESHOWS, MUSIC = "images", "slideshows", "music"
 PICTURE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 PICTURE_MAX = 10 * 1024 * 1024  # an upload; pictures dropped in by hand can be any size
