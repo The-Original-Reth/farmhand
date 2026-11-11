@@ -32,7 +32,6 @@ WIDTH, HEIGHT, _ = RESOLUTIONS[DEFAULT_RESOLUTION]
 RETRY_SECONDS = 10  # how long after ffmpeg stops it is started again
 STATUS_EVERY = 15  # how often the print progress written on the video is brought up to date
 KEPT_LINES = 30  # how much of what ffmpeg said is kept, to say why it stopped
-TITLE_TRIES, TITLE_EVERY = 16, 15  # the YouTube title is tried this often after going live, until the broadcast is there
 
 LAYOUTS = ("grid", "cycle")  # the grid all the time, or taking turns
 SECONDS = {"seconds_all": (0, 3600, 30), "seconds_each": (3, 3600, 20)}  # (least, most, default); seconds_all 0: never
@@ -42,7 +41,14 @@ DEFAULT_BACKGROUND = "#000000"  # the stream's own colour: empty squares, and ro
 BORDER_WIDTH = 3  # px round each square, on the 720-high picture
 COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 DEFAULT_TEXT_COLOR = "#FFFFFF"  # the stream's words, unless a square has its own
+# The video's own YouTube settings (the YouTube settings window), as kept, and what each can be
+YOUTUBE_DEFAULTS = {"privacy": "public", "tags": [], "category": "28", "made_for_kids": False, "latency": "normal", "dvr": True,
+                    "auto_start": True, "auto_stop": True}
+PRIVACIES = ("public", "unlisted", "private")
+LATENCIES = ("normal", "low", "ultraLow")
+CATEGORIES = ("28", "27", "26", "22", "24", "20")  # Science & Technology, Education, Howto & Style, People & Blogs, Entertainment, Gaming
+TAGS_MAX = 500  # YouTube's limit, all the tags together (commas between)
 DELAY = (0, 120, 60)  # (least, most, default) seconds the stream is held before YouTube gets it (relay.Buffer)
 DEFAULT_MUSIC_VOLUME = 50  # the music's loudness, 0 to 100 (100: as the tracks are)
 SAVED = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "title", "description", "font", "color", "enabled",
-         "resolution", "border_color", "background", "music", "music_volume", "music_shuffle", "delay")
+         "resolution", "border_color", "background", "music", "music_volume", "music_shuffle", "delay", "youtube")

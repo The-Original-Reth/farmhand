@@ -46,6 +46,7 @@ export function streamRoutes(ctx) {
       destination: "youtube", cols: 1, rows: 1, cells: [null], show_status: true, layout: "grid", resolution: "1080p", seconds_all: 30,
       seconds_each: 20, border_color: "#000000", background: "#000000", font: "play", color: "#FFFFFF", enabled: true, title: "", description: "", key_set: false,
       music: true, music_volume: 50, music_shuffle: true, player: null, delay: 60,
+      youtube_settings: { privacy: "public", tags: [], category: "28", made_for_kids: false, latency: "normal", dvr: true, auto_start: true, auto_stop: true },
       images: [], slideshows: [], tracks: [], uploads: 0,
       live: false, started_at: null, labels: [], title_status: null,
       youtube: { client_id: null, signed_in: false, channel: null, signing_in: null, error: null },
@@ -65,14 +66,20 @@ export function streamRoutes(ctx) {
       settings: {
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, cameras: camerasOf(s), show_status: s.show_status, layout: s.layout,
         resolution: s.resolution, seconds_all: s.seconds_all, seconds_each: s.seconds_each, border_color: s.border_color, background: s.background, font: s.font, color: s.color, enabled: s.enabled,
-        music: s.music, music_volume: s.music_volume, music_shuffle: s.music_shuffle, delay: s.delay,
-        title: s.title, description: s.description, key_set: s.key_set,
+        music: s.music, music_volume: s.music_volume, music_shuffle: s.music_shuffle, delay: s.delay, youtube: s.youtube_settings,
+        title: s.title, description: s.description, key_set: s.key_set, key_from_youtube: !!s.own_stream,
       },
       status: {
         live: s.live, on_air: s.live, started_at: s.started_at, running_for: s.live && s.started_at ? Math.round((Date.now() - Date.parse(s.started_at)) / 10) / 100 : null, server_time: Date.now() / 1000, destination: s.live ? s.destination : null, cameras: s.live ? s.labels : [],
         error: null, title: s.live ? s.title_status : null, music: s.live ? musicOut() : null,
         // the delay's buffer while live: collecting it first, then held (the mock holds it all, steadily)
         changing: false, // (the mock's layouts change at once)
+        // signed in: the broadcast Farmhand made, and YouTube's word on it (live and healthy after the delay)
+        youtube: s.live && s.broadcast ? (() => {
+          const on = (Date.now() - Date.parse(s.started_at)) / 1000 > s.delay + 10;
+          return { watch_url: `https://www.youtube.com/watch?v=${s.broadcast}`, studio_url: `https://studio.youtube.com/video/${s.broadcast}/livestreaming`,
+            state: on ? "live" : "ready", health: on ? "good" : "noData", issues: [], viewers: on ? 3 : null };
+        })() : null,
         delay: s.live ? (() => { const went = (Date.now() - Date.parse(s.started_at)) / 1000; return { seconds: s.delay, held: Math.min(went, s.delay), filling: went < s.delay }; })() : null,
       },
       destinations: Object.entries(DESTINATIONS).map(([key, label]) => ({ key, label })),
@@ -105,12 +112,13 @@ export function streamRoutes(ctx) {
   const titleOutcome = () => {
     const s = state();
     if (s.destination !== "youtube" || !(s.title || s.description)) return null;
-    if (!s.youtube.signed_in) return { state: "failed", message: "Sign in to YouTube (below) for Farmhand to set the title and description." };
-    return { state: "done", message: `Title and description set on “${s.title || "Live"}”.` };
+    if (!s.youtube.signed_in) return { state: "failed", message: "Sign in to YouTube (YouTube settings) for Farmhand to set the title and description." };
+    return { state: "done", message: "The broadcast on YouTube has the new title, description, tags and privacy." };
   };
   const goLive = () => {
     const s = state();
-    if (!s.key_set) throw new HttpError(422, `Add your ${DESTINATIONS[s.destination]} stream key first.`);
+    const signedIn = s.destination === "youtube" && s.youtube.signed_in;
+    if (!s.key_set && !signedIn) throw new HttpError(422, `Sign in to YouTube, or add your ${DESTINATIONS[s.destination]} stream key, first (YouTube settings).`);
     const cameras = camerasOf(s);
     if (!s.enabled) throw new HttpError(422, "The stream is turned off: turn it on at the top of the Stream page first.");
     if (!cameras.length) throw new HttpError(422, "Put at least one camera in the grid.");
@@ -181,6 +189,14 @@ export function streamRoutes(ctx) {
     }
     if (typeof body.show_status === "boolean") s.show_status = body.show_status;
     if (typeof body.music === "boolean") s.music = body.music;
+    if (body.youtube && typeof body.youtube === "object") {
+      const y = body.youtube;
+      if (y.privacy != null && !["public", "unlisted", "private"].includes(y.privacy)) throw new HttpError(422, "Choose public, unlisted or private.");
+      if (y.latency != null && !["normal", "low", "ultraLow"].includes(y.latency)) throw new HttpError(422, "Choose normal, low or ultra-low latency.");
+      const tags = Array.isArray(y.tags) ? [...new Set(y.tags.map((t) => String(t).trim()).filter(Boolean))] : s.youtube_settings.tags;
+      if (tags.join(",").length > 500) throw new HttpError(422, `YouTube allows 500 characters of tags; these come to ${tags.join(",").length}.`);
+      s.youtube_settings = { ...s.youtube_settings, ...Object.fromEntries(Object.entries(y).filter(([, v]) => v != null)), tags };
+    }
     if (body.delay != null) {
       if (!(Number.isInteger(body.delay) && body.delay >= 0 && body.delay <= 120)) throw new HttpError(422, "The stream's delay has to be from 0 to 120 seconds.");
       s.delay = body.delay;
@@ -234,15 +250,21 @@ export function streamRoutes(ctx) {
     }
     const after = JSON.stringify(PICTURE.map((k) => s[k]));
     if (s.live && (before !== after || body.stream_key)) goLive();
-    else if (s.live && titleBefore !== s.title + "\n" + s.description) s.title_status = titleOutcome();
+    else if (s.live && (titleBefore !== s.title + "\n" + s.description || body.youtube)) s.title_status = titleOutcome();
     return page();
   });
   on("POST", "/stream/start", () => {
+    const s = state();
     goLive();
+    if (s.destination === "youtube" && s.youtube.signed_in) { // Farmhand's own stream, and a new broadcast on it
+      s.own_stream = true;
+      s.broadcast = `mock${Math.random().toString(36).slice(2, 9)}`;
+      s.title_status = { state: "done", message: `Broadcast made on YouTube (${s.youtube_settings.privacy}): “${(s.title || "Live").slice(0, 100)}”.` };
+    }
     return page();
   });
   on("POST", "/stream/stop", () => {
-    Object.assign(state(), { live: false, started_at: null, labels: [], title_status: null });
+    Object.assign(state(), { live: false, started_at: null, labels: [], title_status: null, broadcast: null });
     return page();
   });
 

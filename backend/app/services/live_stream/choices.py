@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
 from .constants import DEFAULT_TEXT_COLOR
-from .constants import DELAY
+from .constants import CATEGORIES, DELAY, LATENCIES, PRIVACIES, TAGS_MAX, YOUTUBE_DEFAULTS
 from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_MUSIC_VOLUME, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
 from .squares import MAX_LAYERS, SLIDE_SECONDS, TEXT_MAX, _cell, _color
 
@@ -29,6 +29,54 @@ def auto_grid(n: int) -> tuple[int, int]:
     """(columns, rows) of the smallest near-square grid that holds n squares (1x1 for none)."""
     cols = min(MAX_SIDE, max(1, math.ceil(math.sqrt(n))))
     return cols, min(MAX_SIDE, max(1, math.ceil(n / cols)))
+
+
+def _youtube(raw) -> dict:
+    """The video's YouTube settings as kept (anything missing or not one of the choices: its default)."""
+    raw = raw if isinstance(raw, dict) else {}
+    tags = [t.strip() for t in raw.get("tags") or [] if isinstance(t, str) and t.strip()] if isinstance(raw.get("tags"), list) else []
+    return {
+        "privacy": raw.get("privacy") if raw.get("privacy") in PRIVACIES else YOUTUBE_DEFAULTS["privacy"],
+        "tags": list(dict.fromkeys(tags)),
+        "category": raw.get("category") if raw.get("category") in CATEGORIES else YOUTUBE_DEFAULTS["category"],
+        "made_for_kids": raw.get("made_for_kids") is True,
+        "latency": raw.get("latency") if raw.get("latency") in LATENCIES else YOUTUBE_DEFAULTS["latency"],
+        "dvr": raw.get("dvr") is not False,
+        "auto_start": raw.get("auto_start") is not False,
+        "auto_stop": raw.get("auto_stop") is not False,
+    }
+
+
+def _check_youtube(sent: dict, now: dict) -> dict:
+    """The video's YouTube settings as sent (only what's sent changes), checked: ValueError says what's wrong."""
+    if not isinstance(sent, dict):
+        raise ValueError("The YouTube settings didn't come through.")
+    out = dict(now)
+    if sent.get("privacy") is not None:
+        if sent["privacy"] not in PRIVACIES:
+            raise ValueError("Choose public, unlisted or private.")
+        out["privacy"] = sent["privacy"]
+    if sent.get("latency") is not None:
+        if sent["latency"] not in LATENCIES:
+            raise ValueError("Choose normal, low or ultra-low latency.")
+        out["latency"] = sent["latency"]
+    if sent.get("category") is not None:
+        if sent["category"] not in CATEGORIES:
+            raise ValueError("Choose one of the categories listed.")
+        out["category"] = sent["category"]
+    if sent.get("tags") is not None:
+        if not isinstance(sent["tags"], list) or not all(isinstance(t, str) for t in sent["tags"]):
+            raise ValueError("The tags didn't come through.")
+        tags = list(dict.fromkeys(t.strip() for t in sent["tags"] if t.strip()))
+        if any(c in t for t in tags for c in "<>"):
+            raise ValueError("YouTube doesn't allow < or > in a tag.")
+        if len(",".join(tags)) > TAGS_MAX:
+            raise ValueError(f"YouTube allows {TAGS_MAX} characters of tags; these come to {len(','.join(tags))}.")
+        out["tags"] = tags
+    for name in ("made_for_kids", "dvr", "auto_start", "auto_stop"):
+        if sent.get(name) is not None:
+            out[name] = bool(sent[name])
+    return out
 
 
 def _volume(v) -> bool:
@@ -57,7 +105,9 @@ def settings(db: Session) -> dict:
     streams), music: the stream folder's music played, starting with the stream (on unless turned off; False: a silent
     sound track), music_volume (0 to 100), music_shuffle: each round in a new order (False: in name order), title,
     description, key_set, delay: seconds the stream is held before YouTube gets it (0 to 120), so a stall shorter than
-    that never reaches it}.
+    that never reaches it, youtube: the video's own YouTube settings (_youtube: privacy, tags, category, made_for_kids,
+    latency, dvr, auto_start, auto_stop), key_from_youtube: Farmhand has a stream of its own on the channel, so its key
+    comes from YouTube}.
     The key itself is never given. Settings from before the grid (a list of cameras) come back as the grid they made.
     """
     raw = _saved(db)
@@ -91,9 +141,11 @@ def settings(db: Session) -> dict:
         "music_volume": raw["music_volume"] if _volume(raw.get("music_volume")) else DEFAULT_MUSIC_VOLUME,
         "music_shuffle": raw.get("music_shuffle", True) is not False,
         "delay": raw["delay"] if type(raw.get("delay")) is int and DELAY[0] <= raw["delay"] <= DELAY[1] else DELAY[2],
+        "youtube": _youtube(raw.get("youtube")),
         "title": text("title"),
         "description": text("description"),
         "key_set": bool(app_settings.get(db, STREAM_KEY_KEY)),
+        "key_from_youtube": bool(app_settings.get(db, "youtube_stream_id")),
     }
 
 
@@ -159,7 +211,7 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
 def save(db: Session, *, destination=None, chosen=None, show_status=None, stream_key=None, clear_key=False, layout=None,
          resolution=None, border_color=None, background=None, font=None, color=None, enabled=None, cols=None, rows=None, cells=None,
          seconds_all=None, seconds_each=None, title=None, description=None, music=None, music_volume=None, music_shuffle=None,
-         delay=None) -> dict:
+         delay=None, youtube=None) -> dict:
     """
     Change what's given (None: left as it is). The grid comes as cols, rows and cells together; or `chosen`, a list of
     cameras, which makes a grid just big enough for them, in that order. Anything that can't be
@@ -198,6 +250,8 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
         now["music"] = bool(music)
     if music_shuffle is not None:
         now["music_shuffle"] = bool(music_shuffle)
+    if youtube is not None:
+        now["youtube"] = _check_youtube(youtube, now["youtube"])
     if delay is not None:
         if type(delay) is not int or not DELAY[0] <= delay <= DELAY[1]:
             raise ValueError(f"The stream's delay has to be from {DELAY[0]} to {DELAY[1]} seconds.")

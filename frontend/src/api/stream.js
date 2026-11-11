@@ -31,9 +31,17 @@ const normalizeStream = (s) => ({
     musicVolume: s.settings.music_volume ?? 50,
     musicShuffle: s.settings.music_shuffle !== false,
     delay: s.settings.delay ?? 60, // seconds the stream is held before YouTube gets it (0 to 120)
+    // the video's own YouTube settings (the YouTube settings window): privacy "public" | "unlisted" | "private", tags
+    // [words], category (YouTube's number), madeForKids, latency "normal" | "low" | "ultraLow", dvr, autoStart, autoStop
+    youtube: ((y) => ({
+      privacy: y.privacy || "public", tags: y.tags || [], category: y.category || "28", madeForKids: !!y.made_for_kids,
+      latency: y.latency || "normal", dvr: y.dvr !== false, autoStart: y.auto_start !== false, autoStop: y.auto_stop !== false,
+    }))(s.settings.youtube || {}),
     title: s.settings.title,
     description: s.settings.description,
     keySet: s.settings.key_set,
+    // signed in, Farmhand has a stream of its own on the channel: its key comes from YouTube (none needs pasting)
+    keyFromYouTube: !!s.settings.key_from_youtube,
     enabled: s.settings.enabled !== false, // the page's switch: off, nothing streams and the page rests
   },
   status: {
@@ -56,6 +64,12 @@ const normalizeStream = (s) => ({
     delay: s.status.delay || null,
     // a new layout is on its way (waiting a moment for more changes, then warming up beside the one going out)
     changing: !!s.status.changing,
+    // signed in, while live: the broadcast Farmhand made { watchUrl, studioUrl, state (YouTube's: ready, live...),
+    // health (good | ok | bad | noData), issues: [YouTube's warnings], viewers (watching now, null before it's live) }
+    youtube: s.status.youtube ? {
+      watchUrl: s.status.youtube.watch_url, studioUrl: s.status.youtube.studio_url, state: s.status.youtube.state,
+      health: s.status.youtube.health, issues: s.status.youtube.issues || [], viewers: s.status.youtube.viewers ?? null,
+    } : null,
   },
   destinations: s.destinations,
   resolutions: s.resolutions,
@@ -85,6 +99,10 @@ export const saveStream = async (s = {}) =>
         resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor, background: s.background, font: s.font, color: s.color,
         title: s.title, description: s.description, music: s.music, music_volume: s.musicVolume, music_shuffle: s.musicShuffle, delay: s.delay,
         stream_key: s.streamKey || null, clear_key: !!s.clearKey, enabled: s.enabled,
+        youtube: s.youtube ? {
+          privacy: s.youtube.privacy, tags: s.youtube.tags, category: s.youtube.category, made_for_kids: s.youtube.madeForKids,
+          latency: s.youtube.latency, dvr: s.youtube.dvr, auto_start: s.youtube.autoStart, auto_stop: s.youtube.autoStop,
+        } : undefined,
       }),
     ),
   );

@@ -6,8 +6,9 @@ import { useData } from "../data.jsx";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
 import { cameraOf, printerOf } from "./shapes.js";
-import { LiveStatusPanel, MuteSwitch, StreamSwitch, WhereToPanel, YouTubeAccountPanel, YouTubeTextPanel } from "./StreamPanels.jsx";
+import { LiveStatusPanel, MuteSwitch, StreamSwitch, WhereToPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
+import { YouTubeSettingsButton, YouTubeSettingsDialog } from "./YouTubeSettings.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
 
@@ -52,6 +53,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   const [choosing, setChoosing] = useState(false); // Save asking: a new layout, or over one there is
   const [fromLayout, setFromLayout] = useState(null); // the saved layout last used or saved here: Save suggests overwriting it
   const [loadError, setLoadError] = useState(null);
+  const [ytOpen, setYtOpen] = useState(false); // the YouTube settings window
 
   const draftOrSaved = draft || page?.settings;
   const inGrid = (draftOrSaved?.cells || []).filter((x) => x?.camera).map((x) => x.camera);
@@ -163,6 +165,13 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
     if (on && !p) music.current?.stop(); // it stayed off
   };
   const forgetKey = () => ask("save", () => saveStream({ clearKey: true }));
+  // The YouTube settings window's Save: just its own (title, description, stream key, the video's YouTube settings);
+  // anything else changed on the page and not saved yet stays so. The page as the server answered, or null.
+  const saveYouTube = async (fields) => {
+    const p = await ask("save", () => saveStream(fields));
+    if (p) setDraft((d) => d && { ...d, title: p.settings.title, description: p.settings.description, youtube: p.settings.youtube });
+    return p;
+  };
   // Go live: what's changed here is saved first
   const start = async () => {
     if (changed && !(await saveAll())) return;
@@ -233,16 +242,26 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
           </div>
         )}
 
-        {/* the YouTube broadcast's own title and description */}
-        {shown.destination === "youtube" && <YouTubeTextPanel shown={shown} change={change} status={status} />}
-
         <WhereToPanel
           destination={shown.destination} destinations={page.destinations} onDestination={(destination) => change({ destination })}
-          streamKey={key} onKey={(k) => (setKey(k), setProblem(null))} keySet={saved.keySet} onForgetKey={forgetKey} busy={busy}
           delay={shown.delay} onDelay={(v) => change({ delay: v })} live={status.live}
+          youtubeSettings={
+            <>
+              <YouTubeSettingsButton shown={saved} youtube={page.youtube} keySet={saved.keySet} onOpen={() => setYtOpen(true)} />
+              {status.title && (
+                <div data-testid="stream-title-status" style={uiText(12, status.title.state === "failed" ? c.danger : status.title.state === "done" ? c.green : c.amber, { lineHeight: 1.5 })}>
+                  {status.title.message}
+                </div>
+              )}
+            </>
+          }
         />
-        {/* signing in to YouTube, for the title and description */}
-        {shown.destination === "youtube" && <YouTubeAccountPanel youtube={page.youtube} status={status} ask={ask} busy={busy} />}
+        {ytOpen && (
+          <YouTubeSettingsDialog
+            shown={saved} onSave={saveYouTube} onClose={() => setYtOpen(false)} keySet={saved.keySet} onForgetKey={forgetKey}
+            youtube={page.youtube} status={status} ask={ask} busy={busy}
+          />
+        )}
 
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} control={music} onWaiting={setMusicWaits} muted={muted} />
