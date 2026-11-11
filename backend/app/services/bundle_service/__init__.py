@@ -13,7 +13,6 @@ from .queries import get_bundle, require_bundle, require_version, list_all_bundl
 from .uploads import inspect_3mf, create_bundle, add_bundle_version
 from .versions import attach_gcode, download_bundle_version, delete_bundle, delete_bundle_version, rename_version
 from .marks import StarNotAllowed, run_star_existing, set_starred_version, set_notes, star_existing
-from ...notes import NotesConflict  # noqa: F401  (raised by set_notes)
 
 __all__ = [
     "get_bundle",
@@ -35,5 +34,4 @@ __all__ = [
     "set_starred_version",
     "star_existing",
     "set_notes",
-    "NotesConflict",
 ]

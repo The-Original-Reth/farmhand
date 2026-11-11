@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -17,6 +18,9 @@ from .. import record_files, records_store
 from ..timeutil import as_utc, utc_iso
 from . import sub_printer_service
 from .printer_service import ensure_connection
+
+if TYPE_CHECKING:
+    from .config_service.nas_copy import MirrorScope
 from ..models import (
     Bundle,
     BundleNote,
@@ -278,7 +282,7 @@ def read_stream_setup(db: Session, folder) -> tuple[dict | None, list[str]]:
     return setup, []
 
 
-def write_all(db: Session, folder, scope: "MirrorScope | None" = None) -> dict:
+def write_all(db: Session, folder, scope: MirrorScope | None = None) -> dict:
     """
     Bring the printers/ and models/ files in the settings folder up to date: all of them, checking each file (scope
     None), or just what a change touched (see config_service.MirrorScope), trusting what was last written.

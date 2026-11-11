@@ -229,4 +229,4 @@ def test_an_out_of_date_order_is_turned_down(api):
     for ids in ([a], [a, b, b], [a, b, 999]):
         r = api.put(f"/projects/{pid}/doc/order", json={"ids": ids})
         assert r.status_code == 422 and "reload the page" in r.json()["detail"]
-    assert api.put(f"/projects/999/doc/order", json={"ids": []}).status_code == 404
+    assert api.put("/projects/999/doc/order", json={"ids": []}).status_code == 404

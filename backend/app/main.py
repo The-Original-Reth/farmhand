@@ -86,9 +86,8 @@ async def storage_unavailable_handler(request: Request, exc: storage.StorageUnav
 
 @app.on_event("startup")
 def on_startup() -> None:
-    # Simple create_all for now, appropriate for this stage. Move to real
-    # Alembic migrations before this touches a production database with
-    # data worth preserving across schema changes.
+    # No Alembic: create_schema adds missing tables and indexes but never alters
+    # existing columns (see database.create_schema).
     import app.models  # noqa: F401  (ensures all models are registered on Base)
 
     # Retry with backoff instead of crashing: in docker-compose, the db

@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..errors import NotFound
 from .. import notes as notes_helper
-from ..notes import NotesConflict  # noqa: F401  (raised by set_notes)
 from ..models import (
     Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrinterServiceReminder,
     PrusaLinkConnection, SubPrinter,
