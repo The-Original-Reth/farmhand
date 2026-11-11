@@ -1,18 +1,14 @@
-// The Stream page: sending a grid of cameras and cards live to YouTube, the stream folder's pictures and
-// slideshows, and the YouTube broadcast's
-// title and description. The mockup sends nothing anywhere: Go live just says it's live, after the same checks the real
-// server makes. The stream key and the Google client secret are kept only as "one is saved". Signing in to YouTube shows
-// a made-up code and counts as done a few seconds later; the stream folder is kept in memory, sample pictures standing in
+// The Stream page: sending a grid of cameras and cards live to YouTube, the stream folder's pictures and slideshows,
+// and the music (signing in to YouTube is in routes/youtube.js). The mockup sends nothing anywhere: Go live just says
+// it's live, after the same checks the real server makes. The stream key is kept only as "one is saved"; the stream folder is kept in memory, sample pictures standing in
 // for the files uploaded (and a short tone for each track of music).
 import { HttpError } from "../core.js";
 import { FONTS, cameraCell, cardCell, fileName, isCard } from "../streamCells.js";
 
 const DESTINATIONS = { youtube: "YouTube Live" }; // (Twitch for later)
 const KEY_SHAPE = /^[A-Za-z0-9_\-?=&.]{4,200}$/;
-const CLIENT_ID_SHAPE = /^[A-Za-z0-9\-_.]{3,200}\.apps\.googleusercontent\.com$/;
 const CAMERA_KEY = /^\d+:.{1,100}$/;
 const SECONDS = { seconds_all: [0, 3600], seconds_each: [3, 3600] };
-const SIGN_IN_TAKES_MS = 6000;
 const RESOLUTIONS = { "720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)" };
 const MAX_SIDE = 5;
 const PICTURES = ["frog-vt1190", "shark-v2bog", "shark-vt1190"]; // the sample pictures shown for the uploads, in turn
@@ -412,36 +408,5 @@ export function streamRoutes(ctx) {
     return locationOut();
   });
 
-  // signing in to YouTube
-  on("PUT", "/stream/youtube", (_, body) => {
-    const y = state().youtube;
-    const id = String(body.client_id || "").trim();
-    if (!CLIENT_ID_SHAPE.test(id)) throw new HttpError(422, "That doesn't look like a Google client ID: it ends in .apps.googleusercontent.com.");
-    if (!String(body.client_secret || "").trim() && y.client_id !== id) throw new HttpError(422, "Paste the client secret too (from the same OAuth client in Google Cloud).");
-    if (y.client_id !== id) Object.assign(y, { signed_in: false, channel: null, signing_in: null });
-    y.client_id = id;
-    y.error = null;
-    return page();
-  });
-  on("POST", "/stream/youtube/sign-in", () => {
-    const y = state().youtube;
-    if (!y.client_id) throw new HttpError(422, "Add the Google OAuth client ID and secret first.");
-    y.signing_in = { user_code: "MOCK-CODE", done_at: Date.now() + SIGN_IN_TAKES_MS };
-    y.error = null;
-    return page();
-  });
-  on("POST", "/stream/youtube/sign-out", (_, body) => {
-    const y = state().youtube;
-    Object.assign(y, { signed_in: false, channel: null, signing_in: null, error: null });
-    if (body.forget_client) y.client_id = null;
-    return page();
-  });
-  on("POST", "/stream/youtube/apply", () => {
-    const s = state();
-    if (!s.youtube.signed_in) throw new HttpError(422, "Sign in to YouTube first.");
-    if (!(s.title || s.description)) throw new HttpError(422, "Write a title or description first, and save it.");
-    if (s.live) s.title_status = titleOutcome();
-    return page();
-  });
-  return {};
+  return { streamState: state, streamPage: page, titleOutcome };
 }
