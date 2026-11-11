@@ -1,7 +1,7 @@
 import React from "react";
 import { c, fixed, fs, ui } from "./theme.js";
 import { monoText } from "./styles.js";
-import { API_BASE } from "./api.js";
+import { API_BASE, errorText } from "./api.js";
 import { DataProvider, useData } from "./data.jsx";
 
 import { CompareTray } from "./compare/CompareTray.jsx";
@@ -147,7 +147,7 @@ function FarmhandApp() {
 
       {compare.open && (
         <Modal title="Compare 3MF files" onClose={compare.close} width={1500}>
-          <DiffView left={compare.open[0]} right={compare.open[1]} onClose={compare.close} />
+          <DiffView left={compare.open[0]} right={compare.open[1]} />
         </Modal>
       )}
     </div>
@@ -171,7 +171,7 @@ class ErrorBoundary extends React.Component {
       <FullPageMessage action="Reload" onAction={() => window.location.reload()}>
         <div>Something went wrong displaying this page.</div>
         <div style={monoText(12, c.textFaint, { maxWidth: 640, wordBreak: "break-word" })}>
-          {String(this.state.error?.message || this.state.error)}
+          {errorText(this.state.error)}
         </div>
       </FullPageMessage>
     );

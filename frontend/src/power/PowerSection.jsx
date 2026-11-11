@@ -7,7 +7,7 @@ import { useData } from "../data.jsx";
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
 import { fmtCost, fmtKwh } from "../lib/format.js";
 import { energyCost, parsePrice, priceForMonth } from "../lib/energyPrice.js";
-import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, tableHead } from "../lib/periods.jsx";
+import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, periodWord, tableHead } from "../lib/periods.jsx";
 
 const NO_PRICES = { current: null, history: [], months: {} };
 
@@ -158,7 +158,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
   const current = periodKey(new Date(), by);
   const selected = picked ?? current;
   const thisPeriod = farm[selected];
-  const word = selected === current ? (by === "month" ? "This month" : "This year") : periodLabel(selected, by);
+  const word = periodWord(selected, current, by);
   // what can be picked: every month or year with figures, and the current one even before it has any
   const choices = periods.some((p) => p.key === current) ? periods.map((p) => p.key) : [current, ...periods.map((p) => p.key)];
   const cols = "90px minmax(0, 1fr) 100px 110px 80px 90px 60px";

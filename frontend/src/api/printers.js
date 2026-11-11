@@ -1,6 +1,6 @@
 // Printers: adding and editing them, their printer profiles and parts, their Moonraker / PrusaLink (status, print
 // history, cameras, energy, the 1500-hour service, maintenance) and their notes.
-import { del, formBody, jsonBody, notesBody, post, request, timeZone } from "./client.js";
+import { del, formBody, jsonBody, notesBody, post, request, timeZone, tzQuery } from "./client.js";
 
 export const normalizePrinter = (p) => ({
   id: p.id,
@@ -198,7 +198,7 @@ export const getPrintProgress = (printerId) => request(`/printers/${printerId}/p
 //   months: [{ key: "2026-10", prints, print_count, whole, partial }] } — totalled by the server in this browser's
 //   time zone (a year is its months added up)
 export const getEnergy = (printerId) =>
-  request(`/printers/${printerId}/energy${timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""}`);
+  request(`/printers/${printerId}/energy${tzQuery}`);
 
 // status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name.
 // Each job has filament_grams (the filament used in grams; null when no density or slicer estimate is known),

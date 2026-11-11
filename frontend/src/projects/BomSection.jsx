@@ -10,20 +10,14 @@ import { TrashButton } from "../components/common/ui.jsx";
 import { panelBox, toolButton, uiText } from "../styles.js";
 import { HaveNeed, HaveNeedLabel } from "./ProjectFiles.jsx";
 import { plural } from "../lib/format.js";
+import { downloadBlob } from "../lib/download.js";
 
 // The template a BOM is filled in from: the columns Upload BOM reads, in this order (only Part is needed)
 const TEMPLATE = "Part,Need,Have,Link,Notes\r\n";
 
 // Download the BOM template as "BOM Template.csv" (made here: nothing to fetch)
 function downloadTemplate() {
-  const url = URL.createObjectURL(new Blob([TEMPLATE], { type: "text/csv" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "BOM Template.csv";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob("BOM Template.csv", new Blob([TEMPLATE], { type: "text/csv" }));
 }
 
 // The BOM section's buttons, beside its heading: BOM Template (a CSV to fill in), Upload BOM, and Add part

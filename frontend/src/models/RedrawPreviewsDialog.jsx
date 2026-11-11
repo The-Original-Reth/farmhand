@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { c, fs, mono, ui } from "../theme.js";
-import { uiText } from "../styles.js";
+import { c, mono } from "../theme.js";
+import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { errorText, redrawPreview } from "../api.js";
 import { useData } from "../data.jsx";
 import { ProgressBar } from "../components/common/ui.jsx";
@@ -40,7 +40,7 @@ export function RedrawPreviewsDialog({ onClose }) {
   const button = (label, onClick, primary, extra = {}) => (
     <button
       onClick={onClick}
-      style={{ ...ui, fontSize: fs(13), background: primary ? c.amber : "none", color: primary ? c.onAccent : c.textMuted, border: primary ? "none" : `1px solid ${c.border}`, borderRadius: 3, padding: "7px 14px", fontWeight: primary ? 600 : 400, cursor: "pointer", ...extra }}
+      style={{ ...(primary ? primaryButton() : cancelButton()), ...extra }}
     >
       {label}
     </button>

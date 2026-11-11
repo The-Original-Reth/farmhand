@@ -7,6 +7,8 @@ import { headerButton } from "../styles.js";
 export const periodKey = (d, by) => (by === "year" ? `${d.getFullYear()}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
 export const periodLabel = (key, by) =>
   by === "year" ? key : new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+// A period's heading: "This month" / "This year" for the current one, otherwise its label
+export const periodWord = (key, current, by) => (key === current ? (by === "month" ? "This month" : "This year") : periodLabel(key, by));
 // whether a month ("2026-03") falls in the period `key` (a month or a year)
 export const monthIn = (month, key, by) => (by === "year" ? month.startsWith(key) : month === key);
 

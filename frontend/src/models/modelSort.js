@@ -1,4 +1,5 @@
 import { readStored, writeStored } from "../lib/storage.js";
+import { nameCollator } from "../lib/order.js";
 
 // Each option's `dir` is the natural direction when it's first picked (newest first, most first, A→Z)
 export const MODEL_SORTS = [
@@ -9,7 +10,6 @@ export const MODEL_SORTS = [
   { key: "type", label: "Type", dir: "asc" },
 ];
 const SORT_STORAGE_KEY = "farmhand.modelSort";
-export const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }); // "Part 2" before "Part 10"
 
 // Anything unrecognised (an old or hand-edited value) becomes the default
 export function normalizeModelSort(saved) {

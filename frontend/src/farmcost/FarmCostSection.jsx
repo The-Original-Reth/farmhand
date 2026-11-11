@@ -5,11 +5,12 @@ import { errorText, getEnergy, getFarmCost } from "../api.js";
 import { headerButton, monoText, panelBox, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 import { arranged, moved } from "../lib/order.js";
+import { downloadBlob } from "../lib/download.js";
 
 import { SectionLabel, StatTile } from "../components/common/ui.jsx";
 import { fmtCost as money, fmtGrams, fmtKwh, plural } from "../lib/format.js";
 import { energyCost, priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
-import { PeriodButtons, periodKey, periodLabel, PeriodPicker, tableHead } from "../lib/periods.jsx";
+import { PeriodButtons, periodKey, periodLabel, PeriodPicker, periodWord, tableHead } from "../lib/periods.jsx";
 
 const add = (a, b) => (b == null ? a : (a ?? 0) + b); // null + nothing stays null: "—" rather than $0.00
 
@@ -35,12 +36,7 @@ function downloadCsv(filename, period, rows, farm) {
   const head = ["Period", "Printer", "Prints", "Filament (g)", "Filament cost ($)", "Electricity (kWh)", "Electricity cost ($)",
     "Total cost ($)", "Prints without a weight", "Prints without a filament price"].join(",");
   const text = [head, ...rows.map((r) => line(period, r.printer.name, r)), line(period, "Whole farm", farm)].join("\r\n");
-  const url = URL.createObjectURL(new Blob(["\ufeff" + text + "\r\n"], { type: "text/csv;charset=utf-8" }));
-  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(filename, new Blob(["\ufeff" + text + "\r\n"], { type: "text/csv;charset=utf-8" }));
 }
 
 const BLANK = { prints: 0, grams: null, filamentCost: null, unweighed: 0, uncosted: 0, kwh: null, energyCost: null, unpriced: false };
@@ -229,7 +225,7 @@ export function FarmCostSection({ order = [], onOrder }) {
   const selected = picked ?? current;
   const choices = periods.includes(current) ? periods : [current, ...periods];
   const inPeriod = (key) => key.startsWith(selected); // a month ("2026-03") or day ("2026-03-04") in the period looked at
-  const word = selected === current ? (by === "month" ? "This month" : "This year") : periodLabel(selected, by);
+  const word = periodWord(selected, current, by);
   const byDay = by === "month"; // a printer clicked shows its month day by day, its year month by month
 
   // a printer's rows by month, or by day

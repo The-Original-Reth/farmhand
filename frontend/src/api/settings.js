@@ -1,10 +1,10 @@
 // Settings: appearance and preferences, kept on the server, and their copy on the NAS (Save all / Load all).
-import { API_BASE, jsonBody, post, request } from "./client.js";
+import { API_BASE, jsonBody, normalizeFolderStatus, post, request } from "./client.js";
 
 const normalizeConfigLocation = (l) => ({
   path: l.path,
   isSet: l.is_set,
-  status: l.status && { exists: l.status.exists, writable: l.status.writable, markerOk: l.status.marker_ok, ready: l.status.ready },
+  status: normalizeFolderStatus(l.status),
   file: l.file && { exists: l.file.exists, modifiedAt: l.file.modified_at, size: l.file.size },
   lastWrite: { ok: l.last_write.ok, error: l.last_write.error, at: l.last_write.at },
 });

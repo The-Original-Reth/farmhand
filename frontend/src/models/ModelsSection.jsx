@@ -21,7 +21,8 @@ import { RedrawPreviewsDialog } from "./RedrawPreviewsDialog.jsx";
 import { ScanStlDialog } from "./ScanStlDialog.jsx";
 import { UploadStlForm } from "./UploadStlForm.jsx";
 import { AddModelFileForm, DeleteModelButton } from "./modelActions.jsx";
-import { MODEL_SORTS, nameCollator, sortModelRows } from "./modelSort.js";
+import { MODEL_SORTS, sortModelRows } from "./modelSort.js";
+import { nameCollator } from "../lib/order.js";
 import { NotesSection } from "../notes/NotesSection.jsx";
 import { plural } from "../lib/format.js";
 

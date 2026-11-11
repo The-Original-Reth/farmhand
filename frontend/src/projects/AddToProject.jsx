@@ -4,7 +4,7 @@ import { addProjectBundle, addProjectModel, createProject } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
-import { nameCollator } from "../models/modelSort.js";
+import { nameCollator } from "../lib/order.js";
 import { Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { TextField } from "../components/common/fields.jsx";
 import { toolButton, uiText } from "../styles.js";

@@ -5,7 +5,7 @@ import { uiText } from "../styles.js";
 
 import { Badge, Thumb } from "../components/common/ui.jsx";
 import { Highlighted } from "../lib/search.jsx";
-import { notesHint } from "../lib/format.js";
+import { notesHint, plural } from "../lib/format.js";
 
 export function ModelListRow({ model, bundleCount, printerCount, borderBottom, borderRight, onOpen, words = [], reasons = [] }) {
   const [hover, setHover] = useState(false);
@@ -56,7 +56,7 @@ export function ModelListRow({ model, bundleCount, printerCount, borderBottom, b
         )}
         <Badge>{model.type}</Badge>
         <Badge tone="teal">{bundleCount} 3MF</Badge>
-        <Badge tone="teal">{printerCount} {printerCount === 1 ? "Printer" : "Printers"}</Badge>
+        <Badge tone="teal">{plural(printerCount, "Printer")}</Badge>
       </div>
     </div>
   );

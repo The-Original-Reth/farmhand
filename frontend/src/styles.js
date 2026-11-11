@@ -34,7 +34,6 @@ export const primaryButton = (disabled = false) => ({
   fontWeight: 600, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.7 : 1,
 });
 
-// Amber underlined text that acts as a button ("Clear search")
 // A section's box on a page (a card, a list, a folding section's body), with anything more in `extra`
 export const panelBox = (extra) => ({ border: `1px solid ${c.border}`, borderRadius: 4, background: c.panel, ...extra });
 // The heading row of a section that folds away: its toggle on the left, its buttons on the right
@@ -45,6 +44,7 @@ export const foldHeading = (open) => ({
 // a status line's colour by its tone: "warn" (something to look at), "good" (it went through), anything else faint
 export const toneColor = (tone) => (tone === "warn" ? c.amber : tone === "good" ? c.green : c.textFaint);
 
+// Amber underlined text that acts as a button ("Clear search")
 export const linkButton = (size = 13) => ({
   ...ui, fontSize: fs(size), background: "none", border: "none", color: c.amber, textDecoration: "underline", cursor: "pointer", padding: 0,
 });
