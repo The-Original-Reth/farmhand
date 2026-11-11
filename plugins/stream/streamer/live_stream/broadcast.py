@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from sqlalchemy.orm import Session
+from ..store import Session
 
 from .. import app_settings, youtube_live
 

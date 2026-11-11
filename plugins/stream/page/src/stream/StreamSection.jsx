@@ -28,7 +28,8 @@ const mutedAtFirst = () => {
   }
 };
 
-export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed }) {
+// (the plugin: `aside(page)`, what the plugin adds under the live panel: the cameras live or down, Farmhand's state)
+export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed, aside }) {
   const { printers } = useData();
   const active = printers.filter((p) => !p.decommissioned);
   const music = useRef(null); // the music panel's own start and stop, for the switch (MusicPanel `control`)
@@ -241,6 +242,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
       </div>
       <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
         <LiveStatusPanel status={status} destLabel={destLabel} destination={shown.destination} busy={busy} onStart={start} onStop={stop} off={!enabled} />
+        {aside?.(page)}
         {problem && (
           <div data-testid="stream-problem" style={uiText(13, c.danger, { lineHeight: 1.5 })}>
             {problem}

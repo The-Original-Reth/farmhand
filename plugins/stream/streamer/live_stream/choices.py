@@ -1,12 +1,12 @@
 """
-What's chosen for the stream (kept in app_settings), checked on the way in: where to, the grid and its squares, taking turns, the resolution, the colours, the music and the YouTube title and description.
+What's chosen for the stream (kept in the plugin's store), checked on the way in: where to, the grid and its squares, taking turns, the resolution, the colours, the music and the YouTube title and description.
 """
 from __future__ import annotations
 
 import json
 import math
 
-from sqlalchemy.orm import Session
+from ..store import Session
 
 from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
@@ -298,7 +298,7 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
 def rename_slideshow(db: Session, old: str, new: str) -> int:
     """A slideshow's folder was renamed: every square showing it, on the Stream page and in each saved layout, shows it
     by its new name. How many squares changed."""
-    from .. import config_service  # (it reads these settings itself)
+    from .. import layouts as saved_layouts  # (it reads these settings itself)
 
     def follow(cells) -> int:
         n = 0
@@ -313,8 +313,8 @@ def rename_slideshow(db: Session, old: str, new: str) -> int:
     if changed:
         app_settings.put(db, SETTINGS_KEY, json.dumps(raw))
         db.commit()
-    layouts = config_service.get_config(db)["preferences"]["stream_layouts"]
+    layouts = saved_layouts.layouts(db)
     in_layouts = sum(follow(lay["cells"]) for lay in layouts)
     if in_layouts:
-        config_service.save_config(db, {"preferences": {"stream_layouts": layouts}})
+        saved_layouts.save(db, layouts)
     return changed + in_layouts

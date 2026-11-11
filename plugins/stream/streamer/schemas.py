@@ -55,7 +55,3 @@ class SlideshowIn(BaseModel):
     """A new slideshow: a folder of this name in the stream folder's slideshows."""
 
     name: str = Field(..., max_length=200)
-
-
-class MediaLocationIn(BaseModel):
-    path: str | None = None  # null or "" = back to the default

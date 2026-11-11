@@ -46,7 +46,7 @@ function HiddenText({ value }) {
 }
 
 // The step-by-step guide to connecting the channel, on a page of its own (YouTubeGuide.jsx), in a new tab
-const GUIDE_URL = "/help/youtube";
+const GUIDE_URL = "?view=youtube-guide"; // (relative: the plugin's own page)
 const GuideLink = () => (
   <a data-testid="stream-youtube-guide" href={GUIDE_URL} target="_blank" rel="noreferrer" style={uiText(12, c.amber, { textDecoration: "underline" })}>
     How to connect your YouTube channel, step by step

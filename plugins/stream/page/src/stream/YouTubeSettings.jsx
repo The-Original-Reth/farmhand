@@ -12,10 +12,10 @@ import { YouTubeAccountPanel } from "./YouTubeAccount.jsx";
 // just these (changes on the Stream page not saved yet stay as they are) and tells the Stream page, wherever it's open,
 // to show them. Saved settings go on the next broadcast; while live, they change the one going out straight away.
 
-export const WINDOW_PATH = "/youtube-settings";
+export const WINDOW_PATH = "?view=youtube-settings"; // (relative: the plugin's own page, inside Farmhand or not)
 const WINDOW_NAME = "farmhand-youtube-settings";
 // the Stream page hears the window's saves on this (any tab or window of this Farmhand, in this browser)
-export const STREAM_CHANNEL = "farmhand-stream";
+export const STREAM_CHANNEL = "farmhand-stream-plugin"; // (not Farmhand's own Stream page's: the page shares its address)
 const announce = () => {
   try {
     const ch = new BroadcastChannel(STREAM_CHANNEL);

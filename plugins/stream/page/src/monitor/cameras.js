@@ -5,7 +5,7 @@ import { readStoredObject, writeStored } from "../lib/storage.js";
 // Finding every printer's cameras for Monitor. Each printer's cameras show as soon as it answers, so one that's off
 // doesn't hold up the rest. This browser remembers the cameras each printer had last time, and those start connecting
 // straight away while the printers are asked again.
-const CAMERAS_KEY = "farmhand.monitorCameras"; // each printer's cameras as it last gave them: { printer id: webcams }
+const CAMERAS_KEY = "farmhand.streamPluginCameras"; // each printer's cameras as it last gave them: { printer id: webcams } (not Monitor's: the page shares Farmhand's address)
 
 // The cameras remembered from last time, as printer id -> { webcams, error, kept: true } (kept: not asked yet this time)
 function rememberedCameras() {

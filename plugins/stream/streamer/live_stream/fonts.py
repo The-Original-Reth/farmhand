@@ -7,7 +7,7 @@ import os
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"  # fonts-dejavu-core, in the API's image
 FONTS_DIR = "/usr/share/fonts"
-APP_FONTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "fonts")  # fonts kept with Farmhand: "app:" in FONTS
+APP_FONTS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts")  # fonts kept with the plugin: "app:" in FONTS
 # The fonts a square's words can be written in: key -> (name, its file in FONTS_DIR (the Dockerfile installs them),
 # the kind of font the page falls back to while its own copy loads). A font the server doesn't have writes in FONT (DejaVu Sans).
 FONTS = {

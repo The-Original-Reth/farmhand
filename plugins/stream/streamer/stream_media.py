@@ -1,14 +1,14 @@
 """
-The Stream page's pictures, as files in the stream folder, chosen in Settings like the other storage locations:
+The stream's pictures and music, as files in the stream folder: the folder the plugin's container is given
+(STREAM_FOLDER, /media: a bind mount or a NAS share mounted on its machine, as the operator chooses):
 
     <stream folder>/images/<name>.png                 single pictures, for a square of the grid
     <stream folder>/slideshows/<slideshow>/<name>.jpg  each slideshow a folder of pictures, shown in turn (by name)
     <stream folder>/music/<name>.mp3                   the stream's music (StreamBeats, say), played round and round
 
-By default the stream folder is "stream" in the folder above the STL / OBJ / STEP folder, beside "farm-cost". Pictures
-uploaded on the Stream page are written there; pictures dropped in by hand (over the network share, say) count just the
-same. Squares name a picture by its file name and a slideshow by its folder's name, so they read the same on any
-Farmhand sharing the folder. Deleting only ever removes picture files Farmhand lists, and a slideshow's folder once
+Pictures uploaded on the Stream page are written there; pictures dropped in by hand (over the network share, say) count just the
+same. Squares name a picture by its file name and a slideshow by its folder's name, so a folder Farmhand's own Stream
+page used reads the same here. Deleting only ever removes picture files Farmhand lists, and a slideshow's folder once
 it's empty: never a folder with anything else in it.
 """
 from __future__ import annotations
@@ -18,16 +18,10 @@ import os
 import re
 from pathlib import Path
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from . import config, storage
+from .errors import NotFound
+from .store import Session
 
-from .. import mounts, storage
-from ..errors import NotFound
-from ..models import NetworkShare
-from . import app_settings
-
-STREAM_FOLDER = "stream"
-KEY_LOCATION = app_settings.STREAM_MEDIA_DIR_KEY  # the folder chosen in Settings; none = the default
 IMAGES, SLIDESHOWS, MUSIC = "images", "slideshows", "music"
 PICTURE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 PICTURE_MAX = 10 * 1024 * 1024  # an upload; pictures dropped in by hand can be any size
@@ -37,51 +31,25 @@ TRACK_MAX = 50 * 1024 * 1024  # an upload; tracks copied in by hand can be any s
 NAME = re.compile(r"^[^/\\\0]{1,120}$")
 
 
-def default_folder() -> Path:
-    """The stream folder when none is chosen: "stream" in the folder above the STL / OBJ / STEP folder."""
-    return storage.named_folder(storage.effective_root("stl").parent, STREAM_FOLDER)
-
-
-def _chosen(db: Session) -> str | None:
-    return app_settings.get(db, KEY_LOCATION)
+def _root() -> Path:
+    return Path(config.settings.media_dir)
 
 
 def location_info(db: Session) -> dict:
-    """For Settings: {path, is_default, default_path, status: {exists, writable, marker_ok, ready}}."""
-    chosen = _chosen(db)
-    default = default_folder()
-    if chosen:
-        return {"path": chosen, "is_default": False, "default_path": str(default), "status": storage.folder_status(Path(chosen))}
-    try:
-        storage.ready_root("stl")
-        ready = True
-    except storage.StorageUnavailableError:
-        ready = False
-    status = {"exists": default.is_dir(), "writable": ready, "marker_ok": ready, "ready": ready}  # made when first used
-    return {"path": str(default), "is_default": True, "default_path": str(default), "status": status}
-
-
-def set_location(db: Session, raw: str | None) -> dict:
-    """
-    Choose the stream folder (None or "" = back to the default). A chosen folder must last (on a connected share or in
-    Farmhand's own storage) and be writable; it gets Farmhand's marker, so an unmounted share is never written under.
-    ValueError says why one can't be used. Pictures already in the old folder stay there.
-    """
-    if raw and raw.strip():
-        real = storage.validate_location(raw.strip())
-        storage.mark_location(real)
-        app_settings.put(db, KEY_LOCATION, str(real))
-    else:
-        app_settings.put(db, KEY_LOCATION, None)
-    db.commit()
-    forget()
-    return location_info(db)
+    """{path, shown_as, status: {exists, writable, ready}}: the folder the plugin was given (STREAM_FOLDER)."""
+    root = _root()
+    writable = root.is_dir() and os.access(root, os.W_OK)
+    return {"path": str(root), "shown_as": config.settings.media_shown_as,
+            "status": {"exists": root.is_dir(), "writable": writable, "ready": writable}}
 
 
 def folder(db: Session, make: bool = False) -> Path:
     """The stream folder, while it can be used (StorageUnavailableError otherwise); with `make`, its folders made."""
-    chosen = _chosen(db)
-    root = storage.ensure_ready_folder(chosen, "stream folder") if chosen else storage.named_folder(storage.ready_root("stl").parent, STREAM_FOLDER)
+    root = _root()
+    if not root.is_dir():
+        raise storage.StorageUnavailableError(
+            f"The stream folder ({root}) isn't there. Give the plugin's container a folder for its pictures and music "
+            "(a bind mount or a NAS share mounted on its machine, at /media): see the plugin's README.")
     if make:
         (root / IMAGES).mkdir(parents=True, exist_ok=True)
         (root / SLIDESHOWS).mkdir(parents=True, exist_ok=True)
@@ -162,17 +130,8 @@ def add_blank(db: Session, name: str) -> str:
 
 
 def windows_path(db: Session, path: str) -> str | None:
-    r"""A folder as Windows reaches it over the network (\\server\share\folder), when it's on a connected SMB share;
-    None when it's in Farmhand's own storage or on an NFS share."""
-    real = os.path.realpath(path)
-    for row in db.scalars(select(NetworkShare).order_by(NetworkShare.id)):
-        if row.protocol != "smb":
-            continue
-        mount = os.path.realpath(mounts.mount_point_for(row.name))
-        if real == mount or real.startswith(mount + os.sep):
-            parts = [row.server, *row.share.strip("/").split("/"), *[p for p in real[len(mount):].split(os.sep) if p]]
-            return "\\\\" + "\\".join(parts)
-    return None
+    """The stream folder as people reach it over the network, when the operator said (STREAM_FOLDER_SHOWN_AS)."""
+    return config.settings.media_shown_as
 
 
 # What was last found in the stream folder, and which folder that was. It's read again only when asked (Scan folder),
@@ -192,7 +151,7 @@ def media(db: Session, scan: bool = False) -> dict:
     tracks' names], error}:
     what's in the stream folder, as last found (read now when `scan`, or the first time)."""
     global _found
-    which = _chosen(db) or str(default_folder())
+    which = str(_root())
     if not scan and _found and _found[0] == which:
         return _found[1]
     _found = (which, _read(db))

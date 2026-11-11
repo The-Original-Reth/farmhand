@@ -26,7 +26,7 @@ class FarmhandError(Exception):
     """
     Farmhand couldn't be asked, or said no. `message` is for the operator; `kind` is for the code:
     "setup" (an environment variable is missing), "refused" (401), "forbidden" (403), "busy" (429),
-    "down" (no answer) or "error" (anything else). `retry_after` is how many seconds to wait, when Farmhand said.
+    "down" (no answer), "gone" (410: handed over already) or "error" (anything else). `retry_after` is how many seconds to wait, when Farmhand said.
     `short` is the same in fewer words (for /health, which Farmhand's Plugins page shows in a line or two).
     """
 
@@ -37,8 +37,8 @@ class FarmhandError(Exception):
 
 
 class Farmhand:
-    def __init__(self, url: str, token: str):
-        self.url, self.token = url, token
+    def __init__(self, url: str, token: str, timeout: float = CALL_TIMEOUT):
+        self.url, self.token, self.timeout = url, token, timeout
 
     # ------------------------------------------------------------------ the endpoints this plugin uses
 
@@ -49,6 +49,23 @@ class Farmhand:
     def print_of(self, printer_id: int) -> dict:
         """GET /printers/{id}/print (prints:read): {state, progress, file, error} of the print under way."""
         return self.get(f"/printers/{printer_id}/print")
+
+    def cameras(self) -> dict:
+        """GET /cameras (cameras:read): {printers: [{printer_id, printer_name, error, cameras: [{name, kind, url,
+        ffmpeg_input, ffmpeg_filters, aspect_ratio, target_fps, snapshot_url, error...}]}]}."""
+        return self.get("/cameras")
+
+    def me(self) -> dict:
+        """GET /me: {plugin_id, permissions, api_version}."""
+        return self.get("/me")
+
+    def stream_migration_state(self) -> dict:
+        """GET /stream/migrate (stream:migrate): {available, handed_over_at, has_settings}."""
+        return self.get("/stream/migrate")
+
+    def stream_migration(self) -> dict:
+        """POST /stream/migrate (stream:migrate): Farmhand's Stream page set-up, handed over once (410 after)."""
+        return self.call("POST", "/stream/migrate")
 
     def farm(self) -> dict:
         """GET /farm (farm:read): {mode, colors, time_zone}, so the page matches Farmhand when opened on its own."""
@@ -87,10 +104,13 @@ class Farmhand:
     # ------------------------------------------------------------------ the plumbing
 
     def get(self, path: str) -> dict:
-        with self._open(path, accept="application/json", timeout=CALL_TIMEOUT) as answer:
+        return self.call("GET", path)
+
+    def call(self, method: str, path: str) -> dict:
+        with self._open(path, accept="application/json", timeout=self.timeout, method=method) as answer:
             return json.loads(answer.read().decode("utf-8"))
 
-    def _open(self, path: str, accept: str, timeout: float):
+    def _open(self, path: str, accept: str, timeout: float, method: str = "GET"):
         if not self.url:
             raise FarmhandError(
                 "FARMHAND_URL isn't set, so this plugin doesn't know where Farmhand is. Add the plugin on Farmhand's "
@@ -104,7 +124,8 @@ class Farmhand:
                 "setup",
             )
         request = urllib.request.Request(
-            self.url + path, headers={"Authorization": f"Bearer {self.token}", "Accept": accept},
+            self.url + path, headers={"Authorization": f"Bearer {self.token}", "Accept": accept}, method=method,
+            data=b"" if method == "POST" else None,
         )
         try:
             return urllib.request.urlopen(request, timeout=timeout)
@@ -131,6 +152,8 @@ def _refusal(e: urllib.error.HTTPError) -> FarmhandError:
         except ValueError:
             wait = 5.0
         return FarmhandError(f"Farmhand asked this plugin to slow down; trying again in {wait:g} s. {detail}", "busy", wait)
+    if e.code == 410:
+        return FarmhandError(detail, "gone")
     if e.code in (502, 503, 504):
         return FarmhandError(f"Farmhand isn't ready (it answered {e.code}); it may be starting up.", "down")
     return FarmhandError(f"Farmhand answered {e.code}: {detail}", "error")

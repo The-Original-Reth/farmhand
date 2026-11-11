@@ -19,7 +19,7 @@ import threading
 import time
 
 import httpx
-from sqlalchemy.orm import Session
+from .store import Session
 
 from . import app_settings
 

@@ -57,6 +57,10 @@ const normalizeStream = (s) => ({
     resolution: s.status.resolution || null,
     // what the self-check last did this time live (next to no video reaching YouTube): { at, message }, or null
     selfCheck: s.status.self_check || null, // "nvenc" (an NVIDIA card compresses it) or "cpu", while live
+    // each camera while live, in square order: { key, label, state: "live" | "down" | "starting", since, said }
+    cameraStates: s.status.camera_states || [],
+    // Farmhand didn't answer at the last Go live (its cameras were read at the addresses last heard of): why, or null
+    farmhand: s.status.farmhand || null,
     // how long the picture going out has run (s), and when that was heard: the preview counts from the same start
     runningFor: typeof s.status.running_for === "number" ? s.status.running_for : null,
     // the server's time of day (s): slideshows and taking turns count from it, on the stream and in the preview
@@ -75,6 +79,8 @@ const normalizeStream = (s) => ({
       health: s.status.youtube.health, issues: s.status.youtube.issues || [], viewers: s.status.youtube.viewers ?? null,
     } : null,
   },
+  // being tried out: the rtmp:// address the stream goes to instead of YouTube, or null
+  testDestination: s.test_destination || null,
   destinations: s.destinations,
   resolutions: s.resolutions,
   fonts: s.fonts || [],

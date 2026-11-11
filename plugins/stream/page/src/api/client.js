@@ -1,12 +1,8 @@
 // The HTTP client every call goes through: where the API is, the request and its error, and request bodies.
 
-// Default to whatever host the browser is actually using, not a hardcoded
-// "localhost" — that breaks the moment this is viewed from a different
-// machine than the one running Docker (e.g. a phone/laptop hitting a
-// Raspberry Pi's LAN IP). VITE_API_BASE still overrides this when set.
-const defaultApiBase = `${window.location.protocol}//${window.location.hostname}:4545`;
-
-export const API_BASE = import.meta.env.VITE_API_BASE || defaultApiBase;
+// The plugin's own API, relative to its page: /plugins/stream/api inside Farmhand, /api opened on the plugin itself.
+// (The page only ever talks to its own plugin, never to Farmhand or the cameras.)
+export const API_BASE = "api";
 
 export async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, options);
