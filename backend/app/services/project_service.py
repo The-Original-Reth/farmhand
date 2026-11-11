@@ -252,10 +252,14 @@ def remove_bundle(db: Session, project_id: int, bundle_id: int) -> Project:
     return require_project(db, project_id)
 
 
-def add_printer(db: Session, project_id: int, printer_id: int) -> Project:
-    require_project(db, project_id)
+def require_printer_exists(db: Session, printer_id: int) -> None:
     if db.get(Printer, printer_id) is None:
         raise NotFound("Printer not found")
+
+
+def add_printer(db: Session, project_id: int, printer_id: int) -> Project:
+    require_project(db, project_id)
+    require_printer_exists(db, printer_id)
     link_printer(db, project_id, printer_id)
     return require_project(db, project_id)
 

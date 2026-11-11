@@ -8,6 +8,6 @@ common.py has what they share (which files count, each one's kind, Farmhand's ow
 from .check import check_files
 from .common import ProjectExists
 from .copy_in import import_folder, scan_folder
-from .folder_sync import import_projects_folder
+from .folder_sync import import_projects_folder, scan_projects_folder
 
-__all__ = ["ProjectExists", "check_files", "import_folder", "import_projects_folder", "scan_folder"]
+__all__ = ["ProjectExists", "check_files", "import_folder", "import_projects_folder", "scan_folder", "scan_projects_folder"]

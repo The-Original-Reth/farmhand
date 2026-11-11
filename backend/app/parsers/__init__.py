@@ -34,6 +34,4 @@ def parse_3mf(path: str) -> ParsedBundle:
 
 
 def prusaslicer_and_friends_paths() -> list[str]:
-    from .threemf import CONFIG_CANDIDATES
-
-    return CONFIG_CANDIDATES
+    return threemf.CONFIG_CANDIDATES

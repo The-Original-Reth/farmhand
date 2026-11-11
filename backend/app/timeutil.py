@@ -4,6 +4,10 @@ from __future__ import annotations
 import datetime as dt
 
 
+def utc_now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
 def as_utc(value: dt.datetime) -> dt.datetime:
     """A stored time with its timezone said: one without is UTC (that's how it was stored)."""
     return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)

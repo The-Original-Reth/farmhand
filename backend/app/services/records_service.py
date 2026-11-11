@@ -43,13 +43,8 @@ from ..models import (
 
 
 def _when(value) -> dt.datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = dt.datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    return as_utc(parsed)
+    parsed = record_files.parse_iso(value)
+    return as_utc(parsed) if parsed else None
 
 
 def _num(value, default=None):

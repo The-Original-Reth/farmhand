@@ -6,6 +6,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
+from ..timeutil import utc_now
 
 
 class PrusaLinkConnection(Base):
@@ -50,7 +51,7 @@ class MaintenanceEntry(Base):
     key: Mapped[str] = mapped_column(String(64), nullable=False)
     entry: Mapped[dict] = mapped_column(JSON, nullable=False)
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+        DateTime(timezone=True), default=utc_now
     )
 
     printer: Mapped["Printer"] = relationship(back_populates="maintenance_rows")  # noqa: F821

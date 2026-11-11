@@ -6,10 +6,7 @@ from sqlalchemy import BigInteger, DateTime, ForeignKey, ForeignKeyConstraint, I
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from ..database import Base
-
-
-def _now():
-    return dt.datetime.now(dt.timezone.utc)
+from ..timeutil import utc_now
 
 
 class Project(Base):
@@ -23,7 +20,7 @@ class Project(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     # the project's own files: they belong to it, and go when it does
     doc_files: Mapped[list["ProjectDocFile"]] = relationship(
@@ -87,7 +84,7 @@ class ProjectDocFile(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="doc_files")
     versions: Mapped[list["ProjectDocVersion"]] = relationship(
@@ -113,7 +110,7 @@ class ProjectDocVersion(Base):
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))  # a picture's own preview, next to it
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     note: Mapped[str | None] = mapped_column(Text)  # notes on this version
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     file: Mapped["ProjectDocFile"] = relationship(back_populates="versions")
 
@@ -125,7 +122,7 @@ class ProjectCadFile(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="cad_files")
     versions: Mapped[list["ProjectCadVersion"]] = relationship(
@@ -151,7 +148,7 @@ class ProjectCadVersion(Base):
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))  # its preview, next to it ("... ver 2.f3d.png")
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     note: Mapped[str | None] = mapped_column(Text)  # what changed in this version
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     file: Mapped["ProjectCadFile"] = relationship(back_populates="versions")
 
@@ -166,7 +163,7 @@ class ProjectStlFile(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     need: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     have: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="stl_files")
     versions: Mapped[list["ProjectStlVersion"]] = relationship(
@@ -190,7 +187,7 @@ class ProjectStlVersion(Base):
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     note: Mapped[str | None] = mapped_column(Text)
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     file: Mapped["ProjectStlFile"] = relationship(back_populates="versions")
 
@@ -207,7 +204,7 @@ class ProjectSourceModel(Base):
     source_model_id: Mapped[int] = mapped_column(ForeignKey("source_models.id"), primary_key=True, index=True)
     need: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     have: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="model_links")
     source_model: Mapped["SourceModel"] = relationship(  # noqa: F821
@@ -272,7 +269,7 @@ class ProjectThreemfFile(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     printer_id: Mapped[int | None] = mapped_column(ForeignKey("printers.id", ondelete="SET NULL"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="threemf_files")
     printer: Mapped["Printer | None"] = relationship(  # noqa: F821
@@ -294,7 +291,7 @@ class ProjectThreemfVersion(Base):
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))  # the picture inside the 3MF, next to it
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     note: Mapped[str | None] = mapped_column(Text)
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     file: Mapped["ProjectThreemfFile"] = relationship(back_populates="versions")
     # the G-code sliced from this version, if one was uploaded: it goes with the version
@@ -314,7 +311,7 @@ class ProjectThreemfGcode(Base):
     version_id: Mapped[int] = mapped_column(ForeignKey("project_threemf_versions.id"), primary_key=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     version: Mapped["ProjectThreemfVersion"] = relationship(back_populates="gcode")
 
@@ -329,7 +326,7 @@ class ProjectBundle(Base):
 
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), primary_key=True)
     bundle_id: Mapped[int] = mapped_column(ForeignKey("bundles.id"), primary_key=True, index=True)
-    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="bundle_links")
     bundle: Mapped["Bundle"] = relationship(  # noqa: F821
@@ -344,7 +341,7 @@ class ProjectPrinter(Base):
 
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), primary_key=True)
     printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), primary_key=True, index=True)
-    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="printer_links")
     printer: Mapped["Printer"] = relationship(  # noqa: F821
@@ -367,6 +364,6 @@ class ProjectPart(Base):
     have: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     link: Mapped[str | None] = mapped_column(String(1000))  # where to buy it: an http(s) address
     note: Mapped[str | None] = mapped_column(String(1000))
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="parts")

@@ -9,6 +9,7 @@ from .. import printer_links
 from ..database import Base
 from ..notes import HasNotes
 from ..timeutil import utc_iso
+from ..timeutil import utc_now
 
 
 class Printer(HasNotes, Base):
@@ -29,7 +30,7 @@ class Printer(HasNotes, Base):
     wired_ip: Mapped[str | None] = mapped_column(String(45))
     wireless_ip: Mapped[str | None] = mapped_column(String(45))
     decommissioned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     bundles: Mapped[list["Bundle"]] = relationship(back_populates="printer")
 

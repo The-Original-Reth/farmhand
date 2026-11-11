@@ -16,12 +16,12 @@ from sqlalchemy.orm import Session
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    Printer, ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition, ProjectDocVersion,
+    ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition, ProjectDocVersion,
     ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfGcode, ProjectThreemfVersion,
 )
 from ..names import with_version
 from ..thumbnails.cad_preview import render_cad_preview
-from .project_service import link_printer, project_folder, require_project
+from .project_service import link_printer, project_folder, require_printer_exists, require_project
 
 MAX_NOTE_LENGTH = 2000
 
@@ -116,8 +116,8 @@ def upload(
     require_project(db, project_id)
     check_type(kind, filename)
     note = _clean_note(note)
-    if kind is THREEMF and printer_id is not None and db.get(Printer, printer_id) is None:
-        raise NotFound("Printer not found")
+    if kind is THREEMF and printer_id is not None:
+        require_printer_exists(db, printer_id)
     storage.ready_root("project")  # refuse before anything is recorded
     f = kind.file_cls(project_id=project_id)
     if kind is THREEMF:

@@ -5,6 +5,7 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
+from ... import record_files
 from ...models import DefaultSubPrinter, Printer, SubPrinterPart, SubPrinterSettingsCopy
 from .core import MAX_NAME, _fields_of, _new, _only_defaults, _remember, _text
 
@@ -73,10 +74,7 @@ def restore(db: Session, printer: Printer, saved) -> bool:
                     added |= len(sub.alias_rows) != before
         copied = rec.get("settings_copy") if isinstance(rec, dict) else None
         if sub.settings_copy is None and isinstance(copied, dict) and isinstance(copied.get("settings"), dict):
-            try:
-                when = dt.datetime.fromisoformat(copied["copied_at"]) if isinstance(copied.get("copied_at"), str) else None
-            except ValueError:
-                when = None
+            when = record_files.parse_iso(copied.get("copied_at"))
             sub.settings_copy = SubPrinterSettingsCopy(
                 copied_from=_text(copied.get("copied_from"), MAX_NAME) or name, from_file=_text(copied.get("from_file"), 255),
                 settings=copied["settings"], **({"copied_at": when} if when else {}),
