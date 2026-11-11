@@ -11,6 +11,7 @@ import { DefaultsPanel } from "./StreamSquares.jsx";
 import { STREAM_CHANNEL, YouTubeSettingsButton, openYouTubeSettings } from "./YouTubeSettings.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
+import { StreamContainerGuide } from "./StreamContainerGuide.jsx";
 
 // The Stream page: Farmhand sends the printers' cameras live to YouTube itself, laid out in a grid of
 // squares (each a camera, a logo or nothing, with a border round it) or taking turns, with each printer's name and print
@@ -228,6 +229,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
     {head}
+    <StreamContainerGuide />
     <div data-testid="stream-section" style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(340px, 2fr)", gap: 20, alignItems: "start" }}>
       {/* left: what the stream looks like; right: going live and what goes into it */}
       <div style={{ minWidth: 0, position: "sticky", top: 0 }}>
