@@ -53,5 +53,7 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
     if parts[0] == "stream":
         return config_service.MirrorScope()  # the Stream page's setup file (its key and YouTube sign-in never go in)
     if parts[0] == "plugins":
+        if parts[-1] == "preview" or (len(parts) > 2 and parts[2] == "page"):
+            return None  # only looks at a plugin, or is its own page asking it something
         return config_service.MirrorScope()  # the settings file's list of plugins and what they were granted (never a token)
     return None

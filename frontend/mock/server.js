@@ -18,12 +18,16 @@ import { pluginsRoutes } from "./routes/plugins.js";
 export function mockApi() {
   const ctx = createCore();
   for (const add of [projectsRoutes, printersRoutes, libraryRoutes, printingRoutes, settingsRoutes, filesRoutes, streamRoutes, youtubeRoutes, pluginsRoutes]) Object.assign(ctx, add(ctx));
-  const { routes, resetFarm, fileRoutes, downloadRoutes, fileVersion } = ctx;
+  const { routes, resetFarm, fileRoutes, downloadRoutes, fileVersion, pluginPageRequest } = ctx;
 
   // ------------------------------------------------------------------ the Vite plugin
   return {
     name: "farmhand-mock-api",
     configureServer(server) {
+      // a plugin's page, as nginx passes /plugins/<id>/ on in the real Farmhand (the bare /plugins is the Plugins page)
+      server.middlewares.use((req, res, next) => {
+        if (!/^\/plugins\/[^/]/.test(req.url) || !pluginPageRequest(req, res)) next();
+      });
       server.middlewares.use(PREFIX, async (req, res) => {
         const url = new URL(req.url, "http://mock");
         const send = (status, body, type = "application/json") => {

@@ -3,19 +3,21 @@ The plugin API, version 1: what a plugin's container may read of Farmhand (docs/
 carries the plugin's token (Authorization: Bearer ...): none or a bad one is 401, and a call outside the permissions
 the operator granted it is 403 naming the one it needs. Read-only, and v1 only ever gains fields and endpoints.
 
-Meant to be reached only from inside Docker's network: nginx doesn't pass /plugin-api/ on (see docs/plugins.md for
-how that will be enforced on the API's own port).
+Reached over the farm's network on the API's port (a plugin may run on another machine), never through the web
+page's server (nginx doesn't pass /plugin-api/ on). Besides the token: a plugin set to "only accept calls from its
+address" has its token refused from anywhere else (403), and each token may make RATE calls a second (429 beyond).
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..services.plugins import answers, events, registry
+from ..services.plugins import answers, events, limits, registry, remote
 from ..services.plugins.manifest import API_VERSION
 from .common import require_printer
 
@@ -28,14 +30,37 @@ BAD_TOKEN = (
 )
 
 
-def plugin_caller(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> registry.Caller:
-    """The plugin making the call, known by its token; 401 without one Farmhand knows."""
+def plugin_caller(
+    request: Request, authorization: str | None = Header(default=None), db: Session = Depends(get_db),
+) -> registry.Caller:
+    """
+    The plugin making the call, known by its token: 401 without one Farmhand knows, 429 when it asks too often, 403
+    from somewhere other than its address when it's set to be taken only from there.
+    """
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise HTTPException(status_code=401, detail=NO_TOKEN, headers={"WWW-Authenticate": "Bearer"})
-    caller = registry.caller(db, token.strip())
+    token = token.strip()
+    wait = limits.allow(registry.hash_token(token))
+    if wait:
+        raise HTTPException(
+            status_code=429, headers={"Retry-After": str(max(1, math.ceil(wait)))},
+            detail=f"This plugin is asking Farmhand too often (more than {limits.RATE:g} times a second). Farmhand keeps "
+            "its answers a few seconds anyway, so asking less often loses nothing.",
+        )
+    caller = registry.caller(db, token)
     if caller is None:
         raise HTTPException(status_code=401, detail=BAD_TOKEN, headers={"WWW-Authenticate": "Bearer"})
+    if caller.only_from:
+        came_from = request.client.host if request.client else None
+        if not remote.from_address(came_from, caller.only_from):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Farmhand takes the \"{caller.plugin_id}\" plugin's token only from its address, "
+                f"{remote.host_of(caller.only_from)}, and this call came from {came_from or 'an unknown address'}. If the "
+                "plugin has moved, change its address on Farmhand's Plugins page (or switch off \"Only from its "
+                "address\" there).",
+            )
     return caller
 
 

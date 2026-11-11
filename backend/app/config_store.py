@@ -397,6 +397,8 @@ def read_document(folder: str | os.PathLike) -> dict | None:
         "shares": shares,
         "farm_cost": {"records_path": _path_or_none(farm_cost.get("records_path"))},
         "stream": {"media_path": _path_or_none(stream.get("media_path"))},
+        # the plugins installed (registry.mirror_entries; files from before plugins have none). Checked when put back
+        "plugins": [e for e in (raw.get("plugins") if isinstance(raw.get("plugins"), list) else [])[:100] if isinstance(e, dict)],
         # files from before it have none: their orders are taken as they are
         "printer_names": {
             k: v for k, v in (raw.get("printer_names") if isinstance(raw.get("printer_names"), dict) else {}).items()
