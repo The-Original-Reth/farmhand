@@ -1232,10 +1232,11 @@ each running in its own Docker container with its own storage, on Farmhand's mac
 network, so a Farmhand update or crash doesn't touch them and they can't touch Farmhand's files. A plugin reads what
 it needs through Farmhand's **plugin API**, with a token of its own, and only what the operator allowed when adding it
 (its printers, their cameras, what they're printing, Farmhand's colours). Nothing can be changed through it yet.
-Writing one: see [docs/plugins.md](docs/plugins.md).
+Writing one: see [docs/plugins.md](docs/plugins.md), and start from [plugins/hello](plugins/hello/README.md), a small
+example plugin (each printer and its print's progress, live) made to be copied.
 
 **The Plugins page** (in the menu, under Settings) lists the plugins added and how each is doing (Farmhand asks each one
-every 30 seconds: running, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the
+every 30 seconds: running, running with a problem the plugin names, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the
 way the plugin's instructions say, then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.
 Farmhand asks the plugin what it is and shows what it wants to read in plain words; untick anything you'd rather it
 didn't see, and say yes. Farmhand then shows the plugin's `FARMHAND_URL` and `FARMHAND_TOKEN` once, to put in its

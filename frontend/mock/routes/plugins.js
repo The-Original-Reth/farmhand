@@ -64,7 +64,7 @@ function checkManifest(m) {
 // The pretend plugins on the farm's network, by address: what GET <address>/manifest answers
 const ON_THE_NETWORK = {
   "http://192.168.10.215:8080": {
-    id: "hello", name: "Hello", version: "0.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
+    id: "hello", name: "Hello", version: "1.0.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/hello's manifest
     page: { menu: "Hello", icon: "dashboard", path: "/" }, permissions: ["printers:read", "prints:read", "farm:read"], health: "/health",
   },
   "http://192.168.10.216:8080": {
@@ -221,6 +221,12 @@ export function pluginsRoutes(ctx) {
       return true;
     };
     if (url.pathname === "/plugins/farmhand-plugin.js") return send(200, SCRIPT, "text/javascript");
+    // /plugins/<id> without its "/" (nginx.conf does the same)
+    if (/^\/plugins\/[a-z0-9-]+$/.test(url.pathname)) {
+      res.writeHead(302, { Location: `${url.pathname}/${url.search}` });
+      res.end();
+      return true;
+    }
     const m = url.pathname.match(/^\/plugins\/([a-z0-9-]+)(\/.*)$/);
     if (!m) return false;
     const p = plugins().find((x) => x.id === m[1]);

@@ -79,18 +79,22 @@ def fetch_manifest(address: str) -> dict:
         ) from None
 
 
-def check_health(address: str, path: str | None) -> str | None:
-    """None when the plugin answers 2xx at its health path (its /manifest if it names none); else why not."""
+def check_health(address: str, path: str | None) -> tuple[str, str | None]:
+    """
+    (state, why) from asking the plugin's health path (its /manifest if it names none): ("running", None) for a 2xx;
+    ("unwell", what it said) when it answers otherwise (it's running, and says what's wrong, e.g. Farmhand refused its
+    token); ("not_answering", why) when nothing answers.
+    """
     path = path or "/manifest"
     try:
         with _client(HEALTH_TIMEOUT) as client:
             r = client.get(f"{address}{path}")
     except httpx.HTTPError as e:
-        return unreachable(address, e)
+        return "not_answering", unreachable(address, e)
     if not 200 <= r.status_code < 300:
-        said = r.text.strip()[:200] if r.headers.get("content-type", "").startswith(("text/", "application/json")) else ""
-        return f"The plugin answered {r.status_code} to {path}" + (f": {said}" if said else ".")
-    return None
+        said = r.text.strip()[:300] if r.headers.get("content-type", "").startswith(("text/", "application/json")) else ""
+        return "unwell", f"The plugin answered {r.status_code} to {path}" + (f": {said}" if said else ".")
+    return "running", None
 
 
 def host_of(address: str) -> str:

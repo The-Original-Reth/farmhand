@@ -5,6 +5,11 @@ notifier. It runs in **its own Docker container**, with its own storage, written
 Farmhand's database, files or other containers. It reads what it needs from Farmhand through the **plugin API**
 described here, using a token the operator gave it, and only what the operator allowed.
 
+**Start from the example:** [`plugins/hello`](../plugins/hello/README.md) is a small, working plugin (each printer and
+its print's progress, updated live, in Farmhand's colours) with its Dockerfile, tests and instructions for making it
+your own. It shows everything below in use: the manifest, the token and its refusals, events, a page that works inside
+Farmhand, and settings kept in the plugin's own volume.
+
 What's here (plugin API version 1): the manifest, adding a plugin on Farmhand's Plugins page, the token and
 permissions, the read-only endpoints, the health check, and your plugin's page shown inside Farmhand. Farmhand doesn't
 start or stop your container: the operator runs it (on Farmhand's machine or another one on the farm's network) the
@@ -54,7 +59,7 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `page` | no | A page in Farmhand's menu: `menu` (its label, up to 40 characters), `icon` (optional: `video`, `camera`, `chart`, `bell` or `dashboard`; a puzzle piece otherwise), `path` on your plugin (default `/`). See "Your page inside Farmhand" |
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
 | `settings_page` | no | A path on your plugin shown on Farmhand's Settings page |
-| `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running" or "not answering", with what went wrong: answer with a short plain-words reason when you're not well |
+| `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page) |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
 
@@ -216,10 +221,12 @@ data: {"id":7,"type":"print.started","at":"2026-11-11T14:02:11.120000+00:00","pr
 ```
 
 `print.*` events carry `file` and `progress` (`progress` is `null` on `print.finished`); `printer.*` events carry
-`error` (`null` on `printer.reachable`). A comment line (`: still here`) comes every 15 seconds while nothing
-happens, so you can tell the connection is alive. Events aren't kept: one that happens while you're not connected
-is missed, so after connecting, ask `GET /printers/{id}/print` for how things stand. Reconnect if the connection
-drops (Farmhand restarting ends it).
+`error` (`null` on `printer.reachable`). The stream opens with a comment line (`: connected`), and another
+(`: still here`) comes every 15 seconds while nothing happens, so you can tell the connection is alive: one silent for
+much longer than that has gone (time your reads out at 45 seconds or so). Events aren't kept: one that happens while
+you're not connected is missed, so after connecting, ask `GET /printers/{id}/print` for how things stand. Reconnect if
+the connection drops (Farmhand restarting ends it). Events say when a print starts, pauses or ends, not how it creeps
+along: for progress, ask each printer's print now and then (every 20 seconds or so is plenty).
 
 ### `GET /farm` (`farm:read`)
 

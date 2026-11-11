@@ -67,7 +67,7 @@ class PluginConnection(Base):
     only_from_address: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Brought back by Load all settings: registered, but its token wasn't in the settings copy, so it needs a new one
     needs_token: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    health: Mapped[str] = mapped_column(String(20), default="unknown", nullable=False)  # running | not_answering | unknown
+    health: Mapped[str] = mapped_column(String(20), default="unknown", nullable=False)  # running | unwell | not_answering | unknown
     last_error: Mapped[str | None] = mapped_column(Text)
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))  # it last answered then
     checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))

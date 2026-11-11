@@ -174,7 +174,7 @@ def granted(plugin: Plugin) -> list[str]:
 
 
 def health_of(plugin: Plugin) -> dict:
-    """How the plugin is doing: state running | not_answering | unknown (not asked yet) | off (switched off)."""
+    """How the plugin is doing: state running | unwell (answers, saying what's wrong) | not_answering | unknown | off."""
     link = connection_of(plugin)
     return {
         "state": "off" if not plugin.enabled else link.health,

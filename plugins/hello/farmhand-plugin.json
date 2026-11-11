@@ -1,0 +1,12 @@
+{
+  "id": "hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "farmhand_api": "1",
+  "author": "Farmhand",
+  "homepage": "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/hello",
+  "port": 8080,
+  "page": { "menu": "Hello", "icon": "dashboard", "path": "/" },
+  "permissions": ["printers:read", "prints:read", "farm:read"],
+  "health": "/health"
+}
