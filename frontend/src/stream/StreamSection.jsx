@@ -231,7 +231,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
       {/* left: what the stream looks like; right: going live and what goes into it */}
       <div style={{ minWidth: 0, position: "sticky", top: 0 }}>
         <StreamPreview
-          shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
+          shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} liveResolution={status.resolution} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
           ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard} still={!enabled} onResync={resync} resynced={resynced && changed}
           serverClock={status.serverTime !== null && (!changed || resynced) ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}

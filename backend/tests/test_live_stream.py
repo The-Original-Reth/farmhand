@@ -235,8 +235,10 @@ def test_the_resolution(klipper, moonraker, ffmpeg):
     assert "xstack=inputs=2:layout=0_0|960_0" in graph and "scale=1920:1080" in graph
     assert cmd[cmd.index("-b:v") + 1] == "2500k" and cmd[cmd.index("-bufsize") + 1] == "5000k"
     assert "fontsize=30" in graph  # 20 px in a quarter of a 720p picture, in step on 1080p
-    # 2K: changing it while live starts the stream again at the new size
+    # 2K: it takes the new size from the next Go live
     api.put("/stream", json={"resolution": "1440p"})
+    api.post("/stream/stop")
+    api.post("/stream/start")
     assert _wait_for(lambda: len(ffmpeg.commands) == 2)
     cmd = ffmpeg.commands[1]
     assert "scale=2560:1440" in _graph(cmd) and cmd[cmd.index("-b:v") + 1] == "4500k"
@@ -1175,3 +1177,21 @@ def test_a_slideshow_picture_resized_on_its_own():
     graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
     assert "[1:v]scale=1274:714:" in graph and "[3:v]scale=1274:714:" in graph
     assert "[2:v]scale=637:357:" in graph and "overlay=640+(637-w)/2:360+(357-h)/2:enable=" in graph
+
+
+def test_the_resolution_is_set_when_going_live(klipper, moonraker, ffmpeg):
+    # YouTube takes a change of size mid-stream badly: a new resolution saved while live waits for the next Go live,
+    # and new layouts while live keep the size going out
+    api, pid = klipper
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "resolution": "720p"})
+    assert api.post("/stream/start").json()["status"]["resolution"] == "720p"
+    page = api.put("/stream", json={"resolution": "1080p"}).json()
+    assert page["settings"]["resolution"] == "1080p" and page["status"]["resolution"] == "720p" and len(ffmpeg.commands) == 1
+    api.put("/stream", json={"border_color": "#FF0000"})  # a new layout: handed over to, at the size going out
+    assert _wait_for(lambda: len(ffmpeg.commands) == 2)
+    assert "scale=1280:720" in " ".join(ffmpeg.commands[-1]) and "scale=1920:1080" not in " ".join(ffmpeg.commands[-1])
+    api.post("/stream/stop")
+    assert api.get("/stream").json()["status"]["resolution"] is None
+    assert api.post("/stream/start").json()["status"]["resolution"] == "1080p"
+    assert "scale=1920:1080" in " ".join(ffmpeg.commands[-1])

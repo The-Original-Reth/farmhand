@@ -19,8 +19,9 @@ from .common import require_confirm
 # key, the Google client secret and the YouTube sign-in go in and never come back out: answers only say they're there.
 router = APIRouter(prefix="/stream", tags=["stream"])
 
-# Changing one of these while live means the picture (or the sound) changes, so the stream starts again
-PICTURE = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color",
+# Changing one of these while live means the picture (or the sound) changes, so the stream starts again. (Not the
+# resolution: the size going out is set when going live, and a new one saved while live waits for the next Go live.)
+PICTURE = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "border_color",
            "background", "font", "color", "key_set")
 MUSIC = ("music", "music_volume", "music_shuffle")  # these the music follows while live, without starting it again
 

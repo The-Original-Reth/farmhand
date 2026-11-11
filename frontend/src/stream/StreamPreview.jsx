@@ -25,7 +25,8 @@ import { SquareEditor } from "./SquareEditor.jsx";
 // and saves the page (`onSave`; `dirty`: something isn't saved yet). `still`: the stream is switched off, so the
 // slideshows and taking turns hold still where they are (as the music stops).
 
-export function StreamPreview({ shown, change, squares, showStatus, live, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert, still = false, onResync = null, resynced = false }) {
+// `liveResolution`: the size going out while live; the resolution can't be changed until the stream is stopped
+export function StreamPreview({ shown, change, squares, showStatus, live, liveResolution = null, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, serverClock = null, onRevert, still = false, onResync = null, resynced = false }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -111,8 +112,9 @@ export function StreamPreview({ shown, change, squares, showStatus, live, cycle 
         <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 6 })}>
           Resolution
           <select
-            data-testid="stream-resolution" value={shown.resolution} onChange={(e) => change({ resolution: e.target.value })}
-            style={{ ...fieldBox(), padding: "4px 6px" }}
+            data-testid="stream-resolution" value={(live && liveResolution) || shown.resolution} onChange={(e) => change({ resolution: e.target.value })}
+            disabled={live} title={live ? "Set when going live: stop the stream to change it" : undefined}
+            style={{ ...fieldBox(), padding: "4px 6px", opacity: live ? 0.6 : 1 }}
           >
             {resolutions.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
           </select>

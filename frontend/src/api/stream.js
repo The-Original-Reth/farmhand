@@ -52,7 +52,9 @@ const normalizeStream = (s) => ({
     cameras: s.status.cameras,
     error: s.status.error,
     title: s.status.title || null,
-    encoder: s.status.encoder || null, // "nvenc" (an NVIDIA card compresses it) or "cpu", while live
+    encoder: s.status.encoder || null,
+    // the size going out, set when it went live (a new one saved while live waits for the next Go live); null otherwise
+    resolution: s.status.resolution || null, // "nvenc" (an NVIDIA card compresses it) or "cpu", while live
     // how long the picture going out has run (s), and when that was heard: the preview counts from the same start
     runningFor: typeof s.status.running_for === "number" ? s.status.running_for : null,
     // the server's time of day (s): slideshows and taking turns count from it, on the stream and in the preview

@@ -744,6 +744,8 @@ is held. A new delay applies the next time you go live.
   suggests for each at Farmhand's 15 frames a second (2.5 Mbit/s for 1080p and 720p, 4.5 for 2K); the words and borders grow with the picture. 720p is easiest on a
   Raspberry Pi; 1080p and 2K make more work for the computer, so they suit a PC or the Proxmox container. An NVIDIA
   graphics card can take the compressing off the processor (below); the page then says *on the NVIDIA card* while live.
+  The resolution is set when you go live and can't be changed while live (YouTube takes a change of size mid-stream
+  badly): stop the stream, choose another, and go live again.
 - **Save** saves the page and the layout with it, asking each time: **Overwrite** one of your saved layouts (the
   one you last switched to or saved is picked to start with), or keep it as **a new layout** by name. A layout is the grid
   (its size and squares), the whole grid or taking turns, the timings, the words and the border colour (not the key,

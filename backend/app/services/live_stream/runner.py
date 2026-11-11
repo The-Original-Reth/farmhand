@@ -106,6 +106,9 @@ class Stream:
         self._changing = False  # a new layout is on its way (settling, or warming up)
         self._cache: str | None = None  # slideshow screens put together this time live, reused by later layouts
         self._broadcast: Broadcast | None = None  # signed in: this time live's broadcast on YouTube
+        # the resolution chosen when going live: kept until Stop (YouTube takes a change of size mid-stream badly, so a
+        # new one saved while live waits for the next Go live)
+        self._resolution: str | None = None
 
     # what the page shows
     def status(self) -> dict:
@@ -122,6 +125,7 @@ class Stream:
                 "error": self._error,
                 "title": dict(self._title) if self._title else None,
                 "encoder": self._encoder,  # "nvenc" (an NVIDIA card) or "cpu", while live; None otherwise
+                "resolution": self._resolution if wanted else None,  # the size going out (set when it went live)
                 # how long the picture going out has run, in seconds (None while it isn't going out)
                 "running_for": round(time.monotonic() - self._run_started, 2) if on_air and self._run_started else None,
                 # the server's time of day: slideshows and taking turns count from it, on the stream and on the page
@@ -203,6 +207,7 @@ class Stream:
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
         with self._lock:
             cache = self._cache
+            resolution = self._resolution  # (this time live's, whatever is saved now)
         cells = staging.squares(db, chosen, folder, cache=cache)
         turns_file = os.path.join(folder, "turns.txt") if cycle else None
         enc = encoder(ffmpeg)
@@ -214,7 +219,7 @@ class Stream:
                 write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
             return command(ffmpeg, srcs, url, Look(encoder=enc, clock=clock,
                 status_files=files, cycle=cycle, turns_file=turns_file,
-                resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
+                resolution=resolution, border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
                 rows=chosen["rows"], cells=cells, music=True, relay_offset=offset, lists_dir=folder,
             ))
 
@@ -256,6 +261,7 @@ class Stream:
             gen = self._generation
             self._key = key
             self._url = url
+            self._resolution = chosen["resolution"]
             self._destination = chosen["destination"]
             self._error = None
             self._said.clear()
@@ -294,6 +300,7 @@ class Stream:
             folder, self._dir = self._dir, None
             self._started_at = None
             self._encoder = None
+            self._resolution = None
             self._run_started = None
             self._title = None
             player, self._player = self._player, None
