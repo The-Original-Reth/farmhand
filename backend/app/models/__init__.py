@@ -16,6 +16,7 @@ from .printer_connection import (
 from .source_model import SourceFileType, SourceModel, SourceModelVersion
 from .printer_camera import PrinterCamera
 from .printer_note import PrinterNote
+from .plugin import Plugin, PluginToken
 from .project import (
     Project, ProjectBundle, ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition,
     ProjectDocVersion, ProjectFolder, ProjectModelComponent,
@@ -45,6 +46,8 @@ __all__ = [
     "SourceModelVersion",
     "PrinterCamera",
     "PrinterNote",
+    "Plugin",
+    "PluginToken",
     "Project",
     "ProjectBundle",
     "ProjectCadFile",

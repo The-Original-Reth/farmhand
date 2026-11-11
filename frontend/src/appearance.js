@@ -39,8 +39,8 @@ function mixHex(a, b, t) {
 }
 
 // The scheme's colours, with the three text colours pulled toward the heading colour by the brightness
-// setting (toward white on a dark scheme, toward black on the light one).
-function paletteFor(scheme, contrast) {
+// setting (toward white on a dark scheme, toward black on the light one). The mockup's plugin API uses it too.
+export function paletteFor(scheme, contrast) {
   const preset = PRESETS.find((p) => p.id === scheme) || PRESETS[0];
   const t = clamp(contrast, 0, 100) / 100;
   const colors = { ...preset.colors };

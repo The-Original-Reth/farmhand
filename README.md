@@ -1225,6 +1225,20 @@ a share dropping and coming back while Farmhand keeps running, and **Move them n
 network. Both are covered against a stand-in `mount` and NAS. If a connection fails, the message
 on the Settings page is the real output of `mount`, translated.
 
+## Plugins
+
+Farmhand is getting plugins: programs other people write that add something to it (the live stream is to become the
+first), each running in its own Docker container with its own storage, so a Farmhand update or crash doesn't touch
+them and they can't touch Farmhand's files. A plugin reads what it needs through Farmhand's **plugin API**, with a
+token of its own, and only what the operator allowed when installing it (its printers, their cameras, what they're
+printing, Farmhand's colours). Nothing can be changed through it yet. So far Farmhand has the plugin API and a list of
+installed plugins; the Plugins page that installs and runs them comes next. Writing one: see
+[docs/plugins.md](docs/plugins.md).
+
+The plugin API is meant for plugin containers only: the web page's server doesn't pass `/plugin-api/` on, and every
+call needs a plugin's token. Until the Plugins page arrives (when the plugin API moves to a port only Docker's network
+can reach), it is also answered on the API's port 4545, to anyone holding a token.
+
 ## For developers
 
 Backend (FastAPI/SQLAlchemy/PostgreSQL) in `backend/`, frontend (React/Vite) in `frontend/`.

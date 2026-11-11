@@ -13,10 +13,11 @@ import { settingsRoutes } from "./routes/settings.js";
 import { filesRoutes } from "./routes/files.js";
 import { streamRoutes } from "./routes/stream.js";
 import { youtubeRoutes } from "./routes/youtube.js";
+import { pluginsRoutes } from "./routes/plugins.js";
 
 export function mockApi() {
   const ctx = createCore();
-  for (const add of [projectsRoutes, printersRoutes, libraryRoutes, printingRoutes, settingsRoutes, filesRoutes, streamRoutes, youtubeRoutes]) Object.assign(ctx, add(ctx));
+  for (const add of [projectsRoutes, printersRoutes, libraryRoutes, printingRoutes, settingsRoutes, filesRoutes, streamRoutes, youtubeRoutes, pluginsRoutes]) Object.assign(ctx, add(ctx));
   const { routes, resetFarm, fileRoutes, downloadRoutes, fileVersion } = ctx;
 
   // ------------------------------------------------------------------ the Vite plugin
@@ -80,7 +81,8 @@ export function mockApi() {
             if (!m) continue;
             const params = Object.fromEntries(r.keys.map((k, i) => [k, m[i + 1]]));
             await new Promise((done) => setTimeout(done, 120 + Math.random() * 180)); // feels like a real network
-            const out = await r.handler(params, body, url.searchParams);
+            const out = await r.handler(params, body, url.searchParams, req.headers);
+            if (typeof out?.stream === "function") return out.stream(req, res); // server-sent events (the plugin API's /events)
             return Array.isArray(out) && typeof out[0] === "number" && out.length === 2 ? send(out[0], out[1]) : send(200, out);
           }
           return send(404, { detail: `The mockup doesn't know ${req.method} ${url.pathname}` });

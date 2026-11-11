@@ -45,8 +45,7 @@ export function printingRoutes(ctx) {
     return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board };
   });
   // How far along the print running now is, for Monitor's cameras
-  on("GET", "/printers/:id/progress", ({ id }) => {
-    const p = printer(id);
+  const progressOf = (p) => {
     const nothing = { state: null, progress: null, file: null, error: null };
     if (p.prusalink) {
       const job = p.prusalink.reachable && p.prusalink.hasPassword ? liveJob(p) : null;
@@ -57,7 +56,8 @@ export function printingRoutes(ctx) {
     if (!job) return nothing;
     const printed = Math.min(job.estimated - 60, job.printS + (nowUnix() - (job.seenFrom ??= nowUnix())));
     return { ...nothing, state: "printing", progress: Math.round((printed / job.estimated) * 1000) / 10, file: job.filename };
-  });
+  };
+  on("GET", "/printers/:id/progress", ({ id }) => progressOf(printer(id)));
   on("POST", "/printers/:id/moonraker/sync", ({ id }) => {
     const p = printer(id);
     try {
@@ -418,5 +418,5 @@ export function printingRoutes(ctx) {
     });
     return { sent: `usb/${name}` };
   });
-  return { reach, syncState, cameraPicture, stemOf, keyOf, baseOf, firstNumber, priced, filamentCost, kwhPrice, prices, monthOf, jobOut, FARM_COST_DEFAULT, farmCostLocation, saveLocationShare, saveLocationOut, servicedPrinter, maintenanceList, cleanReminder, freshEntry, noFilament, reachablePrinter, entryFor, prusaPrinter };
+  return { reach, syncState, progressOf, cameraPicture, stemOf, keyOf, baseOf, firstNumber, priced, filamentCost, kwhPrice, prices, monthOf, jobOut, FARM_COST_DEFAULT, farmCostLocation, saveLocationShare, saveLocationOut, servicedPrinter, maintenanceList, cleanReminder, freshEntry, noFilament, reachablePrinter, entryFor, prusaPrinter };
 }
