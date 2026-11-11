@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Archive } from "lucide-react";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
-import { SECTIONS } from "./useNavigation.js";
+import { SECTIONS, pluginSection } from "./useNavigation.js";
 
 // `npm run mock`: the real UI on built-in sample data (frontend/mock/). Said plainly in the sidebar, so the mockup
 // is never mistaken for the real farm, with a way back to the untouched sample data.
@@ -101,9 +101,13 @@ function Thanks() {
   );
 }
 
-// The menu down the left: Farmhand's name, a link per section (with how many models and printers there are), and the
-// thanks at the foot. `counts`: section key -> the number shown beside it.
-export function Sidebar({ current, counts, onOpen }) {
+// The icon a plugin's manifest names for its menu entry ("video"...), from the few Farmhand knows; a puzzle piece otherwise
+const PLUGIN_ICONS = { video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard };
+
+// The menu down the left: Farmhand's name, a link per section (with how many models and printers there are), a link
+// per plugin page (`plugins`: the ones switched on with a page), and the thanks at the foot. `counts`: section key ->
+// the number shown beside it.
+export function Sidebar({ current, counts, plugins = [], onOpen }) {
   return (
     <div
       style={{
@@ -124,6 +128,18 @@ export function Sidebar({ current, counts, onOpen }) {
       {SECTIONS.map((s) => (
         <NavItem key={s.key} section={s} current={current} count={counts[s.key]} onOpen={onOpen} />
       ))}
+      {plugins.length > 0 && (
+        <div data-testid="plugin-menu" style={{ borderTop: `1px solid ${c.border}`, marginTop: 10, paddingTop: 10 }}>
+          {plugins.map((p) => (
+            <NavItem
+              key={p.id}
+              section={{ key: pluginSection(p.id), label: p.page.menu, Icon: PLUGIN_ICONS[p.page.icon] || Puzzle }}
+              current={current}
+              onOpen={onOpen}
+            />
+          ))}
+        </div>
+      )}
       <div style={{ borderTop: `1px solid ${c.border}`, marginTop: 12, paddingTop: 12 }}>
         <div style={{ fontSize: fs(11), color: c.textFaint, padding: "0 14px", lineHeight: 1.6 }}>
           An archive: nothing here re-slices, and a print only goes to a printer when you send it.

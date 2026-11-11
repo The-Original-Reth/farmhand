@@ -13,7 +13,7 @@ import pytest
 
 from app.models import PluginToken
 from app.services import go2rtc
-from app.services.plugins import answers, cache, events, manifest
+from app.services.plugins import answers, cache, events, limits, manifest
 
 MANIFEST = {
     "id": "stream", "name": "Stream", "version": "1.0.0", "farmhand_api": "1", "port": 8080,
@@ -28,6 +28,7 @@ EVERYTHING = MANIFEST["permissions"]
 @pytest.fixture(autouse=True)
 def _fresh():
     cache.clear()
+    limits.reset()
     events.reset()
     yield
     cache.clear()
@@ -154,8 +155,11 @@ def test_the_settings_copy_lists_plugins_but_never_tokens(api, db_session):
     assert change_hooks._what_changed("/plugins/stream/token") == config_service.MirrorScope()
     _, token = registry.register(db_session, MANIFEST, ["printers:read"], "ghcr.io/elves/stream:1.0")
     doc = config_service.build_document(db_session)
-    assert doc["plugins"] == [{"id": "stream", "name": "Stream", "version": "1.0.0", "image": "ghcr.io/elves/stream:1.0",
-                               "enabled": True, "permissions": ["printers:read"]}]
+    [entry] = doc["plugins"]
+    assert {k: entry[k] for k in ("id", "name", "version", "image", "enabled", "permissions", "address", "only_from_address")} == {
+        "id": "stream", "name": "Stream", "version": "1.0.0", "image": "ghcr.io/elves/stream:1.0", "enabled": True,
+        "permissions": ["printers:read"], "address": "http://stream:8080", "only_from_address": False}
+    assert entry["manifest"]["id"] == "stream"
     assert token not in json.dumps(doc) and registry.hash_token(token) not in json.dumps(doc)
 
 

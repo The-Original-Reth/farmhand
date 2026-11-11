@@ -48,9 +48,13 @@ in `main.py`. Background jobs (`mount_supervisor.py`, `printer_poller.py`, `farm
 previews worker) are `periodic.PeriodicWorker`s, started and stopped by `background.py`. What another Farmhand sharing
 the folders has is brought in only by Load all settings or Scan projects, never in the background.
 
-**Plugins** (`docs/plugins.md`): other people's containers read Farmhand only through the read-only, versioned plugin
-API (`routers/plugin_api.py`, `/plugin-api/v1/`, Bearer token, a permission per endpoint); installing is `routers/plugins.py`.
-Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
+**Plugins** (`docs/plugins.md`): other people's containers, on this machine or another on the LAN, read Farmhand only
+through the read-only, versioned plugin API (`routers/plugin_api.py`, `/plugin-api/v1/` on the API port, Bearer token,
+a permission per endpoint, optionally only from the plugin's address, rate-limited per token). Farmhand never starts or
+stops them: the Plugins page (`routers/plugins.py`, `src/plugins/`) adds one by its address (`remote.py` fetches its
+`/manifest`), and `health.py`'s worker asks each every 30 s. Where a plugin runs is the `plugin_connection` table. Its
+page is an iframe on `/plugins/<id>/`, which nginx sends to the API's `/plugins/<id>/page/` and `pages.py` passes on to
+the plugin. Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
 `services/camera_streams.py`, shared with the Stream page.
 
 **Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
@@ -67,10 +71,10 @@ unexpected prefix needs an entry there. Share passwords are never written; print
 Moonraker API key and PrusaLink password (asked for, so a restore connects straight away).
 
 **Frontend**: `src/api.js` is the single HTTP client: it re-exports `src/api/<area>.js` (client, printers, library,
-projects, farmCost, storage, settings), so components always import from `api.js`. It also normalizes API shapes
+projects, farmCost, stream, storage, settings, plugins), so components always import from `api.js`. It also normalizes API shapes
 into the shapes the UI components use. The API host comes from the browser's own hostname at runtime (port 4545), and
 `VITE_API_BASE` overrides it. `src/` has one folder per area (models, bundles, printers, power, storage, settings,
-monitor, notes, compare). Colours come from `palettes.js`/`theme.js`; don't hard-code colours, or the
+monitor, notes, compare, plugins). Colours come from `palettes.js`/`theme.js`; don't hard-code colours, or the
 contrast check stops covering them (ones no scheme changes, like the white behind previews, are `fixed` there).
 
 **Mock backend** (`frontend/mock/`: `server.js` the Vite plugin, `core.js` the in-memory farm and shared helpers,

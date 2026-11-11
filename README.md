@@ -1227,17 +1227,28 @@ on the Settings page is the real output of `mount`, translated.
 
 ## Plugins
 
-Farmhand is getting plugins: programs other people write that add something to it (the live stream is to become the
-first), each running in its own Docker container with its own storage, so a Farmhand update or crash doesn't touch
-them and they can't touch Farmhand's files. A plugin reads what it needs through Farmhand's **plugin API**, with a
-token of its own, and only what the operator allowed when installing it (its printers, their cameras, what they're
-printing, Farmhand's colours). Nothing can be changed through it yet. So far Farmhand has the plugin API and a list of
-installed plugins; the Plugins page that installs and runs them comes next. Writing one: see
-[docs/plugins.md](docs/plugins.md).
+Plugins are programs other people write that add something to Farmhand (the live stream is to become the first),
+each running in its own Docker container with its own storage, on Farmhand's machine or another one on the farm's
+network, so a Farmhand update or crash doesn't touch them and they can't touch Farmhand's files. A plugin reads what
+it needs through Farmhand's **plugin API**, with a token of its own, and only what the operator allowed when adding it
+(its printers, their cameras, what they're printing, Farmhand's colours). Nothing can be changed through it yet.
+Writing one: see [docs/plugins.md](docs/plugins.md).
 
-The plugin API is meant for plugin containers only: the web page's server doesn't pass `/plugin-api/` on, and every
-call needs a plugin's token. Until the Plugins page arrives (when the plugin API moves to a port only Docker's network
-can reach), it is also answered on the API's port 4545, to anyone holding a token.
+**The Plugins page** (in the menu, under Settings) lists the plugins added and how each is doing (Farmhand asks each one
+every 30 seconds: running, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the
+way the plugin's instructions say, then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.
+Farmhand asks the plugin what it is and shows what it wants to read in plain words; untick anything you'd rather it
+didn't see, and say yes. Farmhand then shows the plugin's `FARMHAND_URL` and `FARMHAND_TOKEN` once, to put in its
+container's settings. From the page you can switch a plugin off (its token is refused and its page leaves the menu),
+make it a new token (the old one stops working), or remove it (its container stays where it runs).
+
+A plugin with a page of its own gets an entry in the menu; its page shows inside Farmhand, in Farmhand's colours,
+passed on from wherever the plugin runs. When the plugin isn't running, the page says so, with why.
+
+The plugin API is answered on the API's port 4545 (a plugin may be on another machine), never through the web page's
+port 3636. Every call needs a plugin's token, and by default a plugin's token is taken only from the plugin's own
+address, so a copied token is no use elsewhere; each token may also only ask so often. The settings copy keeps the list
+of plugins (never their tokens): Load all settings on a new Farmhand puts them back, each needing a new token.
 
 ## For developers
 

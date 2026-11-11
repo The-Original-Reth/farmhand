@@ -17,16 +17,31 @@ import { MonitorSection } from "./monitor/MonitorSection.jsx";
 import { StreamSection } from "./stream/StreamSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
 import { ToolsSection } from "./tools/ToolsSection.jsx";
+import { PluginsSection } from "./plugins/PluginsSection.jsx";
+import { PluginPage } from "./plugins/PluginPage.jsx";
+import { usePlugins } from "./plugins/usePlugins.js";
 import { AppearancePage, Crumb, FullPageMessage, LoadingPage } from "./shell/pages.jsx";
 import { Sidebar } from "./shell/Sidebar.jsx";
 import { useCompare } from "./shell/useCompare.js";
-import { useNavigation } from "./shell/useNavigation.js";
+import { PLUGIN_SECTION, pluginSection, useNavigation } from "./shell/useNavigation.js";
 import { useSavedSettings } from "./shell/useSavedSettings.js";
 
 // The page of the section open now
-function SectionPage({ section, nav, compare, settings }) {
+function SectionPage({ section, nav, compare, settings, plugins }) {
   const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, streamLayouts, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
+  const pluginId = section.match(PLUGIN_SECTION)?.[1];
+  if (pluginId) {
+    return (
+      <PluginPage
+        pluginId={pluginId}
+        plugin={plugins.withPages.find((p) => p.id === pluginId)}
+        loaded={plugins.loaded}
+        onRetry={plugins.refresh}
+        onOpenPlugins={() => nav.goTo("plugins")}
+      />
+    );
+  }
   switch (section) {
     case "printers":
       return (
@@ -55,6 +70,8 @@ function SectionPage({ section, nav, compare, settings }) {
       return <StreamSection layouts={streamLayouts.list} onSaveLayouts={streamLayouts.save} onSlideshowRenamed={streamLayouts.renamed} />;
     case "tools":
       return <ToolsSection links={tools.links} onSave={tools.save} />;
+    case "plugins":
+      return <PluginsSection plugins={plugins.plugins} onChanged={plugins.refresh} onOpenPage={(id) => nav.goTo(pluginSection(id))} />;
     case "appearance":
       return (
         <AppearancePage
@@ -75,6 +92,7 @@ function FarmhandApp() {
   const { printers, sourceModels, bundles, projects, bundleTitle, versionIndex, loading, error, refresh } = useData();
   // Held HERE (not in a provider above) so that a change of look re-renders everything below
   const settings = useSavedSettings();
+  const plugins = usePlugins(); // for the menu's plugin pages and the Plugins page
   // an unsaved look is undone when you leave the Appearance page
   const nav = useNavigation({
     printers,
@@ -82,6 +100,7 @@ function FarmhandApp() {
     bundles,
     projects,
     bundleTitle,
+    pluginName: (id) => plugins.plugins.find((p) => p.id === id)?.page?.menu || id,
     onLeave: (to) => to !== "appearance" && settings.appearance.discard(),
   });
   const compare = useCompare(versionIndex);
@@ -112,7 +131,12 @@ function FarmhandApp() {
         * { box-sizing: border-box; }
       `}</style>
 
-      <Sidebar current={nav.section} counts={{ models: sourceModels.length, projects: projects.length, printers: printers.length }} onOpen={nav.goTo} />
+      <Sidebar
+        current={nav.section}
+        counts={{ models: sourceModels.length, projects: projects.length, printers: printers.length }}
+        plugins={plugins.withPages}
+        onOpen={nav.goTo}
+      />
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -138,9 +162,16 @@ function FarmhandApp() {
             WARNING Panels are reflective. Put on pants.
           </div>}
         </div>
-        <div style={{ padding: 24, paddingBottom: compare.selection.length > 0 ? 80 : 24, overflow: "auto", flex: 1 }}>
-          <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} />
-        </div>
+        {PLUGIN_SECTION.test(nav.section) ? (
+          // a plugin's page fills the space under the top bar, and scrolls itself
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />
+          </div>
+        ) : (
+          <div style={{ padding: 24, paddingBottom: compare.selection.length > 0 ? 80 : 24, overflow: "auto", flex: 1 }}>
+            <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />
+          </div>
+        )}
       </div>
 
       <CompareTray selection={compare.selection} onRemove={compare.remove} onClear={compare.clear} onCompare={compare.show} />

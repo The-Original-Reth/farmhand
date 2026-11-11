@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Cctv, CircleDollarSign, FolderKanban, Hammer, Layers, Palette, Printer, Radio, Settings, Zap } from "lucide-react";
+import { Cctv, CircleDollarSign, FolderKanban, Hammer, Layers, Palette, Printer, Puzzle, Radio, Settings, Zap } from "lucide-react";
 
 // The menu's sections, in menu order, each at its own address (/models, /printers…); the bare address is Models
 export const SECTIONS = [
@@ -12,12 +12,16 @@ export const SECTIONS = [
   { key: "stream", label: "Stream", Icon: Radio }, // cameras sent live to YouTube
   { key: "tools", label: "Tools", Icon: Hammer },
   { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
+  { key: "plugins", label: "Plugins", Icon: Puzzle }, // other people's programs, each in its own container
   { key: "appearance", label: "Appearance", Icon: Palette },
 ];
+// A plugin's page is a section too, at /plugin/<its id> (the page itself comes from /plugins/<id>/, nginx.conf)
+export const PLUGIN_SECTION = /^plugin\/([a-z0-9-]+)$/;
+export const pluginSection = (id) => `plugin/${id}`;
 const sectionInAddress = () => {
   let key = window.location.pathname.replace(/^\/+|\/+$/g, "");
   if (key === "storage") key = "settings"; // its old address, so bookmarks still open it
-  return SECTIONS.some((s) => s.key === key) ? key : "models";
+  return SECTIONS.some((s) => s.key === key) || PLUGIN_SECTION.test(key) ? key : "models";
 };
 
 const PRINTERS_TOP = [{ label: "Printers" }];
@@ -28,7 +32,7 @@ const PROJECTS_TOP = [{ label: "Projects" }];
 // a printer, a 3MF on it, a project). Back and Forward move between sections. `onLeave(key)` is called as a menu item is clicked (key: the
 // section it opens) and on Back / Forward (no key). A step whose model, printer or 3MF has been deleted takes the section back to its list rather than
 // drawing a page for something that no longer exists.
-export function useNavigation({ printers, sourceModels, bundles, projects, bundleTitle, onLeave }) {
+export function useNavigation({ printers, sourceModels, bundles, projects, bundleTitle, pluginName, onLeave }) {
   const [section, setSection] = useState(sectionInAddress); // one of SECTIONS, as the address says (/printers…)
   const [printerPath, setPrinterPath] = useState(PRINTERS_TOP);
   const [modelPath, setModelPath] = useState(MODELS_TOP);
@@ -96,7 +100,7 @@ export function useNavigation({ printers, sourceModels, bundles, projects, bundl
     section === "printers" ? printerPathSafe
       : section === "models" ? modelPathSafe
         : section === "projects" ? projectPathSafe
-          : [{ label: SECTIONS.find((s) => s.key === section).label }];
+          : [{ label: SECTIONS.find((s) => s.key === section)?.label ?? pluginName(section.match(PLUGIN_SECTION)?.[1]) }];
   const setPath =
     section === "printers" ? setPrinterPath : section === "models" ? setModelPath : section === "projects" ? setProjectPath : () => {};
   // the breadcrumb: each step's name (a printer's, a 3MF's, a project's or a model's for the steps into a section)

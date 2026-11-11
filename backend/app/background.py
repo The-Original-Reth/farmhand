@@ -1,8 +1,7 @@
 """
 Everything Farmhand does on its own once it's started, without anyone opening a page: keeping network shares mounted,
-syncing printers, saving each month's Farm cost record, copying settings to the settings folder, writing the records
-beside the files on the NAS, and a few one-off tidy-ups
-of data from older versions. Each runs on a thread of its own, so a slow NAS or printer never delays the API.
+syncing printers, saving each month's Farm cost record, copying settings to the settings folder, asking plugins whether
+they're well, writing the records beside the files on the NAS, and a few one-off tidy-ups of data from older versions. Each runs on a thread of its own, so a slow NAS or printer never delays the API.
 """
 from __future__ import annotations
 
@@ -15,6 +14,7 @@ from .mount_supervisor import supervisor
 from .periodic import PeriodicWorker
 from .printer_poller import poller
 from .services import bundle_service, config_service, library_records, live_stream, previews, project_records, sub_printer_service
+from .services.plugins import health as plugin_health
 
 log = logging.getLogger("farmhand.startup")
 
@@ -67,6 +67,8 @@ def start_all() -> None:
     config_service.enable_background_mirror()
     config_service.request_mirror()
     previews_worker.start()
+    # Each plugin asked every 30 s whether it's well (the Plugins page shows what's found)
+    plugin_health.worker.start()
     # Records written beside the files after every change, and all of them once now
     project_records.background.enable()
     library_records.background.enable()
@@ -81,5 +83,5 @@ def start_all() -> None:
 def stop_all() -> None:
     _stopping.set()
     live_stream.stream.stop()  # a stream going out ends with Farmhand
-    for worker in (supervisor, poller, farm_cost_recorder, previews_worker):
+    for worker in (supervisor, poller, farm_cost_recorder, previews_worker, plugin_health.worker):
         worker.stop()

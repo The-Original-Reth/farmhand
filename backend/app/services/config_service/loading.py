@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ... import config_store, mounts, storage
 from ...models import NetworkShare
+from ..plugins import registry as plugin_registry
 from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
 
 from .nas_copy import FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
@@ -202,6 +203,12 @@ def restore(db: Session) -> dict:
             result["restored"].append("stream setup")
         except ValueError as e:
             result["warnings"].append(f"The Stream page's setup wasn't put back: {e}")
+    # the plugins installed there, each one not here yet registered again: without a token (the file never has one)
+    plugins = plugin_registry.restore_entries(db, doc["plugins"])
+    result["warnings"] += plugins.pop("warnings")
+    result["plugins"] = plugins
+    if plugins["added"]:
+        result["restored"].append("plugins")
     return result
 
 
