@@ -668,3 +668,34 @@ def test_the_resolution_is_set_when_going_live(klipper, moonraker, ffmpeg):
     assert api.get("/stream").json()["status"]["resolution"] is None
     assert api.post("/stream/start").json()["status"]["resolution"] == "1080p"
     assert "scale=1920:1080" in " ".join(ffmpeg.commands[-1])
+
+
+def test_the_self_check_mends_a_stream_that_gives_youtube_nothing(klipper, moonraker, ffmpeg, monkeypatch):
+    # left running day and night: when next to no video has come through for a while, the picture is started again,
+    # and if that doesn't help, the connection to YouTube too; the page is told what was done
+    api, pid = klipper
+    monkeypatch.setattr(live_stream.runner, "CHECK_EVERY", 0.05)
+    monkeypatch.setattr(live_stream.runner, "STALL", 0.4)
+    monkeypatch.setattr(live_stream.runner, "RETRY_SECONDS", 0.05)
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "delay": 0})
+    api.post("/stream/start")  # (the fake picture gives one keyframe and then nothing: no video comes through)
+    assert _wait_for(lambda: len(ffmpeg.commands) >= 2)
+    assert "picture was started again" in api.get("/stream").json()["status"]["self_check"]["message"]
+    assert _wait_for(lambda: len(ffmpeg.senders) >= 2)  # that didn't help: the connection too
+    assert "connection to YouTube" in api.get("/stream").json()["status"]["self_check"]["message"]
+    api.post("/stream/stop")
+    assert api.get("/stream").json()["status"]["self_check"] is None
+
+
+def test_the_self_check_leaves_a_flowing_stream_alone(klipper, moonraker, ffmpeg, monkeypatch):
+    api, pid = klipper
+    monkeypatch.setattr(live_stream.runner, "CHECK_EVERY", 0.05)
+    monkeypatch.setattr(live_stream.runner, "STALL", 0.4)
+    monkeypatch.setattr(live_stream.relay.Relay, "last_time", lambda self: time.monotonic())  # video coming as it plays
+    moonraker.webcams = [_cam()]
+    api.put("/stream", json={"stream_key": KEY, "cameras": [f"{pid}:Bed"], "show_status": False, "delay": 0})
+    api.post("/stream/start")
+    time.sleep(1.2)
+    assert len(ffmpeg.commands) == 1 and len(ffmpeg.senders) == 1
+    assert api.get("/stream").json()["status"]["self_check"] is None

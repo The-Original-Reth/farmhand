@@ -134,6 +134,11 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
                 : `Farmhand sends the grid below to ${destLabel(destination)} itself, no OBS needed.`}
         </div>
         {status.live && status.youtube && <YouTubeLiveLine yt={status.youtube} />}
+        {status.live && status.selfCheck && (
+          <div data-testid="stream-self-check" style={uiText(12, c.amber, { marginTop: 6, lineHeight: 1.5 })}>
+            {timeOf(status.selfCheck.at)}: {status.selfCheck.message}
+          </div>
+        )}
       </div>
       {status.live ? (
         <button type="button" data-testid="stream-stop" onClick={onStop} disabled={!!busy} style={{ ...cancelButton(!!busy), color: c.danger, borderColor: c.danger }}>
