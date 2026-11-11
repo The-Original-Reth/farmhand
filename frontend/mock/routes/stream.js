@@ -16,7 +16,7 @@ const SIGN_IN_TAKES_MS = 6000;
 const RESOLUTIONS = { "720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)" };
 const MAX_SIDE = 5;
 const PICTURES = ["frog-vt1190", "shark-v2bog", "shark-vt1190"]; // the sample pictures shown for the uploads, in turn
-const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "resolution", "seconds_all", "seconds_each", "border_color", "background", "font", "color"];
+const PICTURE = ["destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "border_color", "background", "font", "color"];
 // a track of music, as the mock plays it: two seconds of a tone (a WAV), its note by its place among the uploads
 const tone = (n) => {
   const rate = 8000, len = rate * 2, out = Buffer.alloc(44 + len * 2);
@@ -74,6 +74,7 @@ export function streamRoutes(ctx) {
         error: null, title: s.live ? s.title_status : null, music: s.live ? musicOut() : null,
         // the delay's buffer while live: collecting it first, then held (the mock holds it all, steadily)
         changing: false, // (the mock's layouts change at once)
+        resolution: s.live ? s.live_resolution : null, // the size going out: set when going live, until Stop
         // signed in: the broadcast Farmhand made, and YouTube's word on it (live and healthy after the delay)
         youtube: s.live && s.broadcast ? (() => {
           const on = (Date.now() - Date.parse(s.started_at)) / 1000 > s.delay + 10;
@@ -256,6 +257,7 @@ export function streamRoutes(ctx) {
   on("POST", "/stream/start", () => {
     const s = state();
     goLive();
+    s.live_resolution = s.resolution;
     if (s.destination === "youtube" && s.youtube.signed_in) { // Farmhand's own stream, and a new broadcast on it
       s.own_stream = true;
       s.broadcast = `mock${Math.random().toString(36).slice(2, 9)}`;

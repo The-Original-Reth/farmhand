@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import struct
+import time
 
 import numpy as np
 from pathlib import Path
@@ -93,3 +94,31 @@ def write_tetrahedron(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(bytes(out))
     return path
+
+
+# ------------------------------------------------------------------ the Stream page
+
+
+def webcam(**kw):
+    """A Moonraker webcam, as Mainsail sets one up (an MJPEG streamer called Bed), with `kw` changed."""
+    cam = {"name": "Bed", "enabled": True, "service": "mjpegstreamer", "stream_url": "/webcam/?action=stream",
+           "snapshot_url": "/webcam/?action=snapshot", "rotation": 0}
+    return {**cam, **kw}
+
+
+def wait_for(check, seconds=3.0):
+    """True once `check()` is, within `seconds` (things a stream does in its own threads)."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if check():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def api_db(api):
+    """The API's own database session (the test client's override), for calling a service directly."""
+    from app.database import get_db
+    from app.main import app
+
+    return next(app.dependency_overrides[get_db]())

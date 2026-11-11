@@ -20,6 +20,8 @@ from app import mounts, printer_links
 from app.services.moonraker import client as mr_client
 from app.services.prusalink import client as pl_client
 
+from .fake_ffmpeg import FakeFfmpeg
+from .fake_google import FakeGoogle
 from .fake_moonraker import FakeMoonraker
 from .fake_nas import FakeNas
 from .fake_prusalink import FakePrusaLink
@@ -182,3 +184,41 @@ def other_farmhand():
     db = sessionmaker(bind=engine, future=True)()
     yield db
     db.close()
+
+
+# ------------------------------------------------------------------ the Stream page (fake ffmpeg and Google)
+
+
+@pytest.fixture()
+def stream_fresh():
+    """Each stream test starts with no sign-in under way and the stream folder unread, and ends with the stream stopped."""
+    from app.services import live_stream, stream_media, youtube_live
+
+    youtube_live.reset()
+    stream_media.forget()  # what the stream folder held is remembered between looks; each test reads its own
+    yield
+    live_stream.stream.stop()
+    youtube_live.reset()
+
+
+@pytest.fixture()
+def ffmpeg(monkeypatch):
+    """ffmpeg in its place (tests/fake_ffmpeg.py): what the stream starts is remembered, and nothing really runs."""
+    from app.services import live_stream
+
+    fake = FakeFfmpeg()
+    monkeypatch.setattr(live_stream.runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(live_stream.runner, "popen", fake)
+    monkeypatch.setenv(live_stream.encoders.ENCODER_SETTING, "cpu")  # no trying a real ffmpeg for an NVIDIA card
+    monkeypatch.setattr(live_stream.runner, "SETTLE", 0)  # (a new layout's wait for more changes: none in tests)
+    return fake
+
+
+@pytest.fixture()
+def google(monkeypatch):
+    """Google and YouTube (tests/fake_google.py), answering Farmhand's sign-in and API calls."""
+    from app.services import youtube_live
+
+    fake = FakeGoogle()
+    monkeypatch.setattr(youtube_live, "transport", httpx.MockTransport(fake.handle))
+    return fake

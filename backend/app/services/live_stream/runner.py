@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from ...models import Printer
 from .. import app_settings, print_progress, stream_media, youtube_live
 from . import music, staging
+from .broadcast import Broadcast, own_stream, title_on_active
 from .constants import DESTINATIONS, KEPT_LINES, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY
 from .choices import settings
 from .encoders import encoder
@@ -33,9 +34,6 @@ from .staging import write_atomically
 from .words import status_line
 
 HANDOVER_WAIT = 30  # seconds a new layout's picture ffmpeg has to start going before the old one is kept on instead
-YOUTUBE_EVERY = 120  # seconds between asking YouTube about the broadcast (its health, viewers): ~2,200 of the 10,000 units a day
-YOUTUBE_FIRST = 20  # seconds after the delay has passed (the video reaching YouTube) before asking it the first time
-ENDED = ("complete", "revoked", "gone")  # a broadcast YouTube has ended (auto-stop after a long drop, or ended in Studio)
 SETTLE = 3  # seconds a new layout waits before its picture ffmpeg starts: a burst of saves becomes one hand-over
 WARMING_NICE = 10  # a picture ffmpeg warming up runs at this lower priority, so the one going out keeps the processor
 SENDER_STEADY = 30  # seconds a sender connected again has to keep sending before its drop's message is cleared
@@ -107,8 +105,10 @@ class Stream:
         self._warming = None  # a new layout's picture ffmpeg, warming up beside the one going out
         self._changing = False  # a new layout is on its way (settling, or warming up)
         self._cache: str | None = None  # slideshow screens put together this time live, reused by later layouts
-        self._broadcast: dict | None = None  # signed in: this time live's broadcast {id, watch_url, studio_url, stream_id, creds}
-        self._yt_health: dict | None = None  # what YouTube last said of it (youtube_live.health)
+        self._broadcast: Broadcast | None = None  # signed in: this time live's broadcast on YouTube
+        # the resolution chosen when going live: kept until Stop (YouTube takes a change of size mid-stream badly, so a
+        # new one saved while live waits for the next Go live)
+        self._resolution: str | None = None
 
     # what the page shows
     def status(self) -> dict:
@@ -125,6 +125,7 @@ class Stream:
                 "error": self._error,
                 "title": dict(self._title) if self._title else None,
                 "encoder": self._encoder,  # "nvenc" (an NVIDIA card) or "cpu", while live; None otherwise
+                "resolution": self._resolution if wanted else None,  # the size going out (set when it went live)
                 # how long the picture going out has run, in seconds (None while it isn't going out)
                 "running_for": round(time.monotonic() - self._run_started, 2) if on_air and self._run_started else None,
                 # the server's time of day: slideshows and taking turns count from it, on the stream and on the page
@@ -137,56 +138,8 @@ class Stream:
                 # a new layout is on its way: waiting for more changes, or its picture warming up beside the one going out
                 "changing": self._changing and wanted,
                 # signed in: this time live's broadcast on YouTube {watch_url, studio_url, state, health, issues, viewers}
-                "youtube": self._youtube_status() if wanted and self._broadcast else None,
+                "youtube": self._broadcast.status() if wanted and self._broadcast else None,
             }
-
-    def _youtube_status(self) -> dict:
-        """(Holding the lock.) The broadcast's links and what YouTube last said of it (_watch_youtube asks)."""
-        b = self._broadcast
-        return {"watch_url": b["watch_url"], "studio_url": b["studio_url"], **(self._yt_health or {"state": None, "health": None, "issues": [], "viewers": None})}
-
-    def _watch_youtube(self, gen: int, buffer: Buffer, session_factory) -> None:
-        """For as long as this time live lasts, page open or not: once the delay has passed and YouTube has had the video
-        a few seconds (before that it has nothing to say), ask YouTube about the broadcast every YOUTUBE_EVERY seconds. One YouTube has ended while
-        Farmhand is still sending (its auto-stop after a long drop, or ended in Studio) is replaced by a new one on the
-        same stream, from the saved settings, so a stream left running day and night never ends up with nowhere to show."""
-        if not _sleep_unless(self, gen, buffer.delay + YOUTUBE_FIRST):
-            return
-        while True:
-            with self._lock:
-                b = self._broadcast if self._current(gen) else None
-            if not b:
-                return
-            try:
-                got = youtube_live.health(b["creds"], b["stream_id"], b["id"])
-            except youtube_live.YouTubeError as e:
-                got = {"state": None, "health": None, "issues": [f"Couldn't ask YouTube: {e}"], "viewers": None}
-            with self._lock:
-                if self._broadcast is b:
-                    self._yt_health = got
-            if got["state"] in ENDED:
-                self._new_broadcast(gen, b, session_factory)
-            if not _sleep_unless(self, gen, YOUTUBE_EVERY):
-                return
-
-    def _new_broadcast(self, gen: int, old: dict, session_factory) -> None:
-        try:
-            with session_factory() as db:
-                chosen = settings(db)
-            made = youtube_live.start_broadcast(old["creds"], old["stream_id"], chosen["youtube"], chosen["title"], chosen["description"])
-            outcome = {"state": "done", "message": f"YouTube had ended the broadcast, so Farmhand made a new one: “{(chosen['title'] or 'Live')[:100]}”."}
-        except youtube_live.YouTubeError as e:
-            made = None
-            outcome = {"state": "failed", "message": f"YouTube ended the broadcast and wouldn't make a new one ({e}); trying again in {YOUTUBE_EVERY // 60} minutes."}
-        with self._lock:
-            if not (self._current(gen) and self._broadcast is old):
-                if made:  # (stopped meanwhile: the new one isn't needed)
-                    threading.Thread(target=_end_quietly, args=({**made, "creds": old["creds"]},), daemon=True).start()
-                return
-            if made:
-                self._broadcast = {**made, "stream_id": old["stream_id"], "creds": old["creds"]}
-                self._yt_health = None
-            self._title = outcome
 
     def update_broadcast(self, chosen: dict) -> bool:
         """The video's settings changed while live (title, description, tags, category, privacy...): changed on the
@@ -195,12 +148,7 @@ class Stream:
             b = self._broadcast if self._wanted.is_set() else None
         if not b:
             return False
-        try:
-            youtube_live.update_broadcast(b["creds"], b["id"], chosen["youtube"], chosen["title"], chosen["description"])
-            outcome = {"state": "done", "message": "The broadcast on YouTube has the new title, description, tags and privacy."}
-        except youtube_live.YouTubeError as e:
-            outcome = {"state": "failed", "message": f"The broadcast on YouTube wasn't changed: {e}"}
-        self.title_set(outcome)
+        self.title_set(b.update(chosen))
         return True
 
     def music_settings(self, chosen: dict) -> None:
@@ -237,15 +185,8 @@ class Stream:
         if not ffmpeg:
             raise ValueError("ffmpeg isn't installed where Farmhand's API runs, so it can't stream. Rebuild with the latest update.sh.")
         srcs = sources(db, chosen["cameras"])
-        own = None  # signed in: Farmhand's own stream on the channel (its key from YouTube)
-        if creds:
-            try:
-                own = youtube_live.own_stream(creds, app_settings.get(db, youtube_live.STREAM_KEY))
-            except youtube_live.YouTubeError as e:
-                raise ValueError(f"YouTube wouldn't give Farmhand its stream: {e}") from None
-            if app_settings.get(db, youtube_live.STREAM_KEY) != own["id"]:
-                app_settings.put(db, youtube_live.STREAM_KEY, own["id"])
-                db.commit()
+        own = own_stream(db, creds) if creds else None  # signed in: Farmhand's own stream on the channel
+        if own:
             key = own["key"]
         url = (own["url"] if own else where["url"]) + key
         with self._lock:
@@ -266,6 +207,7 @@ class Stream:
         cycle = (chosen["seconds_all"], chosen["seconds_each"]) if chosen["layout"] == "cycle" and len(srcs) > 1 else None
         with self._lock:
             cache = self._cache
+            resolution = self._resolution  # (this time live's, whatever is saved now)
         cells = staging.squares(db, chosen, folder, cache=cache)
         turns_file = os.path.join(folder, "turns.txt") if cycle else None
         enc = encoder(ffmpeg)
@@ -277,7 +219,7 @@ class Stream:
                 write_atomically(turns_file, timetable(len(srcs), *cycle, clock=clock))
             return command(ffmpeg, srcs, url, Look(encoder=enc, clock=clock,
                 status_files=files, cycle=cycle, turns_file=turns_file,
-                resolution=chosen["resolution"], border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
+                resolution=resolution, border_color=chosen["border_color"], background=chosen["background"], font=chosen["font"], color=chosen["color"], cols=chosen["cols"],
                 rows=chosen["rows"], cells=cells, music=True, relay_offset=offset, lists_dir=folder,
             ))
 
@@ -304,12 +246,7 @@ class Stream:
         YouTube), the delay's buffer and the music. With a pasted key instead, YouTube makes the broadcast itself and
         Farmhand can't set its title."""
         self.stop()
-        broadcast = None
-        if own:
-            try:
-                broadcast = youtube_live.start_broadcast(creds, own["id"], chosen["youtube"], chosen["title"], chosen["description"])
-            except youtube_live.YouTubeError as e:
-                raise ValueError(f"YouTube wouldn't make the broadcast: {e}") from None
+        broadcast = Broadcast.start(creds, own, chosen) if own else None
         wants_title = not own and chosen["destination"] == "youtube" and (chosen["title"] or chosen["description"])
 
         def tracks() -> list[str]:  # read again each round of the music, so tracks added while live join in
@@ -324,6 +261,7 @@ class Stream:
             gen = self._generation
             self._key = key
             self._url = url
+            self._resolution = chosen["resolution"]
             self._destination = chosen["destination"]
             self._error = None
             self._said.clear()
@@ -335,16 +273,19 @@ class Stream:
             self._player = player
             self._title = None
             if broadcast:
-                privacy = chosen["youtube"]["privacy"]
-                self._title = {"state": "done", "message": f"Broadcast made on YouTube ({privacy}): “{(chosen['title'] or 'Live')[:100]}”."}
+                self._title = Broadcast.made_message(chosen)
             elif wants_title:
                 self._title = {"state": "failed", "message": "Sign in to YouTube (YouTube settings) for Farmhand to set the title and description."}
-            self._broadcast = {**broadcast, "stream_id": own["id"], "creds": creds} if broadcast else None
-            self._yt_health = None
+            self._broadcast = broadcast
             self._wanted.set()
         threading.Thread(target=self._keep_sending, args=(gen, sender_command(ffmpeg, url), buffer), name="stream-sender", daemon=True).start()
         if broadcast:
-            threading.Thread(target=self._watch_youtube, args=(gen, buffer, session_factory), name="stream-youtube", daemon=True).start()
+            def read_settings() -> dict:
+                with session_factory() as s:
+                    return settings(s)
+
+            threading.Thread(target=broadcast.watch, name="stream-youtube", daemon=True, args=(
+                buffer.delay, lambda seconds: _sleep_unless(self, gen, seconds), read_settings, lambda said: self._said_by_youtube(gen, said))).start()
 
     def stop(self) -> dict:
         with self._lock:
@@ -359,6 +300,7 @@ class Stream:
             folder, self._dir = self._dir, None
             self._started_at = None
             self._encoder = None
+            self._resolution = None
             self._run_started = None
             self._title = None
             player, self._player = self._player, None
@@ -372,7 +314,7 @@ class Stream:
         if cache:
             shutil.rmtree(cache, ignore_errors=True)
         if broadcast:  # ended on YouTube (it becomes the channel's saved video)
-            threading.Thread(target=_end_quietly, args=(broadcast,), name="stream-youtube-end", daemon=True).start()
+            broadcast.end()
         if buffer:
             buffer.close()
         for p in (proc, sender):
@@ -380,6 +322,22 @@ class Stream:
         if folder:
             shutil.rmtree(folder, ignore_errors=True)
         return self.status()
+
+    def send_to_youtube(self, db: Session, chosen: dict, text_changed: bool = True, asked: bool = False) -> None:
+        """The YouTube settings (`chosen`) saved while live: onto Farmhand's own broadcast, all of them; live on a pasted
+        key, just the title and description, on the broadcast YouTube made (when they changed, or `asked`: the page's
+        button). Asked, ValueError says why it can't be tried; otherwise that's left quietly. status.title says how
+        it went."""
+        if self.update_broadcast(chosen) or not text_changed:
+            return
+        if not asked and not (youtube_live.credentials(db) and (chosen["title"] or chosen["description"])):
+            return
+        self.title_set(title_on_active(db, chosen))
+
+    def _said_by_youtube(self, gen: int, outcome: dict) -> None:
+        with self._lock:
+            if self._current(gen):
+                self._title = outcome
 
     def title_set(self, outcome: dict) -> None:
         """What setting the YouTube title came to, when done from the page while live."""
@@ -584,13 +542,6 @@ class Stream:
                 pass
             if not _sleep_unless(self, gen, STATUS_EVERY, picture):
                 return
-
-
-def _end_quietly(broadcast: dict) -> None:
-    try:
-        youtube_live.end_broadcast(broadcast["creds"], broadcast["id"])
-    except youtube_live.YouTubeError:
-        pass  # (it ends by itself when the stream stops, auto-stop being on)
 
 
 def _sleep_unless(stream: Stream, gen: int, seconds: float, picture: int | None = None) -> bool:

@@ -4,7 +4,7 @@ import { c } from "../theme.js";
 import { cancelButton, fieldBox, headerButton, primaryButton, uiText } from "../styles.js";
 import { errorText, getStream, saveStream } from "../api.js";
 import { help, label12 } from "./streamStyles.js";
-import { YouTubeAccountPanel } from "./StreamPanels.jsx";
+import { YouTubeAccountPanel } from "./YouTubeAccount.jsx";
 
 // Everything YouTube, in a browser window of its own (/youtube-settings; YouTubeSettingsButton opens it), so it can be
 // moved anywhere, another screen included, and left open: the video's title, description, tags and category; who can
@@ -273,7 +273,7 @@ function YouTubeSettingsForm({ shown, onSave, keySet, onForgetKey, youtube, stat
         </Section>
 
         <div style={{ borderTop: `1px solid ${c.border}`, paddingTop: 12 }}>
-          <YouTubeAccountPanel youtube={youtube} status={status} ask={ask} busy={busy} bare />
+          <YouTubeAccountPanel youtube={youtube} status={status} ask={ask} busy={busy} />
         </div>
       </div>
       <div

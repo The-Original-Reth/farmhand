@@ -19,8 +19,8 @@ track YouTube insists on, and sends it all to the
 destination. If ffmpeg stops (a camera dropped, the
 network blinked) it is started again after a short wait, for as long as the stream is meant to be live.
 
-The YouTube broadcast's own title and description are set through YouTube's API (services/youtube_live.py) once the
-broadcast has started.
+Signed in to YouTube, Farmhand makes, changes, watches and ends the broadcast itself through YouTube's API
+(broadcast.py, over services/youtube_live.py); with a pasted key, YouTube makes it.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from __future__ import annotations
 # stream itself).
 from sqlalchemy.orm import Session
 
-from . import encoders, fonts, music, runner  # noqa: F401
+from . import broadcast, encoders, fonts, music, runner  # noqa: F401
 from .choices import auto_grid, rename_slideshow, save, settings  # noqa: F401
 from .constants import DESTINATIONS, RESOLUTION_LABELS, RESOLUTIONS, SETTINGS_KEY  # noqa: F401
 from .fonts import DEFAULT_FONT, FONT, FONTS, font_file  # noqa: F401

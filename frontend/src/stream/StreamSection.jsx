@@ -14,9 +14,9 @@ import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.j
 
 // The Stream page: Farmhand sends the printers' cameras live to YouTube itself, laid out in a grid of
 // squares (each a camera, a logo or nothing, with a border round it) or taking turns, with each printer's name and print
-// written under its camera. No OBS needed. It can also set the YouTube broadcast's own title and description
-// (StreamPanels.jsx). The stream key is typed here once and kept on the server; it never comes back to the page, which
-// only knows that one is saved. Cameras are found as on Monitor (cameras.js) and named the same way ("printer id:camera
+// written under its camera. No OBS needed. Everything YouTube (the broadcast's title, tags and privacy, the stream key,
+// the account) is in the YouTube settings window (YouTubeSettings.jsx), which saves on its own; this page's Save never
+// sends those. Cameras are found as on Monitor (cameras.js) and named the same way ("printer id:camera
 // name").
 const STATUS_EVERY_MS = 5000;
 const MUTE_KEY = "farmhand-stream-music-muted"; // Mute, kept in this browser
@@ -47,7 +47,6 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   const enabled = page?.settings.enabled !== false; // the switch: off, nothing streams (the page works as ever)
   const { cams } = usePrinterCameras(active);
   const [draft, setDraft] = useState(null); // the choices as changed here, not saved yet (null = as saved)
-  const [key, setKey] = useState(""); // a stream key typed here, not saved yet
   const [busy, setBusy] = useState(null); // "save" | "start" | "stop" | "logo" | "youtube" while the server is asked
   const [problem, setProblem] = useState(null); // what the server last refused, and why
   const [choosing, setChoosing] = useState(false); // Save asking: a new layout, or over one there is
@@ -95,7 +94,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
   const shown = draft || saved;
   // (the switch is saved on its own, as soon as it is turned, so it never counts as a change still to save)
   const differs = !!draft && Object.keys(draft).some((k) => k !== "enabled" && JSON.stringify(draft[k]) !== JSON.stringify(saved[k]));
-  const changed = differs || key.trim() !== "";
+  const changed = differs;
   const change = (what) => {
     setResynced(false); // (changed again: the preview no longer matches what the server has)
     setDraft({ ...shown, ...what });
@@ -140,7 +139,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
     saveStream({
       destination: shown.destination, cols: shown.cols, rows: shown.rows, cells: shown.cells, showStatus: shown.showStatus, layout: shown.layout,
       resolution: shown.resolution, secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
-      borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color, title: shown.title, description: shown.description, streamKey: key.trim(),
+      borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color,
       music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle, delay: shown.delay === "" ? -1 : shown.delay,
     });
   // Save everything on the page: once saved, nothing here is still to be saved. The page as the server answered, or null.
@@ -149,7 +148,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
     if (p) forget();
     return p;
   };
-  const forget = () => (setDraft(null), setKey(""));
+  const forget = () => setDraft(null);
   const discard = () => (forget(), setProblem(null));
   // Resync: the server read again (its stream folder too: pictures, slideshows, tracks) and the preview's slideshows
   // and taking turns back on its time of day, keeping what's changed here and not saved yet
@@ -232,7 +231,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed 
       {/* left: what the stream looks like; right: going live and what goes into it */}
       <div style={{ minWidth: 0, position: "sticky", top: 0 }}>
         <StreamPreview
-          shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} resolutions={page.resolutions}
+          shown={shown} change={change} squares={squares} showStatus={shown.showStatus} live={status.live} liveResolution={status.resolution} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
           ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard} still={!enabled} onResync={resync} resynced={resynced && changed}
           serverClock={status.serverTime !== null && (!changed || resynced) ? { serverTime: status.serverTime, heardAt: status.heardAt, live: status.onAir } : null}
