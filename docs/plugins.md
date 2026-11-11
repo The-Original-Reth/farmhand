@@ -93,7 +93,8 @@ Authorization: Bearer $FARMHAND_TOKEN
 
 - No token, or one Farmhand doesn't know, is **401** (with `WWW-Authenticate: Bearer`). A token stops working when
   the operator makes a new one for the plugin, removes the plugin, or turns it off: read `FARMHAND_TOKEN` again when
-  your container restarts.
+  your container restarts. An `/events` connection open at the time is ended within about 15 seconds (reconnecting
+  then gets the 401).
 - A call outside your plugin's permissions is **403**, naming the permission it needs.
 - When the operator chose to take your token only from your plugin's address, a call from anywhere else is **403**,
   saying where it came from. Call Farmhand from the machine at the address you were added by (a container's calls

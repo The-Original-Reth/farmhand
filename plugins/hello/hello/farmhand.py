@@ -27,11 +27,13 @@ class FarmhandError(Exception):
     Farmhand couldn't be asked, or said no. `message` is for the operator; `kind` is for the code:
     "setup" (an environment variable is missing), "refused" (401), "forbidden" (403), "busy" (429),
     "down" (no answer) or "error" (anything else). `retry_after` is how many seconds to wait, when Farmhand said.
+    `short` is the same in fewer words (for /health, which Farmhand's Plugins page shows in a line or two).
     """
 
-    def __init__(self, message: str, kind: str, retry_after: float | None = None):
+    def __init__(self, message: str, kind: str, retry_after: float | None = None, short: str | None = None):
         super().__init__(message)
         self.message, self.kind, self.retry_after = message, kind, retry_after
+        self.short = short or message
 
 
 class Farmhand:
@@ -116,11 +118,11 @@ def _refusal(e: urllib.error.HTTPError) -> FarmhandError:
     """Farmhand's "no" (401, 403, 429...), in words for the operator."""
     detail = _detail(e)
     if e.code == 401:
-        return FarmhandError(
+        words = (
             "Farmhand refused this plugin's token: make a new one on Farmhand's Plugins page, set it as FARMHAND_TOKEN "
-            f"and restart this plugin's container. (Farmhand said: {detail})",
-            "refused",
+            "and restart this plugin's container."
         )
+        return FarmhandError(f"{words} (Farmhand said: {detail})", "refused", short=words)
     if e.code == 403:
         return FarmhandError(f"Farmhand won't let this plugin read that. {detail}", "forbidden")
     if e.code == 429:

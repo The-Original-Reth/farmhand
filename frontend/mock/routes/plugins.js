@@ -298,13 +298,18 @@ export function pluginsRoutes(ctx) {
     return progressOf(printer(id));
   });
   // Server-sent events: the mockup's printers don't change on their own, so only the "still here" comments come
+  // (and, as the real one, it ends once the token stops being taken: a new one made, switched off or removed)
   on("GET", api("/events"), (_p, _b, _q, h) => {
-    needs(h, "prints:read");
+    const { token } = needs(h, "prints:read");
     return {
       stream(req, res) {
         res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
         res.write(": connected\n\n");
-        const timer = setInterval(() => res.write(": still here\n\n"), 15000);
+        const timer = setInterval(() => {
+          if (plugins().some((x) => x.token === token && x.enabled && x.permissions.includes("prints:read"))) return res.write(": still here\n\n");
+          clearInterval(timer);
+          res.end(": this plugin's token is no longer taken (a new one was made, or the plugin was switched off or removed)\n\n");
+        }, 15000);
         req.on("close", () => clearInterval(timer));
       },
     };

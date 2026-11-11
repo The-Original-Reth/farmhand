@@ -156,6 +156,7 @@ def test_a_refused_token_says_to_make_a_new_one(env, plugin):
     assert wait_until(lambda: (status(plugin)["farmhand"]["problem_kind"]) == "refused")
     code, body = get(plugin.url + "/health")
     assert code == 503 and "make a new one on Farmhand's Plugins page" in body
+    assert "Farmhand said" not in body and len(body) < 200  # short enough for a line on Farmhand's Plugins page
 
 
 def test_a_missing_permission_is_named(farmhand, tmp_path):

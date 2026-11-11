@@ -10,11 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from ...timeutil import utc_iso, utc_now
 
 KEEPALIVE_SECONDS = 15.0  # a comment line this often, so proxies and the plugin know the connection is alive
+RECHECK_SECONDS = 15.0  # how often an open stream checks its plugin's token is still taken
+# The last line of a stream whose token stopped being taken (a comment: plugins that don't know it ignore it)
+TOKEN_GONE = ": this plugin's token is no longer taken (a new one was made, or the plugin was switched off or removed)\n\n"
 
 _lock = threading.Lock()
 _last: dict[int, dict] = {}  # printer id -> {"reachable", "state", "file"} as last seen
@@ -83,21 +86,33 @@ def frame(event: dict) -> str:
     return f"id: {event['id']}\nevent: {event['type']}\ndata: {json.dumps(event, separators=(',', ':'))}\n\n"
 
 
-async def stream(keepalive: float = KEEPALIVE_SECONDS) -> AsyncIterator[str]:
-    """Server-sent events for one listener, until it goes away."""
+async def stream(
+    keepalive: float = KEEPALIVE_SECONDS, still_allowed: Callable[[], bool] | None = None, recheck: float = RECHECK_SECONDS,
+) -> AsyncIterator[str]:
+    """
+    Server-sent events for one listener, until it goes away, or until still_allowed() (asked every `recheck` seconds,
+    in a thread: it reads the database) says its token is no longer taken: a stream opened with a token that's since
+    been replaced, or whose plugin was switched off or removed, doesn't go on hearing the farm.
+    """
+    loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
-    entry = (asyncio.get_running_loop(), queue)
+    entry = (loop, queue)
     with _lock:
         _listeners.add(entry)
     try:
         yield ": connected\n\n"
+        checked = loop.time()
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=keepalive)
             except asyncio.TimeoutError:
-                yield ": still here\n\n"
-                continue
-            yield frame(event)
+                event = None
+            if still_allowed is not None and loop.time() - checked >= recheck:
+                checked = loop.time()
+                if not await asyncio.to_thread(still_allowed):
+                    yield TOKEN_GONE
+                    return
+            yield frame(event) if event is not None else ": still here\n\n"
     finally:
         with _lock:
             _listeners.discard(entry)

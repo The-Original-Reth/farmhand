@@ -351,6 +351,48 @@ def test_an_event_on_the_wire():
     assert event["at"].endswith("+00:00")
 
 
+def test_a_stream_ends_once_its_token_is_no_longer_taken():
+    allowed = {"now": True}
+
+    async def listen():
+        stream = events.stream(keepalive=0.02, still_allowed=lambda: allowed["now"], recheck=0)
+        heard = [await stream.__anext__(), await stream.__anext__()]
+        allowed["now"] = False  # a new token made, or the plugin switched off or removed
+        heard.append(await stream.__anext__())
+        with pytest.raises(StopAsyncIteration):
+            await stream.__anext__()
+        return heard
+
+    assert asyncio.run(listen()) == [": connected\n\n", ": still here\n\n", events.TOKEN_GONE]
+    assert not events.listening()
+
+
+def test_whether_a_streams_token_is_still_taken(api):
+    from app.database import get_db
+    from app.main import app
+    from app.services.plugins import registry
+
+    def still_taken(token_hash, permission="prints:read"):
+        session = app.dependency_overrides[get_db]()  # as the /events route opens one for each check
+        try:
+            return registry.still_taken(next(session), token_hash, permission)
+        finally:
+            session.close()
+
+    token = install(api)
+    first = registry.hash_token(token)
+    assert still_taken(first) and not still_taken(first, "nothing:read")
+    api.patch("/plugins/stream", json={"enabled": False})
+    assert not still_taken(first)
+    api.patch("/plugins/stream", json={"enabled": True})
+    assert still_taken(first)
+    api.post("/plugins/stream/token")  # a new token: the old one's stream ends
+    assert not still_taken(first)
+    second = registry.hash_token(install(api, id="other"))
+    api.delete("/plugins/other?confirm=true")
+    assert not still_taken(second)
+
+
 def test_print_progress_feeds_events(api, moonraker):
     """What Monitor (and the poller) already ask is what plugins hear."""
     pid = api.post("/printers", json={"name": "V2Blue", "wired_ip": "10.0.6.21"}).json()["id"]

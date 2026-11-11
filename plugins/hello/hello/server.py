@@ -76,7 +76,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         problem = self.watcher.problem()
         if problem and problem.kind in ("setup", "refused", "forbidden"):
-            return self.send_body(problem.message.encode("utf-8"), "text/plain; charset=utf-8", HTTPStatus.SERVICE_UNAVAILABLE)
+            return self.send_body(problem.short.encode("utf-8"), "text/plain; charset=utf-8", HTTPStatus.SERVICE_UNAVAILABLE)
         self.send_body(b"ok", "text/plain; charset=utf-8")
 
     def page_events(self):
