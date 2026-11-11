@@ -54,6 +54,8 @@ const normalizeStream = (s) => ({
     music: s.status.music || null,
     // the delay before YouTube, while live: { seconds, held (seconds held now), filling (nothing sent to YouTube yet) }
     delay: s.status.delay || null,
+    // a new layout is on its way (waiting a moment for more changes, then warming up beside the one going out)
+    changing: !!s.status.changing,
   },
   destinations: s.destinations,
   resolutions: s.resolutions,

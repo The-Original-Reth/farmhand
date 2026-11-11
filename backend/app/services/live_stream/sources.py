@@ -44,14 +44,20 @@ def _turn(cam: dict) -> list[str]:
 # sending two a second would have the whole grid wait for it, the stream falling far behind real time while the other
 # cameras' frames piled up in memory. Each frame is given the time it arrived instead: a slow camera just changes less
 # often in its square.
-MJPEG = ["-use_wallclock_as_timestamps", "1", "-f", "mpjpeg"]
+# And a camera that drops the connection (it hung up while ffmpeg fell behind, or it restarted) is connected to again,
+# instead of its square freezing on its last frame; one that goes quiet for 10 s counts as dropped.
+MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
+         "-rw_timeout", "10000000", "-use_wallclock_as_timestamps", "1", "-f", "mpjpeg"]
+# An RTSP camera that goes quiet for 10 s ends its input (RTSP can't reconnect by itself): the runner sees that in what
+# ffmpeg says and hands over to a fresh picture, with new connections (runner.INPUT_ENDED).
+RTSP = ["-rtsp_transport", "tcp", "-timeout", "10000000"]
 
 
 def input_args(printer: Printer, cam: dict) -> list[str]:
     """How ffmpeg reads this camera, or ValueError saying why it can't."""
     name = f"{printer.name}'s camera" if cam.get("name") in (None, "Camera") else f"{printer.name}'s {cam['name']} camera"
     if cam.get("service") == "farmhand-go2rtc":  # a Buddy3D: its RTSP stream, straight from the camera
-        return ["-rtsp_transport", "tcp", "-i", go2rtc.rtsp_url(printer.camera_address)]
+        return [*RTSP, "-i", go2rtc.rtsp_url(printer.camera_address)]
     stream = cam.get("stream_url")
     # an MJPEG stream; Mainsail's "adaptive" service shows snapshots in the browser, but its address is the same stream
     if stream and (cam.get("mjpeg") or cam.get("service") == "mjpegstreamer-adaptive" or "action=stream" in stream):
@@ -61,7 +67,7 @@ def input_args(printer: Printer, cam: dict) -> list[str]:
         parts = urlsplit(stream)
         src = parse_qs(parts.query).get("src", [None])[0]
         if parts.hostname and src:
-            return ["-rtsp_transport", "tcp", "-i", f"rtsp://{parts.hostname}:8554/{quote(src, safe='')}"]
+            return [*RTSP, "-i", f"rtsp://{parts.hostname}:8554/{quote(src, safe='')}"]
     if stream and cam.get("service") == "webrtc-camerastreamer" and stream.rstrip("/").endswith("/webrtc"):
         # camera-streamer serves the same camera as MJPEG beside its WebRTC page
         return [*MJPEG, "-i", stream.rstrip("/")[: -len("webrtc")] + "stream"]

@@ -92,6 +92,7 @@ class Look:
     cells: list | None = None
     music: bool = False
     relay_offset: float | None = None
+    lists_dir: str | None = None  # where the slideshows' lists are written (None: beside their screens)
 
 
 def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None) -> list[str]:
@@ -135,7 +136,8 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
     lists = []  # the slideshows read as one input each (their lists cover a day: then the command ends and starts again)
 
     def slideshow(frames: list, seconds: int) -> int:
-        path = slides.playlist(frames, seconds, look.clock, os.path.join(os.path.dirname(frames[0]), "list.txt"))
+        # (each in this picture's own folder: the screens may be shared with other layouts, their lists never are)
+        path = slides.playlist(frames, seconds, look.clock, os.path.join(look.lists_dir or os.path.dirname(frames[0]), f"list-{len(lists)}.txt"))
         args.extend(["-f", "concat", "-safe", "0", "-i", path])
         lists.append(path)
         inputs[0] += 1
