@@ -1216,13 +1216,14 @@ def _db(api):
     return next(app.dependency_overrides[get_db]())
 
 
-def test_going_live_signed_in_makes_the_broadcast_on_farmhands_own_stream(klipper, moonraker, ffmpeg, google):
+def test_going_live_signed_in_makes_the_broadcast_on_farmhands_own_stream(klipper, moonraker, ffmpeg, google, monkeypatch):
     api, pid = klipper
+    monkeypatch.setattr(live_stream.runner, "YOUTUBE_FIRST", 0)
     moonraker.webcams = [_cam()]
     _signed_in(api, google)
     yt = {"privacy": "unlisted", "tags": ["3D print farm", "Voron"], "category": "27", "made_for_kids": False, "latency": "low",
           "dvr": False, "auto_start": True, "auto_stop": True}
-    page = api.put("/stream", json={"cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live", "description": "Printing all day",
+    page = api.put("/stream", json={"cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live", "description": "Printing all day", "delay": 0,
                                     "youtube": yt}).json()
     assert page["settings"]["youtube"] == yt and page["settings"]["key_set"] is False  # no key pasted: YouTube gives one
     status = api.post("/stream/start").json()["status"]
@@ -1263,6 +1264,33 @@ def test_going_live_signed_in_makes_the_broadcast_on_farmhands_own_stream(klippe
     google.made[bid2]["life"] = "live"
     api.post("/stream/stop")
     assert _wait_for(lambda: google.ended == [bid2])
+
+
+def test_a_broadcast_youtube_ends_while_live_is_replaced(klipper, moonraker, ffmpeg, google, monkeypatch):
+    # left running day and night: YouTube ends the broadcast (its auto-stop after a long drop, or ended in Studio),
+    # and Farmhand, still sending, makes a new one on the same stream
+    api, pid = klipper
+    monkeypatch.setattr(live_stream.runner, "YOUTUBE_EVERY", 0.05)
+    monkeypatch.setattr(live_stream.runner, "YOUTUBE_FIRST", 0)
+    from sqlalchemy.orm import sessionmaker
+
+    from app import database
+
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=_db(api).get_bind(), future=True))  # (the saved settings are read again)
+    moonraker.webcams = [_cam()]
+    _signed_in(api, google)
+    api.put("/stream", json={"cameras": [f"{pid}:Bed"], "show_status": False, "title": "Farm live", "delay": 0})
+    api.post("/stream/start")
+    (first, _), = google.made.items()
+    assert _wait_for(lambda: (live_stream.stream.status()["youtube"] or {}).get("health") == "good")
+    google.made[first]["life"] = "complete"
+    assert _wait_for(lambda: len(google.made) == 2)
+    new = [k for k in google.made if k != first][0]
+    assert google.made[new]["bound"] == google.made[first]["bound"] and len(ffmpeg.senders) == 1  # the stream went on
+    assert _wait_for(lambda: new in (live_stream.stream.status()["youtube"] or {}).get("watch_url", ""))
+    assert "made a new one" in live_stream.stream.status()["title"]["message"]
+    time.sleep(0.2)
+    assert len(google.made) == 2  # the new one isn't ended: no more are made
 
 
 def test_youtube_refusing_the_broadcast_says_why_and_nothing_goes_out(klipper, moonraker, ffmpeg, google):
