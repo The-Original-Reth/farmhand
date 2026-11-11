@@ -260,9 +260,13 @@ def make_fifo(path: str) -> None:
     os.mkfifo(path)
 
 
+PROBE = 500000  # µs of a pipe the picture ffmpeg looks at before it starts (its default, 5 s, is 5 s a camera, one after another)
+
+
 def pipe_input(path: str) -> list[str]:
-    """How the picture ffmpeg reads one of a pump's pipes."""
-    return ["-f", "image2pipe", "-framerate", str(FPS), "-c:v", "mjpeg", "-i", path]
+    """How the picture ffmpeg reads one of a pump's pipes: JPEGs at FPS, looked at only briefly before it starts (the
+    frame rate is given, so there's nothing more to find out)."""
+    return ["-f", "image2pipe", "-framerate", str(FPS), "-analyzeduration", str(PROBE), "-c:v", "mjpeg", "-i", path]
 
 
 class Pump:

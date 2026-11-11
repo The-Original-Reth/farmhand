@@ -2,7 +2,8 @@
 What the stream reads of Farmhand, through the plugin API, and only that: the cameras' addresses (cameras:read) and each
 printer's print, for the words under its camera (prints:read). Neither ever holds the picture up: calls wait a few
 seconds at most, the cameras fall back to what was last heard (sources.py keeps it), and a printer whose print can't
-be asked has just its name written under its camera.
+be asked has just its name written under its camera. (Asking for the cameras may take longer, as Farmhand asks every
+printer; while Farmhand doesn't answer at all, it's refused at once.)
 """
 from __future__ import annotations
 
@@ -12,7 +13,8 @@ from . import config
 from .farmhand import Farmhand, FarmhandError
 
 
-QUICK = 5  # seconds a call made while going live (or for the words) may take
+QUICK = 5  # seconds asking a printer's print (for the words) may take
+CAMERAS_WAIT = 20  # seconds asking for the cameras may take: Farmhand asks every printer, and one that's off is slow
 _last_problem: dict = {"error": None, "at": None}
 
 
@@ -35,7 +37,7 @@ def cameras(db) -> tuple[dict, str | None]:
     from .live_stream.sources import known, remember  # (not at the top: the engine imports this module)
 
     try:
-        answer = client().cameras()
+        answer = client(CAMERAS_WAIT).cameras()
     except FarmhandError as e:
         _noted(e)
         return known(db), e.message
