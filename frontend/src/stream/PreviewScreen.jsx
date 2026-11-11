@@ -13,7 +13,7 @@ export function Screen({ sq, showStatus, big, media, back, words = {}, clock = n
   if (sq.type === "camera") {
     return (
       <div style={{ position: "relative", width: "100%", height: "100%", background: sq.background || back, display: "flex", containerType: "size" }}>
-        <CameraSquare sq={sq} showStatus={showStatus} big={big} words={words} />
+        <CameraSquare sq={sq} showStatus={showStatus} big={big} words={words} inset={inset} />
       </div>
     );
   }
@@ -21,7 +21,8 @@ export function Screen({ sq, showStatus, big, media, back, words = {}, clock = n
   return null;
 }
 
-function CameraSquare({ sq, showStatus, big, words = {} }) {
+// `inset`: the square's border, as a part of its height: the camera is fitted inside it, as the stream fits it
+function CameraSquare({ sq, showStatus, big, words = {}, inset = 0 }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const { cam, label } = sq;
   const own = sq.cell || {}; // the square's own choices for its words (show_words, words_size, words_color, words_font)
@@ -30,7 +31,11 @@ function CameraSquare({ sq, showStatus, big, words = {} }) {
   const message = !cam ? "Camera not found" : state === "failed" ? "Camera not answering" : state === "waiting" ? "Connecting…" : null;
   return (
     <>
-      {cam && <CameraPicture cam={cam} label={label} style={fill} onState={setState} />}
+      {cam && (
+        <div style={{ position: "absolute", inset: `${inset * 100}cqh`, display: "flex" }}>
+          <CameraPicture cam={cam} label={label} style={fill} onState={setState} />
+        </div>
+      )}
       {message && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(11), color: fixed.cameraMessage }}>
           {message}

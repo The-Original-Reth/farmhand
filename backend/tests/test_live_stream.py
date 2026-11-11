@@ -327,7 +327,7 @@ def test_the_squares_of_the_grid():
     assert graph.count("drawbox=x=0:y=0:w=iw:h=ih:color=0xFF0000:t=3") == 6  # every square has its border
     assert "[c0][c1][c2][c3][c4][c5]xstack=inputs=6:layout=0_0|426_0|852_0|0_360|426_360|852_360:fill=0x000033" in graph
     square = {p[:4]: p for p in graph.split(";") if p.startswith("[g")}  # each camera's chain into its square
-    assert square["[g1]"].startswith("[g1]scale=426:360") and square["[g1]"].endswith("[c1]")  # camera 1 in the second square
+    assert square["[g1]"].startswith("[g1]scale=420:354:force_original_aspect_ratio=decrease,pad=426:360") and square["[g1]"].endswith("[c1]")  # camera 1 in the second square
     assert square["[g0]"].endswith("[c5]")  # camera 0 in the last
     # 1x1: the one square is the whole picture
     one = _graph(live_stream.command("ffmpeg", srcs[:1], "u", live_stream.Look(cols=1, rows=1, cells=[("camera", 0)])))
@@ -414,8 +414,8 @@ def test_a_camera_square_with_its_own_background():
     srcs = [live_stream.Source(0, "P0", ["-i", "http://cam0"]), live_stream.Source(1, "P1", ["-i", "http://cam1"])]
     cells = [("camera", 0, "#00FF00"), ("camera", 1)]
     graph = _graph(live_stream.command("ffmpeg", srcs, "u", live_stream.Look(cols=2, rows=1, cells=cells, resolution="720p", background="#112233")))
-    assert "[g0]scale=640:720:force_original_aspect_ratio=decrease,pad=640:720:(ow-iw)/2:(oh-ih)/2:color=0x00FF00" in graph
-    assert "[g1]scale=640:720:force_original_aspect_ratio=decrease,pad=640:720:(ow-iw)/2:(oh-ih)/2:color=0x112233" in graph
+    assert "[g0]scale=634:714:force_original_aspect_ratio=decrease,pad=640:720:(ow-iw)/2:(oh-ih)/2:color=0x00FF00" in graph
+    assert "[g1]scale=634:714:force_original_aspect_ratio=decrease,pad=640:720:(ow-iw)/2:(oh-ih)/2:color=0x112233" in graph
 
 
 def _png(color=b"r"):

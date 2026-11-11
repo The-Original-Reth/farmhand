@@ -206,11 +206,13 @@ def _cameras_own(cells: list, look: Look) -> dict[int, dict]:
 
 
 def _camera_square(c: int, i: int, mine: dict, frame: Frame, status_files: list[str] | None) -> str:
-    """Square c, camera i (from [g{i}]): fitted in, its own colour round it, its words along its foot (sized to its
-    square, 20 px in a quarter of a 720p picture, unless it has its own size), its border."""
+    """Square c, camera i (from [g{i}]): fitted inside its border (so the border never covers its top and bottom, or
+    its sides), its own colour round it, its words along its foot (sized to its square, 20 px in a quarter of a 720p
+    picture, unless it has its own size), its border."""
     tw, th, edge = frame.tw, frame.th, frame.edge
     colour = (mine.get("background") or "#" + frame.back).lstrip("#")
-    chain = [f"scale={tw}:{th}:force_original_aspect_ratio=decrease", f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=0x{colour}"]
+    iw, ih = (tw - 2 * edge) // 2 * 2, (th - 2 * edge) // 2 * 2
+    chain = [f"scale={iw}:{ih}:force_original_aspect_ratio=decrease", f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=0x{colour}"]
     if status_files and mine.get("show_words", True):
         if mine.get("words_size"):
             size = max(frame.px(8), round(mine["words_size"] * th))
