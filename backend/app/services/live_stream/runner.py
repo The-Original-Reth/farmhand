@@ -38,6 +38,13 @@ SETTLE = 3  # seconds a new layout waits before its picture ffmpeg starts: a bur
 WARMING_NICE = 10  # a picture ffmpeg warming up runs at this lower priority, so the one going out keeps the processor
 SENDER_STEADY = 30  # seconds a sender connected again has to keep sending before its drop's message is cleared
 REFRESH_EVERY = 60  # a camera dropped: at most one hand-over to fresh connections a minute
+# The self-check: while live, how much video the picture has passed on is looked at every CHECK_EVERY seconds. Less than
+# ENOUGH of STALL seconds' worth in the last STALL seconds means YouTube is (or soon will be, once the delay runs out)
+# getting next to nothing: the picture stopped giving video, or gives it far slower than it plays. The picture is then
+# started again, and if that doesn't help within another STALL, the connection to YouTube too.
+CHECK_EVERY = 5
+STALL = 60
+ENOUGH = 0.5
 # What ffmpeg says when one of its inputs has ended or failed: a camera it has lost (input number, from 0)
 INPUT_ENDED = re.compile(r"\[in#(\d+)/[^\]]*\] (?:Terminating thread with return code|Task finished with error code|Error during demuxing)")
 
@@ -106,6 +113,7 @@ class Stream:
         self._changing = False  # a new layout is on its way (settling, or warming up)
         self._cache: str | None = None  # slideshow screens put together this time live, reused by later layouts
         self._broadcast: Broadcast | None = None  # signed in: this time live's broadcast on YouTube
+        self._healed: dict | None = None  # what the self-check last did this time live (_watch_flow)
         # the resolution chosen when going live: kept until Stop (YouTube takes a change of size mid-stream badly, so a
         # new one saved while live waits for the next Go live)
         self._resolution: str | None = None
@@ -137,6 +145,8 @@ class Stream:
                 "delay": {"seconds": buffer.delay, "held": buffer.held(), "filling": buffer.filling()} if buffer and wanted else None,
                 # a new layout is on its way: waiting for more changes, or its picture warming up beside the one going out
                 "changing": self._changing and wanted,
+                # what the self-check last did this time live, {at (ISO time), message}, or None
+                "self_check": dict(self._healed) if wanted and self._healed else None,
                 # signed in: this time live's broadcast on YouTube {watch_url, studio_url, state, health, issues, viewers}
                 "youtube": self._broadcast.status() if wanted and self._broadcast else None,
             }
@@ -277,8 +287,10 @@ class Stream:
             elif wants_title:
                 self._title = {"state": "failed", "message": "Sign in to YouTube (YouTube settings) for Farmhand to set the title and description."}
             self._broadcast = broadcast
+            self._healed = None
             self._wanted.set()
         threading.Thread(target=self._keep_sending, args=(gen, sender_command(ffmpeg, url), buffer), name="stream-sender", daemon=True).start()
+        threading.Thread(target=self._watch_flow, args=(gen, self._relay), name="stream-self-check", daemon=True).start()
         if broadcast:
             def read_settings() -> dict:
                 with session_factory() as s:
@@ -362,6 +374,39 @@ class Stream:
             m = INPUT_ENDED.search(line) if lost is not None else None
             if m and int(m.group(1)) < cameras:
                 lost.set()
+
+    def _watch_flow(self, gen: int, relay: Relay) -> None:
+        """The self-check, for as long as this time live lasts (see CHECK_EVERY): a stream left running day and night
+        mends itself when next to no video has come through for STALL seconds, first by starting the picture again (its
+        cameras connected afresh), then, if that didn't help, the connection to YouTube as well."""
+        seen = collections.deque()  # (when, the time of the last frame passed on then)
+        tried_picture = False
+        while _sleep_unless(self, gen, CHECK_EVERY):
+            now = time.monotonic()
+            seen.append((now, relay.last_time()))
+            while seen and now - seen[0][0] > STALL + CHECK_EVERY / 2:
+                seen.popleft()
+            then, was = seen[0]
+            if now - then < STALL - CHECK_EVERY / 2:
+                continue  # (not a whole STALL looked at yet)
+            last = seen[-1][1]
+            came = (last - was) if last is not None and was is not None else (0.0 if last is None else STALL)
+            if came >= ENOUGH * STALL:
+                tried_picture = False
+                continue
+            seen.clear()  # (a whole STALL again before it's judged afresh)
+            with self._lock:
+                if not self._current(gen):
+                    return
+                picture, warming = self._proc, self._warming
+                sender = self._sender if tried_picture else None
+                what = ("the picture and the connection to YouTube were started again" if sender
+                        else "the picture was started again, its cameras connected afresh")
+                self._healed = {"at": datetime.now(timezone.utc).isoformat(),
+                                "message": f"Next to nothing was reaching YouTube for {STALL} seconds, so {what}."}
+            for proc in (warming, picture, sender):
+                _end(proc)  # (each is started again by its own loop)
+            tried_picture = True
 
     def _keep_sending(self, gen: int, args: list[str], buffer: Buffer) -> None:
         """The sender, started again whenever it stops (the connection to YouTube dropped), for as long as it's live."""

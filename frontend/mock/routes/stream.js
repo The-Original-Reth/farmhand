@@ -71,6 +71,7 @@ export function streamRoutes(ctx) {
         // the delay's buffer while live: collecting it first, then held (the mock holds it all, steadily)
         changing: false, // (the mock's layouts change at once)
         resolution: s.live ? s.live_resolution : null, // the size going out: set when going live, until Stop
+        self_check: null, // (the mock's stream never starves, so its self-check never has anything to do)
         // signed in: the broadcast Farmhand made, and YouTube's word on it (live and healthy after the delay)
         youtube: s.live && s.broadcast ? (() => {
           const on = (Date.now() - Date.parse(s.started_at)) / 1000 > s.delay + 10;

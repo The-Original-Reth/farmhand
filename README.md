@@ -656,6 +656,10 @@ is held. A new delay applies the next time you go live.
   Mute off you hear what viewers hear.
 - A pasted stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked
   out of any error message. **Forget key** (YouTube settings) removes it. Signed in, Farmhand doesn't need one.
+- **The self-check:** while live, Farmhand watches how much video comes through. If next to none has for a minute
+  (the picture stopped giving video, or gives it far slower than it plays), it starts the picture again with its cameras
+  connected afresh; if that doesn't help within another minute, the connection to YouTube too. The status says when it
+  did, so a stream left running overnight mends itself instead of sitting there with nothing reaching YouTube.
 - If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
   until you press **Stop stream**. Saving a new picture (squares, layout, pictures, colours) while live starts the stream
   again with it; a new title, description, tags or privacy goes straight to the broadcast without a restart.
