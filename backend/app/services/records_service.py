@@ -504,7 +504,6 @@ def restore_all(db: Session, folder, after_printers=None) -> dict:
 
 def count_records(folder) -> dict:
     """How many printer and model files a folder holds (for describing a folder before it's chosen)."""
-    from pathlib import Path
 
     return {kind: len(list((Path(folder) / kind).glob("*.json"))) if (Path(folder) / kind).is_dir() else 0
             for kind in (records_store.PRINTERS_DIR, records_store.MODELS_DIR)}
