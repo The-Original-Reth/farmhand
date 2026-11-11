@@ -12,6 +12,9 @@ What it adds over the Stream page built into Farmhand:
   square's background colour and the chosen font and colour, and goes back to live video by itself; the other cameras
   and the connection to YouTube carry on. Going live with a camera off works, and the page lists each camera as live
   or down while live.
+- **The preview before going live** shows each camera's snapshot, as the plugin fetches it (the page never talks to
+  the cameras). A camera with no snapshot address, or one that doesn't answer (an RTSP camera, or one moved to go2rtc
+  that Mainsail still lists an old snapshot address for), shows a frame taken from its video every few seconds.
 - **It goes live again by itself** after its own restart (a reboot, a power cut, a new image), if it was live.
 - **Farmhand going down doesn't stop it.** The cameras are read at the addresses last heard of, and the words under
   them become just the printers' names until Farmhand is back.

@@ -287,3 +287,39 @@ def test_manifest_and_health(api, farmhand):
     finally:
         from .fake_farmhand import TOKEN
         config.settings.farmhand_token = TOKEN
+
+
+# ------------------------------------------------------------------ the preview before going live
+
+
+def test_a_camera_without_a_working_snapshot_is_previewed_from_its_video(api, plugin, farmhand, monkeypatch):
+    """An RTSP camera has no snapshot address, and one moved to go2rtc can keep a snapshot address that answers 502:
+    before going live, the preview takes a frame from its video instead, kept a few seconds so the page's asks (twice a
+    second) don't each open a connection to the camera."""
+    import streamer.app as app_module
+
+    taken = []
+
+    def take(args):
+        taken.append(args)
+        return jpeg()
+
+    monkeypatch.setattr(runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(app_module, "take_frame", take)
+    monkeypatch.setattr(app_module, "_frames", {})
+    farmhand.cameras[1]["cameras"][0]["snapshot_url"] = "http://127.0.0.1:9/webcam/?action=snapshot"  # (nothing there)
+    farm.cameras(plugin)
+
+    r = api.get("/api/cameras/1/Bed/picture")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == jpeg()
+    assert taken[0][taken[0].index("-i") + 1] == "http://10.0.6.21/webcam/?action=stream" and "-frames:v" in taken[0]
+    assert api.get("/api/cameras/1/Bed/picture").status_code == 200 and len(taken) == 1  # the same frame, kept
+
+    monkeypatch.setattr(app_module, "VIDEO_FRAME_SECONDS", 0)
+    def fails(args):
+        raise RuntimeError("Connection refused")
+    monkeypatch.setattr(app_module, "take_frame", fails)
+    r = api.get("/api/cameras/1/Bed/picture")
+    assert r.status_code == 502 and "Connection refused" in r.json()["detail"]
+    assert api.get("/api/cameras/2/Nobody/picture").status_code == 404  # (two cameras: no guessing which)
+    assert api.get("/api/cameras/1/Front/picture").status_code == 502  # a printer's only camera, renamed: followed
