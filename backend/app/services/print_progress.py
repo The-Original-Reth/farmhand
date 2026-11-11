@@ -24,8 +24,7 @@ def progress(db: Session, printer: Printer) -> dict:
             _, job = pl.poll(db, printer)  # also brings Farmhand's record of its prints up to date
             state = PRUSA_PRINTING.get((job or {}).get("state"))
             if state:
-                file = job.get("file") or {}
-                out.update(state=state, progress=job.get("progress"), file=file.get("display_name") or file.get("name"))
+                out.update(state=state, progress=job.get("progress"), file=pl.job_file_name(job))
         else:
             live = mr.live_print(printer)
             if live:

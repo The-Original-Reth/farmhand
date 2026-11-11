@@ -13,8 +13,9 @@ from ..services import energy as energy_service
 from ..services import moonraker as mr
 from .common import require_confirm, require_printer, sync_state
 
-# Everything a printer's Moonraker gives Farmhand: its connection, its print history (as copied into Farmhand),
-# its statistics, its energy and cameras, and its maintenance reminders (kept in Moonraker, shared with Mainsail).
+# A printer's connection to Moonraker, and what every printer has whichever way it's connected: its print history
+# (as copied into Farmhand), statistics, energy, cameras, 1500-hour service and maintenance reminders (a Moonraker
+# printer's kept in Moonraker, shared with Mainsail; a PrusaLink printer's kept in Farmhand).
 # A MoonrakerError anywhere becomes a 502 with {"detail", "kind"} (see main.py).
 router = APIRouter(prefix="/printers", tags=["moonraker"])
 
@@ -23,31 +24,7 @@ router = APIRouter(prefix="/printers", tags=["moonraker"])
 def connection_status(printer_id: int, db: Session = Depends(get_db)):
     """Can Farmhand reach this printer's Moonraker right now, what state is Klipper in, and what is it printing? Never fails: says why."""
     printer = require_printer(db, printer_id)
-    out = {
-        "moonraker_url": printer.moonraker_url,
-        "mainsail_url": printer.mainsail_url,
-        "has_api_key": printer.has_moonraker_api_key,
-        "reachable": False,
-        "klippy_state": None,
-        "moonraker_version": None,
-        "error": None,
-        "error_kind": None,
-        "print": None,  # the print running or paused right now, if any (see moonraker.live_print)
-        **sync_state(printer),
-    }
-    try:
-        out.update(mr.server_info(printer), reachable=True)
-    except mr.MoonrakerError as e:
-        out.update(error=str(e), error_kind=e.kind)
-        return out
-    # the one of its IPs it answered at just now (its Wi-Fi one when its cable is out)
-    out.update(moonraker_url=printer.moonraker_url, mainsail_url=printer.mainsail_url)
-    if out["klippy_state"] == "ready":
-        try:
-            out["print"] = mr.live_print(printer)
-        except mr.MoonrakerError:
-            pass  # connected, but Klipper didn't say: shown as not printing
-    return out
+    return {**mr.connection_status(printer), **sync_state(printer)}
 
 
 @router.get("/{printer_id}/webcams")

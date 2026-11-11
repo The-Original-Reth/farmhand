@@ -184,11 +184,6 @@ class Printer(HasNotes, Base):
     def has_moonraker_api_key(self) -> bool:
         return bool(self.connection_row and self.connection_row.api_key)
 
-    @property
-    def preferred_ip(self) -> str | None:
-        """Wired is always preferred when both are available, per spec."""
-        return self.wired_ip or self.wireless_ip
-
 
 def mainsail_for(moonraker_base: str | None) -> str | None:
     """Mainsail's address for a Moonraker address: port 80 of the same machine. None for none."""

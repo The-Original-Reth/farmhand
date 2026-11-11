@@ -11,6 +11,12 @@ from ...models import Printer
 from .. import printer_http
 from ..printer_http import PROBE_TIMEOUT, TIMEOUT, UPLOAD_TIMEOUT
 
+
+def job_file_name(job: dict) -> str | None:
+    """The name of the file a PrusaLink job is printing, as the printer shows it."""
+    file = job.get("file") or {}
+    return file.get("display_name") or file.get("name")
+
 # Tests swap this for an httpx.MockTransport that plays a fake PrusaLink
 transport: httpx.BaseTransport | None = None
 
