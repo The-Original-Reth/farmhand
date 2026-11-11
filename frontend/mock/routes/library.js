@@ -3,7 +3,7 @@ import { HttpError, notInMockup, nowUnix } from "../core.js";
 import { HOUR, iso } from "../data.js";
 
 export function libraryRoutes(ctx) {
-  const { bundle, bundleOut, farm, liveJob, model, modelOut, on, printer, printerOut, requireConfirm, saveNotes, subPrinterFor, version, versionDetail } = ctx;
+  const { bundle, bundleOut, farm, liveJob, model, modelOut, on, printer, printerOut, reachMoonraker, requireConfirm, runningJob, saveNotes, subPrinterFor, version, versionDetail } = ctx;
 
   on("GET", "/source-models", () => farm.models.map(modelOut));
   on("GET", "/source-models/:id", ({ id }) => modelOut(model(id)));
@@ -177,9 +177,8 @@ export function libraryRoutes(ctx) {
       return { sent: `usb/${v.gcode_name}`, printer: p.name };
     }
     if (/\.bgcode$/i.test(v.gcode_name)) throw new HttpError(422, `${p.name} runs Klipper, which can't print a .bgcode (Prusa's binary G-code). Slice a plain .gcode for it.`);
-    if (!p.moonraker) throw new HttpError(502, "This printer has no IP address or Moonraker address set.", { kind: "no_address" });
-    if (!p.moonraker.reachable) throw new HttpError(502, p.moonraker.error, { kind: p.moonraker.error_kind });
-    if ((farm.jobs[p.id] || []).some((j) => j.status === "in_progress")) throw new HttpError(409, `${p.name} is printing, so a new print can't be started.`);
+    reachMoonraker(p);
+    if (runningJob(p)) throw new HttpError(409, `${p.name} is printing, so a new print can't be started.`);
     return { sent: `gcodes/${v.gcode_name}`, printer: p.name };
   });
   on("DELETE", "/bundles/versions/:id", ({ id }, _b, q) => {
