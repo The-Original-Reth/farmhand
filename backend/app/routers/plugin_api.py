@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..services.plugins import answers, events, limits, registry, remote
+from ..services.plugins import answers, events, handover, limits, registry, remote
 from ..services.plugins.manifest import API_VERSION
 from .common import require_printer
 
@@ -122,3 +122,21 @@ async def printer_events(request: Request, caller: registry.Caller = Depends(nee
 @router.get("/farm", dependencies=[Depends(needs("farm:read"))])
 def farm(db: Session = Depends(get_db)):
     return answers.farm(db)
+
+
+# ------------------------------------------------------------------ stream:migrate (a Stream plugin taking over)
+
+
+@router.get("/stream/migrate")
+def stream_migrate_state(db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:migrate"))):
+    """Whether Farmhand's Stream page set-up can still be handed to this plugin: {available, handed_over_at, has_settings}."""
+    return handover.stream_state(db, caller.plugin_id)
+
+
+@router.post("/stream/migrate")
+def stream_migrate(db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:migrate"))):
+    """The Stream page's set-up, stream key and YouTube sign-in, handed over once (410 after that). Farmhand keeps its own."""
+    try:
+        return handover.stream_handover(db, caller.plugin_id)
+    except handover.AlreadyHandedOver as e:
+        raise HTTPException(status_code=410, detail=str(e)) from None

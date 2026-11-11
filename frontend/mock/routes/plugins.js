@@ -17,6 +17,7 @@ const PERMISSIONS = {
   "cameras:read": "see your printers' cameras and the addresses to stream them from",
   "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
   "farm:read": "see Farmhand's colours and the farm's time zone",
+  "stream:migrate": "take, once, a copy of Farmhand's own Stream page set-up: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its own copy)",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
 const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
@@ -320,6 +321,26 @@ export function pluginsRoutes(ctx) {
     const { colors, mode } = paletteFor(look.scheme || "farmhand", Number(look.contrast) || 0);
     if (look.file_name_color && look.file_name_color !== "auto") colors.fileName = look.file_name_color;
     return { scheme: look.scheme || "farmhand", mode, colors, time_zone: farm.config.preferences?.time_zone ?? null };
+  });
+  // stream:migrate: the Stream page's set-up handed over once (the mockup keeps no real key or sign-in: stand-ins)
+  on("GET", api("/stream/migrate"), (_p, _b, _q, h) => {
+    const p = needs(h, "stream:migrate");
+    return { available: !p.streamHandedOverAt, handed_over_at: p.streamHandedOverAt ?? null, has_settings: !!farm.stream };
+  });
+  on("POST", api("/stream/migrate"), (_p, _b, _q, h) => {
+    const p = needs(h, "stream:migrate");
+    if (p.streamHandedOverAt) throw new HttpError(410, `Farmhand already handed its Stream page set-up to this plugin (${p.streamHandedOverAt}), and hands it over only once. To take it again, remove the plugin on Farmhand's Plugins page and add it afresh.`);
+    p.streamHandedOverAt = new Date().toISOString();
+    const s = farm.stream || {};
+    const { youtube: account, live: _l, broadcast: _b2, key_set: keySet, ...settings } = s;
+    return {
+      settings, layouts: farm.config?.preferences?.stream_layouts || [], stream_key: keySet ? "mock-stream-key" : null,
+      youtube: {
+        client: account?.client_id ? { client_id: account.client_id, client_secret: "mock-client-secret" } : null,
+        refresh_token: account?.signed_in ? "mock-refresh-token" : null, channel: account?.channel ?? null, stream_id: s.own_stream ?? null,
+      },
+      stream_folder: "/data/stream", handed_over_at: p.streamHandedOverAt,
+    };
   });
   return { pluginPageRequest };
 }

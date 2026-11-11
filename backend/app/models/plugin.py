@@ -33,6 +33,8 @@ class Plugin(Base):
     connection: Mapped["PluginConnection | None"] = relationship(
         back_populates="plugin", cascade="all, delete-orphan", uselist=False
     )
+    # What it was handed once (plugin_handover). Goes with it.
+    handovers: Mapped[list["PluginHandover"]] = relationship(cascade="all, delete-orphan")
 
 
 class PluginToken(Base):
@@ -73,3 +75,16 @@ class PluginConnection(Base):
     checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     plugin: Mapped[Plugin] = relationship(back_populates="connection")
+
+
+class PluginHandover(Base):
+    """
+    Something Farmhand handed a plugin once and won't hand it again (the stream:migrate permission's copy of the
+    Stream page's set-up: what = "stream"). Removing the plugin removes it, so a plugin added again can ask again.
+    """
+
+    __tablename__ = "plugin_handover"
+
+    plugin_id: Mapped[str] = mapped_column(ForeignKey("plugin.id", ondelete="CASCADE"), primary_key=True)
+    what: Mapped[str] = mapped_column(String(40), primary_key=True)
+    handed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

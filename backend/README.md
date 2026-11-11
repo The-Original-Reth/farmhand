@@ -261,6 +261,8 @@ Postgres instance running.
 | GET | `/plugin-api/v1/printers/{id}/print` | `prints:read`. `{state, progress, file, error}`, as `/printers/{id}/progress` |
 | GET | `/plugin-api/v1/events` | `prints:read`. Server-sent events: `print.started`, `print.paused`, `print.resumed`, `print.finished`, `printer.reachable`, `printer.unreachable`, each `{id, type, at, printer_id, printer_name, ...}`, from what Farmhand sees of its printers (every printer looked at each minute while a plugin listens) |
 | GET | `/plugin-api/v1/farm` | `farm:read`. `{scheme, mode, colors, time_zone}`: the colours as the pages show them (scheme and text brightness), and the farm's time zone |
+| GET | `/plugin-api/v1/stream/migrate` | `stream:migrate`. `{available, handed_over_at, has_settings}`: whether the Stream page's set-up can still be handed to this plugin (nothing secret) |
+| POST | `/plugin-api/v1/stream/migrate` | `stream:migrate`. The Stream page's set-up, handed over once: `{settings (as kept), layouts, stream_key, youtube: {client: {client_id, client_secret}, refresh_token, channel, stream_id}, stream_folder, handed_over_at}`. Only read: Farmhand keeps its own copy. **410** the second time, until the plugin is removed and added afresh (the `plugin_handover` table) |
 
 ## Project layout
 
