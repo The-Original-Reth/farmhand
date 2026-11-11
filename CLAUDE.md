@@ -22,6 +22,7 @@ cd frontend && npm run mock               # real UI on a fake in-memory backend,
 cd frontend && VITE_API_BASE=http://localhost:4545 npm run dev   # UI against a local API
 cd frontend && npm run build              # the only frontend "test"; there is no linter or unit test suite
 cd frontend && npm run check:themes       # WCAG AA contrast check of every palette in src/palettes.js
+cd frontend && npm run export:palettes    # after changing a palette: the backend's copy plugins are given
 ```
 
 Some backend tests are POSIX-only (`posix_only` marker in `tests/conftest.py`) and parser tests skip when the
@@ -46,6 +47,11 @@ Printer integrations are packages: `services/moonraker/` and `services/prusalink
 in `main.py`. Background jobs (`mount_supervisor.py`, `printer_poller.py`, `farm_cost_recorder.py`, and the
 previews worker) are `periodic.PeriodicWorker`s, started and stopped by `background.py`. What another Farmhand sharing
 the folders has is brought in only by Load all settings or Scan projects, never in the background.
+
+**Plugins** (`docs/plugins.md`): other people's containers read Farmhand only through the read-only, versioned plugin
+API (`routers/plugin_api.py`, `/plugin-api/v1/`, Bearer token, a permission per endpoint); installing is `routers/plugins.py`.
+Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
+`services/camera_streams.py`, shared with the Stream page.
 
 **Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
 and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores

@@ -320,6 +320,7 @@ def _path_or_none(value) -> str | None:
 def build_document(
     config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
     farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None, stream_path: str | None = None,
+    plugins: list[dict] | None = None,
 ) -> dict:
     """What gets written. Share entries are cut down to the fields in SHARE_FIELDS — never a password. printer_names:
     each printer's number here and its name, so the orders kept by number (Farm cost, Monitor) come back in the right
@@ -335,6 +336,8 @@ def build_document(
         "farm_cost": {"records_path": farm_cost_path},  # the folder chosen for the monthly records (null: the default)
         "stream": {"media_path": stream_path},  # the Stream page's pictures and slideshows (null: the default)
         "printer_names": {str(k): v for k, v in (printer_names or {}).items()},
+        # the plugins installed and the permissions granted to each (registry.mirror_entries): never a token
+        "plugins": plugins or [],
     }
 
 

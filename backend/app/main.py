@@ -11,7 +11,10 @@ from sqlalchemy.exc import OperationalError
 from . import background, change_hooks, storage
 from .database import SessionLocal, create_schema, engine
 from .notes import NotesConflict, conflict_response
-from .routers import bundles, config_settings, farm_cost, live_stream, moonraker, printers, projects, prusalink, source_models, storage_settings
+from .routers import (
+    bundles, config_settings, farm_cost, live_stream, moonraker, plugin_api, plugins, printers, projects, prusalink, source_models,
+    storage_settings,
+)
 from .services import storage_settings_service
 from .services.moonraker import MoonrakerError
 from .services.prusalink import PrusaLinkError
@@ -57,6 +60,8 @@ app.include_router(moonraker.router)
 app.include_router(prusalink.router)
 app.include_router(farm_cost.router)
 app.include_router(live_stream.router)
+app.include_router(plugins.router)
+app.include_router(plugin_api.router)  # for plugins' containers only: see docs/plugins.md
 
 
 @app.exception_handler(NotesConflict)

@@ -1,6 +1,7 @@
 """
 How far along a printer's print is right now, for Monitor's cameras: from Klipper (as Mainsail shows it) or from
-PrusaLink, whichever the printer talks. Asking never fails: a printer that can't be asked says why.
+PrusaLink, whichever the printer talks. Asking never fails: a printer that can't be asked says why. Each answer also
+tells plugins listening for events what changed (plugins/events.py).
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..models import Printer
 from . import moonraker as mr
 from . import prusalink as pl
+from .plugins import events
 
 PRUSA_PRINTING = {"PRINTING": "printing", "PAUSED": "paused"}  # PrusaLink's job states that mean a print is under way
 
@@ -31,4 +33,5 @@ def progress(db: Session, printer: Printer) -> dict:
                 out.update(state=live["state"], progress=live["progress"], file=live["file"])
     except (mr.MoonrakerError, pl.PrusaLinkError) as e:
         out["error"] = str(e)
+    events.observe(printer.id, printer.name, out)
     return out

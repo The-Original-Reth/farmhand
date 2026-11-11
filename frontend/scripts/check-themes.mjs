@@ -1,6 +1,8 @@
 // Checks that every colour scheme is legible: WCAG contrast ratios for text on the surfaces it sits on.
 // Run:  node scripts/check-themes.mjs          (exits non-zero if a scheme fails)
+import { existsSync, readFileSync } from "node:fs";
 import { FIXED, PRESETS, SLICER_SCHEMES } from "../src/palettes.js";
+import { PALETTES_JSON, palettesJson } from "./export-palettes.mjs";
 
 const lum = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -55,6 +57,13 @@ for (const [n, fg, bg] of [["camera label on camera", FIXED.cameraText, FIXED.ca
   const r = ratio(fg, bg);
   console.log(`${r < MIN ? "FAIL" : "ok  "} ${n} at ${r.toFixed(1)}:1`);
   if (r < MIN) failures++;
+}
+// The backend's copy of the schemes, which plugins are given (GET /plugin-api/v1/farm), must match these. (Not there
+// when only the frontend is at hand, as in its Docker build: nothing to compare.)
+if (existsSync(PALETTES_JSON)) {
+  const current = readFileSync(PALETTES_JSON, "utf-8").replace(/\r\n/g, "\n") === palettesJson();
+  console.log(`${current ? "ok  " : "FAIL"} the plugins' copy of the schemes${current ? "" : " is out of date: run npm run export:palettes"}`);
+  if (!current) failures++;
 }
 console.log(failures ? `\n${failures} scheme(s) not legible enough` : "\nevery scheme is legible");
 process.exit(failures ? 1 : 0);

@@ -6,8 +6,9 @@ print history and totals, and a reading of its power meter if it has one. Those 
 Farmhand work out the whole printer's energy use per month and year (Moonraker only knows the meter's current value).
 
 PrusaLink printers are looked at every minute instead: PrusaLink keeps no history, so Farmhand records each print
-by seeing it while it runs (see app/services/prusalink/tracking.py). A printer that's off just records why on its
-connection; nothing here ever stops the thread.
+by seeing it while it runs (see app/services/prusalink/tracking.py). While a plugin listens for events (GET
+/plugin-api/v1/events), Moonraker printers are asked for their print every minute too, so it hears of a print starting
+or ending. A printer that's off just records why on its connection; nothing here ever stops the thread.
 """
 from __future__ import annotations
 
@@ -19,7 +20,8 @@ from sqlalchemy import select
 from .database import SessionLocal
 from .models import Printer
 from .periodic import PeriodicWorker
-from .services import config_service, moonraker, prusalink
+from .services import config_service, moonraker, print_progress, prusalink
+from .services.plugins import events
 
 log = logging.getLogger("farmhand.printers")
 
@@ -51,9 +53,12 @@ class PrinterPoller(PeriodicWorker):
                 try:
                     if printer.connection_type == "prusalink":
                         if printer.prusalink_url:
-                            prusalink.poll(db, printer)
-                    elif sync_moonraker and printer.moonraker_url:
-                        moonraker.sync_history(db, printer)
+                            print_progress.progress(db, printer)  # polls it (recording its prints), telling plugins
+                    elif printer.moonraker_url:
+                        if events.listening():
+                            print_progress.progress(db, printer)
+                        if sync_moonraker:
+                            moonraker.sync_history(db, printer)
                 except (moonraker.MoonrakerError, prusalink.PrusaLinkError) as e:
                     log.debug("Couldn't sync printer %s: %s", printer.name, e)
         if sync_moonraker:

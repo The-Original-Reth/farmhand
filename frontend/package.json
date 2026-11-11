@@ -8,7 +8,8 @@
     "mock": "vite --mode mock",
     "build": "vite build",
     "preview": "vite preview",
-    "check:themes": "node scripts/check-themes.mjs"
+    "check:themes": "node scripts/check-themes.mjs",
+    "export:palettes": "node scripts/export-palettes.mjs"
   },
   "dependencies": {
     "@fontsource/play": "^5.0.0",
