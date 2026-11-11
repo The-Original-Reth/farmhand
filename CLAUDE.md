@@ -70,8 +70,9 @@ contrast check stops covering them (ones no scheme changes, like the white behin
 **Mock backend** (`frontend/mock/`: `server.js` the Vite plugin, `core.js` the in-memory farm and shared helpers,
 `routes/<area>.js` the routes, `data.js` the sample farm): serves `/mock-api` in exactly the real API's shapes. Each
 `routes/` file gets the helpers of `core.js` and of the files before it from `ctx`, and returns its own. It is never
-built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink
-behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`). A typical feature
+built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink/YouTube
+behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`, `tests/fake_google.py`;
+ffmpeg's in `tests/fake_ffmpeg.py`). A typical feature
 commit touches router → service → test → `src/api/` → mock → UI.
 
 ## Conventions

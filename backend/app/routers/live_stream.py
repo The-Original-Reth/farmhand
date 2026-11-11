@@ -15,7 +15,7 @@ from ..services import config_service, live_stream, stream_media, youtube_live
 from .common import require_confirm
 
 # The Stream page: printers' cameras sent live to YouTube by Farmhand itself (see services/live_stream/),
-# and the YouTube broadcast's title and description, set through YouTube's API (services/youtube_live.py). The stream
+# and the YouTube broadcast, made and changed through YouTube's API (live_stream/broadcast.py). The stream
 # key, the Google client secret and the YouTube sign-in go in and never come back out: answers only say they're there.
 router = APIRouter(prefix="/stream", tags=["stream"])
 
@@ -28,23 +28,6 @@ MUSIC = ("music", "music_volume", "music_shuffle")  # these the music follows wh
 def _restart_if_live(db: Session) -> None:
     if live_stream.stream.status()["live"]:
         live_stream.stream.go_live(db, database.SessionLocal)
-
-
-def _apply_title(db: Session) -> dict:
-    """Set the live broadcast's title and description now: {state, message}. ValueError when it can't be tried."""
-    chosen = live_stream.settings(db)
-    creds = youtube_live.credentials(db)
-    if not creds:
-        raise ValueError("Sign in to YouTube first.")
-    if not (chosen["title"] or chosen["description"]):
-        raise ValueError("Write a title or description first, and save it.")
-    try:
-        done = youtube_live.set_broadcast_text(creds, chosen["title"], chosen["description"])
-        outcome = {"state": "done", "message": f"Title and description set on “{done['title']}”."}
-    except youtube_live.YouTubeError as e:
-        outcome = {"state": "failed", "message": f"The YouTube title wasn't set: {e}"}
-    live_stream.stream.title_set(outcome)
-    return outcome
 
 
 @router.get("")
@@ -79,10 +62,8 @@ def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
             live_stream.stream.music_settings(after)
         elif (live and after["destination"] == "youtube"
               and (before["title"], before["description"], before["youtube"]) != (after["title"], after["description"], after["youtube"])):
-            # Farmhand's own broadcast: changed straight away; with a pasted key, just the title and description
-            if not live_stream.stream.update_broadcast(after) and youtube_live.credentials(db) and (
-                    (before["title"], before["description"]) != (after["title"], after["description"])):
-                _apply_title(db)
+            text_changed = (before["title"], before["description"]) != (after["title"], after["description"])
+            live_stream.stream.send_to_youtube(db, after, text_changed=text_changed)
     return live_stream.page(db)
 
 
@@ -316,6 +297,5 @@ def youtube_sign_out(payload: YouTubeSignOutIn | None = None, db: Session = Depe
 def youtube_apply(db: Session = Depends(get_db)):
     """Set the saved title, description and YouTube settings on the live broadcast now. status.title says how it went."""
     with answer_errors():
-        if not live_stream.stream.update_broadcast(live_stream.settings(db)):
-            _apply_title(db)
+        live_stream.stream.send_to_youtube(db, live_stream.settings(db), asked=True)
     return live_stream.page(db)
