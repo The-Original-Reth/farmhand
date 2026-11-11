@@ -859,7 +859,9 @@ day. Farmhand never sees your Google password; the client secret and the sign-in
 stay inside Farmhand like the stream key. **Sign out** forgets the sign-in and tells Google to as well.
 - Cameras are read the same way Monitor finds them: a Mainsail camera with the **MJPEG streamer** or **adaptive
   MJPEG** service (its MJPEG stream), camera-streamer, go2rtc on the printer (its RTSP port, 8554), and a Prusa's
-  Buddy3D. A camera that only plays in a browser some other way can't be streamed; the page says which. An MJPEG
+  Buddy3D. A camera that only plays in a browser some other way can't be streamed; the page says which. A printer
+  with just one camera keeps its square when that camera is renamed in Mainsail (changing its service there can rename
+  it, Front to Chamber, say): the stream follows it, and the page shows and saves it under its new name. An MJPEG
   camera's frames are timed as they arrive, so a slow one (a couple of frames a second) just changes less often in its
   square and never holds the rest of the stream back.
 - The streaming is done by ffmpeg in the API's container, on that computer's processor. A Raspberry Pi manages a

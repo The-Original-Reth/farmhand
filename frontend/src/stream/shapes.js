@@ -60,6 +60,28 @@ export const swapped = (cells, a, b) => {
 export const printerOf = (key) => Number(key.slice(0, key.indexOf(":")));
 export const cameraOf = (key) => key.slice(key.indexOf(":") + 1);
 
+// The stream's choices with each square's camera followed when it was renamed in Mainsail (as changing its service
+// there can do): a printer with just one camera, which answered in full, has that one in place of a name it no longer
+// has, unless another square shows it already. The server's stream does the same (live_stream/sources.followed_camera).
+// `cams`: printer id -> { webcams, error, kept? } (monitor/cameras.js). The same object when nothing was followed.
+export const followCameras = (shown, cams) => {
+  const keys = new Set(shown.cells.filter((x) => x?.camera).map((x) => x.camera));
+  let moved = false;
+  const cells = shown.cells.map((cell) => {
+    if (!cell?.camera) return cell;
+    const id = printerOf(cell.camera);
+    const found = cams[id];
+    const list = found?.webcams || [];
+    if (!found || found.kept || found.error || list.length !== 1 || list[0].name === cameraOf(cell.camera)) return cell;
+    const key = `${id}:${list[0].name}`;
+    if (keys.has(key)) return cell;
+    keys.add(key);
+    moved = true;
+    return { ...cell, camera: key };
+  });
+  return moved ? { ...shown, cells } : shown;
+};
+
 // ---- what the stream shows, and when
 // what's written under a camera, as the server writes it (services/live_stream/words.py status_line)
 export const statusLine = (label, p) => {
