@@ -628,6 +628,10 @@ Farmhand: no OBS, no PC left running. The picture is a grid of squares that you 
 logo or nothing, and under each camera Farmhand writes the printer's name and its print (`VT 1190 · Printing 42% ·
 benchy.gcode`), brought up to date every 15 seconds.
 
+The stream can also run in a container of its own (the Stream plugin, `plugins/stream/`), so a Farmhand update,
+restart or crash never stops it: **Run the stream in its own container**, at the top of the Stream page, has the steps
+and the docker-compose file to start it with.
+
 1. Open **YouTube settings** (Where to) and sign Farmhand in to your channel (see "YouTube settings and the account"
    below). Or, without signing in, paste a **Stream key** from YouTube Studio (**Create → Go live → Stream**).
 2. Set up the squares (**Add all cameras** fills them) and press **Save**.

@@ -56,27 +56,19 @@ and the page shows it, for copying files in by hand.
 ## Run it
 
 It runs on Farmhand's machine or any other machine on the farm's network that reaches Farmhand's API port (4545) and the
-cameras. Start it first without a token, so Farmhand can read its manifest. A compose file is easiest
-(`/opt/farmhand-stream/docker-compose.yml`):
-
-```yaml
-services:
-  stream:
-    image: farmhand-stream
-    container_name: farmhand-stream
-    restart: unless-stopped        # back by itself after a reboot or a crash (and live again, if it was)
-    ports: ["8080:8080"]           # Farmhand reaches it at http://<this machine>:8080
-    env_file: stream.env           # FARMHAND_URL and FARMHAND_TOKEN, once Farmhand gives them (chmod 600)
-    volumes:
-      - farmhand-stream-data:/data            # its settings, key, YouTube sign-in and layouts
-      - /opt/farmhand-stream/media:/media     # the stream folder (see above)
-volumes:
-  farmhand-stream-data:
-```
+cameras. [`docker-compose.yml`](docker-compose.yml) here is ready to use: it builds the plugin straight from this repository
+on GitHub (git must be installed), restarts it by itself, keeps its settings in a volume and reads `stream.env` once
+Farmhand gives the token. Farmhand's own Stream page shows the same file and these steps under **Run the stream in its
+own container** (a copy in `frontend/src/stream/plugin/`; `tests/test_compose.py` checks the two match).
 
 ```bash
-cd /opt/farmhand-stream && touch stream.env && chmod 600 stream.env && docker compose up -d
+sudo mkdir -p /opt/farmhand-stream && cd /opt/farmhand-stream
+sudo curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/The-Original-Reth/farmhand/main/plugins/stream/docker-compose.yml
+sudo docker compose up -d --build
 ```
+
+Change `./media` in it to the stream folder (see above) first. Built from a copy of the repository instead
+(`docker build -t farmhand-stream plugins/stream`), remove its `build:` line.
 
 ### An NVIDIA card
 

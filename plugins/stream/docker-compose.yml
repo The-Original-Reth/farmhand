@@ -1,0 +1,43 @@
+# Farmhand's Stream plugin: the live stream in a container of its own, so a Farmhand update, restart or crash never
+# stops it. Put this file in a folder of its own on any machine on the farm's network that has Docker and reaches the
+# cameras and Farmhand (e.g. /opt/farmhand-stream), then, in that folder:
+#
+#   sudo docker compose up -d --build
+#
+# Docker builds the plugin straight from Farmhand's GitHub repository (git must be installed). Then add it on
+# Farmhand's Plugins page at http://<this machine>:8080, put the two lines Farmhand shows into stream.env (beside this
+# file) and start it again:  sudo docker compose up -d --force-recreate
+services:
+  stream:
+    build: https://github.com/The-Original-Reth/farmhand.git#main:plugins/stream
+    image: farmhand-stream
+    container_name: farmhand-stream
+    restart: unless-stopped        # back by itself after a reboot or a crash (and live again, if it was)
+    ports:
+      - "8080:8080"                # Farmhand reaches the plugin at http://<this machine>:8080
+    env_file:
+      - path: stream.env           # FARMHAND_URL and FARMHAND_TOKEN, from Farmhand's Plugins page
+        required: false            # (not there until then)
+    volumes:
+      - stream-data:/data          # its settings, stream key, YouTube sign-in and saved layouts
+      - ./media:/media             # the stream folder: pictures, slideshows and music.
+                                   # Use the folder Farmhand's Stream page uses (a NAS share mounted on this machine),
+                                   # e.g.  - /mnt/stream:/media
+    # environment:
+    #   STREAM_FOLDER_SHOWN_AS: '\\nas\share\Farmhand\stream'   # the stream folder as people reach it, shown on the page
+    #   FARMHAND_STREAM_ENCODER: auto                            # auto (default), nvenc or cpu
+
+    # An NVIDIA card: the stream is compressed on the card, leaving the processor for the cameras. The machine needs
+    # the NVIDIA driver's libraries (on a Proxmox container, at the host's driver version). Remove the # signs below.
+    # devices:
+    #   - /dev/nvidia0
+    #   - /dev/nvidiactl
+    #   - /dev/nvidia-uvm
+    #   - /dev/nvidia-uvm-tools
+    # and add these under volumes: above
+    #   - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
+    #   - /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:ro
+    #   - /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:/usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:ro
+
+volumes:
+  stream-data:
