@@ -1,8 +1,9 @@
 import { c } from "../theme.js";
-import { MAX_SIDE, autoGrid, fontFamily, resized } from "./shapes.js";
+import { MAX_SIDE, autoGrid, resized } from "./shapes.js";
 import { heading, help, panel, subheading } from "./streamStyles.js";
 import { LayoutPanel } from "./StreamPanels.jsx";
 import { fieldBox, headerButton, uiText } from "../styles.js";
+import { ColourPick, FontPick, panelRow, panelSwatch } from "./controls.jsx";
 
 // The Stream page's grid. The grid is 1x1 to 5x5 squares; each holds a camera, words, an image, a slideshow or nothing
 // (chosen in the preview's square editor, SquareEditor.jsx, and swapped by dragging in the preview). Every square has a
@@ -70,30 +71,18 @@ export function SquaresPanel({ shown, change, cameras, finding, bare = false }) 
         <input data-testid="stream-show-status" type="checkbox" checked={shown.showStatus} onChange={(e) => change({ showStatus: e.target.checked })} />
         Write each printer's name and print progress under its camera
       </label>
-      <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" })}>
-        <input
-          data-testid="stream-background" type="color" value={(shown.background || "#000000").toLowerCase()} onChange={(e) => change({ background: e.target.value.toUpperCase() })}
-          style={{ width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" }}
-        />
+      <ColourPick
+        testid="stream-background" value={shown.background} onPick={(v) => change({ background: v })} fallback="#000000"
+        reset={{ label: "Black", to: "#000000" }} labelStyle={panelRow} swatch={panelSwatch}
+      >
         Background <span style={uiText(11, c.textFaint)}>{shown.background || "#000000"} · every square's, unless the square has its own</span>
-        {(shown.background || "#000000") !== "#000000" && (
-          <button type="button" onClick={() => change({ background: "#000000" })} style={headerButton()}>
-            Black
-          </button>
-        )}
-      </label>
-      <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8 })}>
-        <input
-          data-testid="stream-border-color" type="color" value={shown.borderColor.toLowerCase()} onChange={(e) => change({ borderColor: e.target.value.toUpperCase() })}
-          style={{ width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" }}
-        />
+      </ColourPick>
+      <ColourPick
+        testid="stream-border-color" value={shown.borderColor} onPick={(v) => change({ borderColor: v })} fallback="#000000"
+        reset={{ label: "Black", to: "#000000" }} labelStyle={panelRow} swatch={panelSwatch}
+      >
         Border round each square <span style={uiText(11, c.textFaint)}>{shown.borderColor}</span>
-        {shown.borderColor !== "#000000" && (
-          <button type="button" onClick={() => change({ borderColor: "#000000" })} style={headerButton()}>
-            Black
-          </button>
-        )}
-      </label>
+      </ColourPick>
     </div>
   );
 }
@@ -102,22 +91,16 @@ export function SquaresPanel({ shown, change, cameras, finding, bare = false }) 
 // and emptying the grid, the words on the cameras, the background and border colours), the stream's words' font and
 // colour, and the layout (taking turns or not). `fonts`: [{ key, label }]; `count`: the cameras in the grid.
 export function DefaultsPanel({ shown, change, cameras, finding, count, fonts }) {
-  const row = uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" });
   return (
     <div data-testid="stream-defaults" style={panel()}>
       <div style={heading}>Defaults</div>
       <SquaresPanel shown={shown} change={change} cameras={cameras} finding={finding} bare />
-      <label style={row}>
+      <label style={panelRow}>
         Words
-        <select
-          data-testid="stream-font" value={shown.font || "play"} onChange={(e) => change({ font: e.target.value })}
-          style={{ ...fieldBox(), padding: "5px 8px", fontFamily: fontFamily(shown.font) }}
-        >
-          {fonts.map((f) => <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>)}
-        </select>
+        <FontPick testid="stream-font" value={shown.font || "play"} onPick={(v) => change({ font: v })} fonts={fonts} />
         <input
           data-testid="stream-color" type="color" value={(shown.color || "#FFFFFF").toLowerCase()} onChange={(e) => change({ color: e.target.value.toUpperCase() })}
-          style={{ width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" }}
+          style={panelSwatch}
         />
         <span style={uiText(11, c.textFaint)}>every square's text and camera's words, unless it has its own</span>
       </label>

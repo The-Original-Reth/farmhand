@@ -161,3 +161,12 @@ class _Feeder(_Proc):
         super().__init__([], False)
         self.stdout = _FeederOut(fake, url, self._ended)
         self.stderr = iter(["Connection refused\n"] if url in fake.down else [])
+
+
+def frame_at(seconds: float) -> bytes:
+    """A TS packet starting a frame of the picture at this time (its PES header's PTS; times start again from 0 after
+    about 26.5 hours, as MPEG-TS's do)."""
+    pts = int(seconds * 90000) % (1 << 33)
+    b = bytes([0x21 | ((pts >> 29) & 0xE), (pts >> 22) & 0xFF, ((pts >> 14) & 0xFE) | 1, (pts >> 7) & 0xFF, ((pts << 1) & 0xFE) | 1])
+    pes = bytes([0, 0, 1, 0xE0, 0, 0, 0x80, 0x80, 5]) + b
+    return bytes([0x47, 0x41, 0x00, 0x10]) + pes + bytes(184 - len(pes))

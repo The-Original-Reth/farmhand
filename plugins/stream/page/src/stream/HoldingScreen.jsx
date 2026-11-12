@@ -1,6 +1,7 @@
 import { c } from "../theme.js";
 import { streamPictureUrl } from "../api.js";
-import { fieldBox, headerButton, primaryButton, uiText } from "../styles.js";
+import { fieldBox, primaryButton, uiText } from "../styles.js";
+import { ColourPick, FontPick, panelRow, panelSwatch } from "./controls.jsx";
 import { fontFamily } from "./shapes.js";
 import { heading, help, panel } from "./streamStyles.js";
 
@@ -15,7 +16,6 @@ const WORDS_UNDER = "79%";
 const WORDS_ALONE = "50%";
 const WORDS_SIZE = 0.09 * (9 / 16) * 100; // 9% of the height, in parts of the width (cqw)
 
-const swatch = { width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" };
 
 export function HoldingScreenPanel({ shown, change, media, fonts, saved, onSave, busy }) {
   const holding = shown.holding;
@@ -25,18 +25,14 @@ export function HoldingScreenPanel({ shown, change, media, fonts, saved, onSave,
   const color = holding.color || shown.color || "#FFFFFF";
   const font = holding.font || shown.font;
   const images = media?.images || [];
-  const row = uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" });
 
-  const colour = (name, value, own, what) => (
-    <label style={row}>
-      <input data-testid={`holding-${name}`} type="color" value={value.toLowerCase()} onChange={(e) => set({ [name]: e.target.value.toUpperCase() })} style={swatch} />
-      {what} <span style={uiText(11, c.textFaint)}>{own ? value : `${value} · the stream's`}</span>
-      {own && (
-        <button type="button" onClick={() => set({ [name]: null })} style={headerButton()}>
-          The stream's
-        </button>
-      )}
-    </label>
+  const colour = (name, value, fallback, what) => (
+    <ColourPick
+      testid={`holding-${name}`} value={value} onPick={(v) => set({ [name]: v })} fallback={fallback}
+      reset={{ label: "The stream's" }} labelStyle={panelRow} swatch={panelSwatch}
+    >
+      {what} <span style={uiText(11, c.textFaint)}>{value || `${fallback} · the stream's`}</span>
+    </ColourPick>
   );
 
   return (
@@ -82,7 +78,7 @@ export function HoldingScreenPanel({ shown, change, media, fonts, saved, onSave,
           style={{ ...fieldBox(), padding: "6px 8px", resize: "vertical", fontFamily: "inherit" }}
         />
       </label>
-      <label style={row}>
+      <label style={panelRow}>
         Picture
         <select data-testid="holding-image" value={holding.image || ""} onChange={(e) => set({ image: e.target.value || null })} style={{ ...fieldBox(), padding: "5px 8px" }}>
           <option value="">None</option>
@@ -91,18 +87,12 @@ export function HoldingScreenPanel({ shown, change, media, fonts, saved, onSave,
         </select>
         {!images.length && <span style={uiText(11, c.textFaint)}>add pictures to the stream folder's images to choose one</span>}
       </label>
-      <label style={row}>
+      <label style={panelRow}>
         Font
-        <select
-          data-testid="holding-font" value={holding.font || ""} onChange={(e) => set({ font: e.target.value || null })}
-          style={{ ...fieldBox(), padding: "5px 8px", fontFamily: fontFamily(font) }}
-        >
-          <option value="">The stream's</option>
-          {fonts.map((f) => <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>)}
-        </select>
+        <FontPick testid="holding-font" value={holding.font} onPick={(v) => set({ font: v })} fonts={fonts} fallback={shown.font} defaultLabel="The stream's" />
       </label>
-      {colour("color", color, !!holding.color, "Words")}
-      {colour("background", background, !!holding.background, "Background")}
+      {colour("color", holding.color, shown.color || "#FFFFFF", "Words")}
+      {colour("background", holding.background, shown.background || "#000000", "Background")}
     </div>
   );
 }

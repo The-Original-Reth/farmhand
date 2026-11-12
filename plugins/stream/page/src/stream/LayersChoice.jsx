@@ -3,8 +3,9 @@ import { Image, Trash2, Type } from "lucide-react";
 import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { uploadStreamPictures } from "../api.js";
-import { box, colourBox, help, label12 } from "./streamStyles.js";
-import { MAX_LAYERS, fontFamily, isBlank, layersChange, layersOf, newPicture, newText, slideLabel } from "./shapes.js";
+import { box, help, label12 } from "./streamStyles.js";
+import { ColourPick, FontPick, fontLabel } from "./controls.jsx";
+import { MAX_LAYERS, isBlank, layersChange, layersOf, newPicture, newText, slideLabel } from "./shapes.js";
 
 // More pictures and words on the square being edited, right under its canvas: any card (a slideshow's, on the screen on
 // show, `slideName`, each screen keeping its own). Each is placed on its own on the canvas (dragged to move, by its corner to resize). Add picture
@@ -36,7 +37,7 @@ export function LayersChoice({ card, setCard, media, slideName, fonts, streamTex
     if (added) add(newPicture(added));
   };
   const chosen = layer !== null ? layers[layer] : null;
-  const usual = fonts.find((f) => f.key === (streamText.font || "play"))?.label || "Play";
+  const usual = fontLabel(fonts, streamText.font);
   const where = card.slideshow ? (isBlank(slideName) ? slideLabel(slideName).toLowerCase() : `this picture (${slideName})`) : "this square";
 
   return (
@@ -110,18 +111,14 @@ export function LayersChoice({ card, setCard, media, slideName, fonts, streamTex
           <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
             <label style={label12}>
               Font
-              <select data-testid="stream-layer-font" value={chosen.font || ""} onChange={(e) => change(layer, { font: e.target.value || null })} style={{ ...box(), fontFamily: fontFamily(chosen.font || streamText.font) }}>
-                <option value="">Default ({usual})</option>
-                {fonts.map((f) => <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>)}
-              </select>
-            </label>
-            <label style={label12}>
-              <input
-                type="color" data-testid="stream-layer-color" value={(chosen.color || streamText.color || "#FFFFFF").toLowerCase()}
-                onChange={(e) => change(layer, { color: e.target.value.toUpperCase() })} style={colourBox}
+              <FontPick
+                testid="stream-layer-font" value={chosen.font} onPick={(v) => change(layer, { font: v })} fonts={fonts}
+                fallback={streamText.font} defaultLabel={`Default (${usual})`}
               />
-              Colour
             </label>
+            <ColourPick testid="stream-layer-color" value={chosen.color} onPick={(v) => change(layer, { color: v })} fallback={streamText.color || "#FFFFFF"}>
+              Colour
+            </ColourPick>
             <label style={label12}>
               <input type="checkbox" checked={!!chosen.band} onChange={(e) => change(layer, { band: e.target.checked })} />
               Dark band behind it
