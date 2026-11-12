@@ -29,7 +29,8 @@ from .constants import DEFAULT_RESOLUTION, DESTINATIONS, KEPT_LINES, RESOLUTIONS
 from .fonts import font_file
 from .choices import settings
 from .encoders import encoder
-from .relay import Buffer, Relay
+from .buffer import Buffer
+from .relay import Relay
 from .sources import Source, sources
 from .picture import Look, TURNS_FOR, command, sender_command, timetable
 from .staging import write_atomically

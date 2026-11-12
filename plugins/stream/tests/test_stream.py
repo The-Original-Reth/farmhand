@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from streamer import config, farm, layouts, migrate, store
 from streamer.app import app
-from streamer.live_stream import feeders, runner, stream
+from streamer.live_stream import feeders, pacing, runner, stream
 import importlib
 sources_module = importlib.import_module("streamer.live_stream.sources")
 from streamer.live_stream.constants import SETTINGS_KEY, STREAM_KEY_KEY
@@ -157,17 +157,17 @@ def test_a_pump_writes_the_latest_frame_or_camera_down_steadily(ffmpeg, tmp_path
 
 def test_time_a_writer_was_held_up_is_made_up_once_its_reader_is_reading():
     step, slept = 1 / 15, []
-    reading = int(feeders.STEADY_AFTER / step) + 1  # steps written: its reader has been reading
+    reading = int(pacing.STEADY_AFTER / step) + 1  # steps written: its reader has been reading
     # early: wait for it
-    assert feeders.pace(10.0, reading, step, 9.9, slept.append) == 10.0 and slept == [pytest.approx(0.1)]
+    assert pacing.pace(10.0, reading, step, 9.9, slept.append) == 10.0 and slept == [pytest.approx(0.1)]
     # reading, then held up 5 s: carry on from where it was (no waiting) until caught up
-    assert feeders.pace(10.0, reading, step, 15.0, slept.append) == 10.0 and len(slept) == 1
+    assert pacing.pace(10.0, reading, step, 15.0, slept.append) == 10.0 and len(slept) == 1
     # held up before it was reading (a new picture opening its inputs): that time is let go
-    assert feeders.pace(10.0, 3, step, 15.0, slept.append) == 15.0
+    assert pacing.pace(10.0, 3, step, 15.0, slept.append) == 15.0
     # a moment behind before then is still made up
-    assert feeders.pace(10.0, 3, step, 10.5, slept.append) == 10.0
+    assert pacing.pace(10.0, 3, step, 10.5, slept.append) == 10.0
     # held up for longer than is ever made up: a real gap
-    assert feeders.pace(10.0, reading, step, 10.0 + feeders.CATCH_UP_MOST + 1, slept.append) == pytest.approx(131.0)
+    assert pacing.pace(10.0, reading, step, 10.0 + pacing.CATCH_UP_MOST + 1, slept.append) == pytest.approx(131.0)
 
 
 # ------------------------------------------------------------------ going live
@@ -471,7 +471,7 @@ def test_the_holding_screen_is_drawn_at_the_streams_size_with_its_words_centred(
 def test_the_buffer_gives_the_holding_screen_until_the_delay_is_held_then_whats_held():
     """After a restart the sender is given the holding screen at once, in whole frames, while the delay fills; once it's
     held, what's held goes out from its start and the holding screen is ended."""
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as relay
 
     from .fake_ffmpeg import HOLDING_FRAME, _Holding, _Sink
 
