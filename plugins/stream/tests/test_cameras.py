@@ -92,6 +92,24 @@ def test_a_feeder_keeps_the_latest_frame_and_says_when_its_camera_is_down(ffmpeg
         f.stop()
 
 
+def test_a_camera_sending_fewer_new_pictures_than_the_stream_is_called_slow(ffmpeg, monkeypatch):
+    monkeypatch.setattr(feeders, "RATE_WINDOW", 1)
+    monkeypatch.setattr(feeders, "SLOW_FPS", 14.0)
+    fast, slow = "http://10.0.6.21/webcam/?action=stream", "rtsp://10.0.6.33:8554/chamber"
+    ffmpeg.repeat[slow] = 8  # (a new picture every 8th frame: about 6 a second, the rest repeats)
+    a = feeders.Feeder("ffmpeg", "1:Bed", ["-i", fast], [], (1280, 720), ffmpeg).start()
+    b = feeders.Feeder("ffmpeg", "2:Chamber", ["-i", slow], [], (1280, 720), ffmpeg).start()
+    try:
+        assert wait_until(lambda: a.state()["state"] == "live")
+        assert a.state()["fps"] is None and a.state()["slow"] is False  # (not known until a whole window has passed)
+        assert wait_until(lambda: a.state()["fps"] is not None and b.state()["fps"] is not None, 3)
+        assert a.state()["slow"] is False and a.state()["fps"] >= 14
+        assert b.state()["slow"] is True and 0 < b.state()["fps"] < 14
+    finally:
+        a.stop()
+        b.stop()
+
+
 def test_a_pump_writes_the_latest_frame_or_camera_down_steadily(ffmpeg, tmp_path, monkeypatch):
     monkeypatch.setattr(feeders, "DOWN_AFTER", 0.3)
     f = feeders.Feeder("ffmpeg", "1:Bed", [], [], (1280, 720), ffmpeg, aspect="16:9")  # no address: always down

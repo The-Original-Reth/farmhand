@@ -24,6 +24,9 @@ class FakeFfmpeg:
         self.feeders: list[list[str]] = []
         self.feeder_procs: list = []
         self.down: set[str] = set()  # cameras (their addresses) that are off: their feeders end at once, with nothing
+        # cameras (their addresses) slower than the stream: each new picture is put out this many times, as ffmpeg's fps
+        # filter repeats a slow camera's frames (others send a new picture every frame)
+        self.repeat: dict[str, int] = {}
         self.holdings: list[list[str]] = []  # the holding screen's ffmpegs (after the plugin's own restart)
         self.holding_procs: list = []
 
@@ -140,11 +143,16 @@ def jpeg(colour=(200, 40, 40), size=(64, 48)) -> bytes:
     return out.getvalue()
 
 
+_PICTURES = []  # two different frames, taken turns with, so each frame is a new picture (made once: Pillow is slow-ish)
+
+
 class _FeederOut:
-    """A feeder's stdout: a JPEG every 20 ms while its camera is up; ends (b"") once it's off or the feeder is ended."""
+    """A feeder's stdout: a JPEG every 20 ms while its camera is up; ends (b"") once it's off or the feeder is ended.
+    Each is a new picture, or the same one `fake.repeat[url]` times over."""
 
     def __init__(self, fake, url, ended):
         self._fake, self._url, self._ended = fake, url, ended
+        self._n = 0
 
     def read(self, n=-1):
         import time
@@ -153,7 +161,11 @@ class _FeederOut:
             self._ended.set()
             return b""
         time.sleep(0.02)
-        return jpeg()
+        if not _PICTURES:
+            _PICTURES.extend([jpeg((200, 40, 40)), jpeg((40, 40, 200))])
+        picture = _PICTURES[(self._n // self._fake.repeat.get(self._url, 1)) % 2]
+        self._n += 1
+        return picture
 
 
 class _Feeder(_Proc):

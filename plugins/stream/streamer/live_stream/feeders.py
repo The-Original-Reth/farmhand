@@ -36,6 +36,12 @@ READ = 65536
 MOST_HELD = 8 * 1024 * 1024  # bytes read without a whole frame in them: the feeder is started again
 JPEG_QUALITY = 4  # ffmpeg's -q:v for the feeders' frames (2 best .. 31 worst)
 KEPT_LINES = 10
+# A camera's own frame rate: its feeder puts out FPS frames a second whatever the camera sends (ffmpeg's fps filter
+# repeats a frame for a slow camera), and a repeated frame comes out the same, byte for byte. So the frames that differ
+# from the one before, over the last RATE_WINDOW seconds, are what the camera really sent. Under SLOW_FPS (a camera set
+# to 15 a second gives 14.5 to 15.5), its square changes less often than the stream does, and the page says so.
+RATE_WINDOW = 20
+SLOW_FPS = 14.0
 
 
 def fit(aspect: str | None, width: int, height: int, turned: bool = False) -> tuple[int, int]:
@@ -114,6 +120,8 @@ class Feeder:
         self._down_since: float | None = time.time()  # (time of day) since when it has been down; None while live
         self.said: collections.deque[str] = collections.deque(maxlen=KEPT_LINES)
         self.restarts = 0
+        self._new: collections.deque[float] = collections.deque()  # (monotonic) when each new picture came, RATE_WINDOW's worth
+        self._reading_since: float | None = None  # (monotonic) when the frames of this connection began
 
     def same(self, input_args: list[str], turn: list[str], size: tuple[int, int]) -> bool:
         return self.input_args == list(input_args) and self.turn == list(turn) and self.size == size
@@ -135,14 +143,27 @@ class Feeder:
             fresh = self._frame is not None and time.monotonic() - self._at < DOWN_AFTER
             return (self._frame if fresh else None), self._frame_size
 
+    def fps(self) -> float | None:
+        """The camera's own frame rate (see RATE_WINDOW), once it has sent frames for a whole RATE_WINDOW; else None."""
+        now = time.monotonic()
+        with self._lock:
+            while self._new and now - self._new[0] > RATE_WINDOW:
+                self._new.popleft()
+            if self._reading_since is None or now - self._reading_since < RATE_WINDOW:
+                return None
+            return len(self._new) / RATE_WINDOW
+
     def state(self) -> dict:
-        """{state: "live" | "down" | "starting", since (ISO time it went down, or None)}."""
+        """{state: "live" | "down" | "starting", since (ISO time it went down, or None)}; while live also fps (the
+        camera's own frame rate, one decimal, or None until it's known) and slow (under SLOW_FPS)."""
         frame, _ = self.latest()
+        fps = self.fps() if frame is not None else None
         with self._lock:
             if frame is not None:
                 if self._down_since is not None:
                     self._down_since = None
-                return {"state": "live", "since": None}
+                return {"state": "live", "since": None, "fps": None if fps is None else round(fps, 1),
+                        "slow": fps is not None and fps < SLOW_FPS}
             if self._frame is None and time.monotonic() - self._started < DOWN_AFTER and self._args:
                 return {"state": "starting", "since": None}
             if self._down_since is None:
@@ -188,8 +209,14 @@ class Feeder:
             buffer += chunk
             for frame in frames_in(buffer):
                 size = jpeg_size(frame)
+                now = time.monotonic()
                 with self._lock:
-                    self._frame, self._at = frame, time.monotonic()
+                    if not got:  # (this connection's first: its frame rate is counted from here)
+                        self._new.clear()
+                        self._reading_since = now
+                    if frame != self._frame:  # (one the fps filter repeated is the same, byte for byte)
+                        self._new.append(now)
+                    self._frame, self._at = frame, now
                     if size:
                         self._frame_size = size
                 got = True
