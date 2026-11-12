@@ -26,8 +26,8 @@ function CameraSquare({ sq, showStatus, big, words = {}, inset = 0 }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const { cam, label } = sq;
   const own = sq.cell || {}; // the square's own choices for its words (show_words, words_size, words_color, words_font)
-  const turn = cam && [cam.rotation ? `rotate(${cam.rotation}deg)` : "", cam.flip_horizontal ? "scaleX(-1)" : "", cam.flip_vertical ? "scaleY(-1)" : ""].join(" ").trim();
-  const fill = { width: "100%", height: "100%", objectFit: "contain", display: "block", border: 0, transform: turn || undefined, pointerEvents: "none" };
+  // (the plugin gives each picture already turned the way Mainsail shows the camera, as the stream does: not turned here)
+  const fill = { width: "100%", height: "100%", objectFit: "contain", display: "block", border: 0, pointerEvents: "none" };
   const message = !cam ? "Camera not found" : state === "failed" ? "Camera not answering" : state === "waiting" ? "Connecting…" : null;
   return (
     <>

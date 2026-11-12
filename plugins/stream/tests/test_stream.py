@@ -323,3 +323,33 @@ def test_a_camera_without_a_working_snapshot_is_previewed_from_its_video(api, pl
     assert r.status_code == 502 and "Connection refused" in r.json()["detail"]
     assert api.get("/api/cameras/2/Nobody/picture").status_code == 404  # (two cameras: no guessing which)
     assert api.get("/api/cameras/1/Front/picture").status_code == 502  # a printer's only camera, renamed: followed
+
+
+def test_preview_pictures_come_turned_as_the_stream_turns_them(api, plugin, farmhand, monkeypatch):
+    """The page shows each picture as it comes (a feeder's frame is turned already), so a snapshot or a frame taken
+    from the video is turned here the way Mainsail shows the camera: never twice, never not at all."""
+    import io as _io
+
+    from PIL import Image
+
+    import streamer.app as app_module
+
+    # a picture red on its left half and blue on its right: flipped both ways, the blue is on the left
+    im = Image.new("RGB", (40, 20), (220, 0, 0))
+    im.paste((0, 0, 220), (20, 0, 40, 20))
+    raw = _io.BytesIO()
+    im.save(raw, "JPEG")
+    out = Image.open(_io.BytesIO(app_module.turned(raw.getvalue(), ["hflip", "vflip"])))
+    assert out.size == (40, 20) and out.getpixel((5, 10))[2] > 150 and out.getpixel((35, 10))[0] > 150
+    assert Image.open(_io.BytesIO(app_module.turned(raw.getvalue(), ["transpose=1"]))).size == (20, 40)
+    assert app_module.turned(raw.getvalue(), []) == raw.getvalue()
+    assert app_module.turned(b"not a picture", ["hflip"]) == b"not a picture"
+
+    taken = []
+    monkeypatch.setattr(runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(app_module, "take_frame", lambda args: taken.append(args) or jpeg())
+    monkeypatch.setattr(app_module, "_frames", {})
+    farmhand.cameras[1]["cameras"][0]["ffmpeg_filters"] = ["hflip", "vflip"]
+    farm.cameras(plugin)
+    assert api.get("/api/cameras/1/Bed/picture").status_code == 200
+    assert taken[0][taken[0].index("-vf") + 1] == "hflip,vflip"
