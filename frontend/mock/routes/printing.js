@@ -27,22 +27,37 @@ export function printingRoutes(ctx) {
     };
     return { ...out, reachable: true, klippy_state: p.moonraker.klippy_state, moonraker_version: p.moonraker.version, print: print || null };
   });
-  // A sample camera for each Klipper printer that's on: a drawn picture standing in for its snapshot
-  const cameraPicture = () => {
+  // A sample camera for each printer that has one: a drawn picture standing in for its snapshot, as big as the camera
+  // it stands for
+  const cameraPicture = (width = 640, height = 360) => {
     const t = new Date().toLocaleTimeString();
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b3036"/><stop offset="1" stop-color="#111418"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><rect x="170" y="250" width="300" height="20" fill="#3a3f45"/><rect x="290" y="70" width="60" height="40" fill="#555b62"/><rect x="312" y="110" width="16" height="22" fill="#e0a43c"/><rect x="240" y="200" width="160" height="50" rx="4" fill="#2f8f83"/><text x="624" y="342" text-anchor="end" font-family="monospace" font-size="16" fill="#9aa3ab">${t}</text></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 640 360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b3036"/><stop offset="1" stop-color="#111418"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><rect x="170" y="250" width="300" height="20" fill="#3a3f45"/><rect x="290" y="70" width="60" height="40" fill="#555b62"/><rect x="312" y="110" width="16" height="22" fill="#e0a43c"/><rect x="240" y="200" width="160" height="50" rx="4" fill="#2f8f83"/><text x="624" y="342" text-anchor="end" font-family="monospace" font-size="16" fill="#9aa3ab">${t}</text></svg>`;
     return "data:image/svg+xml," + encodeURIComponent(svg);
   };
+  // The sample cameras come in the three kinds a farm has, each showing snapshots of the drawn picture at its own size and
+  // rate, as the mockup has no video: a Buddy3D ("farmhand-go2rtc", 1920x1080), go2rtc on even-numbered Klipper printers
+  // (1280x720 at 15 fps), and Crowsnest on the rest, whose ustreamer says what it captures (its "state", below)
+  const camera = (more) => ({ name: "Bed", mjpeg: false, stream_url: null, flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", ...more });
+  const crowsnestCapture = (p) => (p.id % 4 === 1 ? { width: 1920, height: 1080, fps: 15 } : { width: 640, height: 480, fps: 10 });
   on("GET", "/printers/:id/webcams", ({ id }) => {
     const p = printer(id);
-    // a Buddy3D's camera plays through go2rtc on the real server; the mockup has none, so it shows the sample picture
-    if (p.prusalink && p.cameraAddress) return { webcams: [{ name: "Camera", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board: null };
+    if (p.prusalink && p.cameraAddress) return { webcams: [camera({ name: "Camera", service: "farmhand-go2rtc", snapshot_url: cameraPicture(1920, 1080), target_fps: 15 })], error: null, board: null };
     if (p.prusalink) return { webcams: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page", board: null };
     if (!p.moonraker) return { webcams: [], error: NO_MOONRAKER, board: null };
     if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error, board: null };
     // the computer Klipper runs on: every other sample printer is a CM4
     const board = p.id % 2 ? { name: "Pi 4", model: "Raspberry Pi 4 Model B Rev 1.5", memory_gb: 4 } : { name: "CM4", model: "Raspberry Pi Compute Module 4 Rev 1.1", memory_gb: 2 };
-    return { webcams: [{ name: "Bed", service: "mjpegstreamer-adaptive", mjpeg: false, stream_url: null, snapshot_url: cameraPicture(), flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", target_fps: 1 }], error: null, board };
+    if (p.id % 2 === 0) return { webcams: [camera({ name: "Chamber", service: "webrtc-go2rtc", snapshot_url: cameraPicture(1280, 720), target_fps: 15 })], error: null, board };
+    const { width, height, fps } = crowsnestCapture(p);
+    const stream = `/mock-api/printers/${p.id}/webcam/?action=stream`;
+    return { webcams: [camera({ service: "mjpegstreamer-adaptive", stream_url: stream, snapshot_url: cameraPicture(width, height), target_fps: fps, aspect_ratio: width / height > 1.5 ? "16:9" : "4:3" })], error: null, board };
+  });
+  // Crowsnest's ustreamer on the printer itself (not Farmhand's API): "state" beside its stream says what it captures
+  on("GET", "/printers/:id/webcam/state", ({ id }) => {
+    const { width, height, fps } = crowsnestCapture(printer(id));
+    const captured = Math.random() < 0.2 ? fps - 1 : fps; // a real one drops a frame now and then
+    const source = { resolution: { width, height }, online: true, desired_fps: fps, captured_fps: captured };
+    return { ok: true, result: { instance_id: "", encoder: { type: "CPU", quality: 80 }, source, stream: { queued_fps: 0, clients: 0, clients_stat: {} } } };
   });
   // How far along the print running now is, for Monitor's cameras
   const progressOf = (p) => {

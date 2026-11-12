@@ -604,6 +604,12 @@ for a printer.
   changing a camera in Mainsail.
 - **Board:** the top right corner names the computer a Klipper printer runs on, as the printer itself reports it:
   *Pi 4*, *CM4*, *Pi 5*... Point at it for the full model and its memory. A Prusa's camera says *Prusa*.
+- **What the camera sends:** in the top left corner, beside the picture-in-picture button, each camera says what it runs on and what it is sending right now, e.g.
+  *go2rtc · 1280×720 · 15 fps*: **Crowsnest** (its ustreamer's own report of what it captures, asked every 3 seconds),
+  **go2rtc** or **camera-streamer** (WebRTC) and **Buddy3D RTSP** (measured in your browser from the video itself: its
+  size, and the frames arriving each second), or **MJPEG** / **Snapshots** for other cameras (size, and for snapshots
+  how many arrive each second). These are measured, not the settings in Mainsail, and a value that can't be read yet is
+  left out. Point at it to see where the numbers come from.
 - **Progress:** while a printer is printing, left of the board shows how far along the print is (*42%*, or
   *Paused 42%*), as Mainsail or the Prusa itself shows it. It updates by itself every 5 seconds as the print goes on; point at it for the file.
 - **Fast start:** each printer's cameras show as soon as that printer answers, so one that's switched off doesn't
