@@ -137,8 +137,9 @@ class Stream:
                 "cameras": list(self._labels),
                 # each camera while live, in square order: {key, label, state: "live" | "down" | "starting", since}
                 "camera_states": self._camera_states() if wanted else [],
-                # Farmhand didn't answer at the last Go live: its cameras were read at the addresses last heard of
-                "farmhand": self._farmhand_note if wanted else None,
+                # Farmhand didn't answer at the last Go live: its cameras were read at the addresses last heard of. Only
+                # while it still doesn't: once it answers the plugin again (a camera list, a print), the note goes
+                "farmhand": self._farmhand_note if wanted and farm.problem() else None,
                 "error": self._error,
                 "title": dict(self._title) if self._title else None,
                 "encoder": self._encoder,  # "nvenc" (an NVIDIA card) or "cpu", while live; None otherwise

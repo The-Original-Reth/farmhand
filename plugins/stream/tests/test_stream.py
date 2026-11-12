@@ -210,6 +210,10 @@ def test_it_goes_live_again_by_itself_after_a_restart(api, ffmpeg, farmhand, plu
     stream.resume(restarted, store.session_factory)
     assert wait_until(lambda: len(ffmpeg.commands) == 2 and stream.status()["live"])
     assert stream.status()["farmhand"] and "Can't reach Farmhand" in stream.status()["farmhand"]
+    # Farmhand back (or taking the plugin again, after its address changed): the note goes as soon as it answers
+    farmhand.down = False
+    assert farm.print_of(1) is not None
+    assert stream.status()["live"] and stream.status()["farmhand"] is None
 
 
 def test_the_words_fall_back_to_the_printers_name_while_farmhand_is_down(api, ffmpeg, farmhand, monkeypatch):
