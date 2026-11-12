@@ -6,7 +6,8 @@ the list ffmpeg reads them from, each shown for its seconds.
 ffmpeg then reads the whole slideshow as one input, a picture at a time. Giving it each picture as an input of its own
 made it read, fit and lay out every one of them fifteen times a second, on show or not: a slideshow of a hundred logos
 filled the container's memory and the stream fell behind. This way a slideshow costs the same with three pictures as
-with three hundred. The words on it (the card's, and each screen's own) stay drawtext, each in its screen's seconds.
+with three hundred. Each screen's words (its caption, or the card's words, and its pieces of text) are drawn on it
+too, so they can't turn up on another screen; only the card's own pieces of text, on every screen, stay drawtext.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import hashlib
 import json
 import os
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from .. import stream_media
 from .frame import Frame
@@ -63,20 +64,53 @@ def _made_from(*parts) -> str:
     return hashlib.sha1(json.dumps([stamp(p) if isinstance(p, str) else p for p in parts], sort_keys=True, default=str).encode()).hexdigest()
 
 
-def compose(cd: dict, paths: list[str], screen_pictures: dict[int, list[dict]], frame: Frame, folder: str, cache: str | None = None) -> list[str]:
+def _draw_words(canvas: Image.Image, w: dict, frame: Frame) -> None:
+    """Words on a screen as the stream's drawtext writes them (cards.card_square's words()): `w` {text, tb (x, y, size:
+    parts of the square), font (its file), color "#RRGGBB", band}, centred on tb's spot, in lines a quarter of their
+    size apart, on a dark see-through band when chosen. Words that can't be drawn (an unreadable font) are left off."""
+    big = round(w["tb"]["size"] * frame.th)
+    size = max(frame.px(10), big)
+    try:
+        font = ImageFont.truetype(w["font"], size)
+    except OSError:
+        return
+    layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    spacing = big // 4
+    left, top, right, bottom = draw.multiline_textbbox((0, 0), w["text"], font=font, spacing=spacing)
+    x = round(w["tb"]["x"] * frame.tw) - (right - left) / 2 - left
+    y = round(w["tb"]["y"] * frame.th) - (bottom - top) / 2 - top
+    if w.get("band"):
+        pad = max(frame.px(4), big // 5)
+        draw.rectangle((x + left - pad, y + top - pad, x + right + pad, y + bottom + pad), fill=(0, 0, 0, 128))
+    colour = w["color"].lstrip("#")
+    draw.multiline_text((x, y), w["text"], font=font, spacing=spacing,
+                        fill=tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4)) + (255,))
+    canvas.alpha_composite(layer)
+
+
+def compose(cd: dict, paths: list[str], screen_pictures: dict[int, list[dict]], frame: Frame, folder: str, cache: str | None = None,
+            screen_words: dict[int, list[dict]] | None = None) -> list[str]:
     """Each screen of a slideshow as one finished picture in `folder` (made): its colour (the card's, or the stream's),
-    its picture in its box (the card's picture_box, or the picture's own picture_boxes; none on a blank screen) and its
-    more pictures (`screen_pictures`, {place in the slideshow: [{"path", "box"}]}). The pictures' paths, in order. With
-    `cache` (a folder kept while live), each screen is kept there by what makes it, and one already there is used again:
-    a burst of layout changes doesn't put the same hundred screens together each time."""
+    its picture in its box (the card's picture_box, or the picture's own picture_boxes; none on a blank screen), its
+    more pictures (`screen_pictures`, {place in the slideshow: [{"path", "box"}]}) and its words (`screen_words`, {place:
+    [words, _draw_words]}: its pieces of text and its caption, or the card's words). The pictures' paths, in order.
+
+    The words are drawn on the screen itself, not by drawtext in that screen's seconds: on the live stream the
+    slideshow's pictures and drawtext's clock drifted apart, and one sponsor's name was written on another's logo.
+    With `cache` (a folder kept while live), each screen is kept there by what makes it, and one already there is used
+    again: a burst of layout changes doesn't put the same hundred screens together each time."""
+    screen_words = screen_words or {}
     os.makedirs(cache or folder, exist_ok=True)
     colour = "#" + (cd.get("background") or "#" + frame.back).lstrip("#")
     out = []
     for j, path in enumerate(paths):
         box = None if stream_media.is_blank(path) else (cd.get("picture_boxes") or {}).get(os.path.basename(path)) or cd.get("picture_box")
         layers = [[layer["path"], layer.get("box")] for layer in screen_pictures.get(j, [])]
+        words = screen_words.get(j, [])
         if cache:
-            to = os.path.join(cache, _made_from(frame.tw, frame.th, frame.edge, colour, path, box, *layers) + ".png")
+            to = os.path.join(cache, _made_from(frame.tw, frame.th, frame.edge, colour, path, box, *layers,
+                                                *[[w["text"], w["tb"], w["font"], w["color"], bool(w.get("band"))] for w in words]) + ".png")
             if os.path.exists(to):
                 out.append(to)
                 continue
@@ -87,6 +121,8 @@ def compose(cd: dict, paths: list[str], screen_pictures: dict[int, list[dict]], 
             _paste(canvas, path, box, frame, whole_if_full=True)
         for layer in screen_pictures.get(j, []):
             _paste(canvas, layer["path"], layer.get("box"), frame)
+        for w in words:
+            _draw_words(canvas, w, frame)
         tmp = to + ".new.png"
         canvas.convert("RGB").save(tmp, compress_level=1)
         os.replace(tmp, to)  # (whole or not at all: another layout may be reading it)

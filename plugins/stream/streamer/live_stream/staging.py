@@ -13,7 +13,10 @@ from ..errors import NotFound
 from .. import storage
 from .. import stream_media
 from . import slides
+from .constants import DEFAULT_TEXT_COLOR
+from .fonts import font_file
 from .frame import Frame
+from .squares import _text_box
 
 
 def write_atomically(path: str, text: str) -> None:
@@ -104,9 +107,40 @@ def squares(db: Session, chosen: dict, folder: str, cache: str | None = None) ->
                 # each screen put together once (its colour, picture and more pictures): ffmpeg reads them as one input
                 frame = Frame.of(chosen["resolution"], chosen["cols"], chosen["rows"], chosen["background"], chosen["border_color"])
                 baked = {j: [x for x in ls if x["type"] == "picture"] for j, ls in screens.items()}
-                card["frames"] = slides.compose(cell, card["pictures"], baked, frame, os.path.join(folder, "slides", str(c)), cache=cache)
-                card["screen_layers"] = {j: kept for j, ls in screens.items() if (kept := [x for x in ls if x["type"] != "picture"])}
+                on_screens = _screen_words(cell, card, screens, chosen)
+                card["frames"] = slides.compose(cell, card["pictures"], baked, frame, os.path.join(folder, "slides", str(c)),
+                                                cache=cache, screen_words=on_screens)
+                # its screens' words are on the screens themselves now: none drawn over them in their seconds
+                card["screen_layers"], card["picture_words"], card["words"] = {}, {}, None
             out.append(("card", card))
+    return out
+
+
+def _screen_words(cell: dict, card: dict, screens: dict, chosen: dict) -> dict[int, list[dict]]:
+    """Each slideshow screen's words, for drawing on the screen itself (slides.compose), in the order the stream drew
+    them (cards.card_square): its pieces of text, then its caption, or the card's own words when it has none. Each is
+    {text, tb, font (file), color, band}: a piece of text in its own font and colour (else the stream's), the caption and
+    the card's words in the card's (else the stream's)."""
+    def read(file: str) -> str:
+        with open(file, encoding="utf-8") as f:
+            return f.read()
+
+    def style(own: dict) -> dict:
+        return {"font": font_file(own.get("font") or chosen.get("font")),
+                "color": own.get("color") or chosen.get("color") or DEFAULT_TEXT_COLOR, "band": bool(own.get("band"))}
+
+    card_style = style({"font": cell.get("font"), "color": cell.get("color"), "band": cell.get("band")})
+    out: dict[int, list[dict]] = {}
+    for j in range(len(card["pictures"])):
+        got = [{"text": read(x["words"]), "tb": _text_box(x.get("box")), **style(x)}
+               for x in screens.get(j, []) if x["type"] == "text"]
+        cap = card["picture_words"].get(j)
+        if cap:
+            got.append({"text": read(cap["words"]), "tb": _text_box(cap.get("text_box")), **card_style})
+        elif card.get("words"):
+            got.append({"text": read(card["words"]), "tb": _text_box(cell.get("text_box"), cell.get("size"), cell.get("position")), **card_style})
+        if got:
+            out[j] = got
     return out
 
 

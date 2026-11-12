@@ -279,3 +279,28 @@ def test_a_slideshow_picture_resized_on_its_own():
     graph = _graph(live_stream.command("ffmpeg", [], "u", live_stream.Look(cols=1, rows=1, cells=cells, resolution="720p")))
     assert "[1:v]scale=1274:714:" in graph and "[3:v]scale=1274:714:" in graph
     assert "[2:v]scale=637:357:" in graph and "overlay=640+(637-w)/2:360+(357-h)/2:enable=" in graph
+
+
+def test_a_slideshow_screens_words_are_drawn_on_that_screen_only(tmp_path):
+    """Each screen's caption is part of the screen's own picture, so it can only ever show with its own picture (with
+    drawtext in its seconds, the live stream's slideshow and words drifted apart: one sponsor's name on another's logo)."""
+    from PIL import Image
+
+    from streamer.live_stream import slides
+    from streamer.live_stream.fonts import font_file
+    from streamer.live_stream.frame import Frame
+
+    for name in ("a.png", "b.png"):
+        Image.new("RGB", (40, 40), (255, 255, 255)).save(tmp_path / name)
+    frame = Frame.of("720p", 2, 2, "#000000", "#000000")
+    cd = {"background": "#00FF00", "picture_box": {"x": 0, "y": 0, "w": 0.2, "h": 0.2}}
+    words = {1: [{"text": "Bearded\nPrinter", "tb": {"x": 0.5, "y": 0.6, "size": 0.2}, "font": font_file(None), "color": "#FF0000", "band": True}]}
+    a, b = slides.compose(cd, [str(tmp_path / "a.png"), str(tmp_path / "b.png")], {}, frame, str(tmp_path / "out"),
+                          cache=str(tmp_path / "cache"), screen_words=words)
+    red = lambda im: sum(1 for px in im.getdata() if px[0] > 200 and px[1] < 60 and px[2] < 60)  # noqa: E731
+    one, two = Image.open(a).convert("RGB"), Image.open(b).convert("RGB")
+    assert red(one) == 0 and red(two) > 200  # the words on the second screen only
+    assert two.getpixel((320, 216))[1] < 255  # the band darkens the green round them
+    # the same screen without words is another picture (the words are part of what it's kept by)
+    plain = slides.compose(cd, [str(tmp_path / "b.png")], {}, frame, str(tmp_path / "out2"), cache=str(tmp_path / "cache"))
+    assert plain[0] != b
