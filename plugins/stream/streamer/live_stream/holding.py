@@ -14,7 +14,8 @@ from __future__ import annotations
 from PIL import Image, ImageDraw, ImageFont
 
 from .constants import FPS
-from .encoders import encoder_args
+from .encoders import compress_args
+from .lettering import draw_centred
 
 # where things go, as parts of the picture (the page's preview draws it the same way)
 PICTURE_BOX = (0.1, 0.08, 0.8, 0.56)  # x, y, w, h: the picture fitted inside, in the middle
@@ -50,13 +51,8 @@ def draw(path: str, width: int, height: int, text: str, background: str, color: 
             font = ImageFont.truetype(font_path, size)
         except OSError:
             font = ImageFont.load_default()
-        ink = ImageDraw.Draw(canvas)
-        spacing = size // 4
-        left, top, right, bottom = ink.multiline_textbbox((0, 0), text, font=font, spacing=spacing, align="center")
         middle = (WORDS_UNDER if picture_path else WORDS_ALONE) * height
-        x = width / 2 - (right - left) / 2 - left
-        y = middle - (bottom - top) / 2 - top
-        ink.multiline_text((x, y), text, font=font, spacing=spacing, align="center", fill="#" + color.lstrip("#"))
+        draw_centred(ImageDraw.Draw(canvas), text, font, size, (width / 2, middle), "#" + color.lstrip("#"))
     canvas.save(path, "PNG")
 
 
@@ -67,6 +63,4 @@ def command(ffmpeg: str, png: str, enc: str, kbps: int) -> list[str]:
             "-re", "-loop", "1", "-framerate", str(FPS), "-i", png,
             "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
             "-map", "0:v", "-map", "1:a",
-            *encoder_args(enc), "-pix_fmt", "yuv420p", "-r", str(FPS), "-g", str(FPS * 2),
-            "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k",
-            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-f", "mpegts", "pipe:1"]
+            *compress_args(enc, kbps), "-f", "mpegts", "pipe:1"]

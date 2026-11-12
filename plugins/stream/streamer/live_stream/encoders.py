@@ -25,6 +25,15 @@ def encoder_args(encoder: str) -> list[str]:
     return list(ENCODERS.get(encoder, ENCODERS["cpu"]))
 
 
+def compress_args(encoder: str, kbps: int) -> list[str]:
+    """How every picture the stream sends is compressed: the live picture and the holding screen alike (the sender
+    passes both on unchanged, so YouTube must see the same video and sound throughout): H.264 at FPS, a keyframe every
+    two seconds, a steady `kbps`; AAC sound at 128 kbps, 44.1 kHz."""
+    return [*encoder_args(encoder), "-pix_fmt", "yuv420p", "-r", str(FPS), "-g", str(FPS * 2),
+            "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
+
+
 def _nvenc_works(ffmpeg: str) -> bool:
     """Whether ffmpeg can compress with an NVIDIA card here: a moment's black picture through it (no card, no driver
     in reach, or an ffmpeg without it: no)."""
