@@ -1,12 +1,13 @@
 import { c } from "../theme.js";
 import { streamPictureUrl } from "../api.js";
-import { fieldBox, headerButton, uiText } from "../styles.js";
+import { fieldBox, headerButton, primaryButton, uiText } from "../styles.js";
 import { fontFamily } from "./shapes.js";
 import { heading, help, panel } from "./streamStyles.js";
 
 // The holding screen: what YouTube is shown for about a minute after the Stream plugin's own restart (an update, a
 // reboot), while the delay fills again behind it, so the broadcast never goes without video. Its words, a picture from
-// the stream folder, and its colours and font (each left empty: the stream's own). Saved with the page's Save.
+// the stream folder, and its colours and font (each left empty: the stream's own). Saved with its own Save (`onSave`:
+// just the holding screen, anything else changed on the page stays to be saved) or with the page's Save.
 // The preview draws it as the stream does (services: live_stream/holding.py): the picture fitted in the box at the top,
 // the words centred under it, each line centred (or in the middle with no picture).
 const PICTURE_BOX = { left: "10%", top: "8%", width: "80%", height: "56%" };
@@ -16,8 +17,9 @@ const WORDS_SIZE = 0.09 * (9 / 16) * 100; // 9% of the height, in parts of the w
 
 const swatch = { width: 34, height: 24, padding: 0, border: `1px solid ${c.border}`, background: "none", cursor: "pointer" };
 
-export function HoldingScreenPanel({ shown, change, media, fonts }) {
+export function HoldingScreenPanel({ shown, change, media, fonts, saved, onSave, busy }) {
   const holding = shown.holding;
+  const dirty = JSON.stringify(holding) !== JSON.stringify(saved);
   const set = (what) => change({ holding: { ...holding, ...what } });
   const background = holding.background || shown.background || "#000000";
   const color = holding.color || shown.color || "#FFFFFF";
@@ -39,7 +41,13 @@ export function HoldingScreenPanel({ shown, change, media, fonts }) {
 
   return (
     <div data-testid="stream-holding" style={panel()}>
-      <div style={heading}>Holding screen</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ ...heading, flex: 1 }}>Holding screen</div>
+        <span style={uiText(12, dirty ? c.amber : c.textFaint)}>{dirty ? "Not saved yet" : "Saved"}</span>
+        <button type="button" data-testid="holding-save" onClick={onSave} disabled={!dirty || !!busy} style={primaryButton(!dirty || !!busy)}>
+          {busy === "holding" ? "Saving…" : "Save"}
+        </button>
+      </div>
       <div style={help}>
         Shown on YouTube for about a minute after the Stream plugin restarts (an update or a reboot), while the delay fills
         again behind it. YouTube keeps getting video, so the broadcast carries on, and then switches to the cameras.

@@ -186,6 +186,16 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed,
     ask("start", startStream);
   };
   const stop = () => ask("stop", stopStream);
+  // Save just the holding screen: anything else changed on the page and not saved yet stays as it is, still to be saved
+  const saveHolding = async () => {
+    const p = await ask("holding", () => saveStream({ holding: shown.holding }));
+    if (p && draft) {
+      const next = { ...shown, holding: p.settings.holding };
+      const now = followCameras(p.settings, cams); // (as the page shows the saved settings: cameras renamed since followed)
+      const same = Object.keys(now).every((k) => JSON.stringify(now[k]) === JSON.stringify(next[k]));
+      setDraft(same ? null : next);
+    }
+  };
   // Switch to a saved layout: the stream takes it now (while live, it starts again with it). Anything else changed on
   // the page and not saved yet stays as it is, still to be saved.
   const switchTo = async (l) => {
@@ -266,7 +276,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed,
           }
         />
 
-        <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} />
+        <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} saved={saved.holding} onSave={saveHolding} busy={busy} />
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} control={music} onWaiting={setMusicWaits} muted={muted} />
         <SavedLayoutsPanel
