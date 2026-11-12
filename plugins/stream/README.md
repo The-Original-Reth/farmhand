@@ -1,8 +1,8 @@
-# Stream: the live stream as a Farmhand plugin
+# YouTube Stream: the live stream to YouTube as a Farmhand plugin
 
-The Stream plugin sends printers' cameras live to **YouTube Live**, no OBS needed, from a container of its own, so a
+The YouTube Stream plugin (id `stream`) sends printers' cameras live to **YouTube Live**, no OBS needed, from a container of its own, so a
 Farmhand update, restart or crash never stops the stream. It is the only way Farmhand streams: Farmhand's own Stream
-page is gone. Once the plugin is added, **Stream** is in Farmhand's menu where that page was, after Monitor, and opens
+page is gone. Once the plugin is added, **YouTube** is in Farmhand's menu where that page was, after Monitor, and opens
 the plugin's page inside Farmhand (`/plugin/stream`; an old `/stream` bookmark leads there too), in Farmhand's colours.
 It works as the Stream page always did: the grid
 of squares, cards with pictures, slideshows and words, the music, the words under the cameras, taking turns, the

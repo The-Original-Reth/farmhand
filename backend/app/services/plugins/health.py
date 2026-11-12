@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ...database import SessionLocal
 from ...periodic import PeriodicWorker
 from ...timeutil import utc_now
+from . import manifest as manifests
 from . import registry, remote
 
 log = logging.getLogger("farmhand.plugins")
@@ -29,8 +30,30 @@ def check(db: Session, plugin) -> str | None:
     if error and (state, error) != (link.health, link.last_error):
         log.info("The %s plugin is %s: %s", plugin.id, state.replace("_", " "), error)
     link.health, link.last_error, link.checked_at = state, error, now
+    if state == "running":
+        refresh_manifest(plugin, link.address)
     db.commit()
     return error
+
+
+def refresh_manifest(plugin, address: str) -> bool:
+    """
+    The plugin's manifest read again, so a new name, menu entry or version (a plugin updated where it runs) shows in
+    Farmhand without adding it again. Kept only when it is still the same plugin, on the same plugin API, asking for no
+    permission it didn't ask for before (a new one needs the operator's yes: add it again). True when something changed.
+    """
+    try:
+        found = manifests.check(remote.fetch_manifest(address))
+    except ValueError:
+        return False  # (the health check says what's wrong, if anything)
+    asked = set((plugin.manifest or {}).get("permissions") or [])
+    same = found["id"] == plugin.id and found["farmhand_api"] == plugin.farmhand_api
+    if not same or not set(found["permissions"]) <= asked or found == plugin.manifest:
+        return False
+    if (found["name"], found["version"]) != (plugin.name, plugin.version):
+        log.info("The %s plugin is now %s %s", plugin.id, found["name"], found["version"])
+    plugin.name, plugin.version, plugin.manifest = found["name"], found["version"], found
+    return True
 
 
 def check_all(db: Session) -> None:

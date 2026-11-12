@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Radio, Video } from "lucide-react";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video, Youtube } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
@@ -102,11 +102,12 @@ function Thanks() {
 }
 
 // The icon a plugin's manifest names for its menu entry ("video"...), from the few Farmhand knows; a puzzle piece otherwise
-const PLUGIN_ICONS = { video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard };
+const PLUGIN_ICONS = { youtube: Youtube, video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard };
 
 // Plugins that take a slot of their own in the main menu instead of the plugins group below it: plugin id -> the section
-// it comes after, and its icon. Stream was Farmhand's own page, after Monitor, until it became a plugin; it keeps its place.
-const MAIN_MENU_SLOTS = { stream: { after: "monitor", Icon: Radio } };
+// it comes after, and its icon. Stream was Farmhand's own page, after Monitor, until it became a plugin (YouTube Stream); it
+// keeps its place, under the menu name its manifest gives (YouTube).
+const MAIN_MENU_SLOTS = { stream: { after: "monitor", Icon: Youtube } };
 
 const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon: MAIN_MENU_SLOTS[p.id]?.Icon || PLUGIN_ICONS[p.page.icon] || Puzzle });
 

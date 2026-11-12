@@ -8,8 +8,8 @@ import re
 SETTINGS_KEY = "live_stream"  # see settings()
 STREAM_KEY_KEY = "live_stream_key"  # the stream key itself, on its own
 
-# Where each destination takes a stream: its RTMPS address, the stream key goes on the end. YouTube Live only for now
-# (Twitch comes back once YouTube is sorted out; a setup saved with it is read as YouTube)
+# Where the stream goes: YouTube Live's RTMPS address, the stream key goes on the end. This plugin is for YouTube only
+# (Twitch would be a plugin of its own); a setup saved with another destination is read as YouTube.
 DESTINATIONS = {
     "youtube": {"label": "YouTube Live", "url": "rtmps://a.rtmps.youtube.com/live2/"},
 }
@@ -27,7 +27,7 @@ RESOLUTIONS = {
     "1440p": (2560, 1440, 4500),
 }
 RESOLUTION_LABELS = {"720p": "720p (1280×720)", "1080p": "1080p (1920×1080)", "1440p": "2K (2560×1440)"}
-DEFAULT_RESOLUTION = "1080p"
+DEFAULT_RESOLUTION = "720p"
 WIDTH, HEIGHT, _ = RESOLUTIONS[DEFAULT_RESOLUTION]
 RETRY_SECONDS = 10  # how long after ffmpeg stops it is started again
 STATUS_EVERY = 15  # how often the print progress written on the video is brought up to date

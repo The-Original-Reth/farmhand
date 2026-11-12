@@ -190,6 +190,22 @@ def test_the_health_check_keeps_how_each_plugin_is_doing(db_session, plugin):
     assert plugin.requests == []
 
 
+def test_a_plugin_renamed_where_it_runs_is_renamed_in_farmhand(db_session, plugin):
+    p, _ = registry.register_by_address(db_session, ADDRESS, [])
+    plugin.manifest = {**plugin.manifest, "name": "Hello there", "version": "0.2.0", "page": {"menu": "Hi", "path": "/"}}
+    health.check_all(db_session)
+    out = registry.out(p)
+    assert (out["name"], out["version"], out["page"]["menu"]) == ("Hello there", "0.2.0", "Hi")
+    # asking for a new permission needs the operator's yes: the manifest Farmhand has stays as it was
+    plugin.manifest = {**plugin.manifest, "name": "Greedy", "permissions": [*plugin.manifest["permissions"], "prints:read"]}
+    health.check_all(db_session)
+    assert registry.out(p)["name"] == "Hello there"
+    # nor is it taken while the plugin isn't well
+    plugin.manifest, plugin.unwell = {**plugin.manifest, "name": "Sick", "permissions": MANIFEST["permissions"]}, True
+    health.check_all(db_session)
+    assert registry.out(p)["name"] == "Hello there"
+
+
 def test_a_plugin_naming_no_health_path_is_asked_for_its_manifest(db_session, plugin):
     del plugin.manifest["health"]
     p, _ = registry.register_by_address(db_session, ADDRESS, [])

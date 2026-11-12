@@ -25,8 +25,8 @@ def test_taking_turns_enlarges_only_the_camera_on_screen():
     assert "split=2[g0][s0]" in graph and "xstack=inputs=4" in graph  # 3 cameras in a 2x2 grid, one square empty
     # every camera's picture goes to the switch with its words on, and only what comes through is made full size
     assert "[s1]drawtext=" in graph and "fontsize=h/26" in graph
-    assert "[w0][w1][w2]streamselect@pick=inputs=3:map=0,scale=1920:1080" in graph
-    assert graph.count("scale=1920:1080") == 2  # the grid once, the camera on screen once: never one per camera
+    assert "[w0][w1][w2]streamselect@pick=inputs=3:map=0,scale=1280:720" in graph
+    assert graph.count("scale=1280:720") == 2  # the grid once, the camera on screen once: never one per camera
     assert "[grid][full]streamselect@view=inputs=2:map=0[turns]" in graph and "[turns]sendcmd=f=/s/turns.txt[timed]" in graph
     assert cmd[cmd.index("-map") + 1] == "[timed]" and "overlay" not in graph
     assert cmd[cmd.index("-t") + 1] == str(live_stream.TURNS_FOR)  # the day's timetable done, it's started again
@@ -59,7 +59,7 @@ def test_the_squares_of_the_grid():
     assert square["[g0]"].endswith("[c5]")  # camera 0 in the last
     # 1x1: the one square is the whole picture
     one = _graph(live_stream.command("ffmpeg", srcs[:1], "u", live_stream.Look(cols=1, rows=1, cells=[("camera", 0)])))
-    assert "xstack" not in one and "[c0]scale=1920:1080" in one
+    assert "xstack" not in one and "[c0]scale=1280:720" in one
 
 
 def test_the_timetable_of_turns():
@@ -159,7 +159,7 @@ def test_the_grid_and_the_words():
     assert live_stream.grid(1, 1280, 720) == (1, 1, 1280, 720)
     assert live_stream.grid(3, 1280, 720) == (2, 2, 640, 360)
     assert live_stream.grid(5, 1280, 720) == (3, 2, 426, 360)
-    assert live_stream.grid(4) == (2, 2, 960, 540)  # 1080p unless chosen otherwise
+    assert live_stream.grid(4) == (2, 2, 640, 360)  # 720p unless chosen otherwise
     assert live_stream.auto_grid(0) == (1, 1) and live_stream.auto_grid(7) == (3, 3) and live_stream.auto_grid(25) == (5, 5)
     assert live_stream.status_line("VT 1190", {"state": "printing", "progress": 41.6, "file": "jobs/benchy.gcode"}) == "VT 1190 · Printing 42% · benchy.gcode"
     assert live_stream.status_line("VT 1190", {"state": "paused", "progress": None, "file": None}) == "VT 1190 · Paused"
