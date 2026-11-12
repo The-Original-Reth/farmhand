@@ -114,3 +114,29 @@ def test_the_relay_knows_the_time_of_the_last_frame_passed_on():
     r.start(Picture())
     assert _wait_for(lambda: r.last_time() == 1.5)  # (the 2.0 s frame is still being held back, not passed on)
     ended.set()
+
+
+def test_the_buffer_says_how_much_stream_it_holds_by_the_streams_own_times():
+    """What's held is counted from the stream's times, not from when it came: a picture that stopped for a moment and
+    then made up the time it lost still holds the whole delay. (MPEG-TS times start again from 0 after about 26.5 h.)"""
+    from streamer.live_stream import relay
+
+    def frame_at(seconds):
+        pts = int(seconds * 90000) % (1 << 33)
+        b = bytes([0x21 | ((pts >> 29) & 0xE), (pts >> 22) & 0xFF, ((pts >> 14) & 0xFE) | 1, (pts >> 7) & 0xFF, ((pts << 1) & 0xFE) | 1])
+        pes = bytes([0, 0, 1, 0xE0, 0, 0, 0x80, 0x80, 5]) + b
+        return bytes([0x47, 0x41, 0x00, 0x10]) + pes + bytes(184 - len(pes))
+
+    plain = bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184)
+    buffer = relay.Buffer(60)  # (no sender: nothing leaves it)
+    buffer.write(frame_at(10.0) + plain)
+    buffer.write(frame_at(40.0) + plain)
+    buffer.write(frame_at(70.0) + plain)  # come at once, but a minute of stream
+    assert buffer.held() == 60.0
+    buffer.close()
+
+    across = relay.Buffer(60)
+    across.write(frame_at(relay.PTS_WRAP - 20))
+    across.write(frame_at(relay.PTS_WRAP + 40))  # (its time started again from 0)
+    assert across.held() == 60.0
+    across.close()

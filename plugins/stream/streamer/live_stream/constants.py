@@ -20,6 +20,12 @@ MAX_CAMERAS = MAX_SIDE * MAX_SIDE
 CAMERA_KEY = re.compile(r"^\d+:.{1,100}$")  # "printer id:camera name", as Monitor names them
 
 FPS = 15
+# The picture's camera pipes and its sound are written at the pace they play, and the picture ffmpeg counts its time in
+# frames and samples: time a writer falls behind (the picture ffmpeg stopped reading for a moment) is made up, not
+# skipped, or the picture's clock falls behind the real one and the sender empties the stream delay to keep up. Up to
+# this many seconds; more is a real gap (the self-check sees to a stream that has stopped).
+CATCH_UP_MOST = 120
+STEADY_AFTER = 2  # seconds of it a reader has taken before it counts as reading (until then, nothing is made up)
 # The sizes the stream can be sent at: (width, height, video bitrate as YouTube suggests for each), and their names
 RESOLUTIONS = {
     "720p": (1280, 720, 2500),
