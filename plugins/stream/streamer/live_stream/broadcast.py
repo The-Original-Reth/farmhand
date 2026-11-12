@@ -16,6 +16,7 @@ from .. import app_settings, youtube_live
 YOUTUBE_EVERY = 120  # seconds between asking YouTube about the broadcast (its health, viewers): ~2,200 of the 10,000 units a day
 YOUTUBE_FIRST = 20  # seconds after the delay has passed (the video reaching YouTube) before asking it the first time
 ENDED = ("complete", "revoked", "gone")  # a broadcast YouTube has ended (auto-stop after a long drop, or ended in Studio)
+ARRIVING = ("good", "ok", "bad")  # the stream's health when its video is reaching YouTube (not noData)
 NOTHING_YET = {"state": None, "health": None, "issues": [], "viewers": None}
 
 
@@ -115,6 +116,10 @@ class Broadcast:
                 self._health = got
             if got["state"] in ENDED and not self.ended:
                 said(self._make_again(read_settings))
+            elif got["state"] == "ready" and got["health"] in ARRIVING and not self.ended:
+                started = self._start_waiting(read_settings)
+                if started:
+                    said(started)
             if not wait(YOUTUBE_EVERY):
                 return
 
@@ -130,6 +135,18 @@ class Broadcast:
         if stopped:  # (stopped meanwhile: the new one isn't needed)
             self.end()
         return {"state": "done", "message": f"YouTube had ended the broadcast, so Farmhand made a new one: “{_title_of(chosen)}”."}
+
+    def _start_waiting(self, read_settings: Callable[[], dict]) -> dict | None:
+        """The broadcast is waiting, "ready", though the video is reaching YouTube: YouTube starts one by itself only when
+        the video begins, so one made while it was already arriving (going live again after a restart, with the old
+        broadcast gone) would wait for ever. Started here, unless auto-start is off (then it's started in Studio)."""
+        if read_settings()["youtube"].get("auto_start", True) is False:
+            return None
+        try:
+            youtube_live.go_live(self.creds, self.id)
+        except youtube_live.YouTubeError as e:
+            return {"state": "failed", "message": f"The broadcast is waiting on YouTube and wouldn't start ({e}); trying again in {YOUTUBE_EVERY // 60} minutes."}
+        return {"state": "done", "message": "The broadcast was waiting on YouTube though the video was reaching it, so Farmhand started it."}
 
     def end(self) -> None:
         """Stop: ended on YouTube in a thread of its own (stopping never waits on YouTube); it becomes the channel's saved

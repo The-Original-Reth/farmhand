@@ -380,6 +380,13 @@ def update_broadcast(creds: dict, broadcast_id: str, yt: dict, title: str, descr
     })
 
 
+def go_live(creds: dict, broadcast_id: str) -> None:
+    """Start a broadcast that's waiting, "ready", though its video is reaching YouTube: what its auto-start would do, had
+    YouTube seen the video begin (it starts one only when its stream goes from no video to video)."""
+    token = _access_token(creds)
+    _api("POST", "/liveBroadcasts/transition", token, {"broadcastStatus": "live", "id": broadcast_id, "part": "status"})
+
+
 def end_broadcast(creds: dict, broadcast_id: str) -> None:
     """End the broadcast (it becomes the channel's saved video). One that never went live is deleted instead, so no
     empty broadcast is left waiting. Never minded if YouTube has already ended it."""

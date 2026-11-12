@@ -17,7 +17,8 @@ def _started() -> None:
 
 @app.on_event("shutdown")
 def _stopping() -> None:
-    stream.stop(forget=False)  # (only the container stopping: it goes live again when it starts)
+    # (only the container stopping: it goes live again when it starts, on the same YouTube broadcast, so that's left live)
+    stream.stop(forget=False, end_broadcast=False)
 
 
 def main() -> None:
