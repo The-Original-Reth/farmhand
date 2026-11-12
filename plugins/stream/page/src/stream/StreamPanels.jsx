@@ -126,7 +126,9 @@ export function LiveStatusPanel({ status, destLabel, destination, busy, onStart,
               ? `${status.cameras.length} camera${status.cameras.length === 1 ? "" : "s"}: ${status.cameras.join(", ")}${
                 status.delay
                   ? status.delay.filling
-                    ? ` · Collecting the ${status.delay.seconds} s delay before sending to YouTube (${Math.round(status.delay.held)} s so far)`
+                    ? status.holding
+                      ? ` · Back after a restart: YouTube is shown the holding screen while the ${status.delay.seconds} s delay fills (${Math.round(status.delay.held)} s so far)`
+                      : ` · Collecting the ${status.delay.seconds} s delay before sending to YouTube (${Math.round(status.delay.held)} s so far)`
                     : ` · ${Math.round(status.delay.held)} s of the ${status.delay.seconds} s delay held`
                   : ""}${status.changing ? " · Changing to the new layout: it takes over in a few seconds, with no break" : ""}`
               : off

@@ -10,6 +10,7 @@ import { LiveStatusPanel, MuteSwitch, StreamSwitch, WhereToPanel } from "./Strea
 import { DefaultsPanel } from "./StreamSquares.jsx";
 import { STREAM_CHANNEL, YouTubeSettingsButton, openYouTubeSettings } from "./YouTubeSettings.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
+import { HoldingScreenPanel } from "./HoldingScreen.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
 
 // The Stream page: Farmhand sends the printers' cameras live to YouTube itself, laid out in a grid of
@@ -143,6 +144,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed,
       resolution: shown.resolution, secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
       borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color,
       music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle, delay: shown.delay === "" ? -1 : shown.delay,
+      holding: shown.holding,
     });
   // Save everything on the page: once saved, nothing here is still to be saved. The page as the server answered, or null.
   const saveAll = async () => {
@@ -264,6 +266,7 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed,
           }
         />
 
+        <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} />
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={status.live} onAir={status.music} heardAt={status.heardAt} enabled={enabled} control={music} onWaiting={setMusicWaits} muted={muted} />
         <SavedLayoutsPanel

@@ -12,8 +12,9 @@ from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
 from .constants import DEFAULT_TEXT_COLOR
 from .constants import CATEGORIES, DELAY, LATENCIES, PRIVACIES, TAGS_MAX, YOUTUBE_DEFAULTS
+from .constants import HOLDING_DEFAULTS, HOLDING_TEXT_MAX
 from .constants import CAMERA_KEY, COLOR, DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_DESTINATION, DEFAULT_MUSIC_VOLUME, DEFAULT_RESOLUTION, DESCRIPTION_MAX, DESTINATIONS, KEY_SHAPE, LAYOUTS, MAX_CAMERAS, MAX_SIDE, RESOLUTIONS, SAVED, SECONDS, SETTINGS_KEY, STREAM_KEY_KEY, TITLE_MAX
-from .squares import MAX_LAYERS, SLIDE_SECONDS, TEXT_MAX, _cell, _color
+from .squares import MAX_LAYERS, SLIDE_SECONDS, TEXT_MAX, _cell, _color, _named
 
 # the stream's own colours, as a refusal names them
 COLOURS = {"border_color": "the border's colour", "color": "the colour of the stream's words", "background": "the stream's background colour"}
@@ -29,6 +30,45 @@ def auto_grid(n: int) -> tuple[int, int]:
     """(columns, rows) of the smallest near-square grid that holds n squares (1x1 for none)."""
     cols = min(MAX_SIDE, max(1, math.ceil(math.sqrt(n))))
     return cols, min(MAX_SIDE, max(1, math.ceil(n / cols)))
+
+
+def _holding(raw) -> dict:
+    """The holding screen as kept (anything missing or not usable: its default). See HOLDING_DEFAULTS."""
+    raw = raw if isinstance(raw, dict) else {}
+    text = raw.get("text") if isinstance(raw.get("text"), str) else HOLDING_DEFAULTS["text"]
+    colour = lambda v: v.upper() if isinstance(v, str) and COLOR.match(v) else None  # noqa: E731
+    return {
+        "text": text[:HOLDING_TEXT_MAX],
+        "image": _named(raw.get("image")),
+        "background": colour(raw.get("background")),
+        "color": colour(raw.get("color")),
+        "font": raw.get("font") if raw.get("font") in FONTS else None,
+    }
+
+
+def _check_holding(sent, now: dict) -> dict:
+    """The holding screen as sent (only what's sent changes; null colours and font: the stream's own), checked."""
+    if not isinstance(sent, dict):
+        raise ValueError("The holding screen's settings didn't come through.")
+    out = dict(now)
+    if "text" in sent:
+        if not isinstance(sent["text"], str) or len(sent["text"].strip()) > HOLDING_TEXT_MAX:
+            raise ValueError(f"The holding screen's words can be up to {HOLDING_TEXT_MAX} characters.")
+        out["text"] = sent["text"].strip()
+    if "image" in sent:
+        if sent["image"] is not None and _named(sent["image"]) is None:
+            raise ValueError("Choose one of the stream folder's pictures for the holding screen.")
+        out["image"] = sent["image"]
+    for name, what in (("background", "background"), ("color", "words' colour")):
+        if name in sent:
+            if sent[name] is not None and not (isinstance(sent[name], str) and COLOR.match(sent[name])):
+                raise ValueError(f"Choose the holding screen's {what} with the colour picker (#RRGGBB).")
+            out[name] = sent[name].upper() if sent[name] else None
+    if "font" in sent:
+        if sent["font"] is not None and sent["font"] not in FONTS:
+            raise ValueError("Choose one of the fonts listed for the holding screen's words.")
+        out["font"] = sent["font"]
+    return out
 
 
 def _youtube(raw) -> dict:
@@ -142,6 +182,7 @@ def settings(db: Session) -> dict:
         "music_shuffle": raw.get("music_shuffle", True) is not False,
         "delay": raw["delay"] if type(raw.get("delay")) is int and DELAY[0] <= raw["delay"] <= DELAY[1] else DELAY[2],
         "youtube": _youtube(raw.get("youtube")),
+        "holding": _holding(raw.get("holding")),
         "title": text("title"),
         "description": text("description"),
         "key_set": bool(app_settings.get(db, STREAM_KEY_KEY)),
@@ -211,7 +252,7 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
 def save(db: Session, *, destination=None, chosen=None, show_status=None, stream_key=None, clear_key=False, layout=None,
          resolution=None, border_color=None, background=None, font=None, color=None, enabled=None, cols=None, rows=None, cells=None,
          seconds_all=None, seconds_each=None, title=None, description=None, music=None, music_volume=None, music_shuffle=None,
-         delay=None, youtube=None) -> dict:
+         delay=None, youtube=None, holding=None) -> dict:
     """
     Change what's given (None: left as it is). The grid comes as cols, rows and cells together; or `chosen`, a list of
     cameras, which makes a grid just big enough for them, in that order. Anything that can't be
@@ -252,6 +293,8 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
         now["music_shuffle"] = bool(music_shuffle)
     if youtube is not None:
         now["youtube"] = _check_youtube(youtube, now["youtube"])
+    if holding is not None:
+        now["holding"] = _check_holding(holding, now["holding"])
     if delay is not None:
         if type(delay) is not int or not DELAY[0] <= delay <= DELAY[1]:
             raise ValueError(f"The stream's delay has to be from {DELAY[0]} to {DELAY[1]} seconds.")
