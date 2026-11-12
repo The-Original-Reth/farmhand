@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { frameCounter, useMeasuredVideo } from "./liveInfo.js";
 
 // The camera played by the service Mainsail has it set to:
 //   mjpegstreamer, uv4l-mjpeg, ipstream   the MJPEG stream itself, in an <img>
@@ -6,20 +7,23 @@ import { useEffect, useRef, useState } from "react";
 //   webrtc-camerastreamer                 WebRTC, set up with camera-streamer's POSTs
 //   iframe                                the stream address in a frame
 //   anything else (the adaptive MJPEG one, HLS, ...)  its snapshots, at the frame rate set in Mainsail
-// and a camera Farmhand plays itself (a Buddy3D's, "farmhand-go2rtc"): video sent over go2rtc's websocket
-export function CameraPicture({ cam, label, style, onState }) {
+// and a camera Farmhand plays itself (a Buddy3D's, "farmhand-go2rtc"): video sent over go2rtc's websocket.
+// onMeasure({ width, height, fps }) is told what the picture really is, as far as this browser can see it: a video's
+// decoded size and frames shown per second, snapshots' size and how many arrive per second, an MJPEG stream's size
+// (its frames can't be counted from an <img>).
+export function CameraPicture({ cam, label, style, onState, onMeasure = () => {} }) {
   const s = cam.service;
-  if (s === "farmhand-go2rtc" && cam.stream_url) return <StreamedVideo cam={cam} style={style} onState={onState} />;
-  if (s === "webrtc-go2rtc" && cam.stream_url) return <WebrtcVideo cam={cam} connect={go2rtc} style={style} onState={onState} />;
-  if (s === "webrtc-camerastreamer" && cam.stream_url) return <WebrtcVideo cam={cam} connect={cameraStreamer} style={style} onState={onState} />;
+  if (s === "farmhand-go2rtc" && cam.stream_url) return <StreamedVideo cam={cam} style={style} onState={onState} onMeasure={onMeasure} />;
+  if (s === "webrtc-go2rtc" && cam.stream_url) return <WebrtcVideo cam={cam} connect={go2rtc} style={style} onState={onState} onMeasure={onMeasure} />;
+  if (s === "webrtc-camerastreamer" && cam.stream_url) return <WebrtcVideo cam={cam} connect={cameraStreamer} style={style} onState={onState} onMeasure={onMeasure} />;
   if (s === "iframe" && cam.stream_url) return <iframe src={cam.stream_url} title={label} style={{ ...style, pointerEvents: "none" }} onLoad={() => onState("showing")} />;
-  if (cam.mjpeg) return <img src={cam.stream_url} alt={label} draggable={false} style={style} onLoad={() => onState("showing")} onError={() => onState("failed")} />;
-  return <Snapshots cam={cam} label={label} style={style} onState={onState} />;
+  if (cam.mjpeg) return <img src={cam.stream_url} alt={label} draggable={false} style={style} onLoad={(e) => (onState("showing"), onMeasure({ width: e.currentTarget.naturalWidth || null, height: e.currentTarget.naturalHeight, fps: null }))} onError={() => onState("failed")} />;
+  return <Snapshots cam={cam} label={label} style={style} onState={onState} onMeasure={onMeasure} />;
 }
 
 // The next snapshot is fetched once the last one has loaded, no faster than the camera's frame rate, and only while the
 // page is in view. It replaces the last picture only once loaded, so the picture never blanks in between.
-function Snapshots({ cam, label, style, onState }) {
+function Snapshots({ cam, label, style, onState, onMeasure }) {
   const [src, setSrc] = useState(null);
   const url = cam.snapshot_url;
 
@@ -28,6 +32,9 @@ function Snapshots({ cam, label, style, onState }) {
     let live = true;
     let timer;
     const gap = 1000 / Math.max(1, cam.target_fps || 15);
+    const counted = frameCounter();
+    let size = null;
+    const measure = setInterval(() => !document.hidden && size && onMeasure({ ...size, fps: counted.rate() }), 2000);
     const fresh = () => (/^https?:/i.test(url) ? `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}` : url);
     const next = () => {
       if (!live) return;
@@ -39,6 +46,8 @@ function Snapshots({ cam, label, style, onState }) {
         if (!live) return;
         setSrc(img.src);
         onState("showing");
+        counted.frame();
+        size = img.naturalWidth ? { width: img.naturalWidth, height: img.naturalHeight } : null;
         again(Math.max(0, gap - (Date.now() - began)));
       };
       img.onerror = () => {
@@ -52,6 +61,7 @@ function Snapshots({ cam, label, style, onState }) {
     return () => {
       live = false;
       clearTimeout(timer);
+      clearInterval(measure);
     };
   }, [url, cam.target_fps]);
 
@@ -60,7 +70,7 @@ function Snapshots({ cam, label, style, onState }) {
 
 // A WebRTC camera: `connect` sets up the peer connection its own way; the picture plays muted, as a camera has no sound
 // worth hearing. A dropped connection is tried again after a few seconds.
-function WebrtcVideo({ cam, connect, style, onState }) {
+function WebrtcVideo({ cam, connect, style, onState, onMeasure }) {
   const video = useRef(null);
 
   useEffect(() => {
@@ -94,6 +104,8 @@ function WebrtcVideo({ cam, connect, style, onState }) {
       stop();
     };
   }, [cam.stream_url]);
+
+  useMeasuredVideo(video, onMeasure);
 
   return (
     <video
@@ -157,7 +169,7 @@ function cameraStreamer(pc, streamUrl, fail) {
 const CODECS = ["avc1.640029", "avc1.64002A", "avc1.640033", "hvc1.1.6.L153.B0", "mp4a.40.2", "mp4a.40.5", "opus"];
 const KEEP = 10; // seconds of video kept behind the newest
 
-function StreamedVideo({ cam, style, onState }) {
+function StreamedVideo({ cam, style, onState, onMeasure }) {
   const video = useRef(null);
 
   useEffect(() => {
@@ -238,6 +250,8 @@ function StreamedVideo({ cam, style, onState }) {
       stop();
     };
   }, [cam.stream_url]);
+
+  useMeasuredVideo(video, onMeasure);
 
   return <video ref={video} autoPlay muted playsInline style={style} onPlaying={() => onState("showing")} />;
 }

@@ -78,6 +78,7 @@ export function buildFarm() {
       moonraker: null,
       // reached through PrusaLink: no history of its own, so its prints are the ones Farmhand recorded
       prusalink: { reachable: true, firmware: "6.2.0", username: "maker", hasPassword: true, url: null },
+      cameraAddress: "10.0.6.46", // its Buddy3D
       notes: "Enclosed. PETG and ASA live here.",
       serviceHoursSince: 610, serviceHistory: [], serviceNotes: "",
     },

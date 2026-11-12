@@ -4,6 +4,7 @@ import { ExternalLink, PictureInPicture2 } from "lucide-react";
 import { c, fs, ui, fixed } from "../theme.js";
 import { CameraPicture } from "./players.jsx";
 import { NO_ZOOM, panned, TILE, zoomed } from "./wall.js";
+import { cameraSource, liveText, same, ustreamerStateUrl, useUstreamerState } from "./liveInfo.js";
 
 // Picture-in-picture: a small window that stays on top of every other one (Chrome and Edge's Document
 // Picture-in-Picture), so it works for every kind of camera, not just the ones that are video
@@ -55,13 +56,19 @@ function useFloating(label) {
 // top left corner floats it in a picture-in-picture window (where the browser can). `link`: the printer's own web page,
 // { url, name, printer } (Mainsail or PrusaLink), opened in a new tab from the bottom right corner. `board`: the
 // computer the printer runs on ({ name: "Pi 4", model, memory_gb }), named in the top right corner. `print`: the print
-// under way ({ state: "printing" | "paused", progress, file }), its percentage shown left of the board.
+// under way ({ state: "printing" | "paused", progress, file }), its percentage shown left of the board. In the top left corner, beside the
+// picture-in-picture button, what the camera runs on and the size and frame rate it is sending, measured live (liveInfo.js).
 export function CameraTile({ label, cam, link, board, print, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
   const [state, setState] = useState("waiting"); // waiting | showing | failed
   const [el, setEl] = useState(null);
   const [zoom, setZoom] = useState(NO_ZOOM);
   const pan = useRef(null); // while dragging a zoomed picture: where it started, and whether it has moved
   const floating = useFloating(label);
+  const [measured, setMeasured] = useState(null); // what this browser sees of the picture
+  const own = useUstreamerState(ustreamerStateUrl(cam)); // what Crowsnest's ustreamer says it is capturing
+  const measure = useRef((m) => setMeasured((now) => (same(now, m) ? now : m))).current;
+  const live = own || (state === "showing" ? measured : null);
+  const source = cameraSource(cam, !!own);
   const z = zoom.s > maxZoom ? zoomed(zoom, maxZoom / zoom.s, 0.5, 0.5, maxZoom) : zoom; // a lower max zooms back out
   const turn = [
     cam.rotation ? `rotate(${cam.rotation}deg)` : "",
@@ -143,9 +150,9 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
           transform: z.s > 1 ? `translate(${z.x * 100}%, ${z.y * 100}%) scale(${z.s})` : undefined,
         }}
       >
-        {!floating.win && <CameraPicture cam={cam} label={label} style={fill} onState={setState} />}
+        {!floating.win && <CameraPicture cam={cam} label={label} style={fill} onState={setState} onMeasure={measure} />}
       </div>
-      {floating.win && createPortal(<CameraPicture cam={cam} label={label} style={fill} onState={setState} />, floating.win.document.body)}
+      {floating.win && createPortal(<CameraPicture cam={cam} label={label} style={fill} onState={setState} onMeasure={measure} />, floating.win.document.body)}
       {/* over the picture, so the wheel, drags and clicks reach the tile even where the camera is a page of its own */}
       <div style={{ position: "absolute", inset: 0 }} />
       {(floating.win || floating.refused || state !== "showing") && (
@@ -153,6 +160,7 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
           {floating.win ? "In a picture-in-picture window" : floating.refused ? "The browser wouldn't open a picture-in-picture window" : state === "failed" ? "The camera isn't answering" : "Waiting for the camera…"}
         </div>
       )}
+      <div style={{ ...corner({ x: "left", y: "top" }), display: "flex", gap: 6, alignItems: "center" }}>
       {canFloat && (
         <button
           type="button"
@@ -161,11 +169,23 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
           title={floating.win ? "Bring it back from picture-in-picture" : "Picture-in-picture: float it in a small window on top of everything"}
           onPointerDown={keepToItself}
           onClick={pressed(floating.open)}
-          style={badge({ ...corner({ x: "left", y: "top" }), padding: "3px 6px", cursor: "pointer", display: "flex", alignItems: "center" })}
+          style={badge({ padding: "3px 6px", cursor: "pointer", display: "flex", alignItems: "center" })}
         >
           <PictureInPicture2 size={14} />
         </button>
       )}
+      {source && (
+        <div
+          data-testid="monitor-live"
+          title={own
+            ? "What Crowsnest's camera streamer is capturing right now, as it reports it"
+            : "Measured live in this browser: the picture's size and the frames arriving each second"}
+          style={badge({ fontSize: fs(10) })}
+        >
+          {liveText(source, live)}
+        </div>
+      )}
+      </div>
       {(z.s > 1 || board || print) && (
         <div style={{ ...corner({ x: "right", y: "top" }), display: "flex", gap: 6, alignItems: "center" }}>
           {z.s > 1 && (
