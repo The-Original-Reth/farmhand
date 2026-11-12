@@ -20,7 +20,7 @@ from pathlib import Path
 
 from . import config, storage
 from .errors import NotFound
-from .store import Session
+from .store import Store
 
 IMAGES, SLIDESHOWS, MUSIC = "images", "slideshows", "music"
 PICTURE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
@@ -35,7 +35,7 @@ def _root() -> Path:
     return Path(config.settings.media_dir)
 
 
-def location_info(db: Session) -> dict:
+def location_info(db: Store) -> dict:
     """{path, shown_as, status: {exists, writable, ready}}: the folder the plugin was given (STREAM_FOLDER)."""
     root = _root()
     writable = root.is_dir() and os.access(root, os.W_OK)
@@ -43,7 +43,7 @@ def location_info(db: Session) -> dict:
             "status": {"exists": root.is_dir(), "writable": writable, "ready": writable}}
 
 
-def folder(db: Session, make: bool = False) -> Path:
+def folder(db: Store, make: bool = False) -> Path:
     """The stream folder, while it can be used (StorageUnavailableError otherwise); with `make`, its folders made."""
     root = _root()
     if not root.is_dir():
@@ -100,7 +100,7 @@ def _slides_in(d: Path) -> list[str]:
     return first + [n for n in names if n not in set(first)]
 
 
-def set_order(db: Session, name: str, order: list[str]) -> list[str]:
+def set_order(db: Store, name: str, order: list[str]) -> list[str]:
     """Put a slideshow's pictures in this order (its pictures' names; any left out keep their place after these).
     ValueError for a name that isn't one of its pictures. Its order, as now kept."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
@@ -116,7 +116,7 @@ def set_order(db: Session, name: str, order: list[str]) -> list[str]:
     return keep
 
 
-def add_blank(db: Session, name: str) -> str:
+def add_blank(db: Store, name: str) -> str:
     """A new blank screen at the end of a slideshow: its name in the order ("blank:3")."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
     if not d.is_dir():
@@ -129,7 +129,7 @@ def add_blank(db: Session, name: str) -> str:
     return blank
 
 
-def windows_path(db: Session, path: str) -> str | None:
+def windows_path(db: Store, path: str) -> str | None:
     """The stream folder as people reach it over the network, when the operator said (STREAM_FOLDER_SHOWN_AS)."""
     return config.settings.media_shown_as
 
@@ -146,7 +146,7 @@ def forget() -> None:
     _found = None
 
 
-def media(db: Session, scan: bool = False) -> dict:
+def media(db: Store, scan: bool = False) -> dict:
     """{path, windows_path (windows_path(), or None), images: [names], slideshows: [{name, images: [names]}], music: [the
     tracks' names], error}:
     what's in the stream folder, as last found (read now when `scan`, or the first time)."""
@@ -158,7 +158,7 @@ def media(db: Session, scan: bool = False) -> dict:
     return _found[1]
 
 
-def _read(db: Session) -> dict:
+def _read(db: Store) -> dict:
     try:
         root = folder(db)
         try:  # its own folders made, so each one is there to open and copy into by hand (one read-only share: left)
@@ -194,7 +194,7 @@ def _picture_path(d: Path, name: str) -> Path:
     return path
 
 
-def picture(db: Session, slideshow: str | None, name: str) -> tuple[bytes, str]:
+def picture(db: Store, slideshow: str | None, name: str) -> tuple[bytes, str]:
     """A picture's bytes and type: one of the single pictures, or one in a slideshow. NotFound when it isn't there."""
     root = folder(db)
     d = root / IMAGES if slideshow is None else root / SLIDESHOWS / _name(slideshow, "slideshow")
@@ -202,12 +202,12 @@ def picture(db: Session, slideshow: str | None, name: str) -> tuple[bytes, str]:
     return path.read_bytes(), PICTURE_TYPES[path.suffix.lower()]
 
 
-def picture_path(db: Session, slideshow: str | None, name: str) -> Path:
+def picture_path(db: Store, slideshow: str | None, name: str) -> Path:
     root = folder(db)
     return _picture_path(root / IMAGES if slideshow is None else root / SLIDESHOWS / _name(slideshow, "slideshow"), name)
 
 
-def slideshow_paths(db: Session, name: str) -> list[Path]:
+def slideshow_paths(db: Store, name: str) -> list[Path]:
     """A slideshow's pictures, in its own order ([] for one that isn't there); a blank screen as its name ("blank:1")."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
     return [n if is_blank(n) else d / n for n in _slides_in(d)]
@@ -233,7 +233,7 @@ def _free_name(d: Path, name: str) -> str:
     return candidate
 
 
-def add_picture(db: Session, slideshow: str | None, filename: str, data: bytes) -> str:
+def add_picture(db: Store, slideshow: str | None, filename: str, data: bytes) -> str:
     """Write an uploaded picture into the single pictures, or into a slideshow (made when it isn't there): its name."""
     name = _check_picture(filename, data)
     root = folder(db, make=True)
@@ -245,7 +245,7 @@ def add_picture(db: Session, slideshow: str | None, filename: str, data: bytes) 
     return name
 
 
-def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
+def remove_picture(db: Store, slideshow: str | None, name: str) -> None:
     if slideshow and is_blank(name):  # a blank screen: taken out of the order (it has no file)
         d = folder(db) / SLIDESHOWS / _name(slideshow, "slideshow")
         slides = _slides_in(d)
@@ -257,7 +257,7 @@ def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
     forget()
 
 
-def add_slideshow(db: Session, name: str) -> str:
+def add_slideshow(db: Store, name: str) -> str:
     """A new, empty slideshow folder. ValueError for a name taken (any case) or one a folder can't have."""
     name = _name(name, "slideshow")
     d = folder(db, make=True) / SLIDESHOWS
@@ -268,7 +268,7 @@ def add_slideshow(db: Session, name: str) -> str:
     return name
 
 
-def rename_slideshow(db: Session, name: str, new: str) -> str:
+def rename_slideshow(db: Store, name: str, new: str) -> str:
     """Rename a slideshow's folder (its pictures and order go with it): the new name. NotFound when it isn't there;
     ValueError for a name another slideshow has (any case) or one a folder can't have. Only the case can change too."""
     name, new = _name(name, "slideshow"), _name(new, "slideshow")
@@ -287,7 +287,7 @@ def rename_slideshow(db: Session, name: str, new: str) -> str:
     return new
 
 
-def remove_slideshow(db: Session, name: str) -> None:
+def remove_slideshow(db: Store, name: str) -> None:
     """Delete a slideshow: its pictures, then its folder, which is only removed once nothing else is left in it."""
     d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
     if not d.is_dir():
@@ -305,7 +305,7 @@ def remove_slideshow(db: Session, name: str) -> None:
 # ------------------------------------------------------------------ the music
 
 
-def track_path(db: Session, name: str) -> Path:
+def track_path(db: Store, name: str) -> Path:
     """One of the music's tracks. NotFound when it isn't there."""
     path = folder(db) / MUSIC / _name(name, "track")
     if path.suffix.lower() not in TRACK_TYPES or not path.is_file():
@@ -313,7 +313,7 @@ def track_path(db: Session, name: str) -> Path:
     return path
 
 
-def track_paths(db: Session) -> list[Path]:
+def track_paths(db: Store) -> list[Path]:
     """The music's tracks, in name order ([] when there are none, or the stream folder can't be used now)."""
     try:
         d = folder(db) / MUSIC
@@ -322,7 +322,7 @@ def track_paths(db: Session) -> list[Path]:
     return [d / n for n in _files_in(d, TRACK_TYPES)]
 
 
-def add_track(db: Session, filename: str, data: bytes) -> str:
+def add_track(db: Store, filename: str, data: bytes) -> str:
     """Write an uploaded MP3 into the music: its name (numbered when one of that name is there)."""
     name = Path(filename or "").name
     if Path(name).suffix.lower() not in TRACK_TYPES:
@@ -337,6 +337,6 @@ def add_track(db: Session, filename: str, data: bytes) -> str:
     return name
 
 
-def remove_track(db: Session, name: str) -> None:
+def remove_track(db: Store, name: str) -> None:
     track_path(db, name).unlink()
     forget()

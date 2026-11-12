@@ -1,6 +1,6 @@
 """
 The Stream plugin's engine: printers' cameras sent live to YouTube, no OBS needed. Copied from Farmhand's own Stream
-page (backend/app/services/live_stream/), and changed only where a plugin must differ: settings in the plugin's own
+page (backend/app/live_stream/), and changed only where a plugin must differ: settings in the plugin's own
 store, cameras and prints from the plugin API, and each camera read by its own feeder (feeders.py).
 
 The picture is a grid of squares, 1x1 to 5x5, on a background colour, each square holding a camera, a "card" or nothing,
@@ -28,7 +28,7 @@ from __future__ import annotations
 # camera), frame (the picture's sizes), cards (a card's square), words (the words on the cameras), picture (the whole
 # ffmpeg command), music (the music, fed to ffmpeg as it plays), encoders (processor or NVIDIA card), staging (the files going live puts out for ffmpeg), feeders (each
 # camera's reader, and the "Camera down" square), runner (the stream itself).
-from ..store import Session
+from ..store import Store
 
 from . import broadcast, encoders, fonts, music, runner  # noqa: F401
 from .choices import auto_grid, rename_slideshow, save, settings  # noqa: F401
@@ -43,7 +43,7 @@ from .words import status_line  # noqa: F401
 from .. import stream_media, youtube_live
 
 
-def page(db: Session) -> dict:
+def page(db: Store) -> dict:
     """Everything the Stream page shows: {settings, media (the stream folder's pictures, slideshows and music, stream_media.media),
     status, destinations, resolutions, fonts (what a square's words can be written in), youtube, test_destination (where
     the stream goes instead of YouTube while the plugin is being tried out, or None)}."""

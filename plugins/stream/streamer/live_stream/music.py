@@ -21,7 +21,7 @@ from array import array
 from typing import Callable
 
 from .constants import CATCH_UP_MOST, STEADY_AFTER
-from .feeders import pace
+from .pacing import pace
 
 SAMPLE_RATE, CHANNELS = 44100, 2
 PER_SECOND = SAMPLE_RATE * CHANNELS * 2  # bytes of sound a second (16-bit)

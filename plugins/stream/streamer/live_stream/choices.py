@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import math
 
-from ..store import Session
+from ..store import Store
 
 from .. import app_settings
 from .fonts import DEFAULT_FONT, FONTS
@@ -127,7 +127,7 @@ def _side(v) -> int | None:
     return v if type(v) is int and 1 <= v <= MAX_SIDE else None
 
 
-def _saved(db: Session) -> dict:
+def _saved(db: Store) -> dict:
     """The settings as kept, unchecked ({} when there are none, or they can't be read)."""
     try:
         raw = json.loads(app_settings.get(db, SETTINGS_KEY) or "{}")
@@ -136,7 +136,7 @@ def _saved(db: Session) -> dict:
     return raw if isinstance(raw, dict) else {}
 
 
-def settings(db: Session) -> dict:
+def settings(db: Store) -> dict:
     """
     {destination, cols, rows, cells: [one per square, row by row, see _cell], cameras (the
     cameras' keys in the grid, square by square), show_status, layout: "grid" | "cycle", seconds_all, seconds_each,
@@ -199,7 +199,7 @@ def _youtube_text(text: str, most: int, what: str) -> str:
     return text
 
 
-def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
+def check_cells(db: Store, cols, rows, cells) -> list[dict | None]:
     """
     The squares as sent, made sure of: one per square of a cols x rows grid, each camera once, a card's text that fits,
     pictures and slideshows by names a file can have, a picture or a slideshow but not both, seconds in range. (A
@@ -249,7 +249,7 @@ def check_cells(db: Session, cols, rows, cells) -> list[dict | None]:
     return out
 
 
-def save(db: Session, *, destination=None, chosen=None, show_status=None, stream_key=None, clear_key=False, layout=None,
+def save(db: Store, *, destination=None, chosen=None, show_status=None, stream_key=None, clear_key=False, layout=None,
          resolution=None, border_color=None, background=None, font=None, color=None, enabled=None, cols=None, rows=None, cells=None,
          seconds_all=None, seconds_each=None, title=None, description=None, music=None, music_volume=None, music_shuffle=None,
          delay=None, youtube=None, holding=None) -> dict:
@@ -338,7 +338,7 @@ def save(db: Session, *, destination=None, chosen=None, show_status=None, stream
     return settings(db)
 
 
-def rename_slideshow(db: Session, old: str, new: str) -> int:
+def rename_slideshow(db: Store, old: str, new: str) -> int:
     """A slideshow's folder was renamed: every square showing it, on the Stream page and in each saved layout, shows it
     by its new name. How many squares changed."""
     from .. import layouts as saved_layouts  # (it reads these settings itself)

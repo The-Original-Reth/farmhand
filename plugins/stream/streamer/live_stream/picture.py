@@ -14,7 +14,7 @@ from .constants import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_RESOLUTION, F
 from . import music, slides
 from .cards import card_square
 from .choices import auto_grid
-from .encoders import encoder_args
+from .encoders import compress_args
 from .frame import Frame
 from .sources import Source
 from .words import camera_words, filter_path, full_words
@@ -168,9 +168,7 @@ def command(ffmpeg: str, srcs: list[Source], url: str, look: Look | None = None)
         video = "[timed]"
     kbps = frame.kbps
     args += ["-filter_complex", ";".join(parts), "-map", video, "-map", f"{n}:a"]
-    args += [*encoder_args(look.encoder), "-pix_fmt", "yuv420p", "-r", str(FPS),
-             "-g", str(FPS * 2), "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k",
-             "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
+    args += compress_args(look.encoder, kbps)
     if look.turns_file or lists:  # the timetable and the slideshows' lists cover a day
         args += ["-t", str(TURNS_FOR)]
     if look.relay_offset is not None:

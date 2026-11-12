@@ -14,7 +14,7 @@ pytestmark = pytest.mark.usefixtures("stream_fresh")
 
 
 def test_the_relay_switches_at_a_keyframe_and_the_buffer_holds_the_delay():
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as buffers, relay
 
     key, plain = _keyframe_packet(), bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184)
     start_of_frame = bytes([0x47, 0x41, 0x00, 0x10]) + bytes(184)  # a frame's first packet, not a keyframe
@@ -45,7 +45,7 @@ def test_the_relay_switches_at_a_keyframe_and_the_buffer_holds_the_delay():
     old.ended.set()
     new.ended.set()
 
-    buffer = relay.Buffer(0.5)
+    buffer = buffers.Buffer(0.5)
     out = _Sink()
     buffer.set_sink(out)
     buffer.write(b"first")
@@ -60,9 +60,9 @@ def test_the_relay_switches_at_a_keyframe_and_the_buffer_holds_the_delay():
 def test_the_buffer_trims_back_to_the_delay_at_a_keyframe(monkeypatch):
     """Held well over the delay (each hand-over adds a little; a sender not taking anything adds a lot): what's older
     is dropped back to a keyframe that leaves about the delay held, so the sender reads on from a whole picture."""
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as buffers, relay
 
-    monkeypatch.setattr(relay, "TRIM_OVER", 0.3)
+    monkeypatch.setattr(buffers, "TRIM_OVER", 0.3)
     stuck = threading.Event()
 
     class Stuck(_Sink):  # a sender that takes the first piece, then nothing more
@@ -70,7 +70,7 @@ def test_the_buffer_trims_back_to_the_delay_at_a_keyframe(monkeypatch):
             super().write(data)
             stuck.wait(5)
 
-    buffer = relay.Buffer(0.1)
+    buffer = buffers.Buffer(0.1)
     buffer.set_sink(Stuck())
     plain, key = bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184), _keyframe_packet()
     buffer.write(plain)
@@ -86,7 +86,7 @@ def test_the_buffer_trims_back_to_the_delay_at_a_keyframe(monkeypatch):
 def test_the_relay_knows_the_time_of_the_last_frame_passed_on():
     """A new picture's times carry on from the last frame passed on (not the clock), so after a break the sender,
     playing to the times, has no jump ahead to wait out."""
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as buffers, relay
 
     def frame_at(seconds):
         pts = int(seconds * 90000)
@@ -119,7 +119,7 @@ def test_the_relay_knows_the_time_of_the_last_frame_passed_on():
 def test_the_buffer_says_how_much_stream_it_holds_by_the_streams_own_times():
     """What's held is counted from the stream's times, not from when it came: a picture that stopped for a moment and
     then made up the time it lost still holds the whole delay. (MPEG-TS times start again from 0 after about 26.5 h.)"""
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as buffers, relay
 
     def frame_at(seconds):
         pts = int(seconds * 90000) % (1 << 33)
@@ -128,20 +128,20 @@ def test_the_buffer_says_how_much_stream_it_holds_by_the_streams_own_times():
         return bytes([0x47, 0x41, 0x00, 0x10]) + pes + bytes(184 - len(pes))
 
     plain = bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184)
-    buffer = relay.Buffer(60)  # (no sender: nothing leaves it)
+    buffer = buffers.Buffer(60)  # (no sender: nothing leaves it)
     for i in range(121):  # come at once, but a minute of stream
         buffer.write(frame_at(10 + i / 2) + plain)
     assert buffer.held() == 60.0
     buffer.close()
 
-    across = relay.Buffer(60)
+    across = buffers.Buffer(60)
     for i in range(121):
-        across.write(frame_at(relay.PTS_WRAP - 20 + i / 2))  # (its time starts again from 0 on the way)
+        across.write(frame_at(buffers.PTS_WRAP - 20 + i / 2))  # (its time starts again from 0 on the way)
     assert across.held() == 60.0
     across.close()
 
     # a layout's hand-over: the new picture's times start a little behind the old one's; the sender plays straight on
-    handed = relay.Buffer(60)
+    handed = buffers.Buffer(60)
     for i in range(61):
         handed.write(frame_at(100 + i / 2))  # 30 s of the old picture, to 130
     for i in range(21):
@@ -153,7 +153,7 @@ def test_the_buffer_says_how_much_stream_it_holds_by_the_streams_own_times():
 def test_the_sender_starts_once_the_delay_is_held_by_the_streams_own_times(monkeypatch):
     """A picture just started makes a little less than real time while its cameras connect: the sender waits until the
     delay is held by the stream's own times (or FILL_MOST more seconds by the clock), so it never starts short of it."""
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as buffers, relay
 
     def frame_at(seconds):
         pts = int(seconds * 90000)
@@ -161,7 +161,7 @@ def test_the_sender_starts_once_the_delay_is_held_by_the_streams_own_times(monke
         pes = bytes([0, 0, 1, 0xE0, 0, 0, 0x80, 0x80, 5]) + b
         return bytes([0x47, 0x41, 0x00, 0x10]) + pes + bytes(184 - len(pes))
 
-    buffer, out = relay.Buffer(0.3), _Sink()
+    buffer, out = buffers.Buffer(0.3), _Sink()
     buffer.set_sink(out)
     buffer.write(frame_at(10.0))
     buffer.write(frame_at(10.1))  # by the clock the delay passes, but only 0.1 s of stream is held
@@ -171,8 +171,8 @@ def test_the_sender_starts_once_the_delay_is_held_by_the_streams_own_times(monke
     assert _wait_for(lambda: len(out.written) > 0) and not buffer.filling()
     buffer.close()
 
-    monkeypatch.setattr(relay, "FILL_MOST", 0.2)
-    slow, out = relay.Buffer(0.2), _Sink()
+    monkeypatch.setattr(buffers, "FILL_MOST", 0.2)
+    slow, out = buffers.Buffer(0.2), _Sink()
     slow.set_sink(out)
     slow.write(frame_at(10.0))  # never more: started anyway, FILL_MOST past the delay
     assert _wait_for(lambda: len(out.written) > 0)

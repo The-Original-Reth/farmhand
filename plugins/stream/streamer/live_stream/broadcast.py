@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from ..store import Session
+from ..store import Store
 
 from .. import app_settings, youtube_live
 
@@ -19,7 +19,7 @@ ENDED = ("complete", "revoked", "gone")  # a broadcast YouTube has ended (auto-s
 NOTHING_YET = {"state": None, "health": None, "issues": [], "viewers": None}
 
 
-def own_stream(db: Session, creds: dict) -> dict:
+def own_stream(db: Store, creds: dict) -> dict:
     """Farmhand's own stream on the signed-in channel, {id, key, url}, made the first time (its id kept, so the same one
     is used every time). ValueError when YouTube won't give it."""
     kept = app_settings.get(db, youtube_live.STREAM_KEY)
@@ -33,7 +33,7 @@ def own_stream(db: Session, creds: dict) -> dict:
     return own
 
 
-def title_on_active(db: Session, chosen: dict) -> dict:
+def title_on_active(db: Store, chosen: dict) -> dict:
     """Live on a pasted key (YouTube made the broadcast): the chosen title and description set on the channel's active
     broadcast, {state, message}. ValueError when it can't be tried (not signed in, or nothing to set)."""
     creds = youtube_live.credentials(db)

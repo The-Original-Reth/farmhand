@@ -1,6 +1,8 @@
 """Start the plugin: python -m streamer (what the Dockerfile runs)."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import uvicorn
 
 from . import config, migrate, store
@@ -8,17 +10,18 @@ from .app import app
 from .live_stream import stream
 
 
-@app.on_event("startup")
-def _started() -> None:
+@asynccontextmanager
+async def _running(_app):
+    """While the plugin runs (set here, not in app.py, so tests using the app never go live by themselves)."""
     s = store.store()
     migrate.at_start(s)  # the first start: Farmhand's Stream page set-up brought over, when allowed
     stream.resume(s, store.session_factory)  # live before the restart: live again
-
-
-@app.on_event("shutdown")
-def _stopping() -> None:
+    yield
     # (only the container stopping: it goes live again when it starts, on the same YouTube broadcast, so that's left live)
     stream.stop(forget=False, end_broadcast=False)
+
+
+app.router.lifespan_context = _running
 
 
 def main() -> None:

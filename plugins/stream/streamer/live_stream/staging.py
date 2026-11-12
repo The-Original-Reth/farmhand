@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import shutil
 
-from ..store import Session
+from ..store import Store
 
 from ..errors import NotFound
 from .. import storage
@@ -27,7 +27,7 @@ def write_atomically(path: str, text: str) -> None:
     os.replace(tmp, path)
 
 
-def card_pictures(db: Session, cards: dict) -> dict:
+def card_pictures(db: Store, cards: dict) -> dict:
     """Each card's pictures, as files in the stream folder: {square: [paths]} (its picture, or its slideshow's). One not
     there (or a stream folder that isn't available) shows just the card's colour and words."""
     out = {}
@@ -69,7 +69,7 @@ def local_copies(pictures: dict, folder: str) -> dict:
     return out
 
 
-def squares(db: Session, chosen: dict, folder: str, cache: str | None = None) -> list:
+def squares(db: Store, chosen: dict, folder: str, cache: str | None = None) -> list:
     """The grid's squares as the ffmpeg command takes them (picture.Look.cells): ("camera", its place among the
     cameras, its cell), ("card", its cell with its pictures' copies, its words' file and its slideshow pictures' own
     words' files), or None."""
@@ -144,7 +144,7 @@ def _screen_words(cell: dict, card: dict, screens: dict, chosen: dict) -> dict[i
     return out
 
 
-def staged_layers(db: Session, layers: list, folder: str, tag: str, copied: dict) -> list[dict]:
+def staged_layers(db: Store, layers: list, folder: str, tag: str, copied: dict) -> list[dict]:
     """A card's (or a slideshow screen's) more pictures and pieces of text as ffmpeg takes them, in their order: a
     picture copied once into the stream's own folder ({"type": "picture", "path", "box"}; one not chosen, not there or
     unreadable is left out), a piece of text as a file ({"type": "text", "words": file, "box", "font", "color", "band"};

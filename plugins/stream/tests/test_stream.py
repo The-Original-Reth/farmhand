@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from streamer import config, farm, layouts, migrate, store
 from streamer.app import app
-from streamer.live_stream import feeders, runner, stream
+from streamer.live_stream import cameras, feeders, pacing, procs, runner, stream
 import importlib
 sources_module = importlib.import_module("streamer.live_stream.sources")
 from streamer.live_stream.constants import SETTINGS_KEY, STREAM_KEY_KEY
@@ -157,17 +157,17 @@ def test_a_pump_writes_the_latest_frame_or_camera_down_steadily(ffmpeg, tmp_path
 
 def test_time_a_writer_was_held_up_is_made_up_once_its_reader_is_reading():
     step, slept = 1 / 15, []
-    reading = int(feeders.STEADY_AFTER / step) + 1  # steps written: its reader has been reading
+    reading = int(pacing.STEADY_AFTER / step) + 1  # steps written: its reader has been reading
     # early: wait for it
-    assert feeders.pace(10.0, reading, step, 9.9, slept.append) == 10.0 and slept == [pytest.approx(0.1)]
+    assert pacing.pace(10.0, reading, step, 9.9, slept.append) == 10.0 and slept == [pytest.approx(0.1)]
     # reading, then held up 5 s: carry on from where it was (no waiting) until caught up
-    assert feeders.pace(10.0, reading, step, 15.0, slept.append) == 10.0 and len(slept) == 1
+    assert pacing.pace(10.0, reading, step, 15.0, slept.append) == 10.0 and len(slept) == 1
     # held up before it was reading (a new picture opening its inputs): that time is let go
-    assert feeders.pace(10.0, 3, step, 15.0, slept.append) == 15.0
+    assert pacing.pace(10.0, 3, step, 15.0, slept.append) == 15.0
     # a moment behind before then is still made up
-    assert feeders.pace(10.0, 3, step, 10.5, slept.append) == 10.0
+    assert pacing.pace(10.0, 3, step, 10.5, slept.append) == 10.0
     # held up for longer than is ever made up: a real gap
-    assert feeders.pace(10.0, reading, step, 10.0 + feeders.CATCH_UP_MOST + 1, slept.append) == pytest.approx(131.0)
+    assert pacing.pace(10.0, reading, step, 10.0 + pacing.CATCH_UP_MOST + 1, slept.append) == pytest.approx(131.0)
 
 
 # ------------------------------------------------------------------ going live
@@ -232,7 +232,7 @@ def test_it_goes_live_again_by_itself_after_a_restart(api, ffmpeg, farmhand, plu
 
 
 def test_the_words_fall_back_to_the_printers_name_while_farmhand_is_down(api, ffmpeg, farmhand, monkeypatch):
-    monkeypatch.setattr(runner, "STATUS_EVERY", 0.2)
+    monkeypatch.setattr(cameras, "STATUS_EVERY", 0.2)
     _grid(api, [{"camera": "1:Bed"}, None])
     api.post("/api/stream/start")
     assert wait_until(lambda: len(ffmpeg.commands) == 1)
@@ -315,7 +315,7 @@ def test_a_camera_without_a_working_snapshot_is_previewed_from_its_video(api, pl
     """An RTSP camera has no snapshot address, and one moved to go2rtc can keep a snapshot address that answers 502:
     before going live, the preview takes a frame from its video instead, kept a few seconds so the page's asks (twice a
     second) don't each open a connection to the camera."""
-    import streamer.app as app_module
+    import streamer.page_routes as app_module
 
     taken = []
 
@@ -323,7 +323,7 @@ def test_a_camera_without_a_working_snapshot_is_previewed_from_its_video(api, pl
         taken.append(args)
         return jpeg()
 
-    monkeypatch.setattr(runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(procs, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(app_module, "take_frame", take)
     monkeypatch.setattr(app_module, "_frames", {})
     farmhand.cameras[1]["cameras"][0]["snapshot_url"] = "http://127.0.0.1:9/webcam/?action=snapshot"  # (nothing there)
@@ -351,7 +351,7 @@ def test_preview_pictures_come_turned_as_the_stream_turns_them(api, plugin, farm
 
     from PIL import Image
 
-    import streamer.app as app_module
+    import streamer.page_routes as app_module
 
     # a picture red on its left half and blue on its right: flipped both ways, the blue is on the left
     im = Image.new("RGB", (40, 20), (220, 0, 0))
@@ -365,7 +365,7 @@ def test_preview_pictures_come_turned_as_the_stream_turns_them(api, plugin, farm
     assert app_module.turned(b"not a picture", ["hflip"]) == b"not a picture"
 
     taken = []
-    monkeypatch.setattr(runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(procs, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(app_module, "take_frame", lambda args: taken.append(args) or jpeg())
     monkeypatch.setattr(app_module, "_frames", {})
     farmhand.cameras[1]["cameras"][0]["ffmpeg_filters"] = ["hflip", "vflip"]
@@ -471,7 +471,7 @@ def test_the_holding_screen_is_drawn_at_the_streams_size_with_its_words_centred(
 def test_the_buffer_gives_the_holding_screen_until_the_delay_is_held_then_whats_held():
     """After a restart the sender is given the holding screen at once, in whole frames, while the delay fills; once it's
     held, what's held goes out from its start and the holding screen is ended."""
-    from streamer.live_stream import relay
+    from streamer.live_stream import buffer as relay
 
     from .fake_ffmpeg import HOLDING_FRAME, _Holding, _Sink
 

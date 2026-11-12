@@ -7,10 +7,10 @@ from fastapi.responses import FileResponse
 from . import live_stream, storage, stream_media, youtube_live
 from .errors import answer_errors
 from .schemas import SlideshowIn, SlideshowOrderIn, StreamSettingsIn, YouTubeClientIn, YouTubeSignOutIn
-from .store import Session, session_factory, store
+from .store import Store, session_factory, store
 
 
-def get_db() -> Session:
+def get_db() -> Store:
     """Every route's `db`: the plugin's store (store.py)."""
     return store()
 
@@ -20,7 +20,7 @@ def require_confirm(confirm: bool) -> None:
     if not confirm:
         raise HTTPException(status_code=409, detail="Deleting needs confirm=true.")
 
-# The Stream page's API, as Farmhand's own Stream page had it (backend/app/routers/live_stream.py, copied), under the
+# The Stream page's API (as Farmhand's own Stream page had it, before Stream became this plugin), under the
 # plugin's /api/stream: printers' cameras sent live to YouTube (see live_stream/), and the YouTube broadcast, made and
 # changed through YouTube's API (live_stream/broadcast.py). The stream key, the Google client secret and the YouTube
 # sign-in go in and never come back out: answers only say they're there. (Where the stream folder is isn't chosen
@@ -34,20 +34,20 @@ PICTURE = ("destination", "cols", "rows", "cells", "show_status", "layout", "sec
 MUSIC = ("music", "music_volume", "music_shuffle")  # these the music follows while live, without starting it again
 
 
-def _restart_if_live(db: Session) -> None:
+def _restart_if_live(db: Store) -> None:
     if live_stream.stream.status()["live"]:
         live_stream.stream.go_live(db, session_factory)
 
 
 @router.get("")
-def stream_page(db: Session = Depends(get_db)):
-    """{settings, media, status, destinations, resolutions, youtube}: see services/live_stream.page. Also moves a YouTube
+def stream_page(db: Store = Depends(get_db)):
+    """{settings, media, status, destinations, resolutions, youtube}: see live_stream.page. Also moves a YouTube
     sign-in along."""
     return live_stream.page(db)
 
 
 @router.put("")
-def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
+def save_settings(payload: StreamSettingsIn, db: Store = Depends(get_db)):
     """
     Save the stream's settings. While live: a change to the picture starts the stream again with it; a new title,
     description or YouTube setting is set on the YouTube broadcast straight away; turning the stream off (enabled: false) stops it.
@@ -77,7 +77,7 @@ def save_settings(payload: StreamSettingsIn, db: Session = Depends(get_db)):
 
 
 @router.post("/start")
-def go_live(db: Session = Depends(get_db)):
+def go_live(db: Store = Depends(get_db)):
     """Go live with what's saved. 422 says why not (no key, no cameras, a camera that can't be streamed...)."""
     with answer_errors():
         live_stream.stream.go_live(db, session_factory)
@@ -85,7 +85,7 @@ def go_live(db: Session = Depends(get_db)):
 
 
 @router.post("/stop")
-def stop(db: Session = Depends(get_db)):
+def stop(db: Store = Depends(get_db)):
     live_stream.stream.stop()
     return live_stream.page(db)
 
@@ -102,7 +102,7 @@ def _media(call):
         raise HTTPException(status_code=503, detail=str(e)) from None
 
 
-def _restart_if_used(db: Session, slideshow: str | None, image: str | None = None) -> None:
+def _restart_if_used(db: Store, slideshow: str | None, image: str | None = None) -> None:
     """Pictures changed: the stream starts again with them, when it's live and a square shows them."""
     def on_it(c) -> bool:  # (its own picture, or one of its more pictures, a slideshow screen's too)
         layers = [*(c.get("layers") or []), *(x for ls in (c.get("slide_layers") or {}).values() for x in ls)]
@@ -115,13 +115,13 @@ def _restart_if_used(db: Session, slideshow: str | None, image: str | None = Non
 
 
 @router.get("/pictures/{name}")
-def get_picture(name: str, db: Session = Depends(get_db)):
+def get_picture(name: str, db: Store = Depends(get_db)):
     data, kind = _media(lambda: stream_media.picture(db, None, name))
     return Response(content=data, media_type=kind, headers={"Cache-Control": "no-cache"})
 
 
 @router.post("/pictures", status_code=201)
-async def add_pictures(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+async def add_pictures(files: list[UploadFile] = File(...), db: Store = Depends(get_db)):
     """Pictures (PNG, JPEG or WebP, under 10 MB each) into the stream folder's images. Answers the page."""
     for file in files:
         data = await file.read(stream_media.PICTURE_MAX + 1)
@@ -130,7 +130,7 @@ async def add_pictures(files: list[UploadFile] = File(...), db: Session = Depend
 
 
 @router.delete("/pictures/{name}")
-def delete_picture(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+def delete_picture(name: str, confirm: bool = Query(False), db: Store = Depends(get_db)):
     """Delete a picture from the stream folder. Squares showing it keep their colour and words."""
     require_confirm(confirm)
     _media(lambda: stream_media.remove_picture(db, None, name))
@@ -139,14 +139,14 @@ def delete_picture(name: str, confirm: bool = Query(False), db: Session = Depend
 
 
 @router.post("/slideshows", status_code=201)
-def add_slideshow(payload: SlideshowIn, db: Session = Depends(get_db)):
+def add_slideshow(payload: SlideshowIn, db: Store = Depends(get_db)):
     """A new, empty slideshow: a folder of that name in the stream folder's slideshows. Answers the page."""
     _media(lambda: stream_media.add_slideshow(db, payload.name))
     return live_stream.page(db)
 
 
 @router.put("/slideshows/{name}")
-def rename_slideshow(name: str, payload: SlideshowIn, db: Session = Depends(get_db)):
+def rename_slideshow(name: str, payload: SlideshowIn, db: Store = Depends(get_db)):
     """Rename a slideshow: its folder in the stream folder, and every square showing it (on the page and in saved
     layouts) follows. 422 for a name another slideshow has. While live and it's shown, the stream starts again."""
     new = _media(lambda: stream_media.rename_slideshow(db, name, payload.name))
@@ -156,7 +156,7 @@ def rename_slideshow(name: str, payload: SlideshowIn, db: Session = Depends(get_
 
 
 @router.post("/slideshows/{name}/blanks", status_code=201)
-def add_blank(name: str, db: Session = Depends(get_db)):
+def add_blank(name: str, db: Store = Depends(get_db)):
     """A blank screen at the end of a slideshow (its colour and the words written on it). Deleted as its pictures are."""
     _media(lambda: stream_media.add_blank(db, name))
     _restart_if_used(db, name)
@@ -164,7 +164,7 @@ def add_blank(name: str, db: Session = Depends(get_db)):
 
 
 @router.put("/slideshows/{name}/order")
-def order_slideshow(name: str, payload: SlideshowOrderIn, db: Session = Depends(get_db)):
+def order_slideshow(name: str, payload: SlideshowOrderIn, db: Store = Depends(get_db)):
     """Put a slideshow's pictures in the order chosen (kept in its folder). While live and it's shown, the stream starts again."""
     _media(lambda: stream_media.set_order(db, name, payload.order))
     _restart_if_used(db, name)
@@ -172,7 +172,7 @@ def order_slideshow(name: str, payload: SlideshowOrderIn, db: Session = Depends(
 
 
 @router.delete("/slideshows/{name}")
-def delete_slideshow(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+def delete_slideshow(name: str, confirm: bool = Query(False), db: Store = Depends(get_db)):
     """Delete a slideshow: its pictures, then its folder (left when it holds anything else). Squares keep their colour."""
     require_confirm(confirm)
     _media(lambda: stream_media.remove_slideshow(db, name))
@@ -181,7 +181,7 @@ def delete_slideshow(name: str, confirm: bool = Query(False), db: Session = Depe
 
 
 @router.post("/scan")
-def scan_folder(db: Session = Depends(get_db)):
+def scan_folder(db: Store = Depends(get_db)):
     """Read the stream folder again (pictures copied in, or taken out, by hand): it isn't read every time the page looks."""
     stream_media.media(db, scan=True)
     return live_stream.page(db)
@@ -201,13 +201,13 @@ def get_font(key: str):
 
 
 @router.get("/slideshows/{name}/pictures/{picture}")
-def get_slideshow_picture(name: str, picture: str, db: Session = Depends(get_db)):
+def get_slideshow_picture(name: str, picture: str, db: Store = Depends(get_db)):
     data, kind = _media(lambda: stream_media.picture(db, name, picture))
     return Response(content=data, media_type=kind, headers={"Cache-Control": "no-cache"})
 
 
 @router.post("/slideshows/{name}/pictures", status_code=201)
-async def add_slideshow_pictures(name: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+async def add_slideshow_pictures(name: str, files: list[UploadFile] = File(...), db: Store = Depends(get_db)):
     """Pictures into a slideshow's folder (made when it isn't there). While live and it's shown, the stream starts again."""
     for file in files:
         data = await file.read(stream_media.PICTURE_MAX + 1)
@@ -217,7 +217,7 @@ async def add_slideshow_pictures(name: str, files: list[UploadFile] = File(...),
 
 
 @router.delete("/slideshows/{name}/pictures/{picture}")
-def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(False), db: Store = Depends(get_db)):
     require_confirm(confirm)
     _media(lambda: stream_media.remove_picture(db, name, picture))
     _restart_if_used(db, name)
@@ -229,7 +229,7 @@ def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(Fals
 
 
 @router.post("/music/{action}")
-def music_control(action: str, db: Session = Depends(get_db)):
+def music_control(action: str, db: Store = Depends(get_db)):
     """The music going out while live: play, pause, next (the next track) or back (the track playing from its start,
     or in its first 3 seconds the one before). 422 when not live, or the music is off."""
     if action not in ("play", "pause", "next", "back"):
@@ -240,14 +240,14 @@ def music_control(action: str, db: Session = Depends(get_db)):
 
 
 @router.get("/music/{name}")
-def get_track(name: str, db: Session = Depends(get_db)):
+def get_track(name: str, db: Store = Depends(get_db)):
     """A track, for the page to play it."""
     path = _media(lambda: stream_media.track_path(db, name))
     return FileResponse(path, media_type=stream_media.TRACK_TYPES[path.suffix.lower()], headers={"Cache-Control": "no-cache"})
 
 
 @router.post("/music", status_code=201)
-async def add_tracks(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+async def add_tracks(files: list[UploadFile] = File(...), db: Store = Depends(get_db)):
     """MP3s into the music (under 50 MB each; bigger ones can be copied in by hand)."""
     for file in files:
         data = await file.read(stream_media.TRACK_MAX + 1)
@@ -256,7 +256,7 @@ async def add_tracks(files: list[UploadFile] = File(...), db: Session = Depends(
 
 
 @router.delete("/music/{name}")
-def delete_track(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+def delete_track(name: str, confirm: bool = Query(False), db: Store = Depends(get_db)):
     require_confirm(confirm)
     _media(lambda: stream_media.remove_track(db, name))
     return live_stream.page(db)
@@ -266,7 +266,7 @@ def delete_track(name: str, confirm: bool = Query(False), db: Session = Depends(
 
 
 @router.put("/youtube")
-def youtube_client(payload: YouTubeClientIn, db: Session = Depends(get_db)):
+def youtube_client(payload: YouTubeClientIn, db: Store = Depends(get_db)):
     """The Google OAuth client to sign in with. A different client ID signs out."""
     with answer_errors():
         youtube_live.set_client(db, payload.client_id, payload.client_secret)
@@ -274,7 +274,7 @@ def youtube_client(payload: YouTubeClientIn, db: Session = Depends(get_db)):
 
 
 @router.post("/youtube/sign-in")
-def youtube_sign_in(db: Session = Depends(get_db)):
+def youtube_sign_in(db: Store = Depends(get_db)):
     """Start signing in: youtube.signing_in gives the code to enter at google.com/device. GET /stream finishes it."""
     with answer_errors():
         youtube_live.start_sign_in(db)
@@ -282,13 +282,13 @@ def youtube_sign_in(db: Session = Depends(get_db)):
 
 
 @router.post("/youtube/sign-out")
-def youtube_sign_out(payload: YouTubeSignOutIn | None = None, db: Session = Depends(get_db)):
+def youtube_sign_out(payload: YouTubeSignOutIn | None = None, db: Store = Depends(get_db)):
     youtube_live.sign_out(db, forget_client=bool(payload and payload.forget_client))
     return live_stream.page(db)
 
 
 @router.post("/youtube/apply")
-def youtube_apply(db: Session = Depends(get_db)):
+def youtube_apply(db: Store = Depends(get_db)):
     """Set the saved title, description and YouTube settings on the live broadcast now. status.title says how it went."""
     with answer_errors():
         live_stream.stream.send_to_youtube(db, live_stream.settings(db), asked=True)

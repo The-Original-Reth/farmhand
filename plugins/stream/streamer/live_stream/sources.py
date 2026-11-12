@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..store import Session
+from ..store import Store
 
 CAMERAS_KEY = "cameras_last_heard"  # {printer id: {name, error, cameras: [camera, as Farmhand gave it]}}
 
@@ -39,7 +39,7 @@ def followed_camera(cam_name: str, listed: list[dict], error: str | None, taken:
     return cam
 
 
-def remember(db: Session, answer: dict) -> dict:
+def remember(db: Store, answer: dict) -> dict:
     """Farmhand's /cameras answer, kept over what was heard before: a printer that answered replaces its cameras; one
     that didn't (it's off) keeps the cameras it last had, with its error. The farm as now known, by printer id."""
     known = db.json(CAMERAS_KEY, {}) if hasattr(db, "json") else {}
@@ -57,11 +57,11 @@ def remember(db: Session, answer: dict) -> dict:
     return now
 
 
-def known(db: Session) -> dict:
+def known(db: Store) -> dict:
     return db.json(CAMERAS_KEY, {})
 
 
-def sources(db: Session, chosen: list[str], farm: dict | None = None) -> list[Source]:
+def sources(db: Store, chosen: list[str], farm: dict | None = None) -> list[Source]:
     """
     The chosen cameras, from `farm` (remember()'s answer; None: what was last heard, Farmhand not answering). ValueError
     says which one can't be streamed and why: its printer is gone, or it only plays in a browser (a setup mistake). A

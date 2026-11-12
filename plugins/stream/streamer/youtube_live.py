@@ -19,7 +19,7 @@ import threading
 import time
 
 import httpx
-from .store import Session
+from .store import Store
 
 from . import app_settings
 
@@ -81,7 +81,7 @@ def _post(url: str, data: dict) -> httpx.Response:
 # ------------------------------------------------------------------ the OAuth client and signing in
 
 
-def _client_info(db: Session) -> dict | None:
+def _client_info(db: Store) -> dict | None:
     try:
         raw = json.loads(app_settings.get(db, CLIENT_KEY) or "null")
     except ValueError:
@@ -89,7 +89,7 @@ def _client_info(db: Session) -> dict | None:
     return raw if isinstance(raw, dict) and raw.get("client_id") and raw.get("client_secret") else None
 
 
-def set_client(db: Session, client_id: str, client_secret: str | None) -> None:
+def set_client(db: Store, client_id: str, client_secret: str | None) -> None:
     """Keep the OAuth client (a blank secret keeps the saved one). Changing the client signs out."""
     client_id = (client_id or "").strip()
     if not CLIENT_ID_SHAPE.match(client_id):
@@ -106,7 +106,7 @@ def set_client(db: Session, client_id: str, client_secret: str | None) -> None:
     db.commit()
 
 
-def start_sign_in(db: Session) -> dict:
+def start_sign_in(db: Store) -> dict:
     """Ask Google for a code to show: the page then shows it with google.com/device. Answers account()."""
     client = _client_info(db)
     if not client:
@@ -130,7 +130,7 @@ def start_sign_in(db: Session) -> dict:
     return account(db)
 
 
-def _check_sign_in(db: Session) -> None:
+def _check_sign_in(db: Store) -> None:
     """A sign-in under way: ask Google once whether the code has been entered (no more often than it allows)."""
     with _lock:
         pending = _sign_in["pending"]
@@ -177,7 +177,7 @@ def _check_sign_in(db: Session) -> None:
                              else f"Google didn't sign in: {_google_says(r)}")
 
 
-def _forget_sign_in(db: Session) -> None:
+def _forget_sign_in(db: Store) -> None:
     token = app_settings.get(db, TOKEN_KEY)
     if token:
         _tokens.pop(token, None)
@@ -191,14 +191,14 @@ def _forget_sign_in(db: Session) -> None:
         _sign_in.update(pending=None, error=None)
 
 
-def sign_out(db: Session, forget_client: bool = False) -> None:
+def sign_out(db: Store, forget_client: bool = False) -> None:
     _forget_sign_in(db)
     if forget_client:
         app_settings.put(db, CLIENT_KEY, None)
     db.commit()
 
 
-def account(db: Session) -> dict:
+def account(db: Store) -> dict:
     """
     {client_set, client_id, signed_in, channel, signing_in: {user_code, verification_url} | null, error}. The secret
     and the token are never given. A sign-in under way is checked with Google first.
@@ -218,7 +218,7 @@ def account(db: Session) -> dict:
     }
 
 
-def credentials(db: Session) -> dict | None:
+def credentials(db: Store) -> dict | None:
     """What setting a title needs, read now so a thread can use it later: {client_id, client_secret, refresh_token}."""
     client = _client_info(db)
     token = app_settings.get(db, TOKEN_KEY)

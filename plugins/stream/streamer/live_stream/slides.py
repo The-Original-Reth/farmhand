@@ -17,6 +17,8 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .lettering import draw_centred
+
 from .. import stream_media
 from .frame import Frame
 from .squares import _picture_box
@@ -75,17 +77,10 @@ def _draw_words(canvas: Image.Image, w: dict, frame: Frame) -> None:
     except OSError:
         return
     layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    spacing = big // 4
-    left, top, right, bottom = draw.multiline_textbbox((0, 0), w["text"], font=font, spacing=spacing, align="center")
-    x = round(w["tb"]["x"] * frame.tw) - (right - left) / 2 - left
-    y = round(w["tb"]["y"] * frame.th) - (bottom - top) / 2 - top
-    if w.get("band"):
-        pad = max(frame.px(4), big // 5)
-        draw.rectangle((x + left - pad, y + top - pad, x + right + pad, y + bottom + pad), fill=(0, 0, 0, 128))
     colour = w["color"].lstrip("#")
-    draw.multiline_text((x, y), w["text"], font=font, spacing=spacing, align="center",
-                        fill=tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4)) + (255,))
+    band = (max(frame.px(4), big // 5), (0, 0, 0, 128)) if w.get("band") else None
+    draw_centred(ImageDraw.Draw(layer), w["text"], font, big, (round(w["tb"]["x"] * frame.tw), round(w["tb"]["y"] * frame.th)),
+                 tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4)) + (255,), band)
     canvas.alpha_composite(layer)
 
 
