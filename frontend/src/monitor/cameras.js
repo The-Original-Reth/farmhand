@@ -64,8 +64,7 @@ const PROGRESS_EVERY_MS = 5000; // how often the prints' progress is asked again
 // How far along each of `printerIds`' prints is: printer id -> { state: "printing" | "paused", progress, file } for
 // the ones printing now. Asked straight away, every 5 seconds after that, and again as soon as the page comes back
 // into view. A printer still answering the last ask isn't asked again; one that can't be asked just shows nothing.
-// `keepErrors`: a printer that couldn't be asked is { error } instead of nothing (the Stream page says so on its camera).
-export function usePrintProgress(printerIds, { keepErrors = false } = {}) {
+export function usePrintProgress(printerIds) {
   const [progress, setProgress] = useState({});
   const ids = printerIds.join(",");
   useEffect(() => {
@@ -77,10 +76,10 @@ export function usePrintProgress(printerIds, { keepErrors = false } = {}) {
         if (asking.has(id)) continue;
         asking.add(id);
         getPrintProgress(id)
-          .catch((e) => ({ error: e?.message || "No answer" }))
+          .catch(() => null)
           .then((p) => {
             asking.delete(id);
-            const kept = p?.state ? p : keepErrors && p?.error ? { error: p.error } : null;
+            const kept = p?.state ? p : null;
             if (live) setProgress((now) => ({ ...now, [id]: kept }));
           });
       }

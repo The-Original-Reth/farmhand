@@ -15,9 +15,9 @@ PERMISSIONS = {
     "cameras:read": "see your printers' cameras and the addresses to stream them from",
     "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
     "farm:read": "see Farmhand's colours and the farm's time zone",
-    # Only for a Stream plugin taking over from Farmhand's own Stream page; handed over once (answers.stream_handover)
-    "stream:migrate": "take, once, a copy of Farmhand's own Stream page set-up: its settings and saved layouts, the "
-    "stream key and the YouTube sign-in (Farmhand keeps its own copy)",
+    # Only for a Stream plugin taking over from the Stream page Farmhand used to have; handed over once (handover.py)
+    "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: "
+    "its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
 }
 
 ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")

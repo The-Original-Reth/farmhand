@@ -5,11 +5,9 @@ WORKDIR /app
 # Client tools so Farmhand can mount NAS shares itself (Storage page): mount.cifs for SMB, mount.nfs for NFS.
 # And the libraries gmsh needs to load (it draws a project's STEP / IGES previews; it never opens a window). On ARM
 # there's no gmsh to install (see requirements.txt), and these are just unused.
-# ffmpeg and fonts: the Stream page sends cameras live to YouTube, each printer's print written on its camera
-# and words on its squares in the font chosen (services/live_stream.py FONTS).
+# No ffmpeg or fonts: sending the cameras to YouTube is the Stream plugin's job, in its own container (plugins/stream).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends cifs-utils nfs-common ffmpeg fonts-dejavu-core \
-    fonts-liberation fonts-roboto-unhinted fonts-open-sans fonts-lato fonts-montserrat fonts-bebas-neue fonts-comic-neue fonts-firacode \
+ && apt-get install -y --no-install-recommends cifs-utils nfs-common \
     libgomp1 libglu1-mesa libgl1 libxcursor1 libxft2 libxinerama1 libxrender1 \
  && rm -rf /var/lib/apt/lists/*
 

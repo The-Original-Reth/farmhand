@@ -2,7 +2,6 @@
 import { withNewAverage } from "../../src/lib/energyPrice.js";
 import { notInMockup, nowUnix } from "../core.js";
 import { iso } from "../data.js";
-import { DEFAULT_FONT, FONTS, cameraCell, cardCell, hex, isCard } from "../streamCells.js";
 
 export function settingsRoutes(ctx) {
   const { capability, fail404, farm, location, monthOf, on, prices, projectsDefault, requireConfirm, SCAN_ROOT, scanFolders } = ctx;
@@ -27,38 +26,6 @@ export function settingsRoutes(ctx) {
         .map((l) => ({ name: typeof l.name === "string" ? l.name.trim() : "", url: typeof l.url === "string" ? l.url.trim() : "" }))
         .filter((l) => /^https?:\/\/[^\s/]+/i.test(l.url) && l.url.length <= 2000 && l.name.length <= 100)
         .slice(0, 200);
-    }
-    if (body.preferences?.stream_layouts) {
-      // as the server does: named (trimmed, unique in any case, up to 60 characters), a 1x1 to 5x5 grid of squares (a
-      // camera, each once; a card; or nothing), timings in range, a #RRGGBB border
-      const seen = new Set();
-      const inRange = (v, least, most, fallback) => (Number.isInteger(v) && v >= least && v <= most ? v : fallback);
-      const side = (v) => (Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
-      const cellOf = (x) => {
-        if (x && typeof x.camera === "string" && x.camera && x.camera.length <= 200) return cameraCell(x);
-        return isCard(x) ? cardCell(x) : null;
-      };
-      farm.config.preferences.stream_layouts = (Array.isArray(body.preferences.stream_layouts) ? body.preferences.stream_layouts : [])
-        .filter((l) => l && typeof l === "object" && typeof l.name === "string")
-        .map((l) => {
-          const [cols, rows] = side(l.cols) && side(l.rows) ? [l.cols, l.rows] : [1, 1];
-          const cells = Array.from({ length: cols * rows }, (_, i) => cellOf((Array.isArray(l.cells) ? l.cells : [])[i]));
-          const taken = new Set();
-          return {
-            name: l.name.trim(), cols, rows,
-            cells: cells.map((x) => (x?.camera ? (taken.has(x.camera) ? null : (taken.add(x.camera), x)) : x)),
-            layout: l.layout === "cycle" ? "cycle" : "grid",
-            seconds_all: inRange(l.seconds_all, 0, 3600, 30),
-            seconds_each: inRange(l.seconds_each, 3, 3600, 20),
-            show_status: l.show_status !== false,
-            border_color: hex(l.border_color, "#000000"),
-            background: hex(l.background, "#000000"),
-            font: FONTS.some(([k]) => k === l.font) ? l.font : DEFAULT_FONT,
-            color: hex(l.color, "#FFFFFF"),
-          };
-        })
-        .filter((l) => l.name && l.name.length <= 60 && !seen.has(l.name.toLowerCase()) && seen.add(l.name.toLowerCase()))
-        .slice(0, 50);
     }
     if (body.preferences && "energy_price_per_kwh" in body.preferences) {
       // as the server does: a number from 0 to 100, else not set

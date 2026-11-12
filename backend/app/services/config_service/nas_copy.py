@@ -42,13 +42,9 @@ def _share_entries(db: Session) -> list[dict]:
 
 
 def build_document(db: Session) -> dict:
-    config = get_config(db)
-    # the Stream page's saved layouts have files of their own, in streams/ (records_service.write_streams)
-    config = {**config, "preferences": {k: v for k, v in config["preferences"].items() if k != "stream_layouts"}}
     return config_store.build_document(
-        config, storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
+        get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
         project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
-        stream_path=app_settings.get(db, app_settings.STREAM_MEDIA_DIR_KEY),
         printer_names={p.id: p.name for p in db.scalars(select(Printer))},
         plugins=plugin_registry.mirror_entries(db),
     )
@@ -112,8 +108,6 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
         folder = storage.ensure_ready_folder(path, "settings folder")
         config_store.write_document(folder, build_document(db))
         records_service.write_all(db, folder, scope)
-        records_service.write_streams(db, folder, get_config(db)["preferences"]["stream_layouts"], check_all=scope is None)
-        records_service.write_stream_setup(db, folder)  # the Stream page as it's saved (never its key)
         error = None
     except storage.StorageUnavailableError as e:
         error = str(e)

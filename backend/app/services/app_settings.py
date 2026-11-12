@@ -26,7 +26,6 @@ def put(db: Session, key: str, value: str | None) -> None:
 
 INSTANCE_KEY = "instance_id"
 FARM_COST_DIR_KEY = "farm_cost_dir"  # the Farm cost records folder chosen in Settings; none = the default
-STREAM_MEDIA_DIR_KEY = "stream_media_dir"  # the Stream page's folder chosen in Settings; none = the default
 
 
 def current_folder(db: Session, key: str, rename: bool = False) -> str | None:

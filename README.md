@@ -101,7 +101,7 @@ The first things to do, in this order. Everything is done in the web page; there
    share's own login.
    Farmhand connects to it and uses a folder inside it for each kind of file, making the ones that aren't there:
    **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **farm-cost** (the
-   monthly records), **stream** (the Stream page's pictures) and **farmhand-configs** (the settings). Folders already there are used as they are, whatever
+   monthly records) and **farmhand-configs** (the settings). Folders already there are used as they are, whatever
    their capitals. Out of the box, without a save location, everything stays in Farmhand's own storage on the
    computer it runs on.
 2. **Save all**, on the same card. Farmhand writes all its settings and every printer's and model's records to
@@ -386,7 +386,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 
 **Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
-**Stream** — the cameras you choose sent live to YouTube by Farmhand itself, no OBS needed (see "Stream")
+**Stream** — the cameras you choose sent live to YouTube, no OBS needed, by the Stream plugin: once it's added on the
+Plugins page, Stream is in the menu after Monitor (see "Stream")
 
 **Power** — the whole farm's energy use (see "Power")
 
@@ -623,253 +624,21 @@ page only passes through its own camera streams, never the rest of go2rtc.
 
 ## Stream
 
-**Stream** (in the left-hand menu) sends printers' cameras live to **YouTube Live** straight from
-Farmhand: no OBS, no PC left running. The picture is a grid of squares that you arrange, each holding a camera, a
-logo or nothing, and under each camera Farmhand writes the printer's name and its print (`VT 1190 · Printing 42% ·
-benchy.gcode`), brought up to date every 15 seconds.
+Streaming the printers' cameras live to **YouTube Live** is the **Stream plugin**'s job
+([plugins/stream](plugins/stream/README.md)): the grid of cameras, cards, slideshows and music, taking turns, the
+YouTube sign-in or a pasted stream key, and the NVIDIA card. It runs in a Docker container of its own, on this machine
+or another one, so a Farmhand update, restart or crash never stops the stream. Farmhand itself no longer has a Stream
+page of its own and runs no ffmpeg.
 
-The stream can also run in a container of its own (the Stream plugin, `plugins/stream/`), so a Farmhand update,
-restart or crash never stops it: **Run the stream in its own container**, at the top of the Stream page, has the steps
-and the docker-compose file to start it with.
+To set it up, open **Plugins** and unfold **Run a plugin in its own container**, choose **Stream**, and follow the
+steps: its folder, its docker-compose file (Copy, Download, or the `curl` line that fetches it), its port, and its
+`stream.env`. Once the plugin is added, **Stream** appears in the menu where it always was, after Monitor, and opens the
+plugin's page; an old `/stream` bookmark opens it too.
 
-1. Open **YouTube settings** (Where to) and sign Farmhand in to your channel (see "YouTube settings and the account"
-   below). Or, without signing in, paste a **Stream key** from YouTube Studio (**Create → Go live → Stream**).
-2. Set up the squares (**Add all cameras** fills them) and press **Save**.
-3. Press **Go live**. Farmhand first collects the **Stream delay** (Where to; 60 seconds unless you choose another,
-   0 to 120), then sends it. Signed in, Farmhand makes the broadcast on YouTube itself and it starts by itself when
-   the video arrives, so YouTube Studio needn't be open. **Stop stream** ends it (it becomes the channel's saved video).
-
-While live, a new layout (or any change to the picture) doesn't stop the stream: Farmhand starts the new picture
-beside the one going out and switches to it at its first whole frame, on the same connection to YouTube, so viewers
-just see the layout change. It waits 3 seconds after a save first, so a burst of saves is one change (the status says
-a change is on its way), and the new picture warms up at a lower priority so the one on air keeps the processor. A
-camera that takes one viewer at a time can't be in both pictures at once: then the old picture is stopped first and
-the new one started straight away, the delay covering the few seconds that takes. A web camera that hangs up is
-connected to again by itself; an RTSP camera (a Buddy3D's) that goes quiet for 10 seconds brings a fresh picture with
-new connections, and if YouTube closes the connection Farmhand connects again 10 seconds later. The delay is a buffer before YouTube: a hiccup shorter than it (a camera, the processor
-falling behind for a moment) never reaches viewers, who see everything that much later; the status says how much of it
-is held. A new delay applies the next time you go live.
-
-- **The switch** beside *Stream* at the top of the page turns the stream off: ffmpeg stops on the server and **Go live**
-  waits until it's on again; the music stops, and the preview's slideshows and taking turns hold still where they are
-  (*Stream off: held still*). Everything else on the page still works (the squares, the music's tracks, Save), so the
-  stream can be set up while it's off; changes not saved yet stay as they are. Turned on again, the slideshows and the
-  music start again by themselves.
-- **Mute**, beside the switch, silences the music on this page only (the stream keeps playing it); this browser
-  remembers it. While live, the page plays along with the stream (the track it's sending, from where it is), so with
-  Mute off you hear what viewers hear.
-- A pasted stream key stays inside Farmhand: it's never shown again, never written to the settings copy, and blanked
-  out of any error message. **Forget key** (YouTube settings) removes it. Signed in, Farmhand doesn't need one.
-- **The self-check:** while live, Farmhand watches how much video comes through. If next to none has for a minute
-  (the picture stopped giving video, or gives it far slower than it plays), it starts the picture again with its cameras
-  connected afresh; if that doesn't help within another minute, the connection to YouTube too. The status says when it
-  did, so a stream left running overnight mends itself instead of sitting there with nothing reaching YouTube.
-- If the stream drops (a camera goes off, the network blinks), Farmhand says why and tries again every 10 seconds
-  until you press **Stop stream**. Saving a new picture (squares, layout, pictures, colours) while live starts the stream
-  again with it; a new title, description, tags or privacy goes straight to the broadcast without a restart.
-- **Preview**, on the left of the page, plays the grid in your browser as the stream lays it out, with the words, the
-  pictures and the borders, so you can check it before going live. Slideshows and taking turns keep the server's time
-  of day, on the stream and in the preview alike: with nothing changed and not saved yet, the preview shows the same
-  slideshow picture and turn as the stream (or, not live, the ones going live will start on), whenever you open the
-  page; beside *Preview* it says *In step with the server* (or *the stream*), or *Not in step: resync or save to match
-  the server* while there are changes not saved. **Resync**, beside it, reads the server again (the stream folder too)
-  and puts the slideshows and taking turns back on its time, keeping the changes (*In step with the server (changes
-  not saved)*, until the next change); **Save** makes the stream match. **Revert**, before the grid's size, puts the page back to the last saved setup. YouTube shows the stream's picture a few seconds later.
-- **Squares:** above the preview, choose the grid's size (1 to 5 squares across and 1 to 5 down) and the
-  resolution. In the preview, click a square to edit it, and drag a square onto another to swap them; taking turns
-  waits on the whole grid while you do. The square's editor, under the preview, shows it as a canvas in the square's
-  own shape and offers **Camera** (each camera in one square), **Text**, **Picture**, **Slideshow** or **Empty**; its
-  **Save** saves the stream's settings straight away (the page's own Save also keeps them as a layout). **Add all
-  cameras** (in **Defaults**, on the right) puts every camera not in the grid yet into the empty squares, making the grid bigger if it
-  has to; **Clear** empties them all. Every square has a border round it, black unless you pick another colour.
-- **Defaults** (on the right): what every square and camera has unless it has its own, and how the grid is shown.
-  **Background:** the stream's own colour (black unless you pick another). It's every
-  square's colour unless the square has its own, and shows in empty squares and round a camera that doesn't fill its
-  square. A camera square can have a colour of its own round it, and its own say over the printer's name and print
-  written on it: shown or not (a tick box), and their font, colour and size (Automatic sizes them to the square).
-  **Words:** the font and colour of every square's text and every camera's words (Play and white unless you pick
-  others); a square or camera can have its own instead, and **Default** goes back to these.
-- **Text, Picture and Slideshow squares:** a colour of their own (or the stream's), a picture or a slideshow over it,
-  and, if you like, **words** (up to 500 characters) in the default font and colour (Defaults) or ones of its own (about
-  twenty fonts: Play, Farmhand's own, DejaVu, Liberation, Roboto, Open Sans, Lato, Montserrat, Bebas Neue, Comic Neue,
-  Fira Code); a Text square is just the words on
-  its colour. On the canvas, drag the picture or the words to move them, and drag the corner to make them bigger or
-  smaller (a picture keeps its shape, and is fitted inside the square's border so the border never covers it; **Picture fills the square** puts it back), on the canvas or on the square in the
-  preview; **Delete text** takes the words off. **Dark band behind it** puts a dark band
-  behind the words, so they can be read over a busy picture.
-- **More pictures and text on a square:** under the canvas, **Pictures and text on this square** (on a slideshow, on
-  the picture or blank screen on show, each keeping its own) has **Add picture** (one of the stream folder's pictures,
-  or a new one uploaded) and **Add text**, up to 12 in all. Each is placed on its own: drag it on the canvas to move it,
-  and by its corner to resize it; click it (on the canvas or in the list) to change it: another picture, or the words,
-  their font, colour, size and dark band. The bin takes it off. On the stream they're drawn in the list's order over
-  the square's picture, a slideshow screen's only while that screen is on.
-- **Pictures** are files in the **stream folder** (Settings, beside the farm cost folder; by default `stream` in the
-  folder above the STL folder): single pictures in its `images` folder, each slideshow a folder of its own in
-  `slideshows`, the music in `music` (Farmhand makes these three as soon as the Stream page looks at the folder, so
-  they're there to copy into). **Upload picture** and **Add pictures** write PNG, JPEG or WebP files there (under 10 MB each), and
-  pictures you copy in yourself (over the network share, say) show up once you press **Scan folder** (Farmhand doesn't
-  keep looking at the folder). A slideshow is chosen from a list, with **New slideshow** (asks its name), **Add pictures**, **Open folder**
-  (shows the slideshow's folder as Windows reaches it, `\\server\share\stream\slideshows\…`, with **Copy**, to paste
-  into File Explorer: a web page can't open File Explorer itself, and a stream folder that isn't on a network share
-  can't be reached so), **Rename** (renames the slideshow's folder on the server too, keeping its pictures and order;
-  squares showing it, on the page and in saved layouts, follow the new name) and **Delete slideshow**;
-  **Show each picture for** sets the seconds (3 to 3600); its pictures go round in the order shown (drag a picture onto another to move it there; the order is kept in the
-  slideshow's folder, so every square and the stream follow it, and pictures added later go on the end). **Add blank screen** puts a screen with no picture at the end, to write
-  on: it shows the square's colour and its own words in its turn, and is moved and deleted as a picture is. Under the editor's
-  canvas, **Stop** holds the picture on show (to move or resize it), **Back** and **Next** step through them (or double-click one in the list to work on it) and
-  **Play** lets them go round again; the square in the preview shows the same picture. A slideshow picture moved or
-  resized on the canvas changes on its own (the others keep their size and place), as does **Picture fills the
-  square**. Text written with **This
-  picture** stays with the picture on show, where you put it, and shows only while that picture does; **Every picture**
-  is the text shown on the pictures without their own. **Delete picture**
-  and **Delete slideshow** remove the picture files (a slideshow's folder only once nothing else is in it). On the
-  stream each picture is read and fitted once a second and shown in its own seconds, so a slideshow costs very little.
-  Going live copies the pictures once from the stream folder onto Farmhand's own disk, and the stream reads only those
-  copies: a stream folder on the NAS isn't read while live, so copying pictures into it then is safe. Pictures added
-  or changed by hand while live show once the stream starts again (Stop, then Go live); ones added or deleted on the
-  Stream page start it again themselves.
-- **Music:** MP3s in the stream folder's `music` folder, played on the stream one after another and round again, in
-  place of the silent sound track, starting with the stream (it's on unless you untick **Play music on the stream**).
-  Free music for streams such as [StreamBeats](https://www.streambeats.com/) can be downloaded and added with **Add
-  tracks** (under 50 MB each), or copied into the folder by hand and found with **Scan folder** (**Open folder** shows
-  the folder as Windows reaches it over the network, with **Copy**, to paste into File Explorer). **Back**,
-  **Play/Pause** and **Next**, beside *Play music on the stream*, work on the stream while live: Next skips to the next
-  track, Pause is silence until Play, and Back starts the track again (in its first 3 seconds, goes to the one before);
-  the page says which track is on and how far in. Not live, the music plays on the page all the time while the
-  stream is on, as the slideshows do (round and round, at the volume chosen; a browser that only plays sound after a
-  click starts it with your first click, and says so beside the switch; allowing sound or autoplay for Farmhand's
-  address in the browser's site settings starts it straight away), and the buttons, like each track's ▶, work on that. Turning the stream off
-  stops the music, on the page and on the server. **Volume** (1% steps; its middle sounds about half as loud), **Shuffle** (a new order each
-  round; off, name order) and turning the music off are saved with Save, and while live the music follows at once,
-  without the stream starting again. Farmhand plays the music itself and feeds it to ffmpeg as it plays, so none of
-  this interrupts the picture. Tracks added while live join the next round; with no tracks, the stream is silent.
-  **Delete** removes a track's file.
-- **Layout** (in Defaults): the whole grid all the time, or **Take turns**: the whole grid for *Stay on the whole grid* seconds
-  (0 skips it), then each camera full-screen, in square order, for *Stay on each camera* seconds, round and round.
-  The page says how long one round takes. Only the camera on screen is enlarged (the way Monitor enlarges the one
-  you click), so taking turns costs little more than the grid.
-- **Resolution:** 1080p (1920×1080, the default), 720p (1280×720) or 2K (2560×1440), sent at the bitrate YouTube
-  suggests for each at Farmhand's 15 frames a second (2.5 Mbit/s for 1080p and 720p, 4.5 for 2K); the words and borders grow with the picture. 720p is easiest on a
-  Raspberry Pi; 1080p and 2K make more work for the computer, so they suit a PC or the Proxmox container. An NVIDIA
-  graphics card can take the compressing off the processor (below); the page then says *on the NVIDIA card* while live.
-  The resolution is set when you go live and can't be changed while live (YouTube takes a change of size mid-stream
-  badly): stop the stream, choose another, and go live again.
-- **Save** saves the page and the layout with it, asking each time: **Overwrite** one of your saved layouts (the
-  one you last switched to or saved is picked to start with), or keep it as **a new layout** by name. A layout is the grid
-  (its size and squares), the whole grid or taking turns, the timings, the words and the border colour (not the key,
-  title or description).
-- **Saved layouts:** **Switch to** makes one the stream's layout straight away (while live, the stream starts again
-  with it); the one in use is marked, and two saved the same are pointed out. **Delete** removes one. They're
-  kept in Farmhand's settings and, once a settings folder is chosen, as a file each in its `streams` folder, cameras
-  by printer name, pictures and slideshows by their file and folder names, words as they are; **Load all** brings them back. The
-  pictures are in the stream folder, so another Farmhand sharing it shows them too.
-
-### An NVIDIA card for the stream (optional)
-
-Most of the stream's work is compressing the picture into the video YouTube receives. Farmhand does that on the
-processor unless it finds an NVIDIA graphics card's own video encoder (NVENC) it can use: then it uses that, and
-says so on the page while live. Measured on a GTX 1080 Ti with four cameras and a picture, it took about half the
-processor time at 2K and nearly that at 1080p. Nothing else changes: the same video, the same bitrate.
-
-On a Proxmox LXC container (Farmhand-test, CT 106, is set up this way), with the NVIDIA driver already on the host:
-
-1. Share the card into the container. Add to `/etc/pve/lxc/<id>.conf` on the host, then restart the container:
-
-   ```
-   lxc.cgroup2.devices.allow: c 195:* rwm
-   lxc.cgroup2.devices.allow: c 234:* rwm
-   lxc.cgroup2.devices.allow: c 238:* rwm
-   lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file
-   lxc.mount.entry: /dev/nvidiactl dev/nvidiactl none bind,optional,create=file
-   lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,create=file
-   lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
-   lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
-   ```
-
-   (`ls -l /dev/nvidia*` on the host shows the numbers after `c`; these are the usual ones.)
-2. In the container, install NVIDIA's libraries at **exactly** the host's driver version (`nvidia-smi` on the host
-   says it), and hold them there so an update can't move them away from it:
-
-   ```bash
-   sudo apt install --no-install-recommends libnvidia-encode-580=<version> nvidia-utils-580=<version>
-   ```
-   ```bash
-   sudo apt-mark hold libnvidia-encode-580 nvidia-utils-580 libnvidia-compute-580 libnvidia-decode-580
-   ```
-
-   `nvidia-smi` in the container should then show the card.
-3. Beside `docker-compose.yml` in Farmhand's folder, add a `docker-compose.override.yml` (Docker reads it on its
-   own; it's yours, so updates leave it alone):
-
-   ```yaml
-   services:
-     api:
-       devices: [/dev/nvidia0, /dev/nvidiactl, /dev/nvidia-uvm, /dev/nvidia-uvm-tools]
-       volumes:
-         - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
-         - /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1:ro
-         - /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:/usr/lib/x86_64-linux-gnu/libnvcuvid.so.1:ro
-   ```
-
-   and update as usual. When the host's NVIDIA driver is updated, update the container's libraries to the same
-   version (until then the stream quietly goes back to the processor).
-
-`FARMHAND_STREAM_ENCODER` in the API's environment can say `cpu` or `nvenc` outright; the default, `auto`, tries the
-card once and remembers what it found until Farmhand starts again.
-
-### YouTube settings and the account
-
-Everything YouTube is in the **YouTube settings** window: the button under *Where to* (the line beside it sums it up)
-opens it as a browser window of its own (`/youtube-settings`), so it can be moved anywhere, another screen included,
-and left open while you use Farmhand; its **Save** shows on the Stream page straight away:
-
-- **The video:** title (up to 100 characters), description (5000), tags (commas between them, 500 characters in all)
-  and category.
-- **Who can watch:** public (the default), unlisted or private, and *made for kids* (YouTube then turns chat off).
-  Over-18 only isn't something YouTube lets apps set: do it in YouTube Studio (Edit → Age restriction).
-- **The stream on YouTube:** latency (normal, low or ultra-low), viewers can rewind (DVR), starts by itself when the
-  video arrives, ends by itself when Farmhand stops.
-- **Stream key** (only needed when not signed in) and the **YouTube account**.
-
-**Save** in the window saves just these (changes on the Stream page not saved yet stay as they are); while live they go straight onto the broadcast going out. Signed in, each
-**Go live** makes a new broadcast with them, on a stream of Farmhand's own on the channel (made once, called
-*Farmhand*, taking any resolution), and **Stop stream** ends it; one that never went live is deleted instead. While
-live, the status shows what YouTube says of it, first asked 20 seconds after the delay has passed and then every 2
-minutes: its health (*Healthy*, *Poor*, *Not receiving video yet*), YouTube's warnings, how many are watching, and links
-to watch it and to YouTube Studio for chat and analytics. If YouTube ends the broadcast while Farmhand is still sending
-(its auto-stop after a long drop, or **End stream** in Studio), Farmhand makes a new one on the same stream within 2
-minutes, so a stream left running day and night always has somewhere to show; to end it, press **Stop stream**.
-With just a pasted key, YouTube makes the broadcast itself from Studio's settings and Farmhand can't change it.
-
-To sign in once, the window's **YouTube account** link, *How to connect your YouTube channel, step by step*, opens a
-page (`/help/youtube`) that goes through it all. In short:
-
-1. In [Google Cloud](https://console.cloud.google.com/), make a project and turn on the **YouTube Data API v3**.
-2. In **Google Auth Platform** (it used to be the **OAuth consent screen**), press **Get started**: app name, your
-   email, audience **External**. Then on **Audience** add the channel's Google account under **Test users**. Left in
-   **Testing**, Google signs Farmhand out after 7 days, and you sign in again. To stay signed in, publish it (**In
-   production**), which needs a home page, a privacy policy link and their domain on **Branding**.
-3. **Clients → Create client**, type **TVs and Limited Input devices**. Paste its client ID and secret into YouTube
-   settings and press **Save client**. Both show as dots until you click the eye next to them.
-4. Press **Sign in to YouTube**. The page shows a code: open google.com/device on any computer or phone, sign in to
-   the Google account that owns the channel and enter it. The page notices by itself. (Google warns the app isn't
-   verified: it's your own, so continue.)
-
-The channel must have live streaming turned on (YouTube asks for a phone check and can take a day the first time);
-until then Go live says YouTube wouldn't make the broadcast, and why. While live, Farmhand asks YouTube 3 things every 2
-minutes (about 2,200 of the 10,000 free units a day); going live costs about 150, stopping 50 and each save of the YouTube
-settings while live 50. The video keeps going if the allowance runs out; only the status and Go live wait for the next
-day. Farmhand never sees your Google password; the client secret and the sign-in
-stay inside Farmhand like the stream key. **Sign out** forgets the sign-in and tells Google to as well.
-- Cameras are read the same way Monitor finds them: a Mainsail camera with the **MJPEG streamer** or **adaptive
-  MJPEG** service (its MJPEG stream), camera-streamer, go2rtc on the printer (its RTSP port, 8554), and a Prusa's
-  Buddy3D. A camera that only plays in a browser some other way can't be streamed; the page says which. A printer
-  with just one camera keeps its square when that camera is renamed in Mainsail (changing its service there can rename
-  it, Front to Chamber, say): the stream follows it, and the page shows and saves it under its new name. An MJPEG
-  camera's frames are timed as they arrive, so a slow one (a couple of frames a second) just changes less often in its
-  square and never holds the rest of the stream back.
-- The streaming is done by ffmpeg in the API's container, on that computer's processor. A Raspberry Pi manages a
-  few cameras at 720p; a bigger machine (the Proxmox container) is happier with many, or a higher resolution.
+A Farmhand that had its own Stream page keeps what that page had saved (its settings and layouts, the stream key and
+the YouTube sign-in) in its database, untouched. The first time the Stream plugin starts with the `stream:migrate`
+permission, it takes a copy of all that once, so nothing needs setting up again (see "Plugins"). The pictures,
+slideshows and music stay in the stream folder on the NAS: give the plugin's container that same folder.
 
 ## Power
 
@@ -957,7 +726,7 @@ measures about 2.6:1, which is why the default changed. The colours live in
 ### Where settings and records are kept
 
 Farmhand's settings are: the look of the site (above); display preferences (the Models and Printers sort
-orders, the Monitor layout and zoom, the Farm cost page's printer order, the Stream page's saved layouts, the Tools page's links, and the Power
+orders, the Monitor layout and zoom, the Farm cost page's printer order, the Tools page's links, and the Power
 page's electricity prices: the average cost, its history and each month's own price); and your storage setup (the
 STL, 3MF and project files folders, the farm cost records folder, and the network shares with their SMB or NFS
 locations).
@@ -971,14 +740,10 @@ locations).
   so the settings survive a rebuild or a lost database. **Save all** writes all of it again whenever you like.
 - **Printers and models are copied there too:** a file per printer in `printers/` (its setup, notes, print
   history, energy readings, the 1500-hour service and Farmhand-kept maintenance) and a file per model in
-  `models/` (its notes, and each of its 3MF files' notes and starred version), and a file per saved stream layout
-  in `streams/` (its cameras by printer name, all at once or taking turns, and the timings; a deleted layout's file
-  goes too). **Load all settings** brings back what's missing (a stream layout only when none here has its name)
-  and never overwrites what's already there.
-- **The Stream page's setup** is copied as `stream-setup.json`, beside the settings file, after every save on that
-  page and by **Save all**: the grid and its squares (cameras by printer name), where it streams, taking turns, the
-  resolution, colours and font, the YouTube title and description, and the on/off switch. **Load all settings** puts
-  the page back as it was saved there. The stream key and the YouTube sign-in are never written to it.
+  `models/` (its notes, and each of its 3MF files' notes and starred version). **Load all settings** brings back
+  what's missing and never overwrites what's already there.
+- **A copy from when Farmhand had its own Stream page** still loads: its stream folder, saved stream layouts
+  (`streams/`) and `stream-setup.json` are left as they are and passed over, since streaming is the Stream plugin's now.
 - **A printer's file holds its Moonraker API key and PrusaLink password**, so a restored printer connects straight
   away (a printer missing its key or password gets it back from its file). Keep the settings folder private.
   **A share's password is never written to it**: a restored share comes back saved but not connected and says it
@@ -994,7 +759,7 @@ locations).
   files and projects another Farmhand keeps there, and the files that Farmhand added to a project both have (a 3MF
   uploaded there, say, or a new version). "Has" means the same file on the NAS: nothing is copied, nothing comes in
   twice, and nothing already here is changed or removed. It says what it brought in, and what it left out and why
-  (a 3MF for a printer that isn't here). It's safe to run twice. The Farm cost page's printer order, the Monitor page's camera order and the cameras in the Stream page's saved layouts are matched by
+  (a 3MF for a printer that isn't here). It's safe to run twice. The Farm cost page's printer order and the Monitor page's camera order are matched by
   printer name, so they come back right on a Farmhand that numbers its printers differently (another computer, or a
   fresh install); a printer that isn't there is left out. The Tools page's links come back in the order you put them.
 - **If the share is down** the settings are still saved on the server, the page says the copy
@@ -1143,7 +908,7 @@ inside it) and sets every folder.
    connects straight away and **only saves the share if that works** — if not, it says why (can't reach it, wrong
    password, no share by that name, …). The domain or workgroup and the SMB / NFS version are under the card's
    **Advanced**; a change there is tried on a test connection first.
-2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, stream, farmhand-configs). With no
+2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, farmhand-configs). With no
    project files folder chosen, project files go in a **Projects** folder beside the STL folder (a `projects` folder
    already there is used), so they're on the NAS too; only while the STL folder is Farmhand's own do they stay in
    its storage. To keep one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want
@@ -1233,7 +998,7 @@ on the Settings page is the real output of `mount`, translated.
 
 ## Plugins
 
-Plugins are programs other people write that add something to Farmhand (the live stream is to become the first),
+Plugins are programs other people write that add something to Farmhand (the live stream is the first),
 each running in its own Docker container with its own storage, on Farmhand's machine or another one on the farm's
 network, so a Farmhand update or crash doesn't touch them and they can't touch Farmhand's files. A plugin reads what
 it needs through Farmhand's **plugin API**, with a token of its own, and only what the operator allowed when adding it
@@ -1241,23 +1006,28 @@ it needs through Farmhand's **plugin API**, with a token of its own, and only wh
 Writing one: see [docs/plugins.md](docs/plugins.md), and start from [plugins/hello](plugins/hello/README.md), a small
 example plugin (each printer and its print's progress, live) made to be copied.
 
-**The Stream plugin** ([plugins/stream](plugins/stream/README.md)) is the Stream page as a plugin, in a container of its
-own, so Farmhand's updates and restarts never stop the stream: the same page (grid, cards, slideshows, music, taking
-turns, YouTube sign-in or a pasted key), each camera read on its own (one that stops shows a "Camera down" square with
-the printer's name until it's back), going live again by itself after its own restart, and carrying on while Farmhand
-is down (the words under the cameras are then just the printers' names). It reads only the cameras' addresses and
-what's printing. Given the `stream:migrate` permission, it brings over the Stream page's settings, layouts, stream key
-and YouTube sign-in once, the first time it starts. For now Farmhand's own Stream page stays as it is beside it.
+**The Stream plugin** ([plugins/stream](plugins/stream/README.md)) is how Farmhand streams to YouTube: Farmhand's own
+Stream page is gone, and the plugin, in a container of its own, has it all (grid, cards, slideshows, music, taking
+turns, YouTube sign-in or a pasted key), so Farmhand's updates and restarts never stop the stream. Each camera is read
+on its own (one that stops shows a "Camera down" square with the printer's name until it's back); it goes live again
+by itself after its own restart and carries on while Farmhand is down (the words under the cameras are then just the
+printers' names). It reads only the cameras' addresses and what's printing. Once it's added, **Stream** is in the menu
+after Monitor, where Farmhand's own Stream page used to be. Given the `stream:migrate` permission, it takes a copy of
+the Stream page set-up an older Farmhand saved (settings, layouts, stream key and YouTube sign-in) once, the first time
+it starts.
 
 **The Plugins page** (in the menu, under Settings) lists the plugins added and how each is doing (Farmhand asks each one
 every 30 seconds: running, running with a problem the plugin names, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the
-way the plugin's instructions say, then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.
+way the plugin's instructions say (**Run a plugin in its own container**, on the same page, has the steps with docker
+compose, filled in for Stream and Hello), then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.
 Farmhand asks the plugin what it is and shows what it wants to read in plain words; untick anything you'd rather it
-didn't see, and say yes. Farmhand then shows the plugin's `FARMHAND_URL` and `FARMHAND_TOKEN` once, to put in its
-container's settings. From the page you can switch a plugin off (its token is refused and its page leaves the menu),
-make it a new token (the old one stops working), or remove it (its container stays where it runs).
+didn't see, and say yes. Farmhand then shows the plugin's `FARMHAND_URL` and `FARMHAND_TOKEN` once, as two lines to
+put in the env file beside its docker-compose.yml (`stream.env` for Stream), before starting it again. From the page
+you can switch a plugin off (its token is refused and its page leaves the menu), make it a new token (the old one stops
+working), or remove it (its container stays where it runs).
 
-A plugin with a page of its own gets an entry in the menu; its page shows inside Farmhand, in Farmhand's colours,
+A plugin with a page of its own gets an entry in the menu, below Farmhand's own pages (Stream's goes after Monitor,
+where Farmhand's own Stream page was); its page shows inside Farmhand, in Farmhand's colours,
 passed on from wherever the plugin runs. When the plugin isn't running, the page says so, with why.
 
 The plugin API is answered on the API's port 4545 (a plugin may be on another machine), never through the web page's

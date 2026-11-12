@@ -13,7 +13,7 @@ from .farm_cost_recorder import recorder as farm_cost_recorder
 from .mount_supervisor import supervisor
 from .periodic import PeriodicWorker
 from .printer_poller import poller
-from .services import bundle_service, config_service, library_records, live_stream, previews, project_records, sub_printer_service
+from .services import bundle_service, config_service, library_records, previews, project_records, sub_printer_service
 from .services.plugins import health as plugin_health
 
 log = logging.getLogger("farmhand.startup")
@@ -82,6 +82,5 @@ def start_all() -> None:
 
 def stop_all() -> None:
     _stopping.set()
-    live_stream.stream.stop()  # a stream going out ends with Farmhand
     for worker in (supervisor, poller, farm_cost_recorder, previews_worker, plugin_health.worker):
         worker.stop()

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video } from "lucide-react";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Radio, Video } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
@@ -104,10 +104,19 @@ function Thanks() {
 // The icon a plugin's manifest names for its menu entry ("video"...), from the few Farmhand knows; a puzzle piece otherwise
 const PLUGIN_ICONS = { video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard };
 
+// Plugins that take a slot of their own in the main menu instead of the plugins group below it: plugin id -> the section
+// it comes after, and its icon. Stream was Farmhand's own page, after Monitor, until it became a plugin; it keeps its place.
+const MAIN_MENU_SLOTS = { stream: { after: "monitor", Icon: Radio } };
+
+const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon: MAIN_MENU_SLOTS[p.id]?.Icon || PLUGIN_ICONS[p.page.icon] || Puzzle });
+
 // The menu down the left: Farmhand's name, a link per section (with how many models and printers there are), a link
-// per plugin page (`plugins`: the ones switched on with a page), and the thanks at the foot. `counts`: section key ->
-// the number shown beside it.
+// per plugin page (`plugins`: the ones switched on with a page; those in MAIN_MENU_SLOTS among the sections, the rest
+// after them), and the thanks at the foot. `counts`: section key -> the number shown beside it.
 export function Sidebar({ current, counts, plugins = [], onOpen }) {
+  const slotted = plugins.filter((p) => MAIN_MENU_SLOTS[p.id]);
+  const others = plugins.filter((p) => !MAIN_MENU_SLOTS[p.id]);
+  const main = SECTIONS.flatMap((s) => [s, ...slotted.filter((p) => MAIN_MENU_SLOTS[p.id].after === s.key).map(pluginItem)]);
   return (
     <div
       style={{
@@ -125,18 +134,13 @@ export function Sidebar({ current, counts, plugins = [], onOpen }) {
         <Archive size={18} color={c.amber} />
         <span style={{ fontSize: fs(15), fontWeight: 600, letterSpacing: 0.2, color: c.heading }}>Farmhand</span>
       </div>
-      {SECTIONS.map((s) => (
+      {main.map((s) => (
         <NavItem key={s.key} section={s} current={current} count={counts[s.key]} onOpen={onOpen} />
       ))}
-      {plugins.length > 0 && (
+      {others.length > 0 && (
         <div data-testid="plugin-menu" style={{ borderTop: `1px solid ${c.border}`, marginTop: 10, paddingTop: 10 }}>
-          {plugins.map((p) => (
-            <NavItem
-              key={p.id}
-              section={{ key: pluginSection(p.id), label: p.page.menu, Icon: PLUGIN_ICONS[p.page.icon] || Puzzle }}
-              current={current}
-              onOpen={onOpen}
-            />
+          {others.map((p) => (
+            <NavItem key={p.id} section={pluginItem(p)} current={current} onOpen={onOpen} />
           ))}
         </div>
       )}

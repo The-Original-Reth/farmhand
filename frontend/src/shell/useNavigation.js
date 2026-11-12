@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Cctv, CircleDollarSign, FolderKanban, Hammer, Layers, Palette, Printer, Puzzle, Radio, Settings, Zap } from "lucide-react";
+import { Cctv, CircleDollarSign, FolderKanban, Hammer, Layers, Palette, Printer, Puzzle, Settings, Zap } from "lucide-react";
 
 // The menu's sections, in menu order, each at its own address (/models, /printers…); the bare address is Models
 export const SECTIONS = [
@@ -9,7 +9,6 @@ export const SECTIONS = [
   { key: "power", label: "Power", Icon: Zap },
   { key: "farm-cost", label: "Farm cost", Icon: CircleDollarSign }, // filament and electricity, per printer
   { key: "monitor", label: "Monitor", Icon: Cctv },
-  { key: "stream", label: "Stream", Icon: Radio }, // cameras sent live to YouTube
   { key: "tools", label: "Tools", Icon: Hammer },
   { key: "settings", label: "Settings", Icon: Settings }, // where files are stored, network shares, the settings copy
   { key: "plugins", label: "Plugins", Icon: Puzzle }, // other people's programs, each in its own container
@@ -18,9 +17,15 @@ export const SECTIONS = [
 // A plugin's page is a section too, at /plugin/<its id> (the page itself comes from /plugins/<id>/, nginx.conf)
 export const PLUGIN_SECTION = /^plugin\/([a-z0-9-]+)$/;
 export const pluginSection = (id) => `plugin/${id}`;
+// Old addresses, so bookmarks still open what they did: Storage became Settings, and Farmhand's own Stream page
+// became the Stream plugin's page. The address bar is put right too.
+const OLD_ADDRESSES = { storage: "settings", stream: pluginSection("stream") };
 const sectionInAddress = () => {
   let key = window.location.pathname.replace(/^\/+|\/+$/g, "");
-  if (key === "storage") key = "settings"; // its old address, so bookmarks still open it
+  if (OLD_ADDRESSES[key]) {
+    key = OLD_ADDRESSES[key];
+    window.history.replaceState(null, "", `/${key}`);
+  }
   return SECTIONS.some((s) => s.key === key) || PLUGIN_SECTION.test(key) ? key : "models";
 };
 

@@ -65,54 +65,39 @@ def test_every_later_change_refreshes_the_copy(db_session, share):
     assert result["ok"] and _file(folder)["appearance"]["scheme"] == "violet"
 
 
-def test_saved_stream_layouts_have_a_file_each_in_streams(db_session, share, other_farmhand):
-    from app.services import printer_service
-
-    vt = printer_service.create_printer(db_session, name="VT 1190", kind=None, wired_ip=None, wireless_ip=None)
-    v2 = printer_service.create_printer(db_session, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
+def test_a_copy_from_when_farmhand_had_its_own_stream_page_still_loads(db_session, share, other_farmhand):
+    """Streaming is the Stream plugin's now: an older copy's stream folder, layouts and setup are passed over quietly."""
     folder = _folder(share)
     svc.set_location(db_session, str(folder))
-    layouts = [
-        {"name": "Whole farm", "cols": 2, "rows": 2, "layout": "cycle", "seconds_all": 0, "seconds_each": 40, "border_color": "#FF0000",
-         "cells": [{"image": "Elves.png"}, {"camera": f"{vt.id}:Bed"}, None, {"camera": f"{v2.id}:Camera"}]},
-        {"name": "Night/shift", "cols": 1, "rows": 1, "cells": [{"camera": f"{v2.id}:Camera"}]},
-    ]
-    svc.save_config(db_session, {"preferences": {"stream_layouts": layouts}})
-    svc.mirror(db_session)
-    whole = json.loads((folder / "streams" / "Whole farm.json").read_text(encoding="utf-8"))
-    assert whole["farmhand_record"] == "streams" and whole["name"] == "Whole farm" and (whole["cols"], whole["rows"]) == (2, 2)
-    assert whole["cells"][0]["image"] == "Elves.png"  # a card as it is: pictures are named by file already
-    assert whole["cells"][1:] == [{"camera": {"printer": "VT 1190", "camera": "Bed"}}, None, {"camera": {"printer": "V2 BOG", "camera": "Camera"}}]
-    assert (whole["layout"], whole["seconds_all"], whole["seconds_each"], whole["show_status"], whole["border_color"]) == ("cycle", 0, 40, True, "#FF0000")
-    assert (folder / "streams" / "Night_shift.json").is_file()  # a name made safe for a file
-    assert "stream_layouts" not in _file(folder)["preferences"]  # only in streams/, not twice
+    doc = _file(folder)
+    doc["stream"] = {"media_path": "/data/nas/farmhand/stream"}
+    doc["preferences"]["stream_layouts"] = [{"name": "Whole farm", "cols": 1, "rows": 1, "cells": [None]}]
+    (folder / cs.CONFIG_FILENAME).write_text(json.dumps(doc), encoding="utf-8")
+    (folder / "streams").mkdir()
+    (folder / "streams" / "Whole farm.json").write_text(json.dumps({"farmhand_record": "streams", "name": "Whole farm"}), encoding="utf-8")
+    (folder / "stream-setup.json").write_text(json.dumps({"farmhand_record": "stream-setup", "cells": []}), encoding="utf-8")
 
-    # deleted on the page: its file goes too
-    svc.save_config(db_session, {"preferences": {"stream_layouts": layouts[:1]}})
-    svc.mirror(db_session)
-    assert sorted(p.name for p in (folder / "streams").iterdir()) == ["Whole farm.json"]
+    app_settings.put(other_farmhand, svc.KEY_LOCATION, str(folder))
+    other_farmhand.commit()
+    out = svc.restore(other_farmhand)
+    assert not [w for w in out["warnings"] if "tream" in w]
+    assert not [r for r in out["restored"] if "stream" in r]
+    assert "stream_layouts" not in svc.get_config(other_farmhand)["preferences"]
+    # writing the copy again leaves the old Stream page's files where they are
+    svc.mirror(other_farmhand)
+    assert (folder / "streams" / "Whole farm.json").is_file() and (folder / "stream-setup.json").is_file()
+    assert "stream" not in _file(folder)
 
-    # Load all on another Farmhand, whose printers have other numbers: they're followed by name
-    db2 = other_farmhand
-    printer_service.create_printer(db2, name="Shelf", kind=None, wired_ip=None, wireless_ip=None)
-    v2_here = printer_service.create_printer(db2, name="V2 BOG", kind=None, wired_ip=None, wireless_ip=None)
-    svc.save_config(db2, {"preferences": {"stream_layouts": [{"name": "WHOLE FARM", "cameras": []}, {"name": "Mine", "cameras": []}]}})
-    app_settings.put(db2, svc.KEY_LOCATION, str(folder))
-    db2.commit()
-    out = svc.restore(db2)
-    got = svc.get_config(db2)["preferences"]["stream_layouts"]
-    # one by the same name here is kept as it is (Load all only adds), so nothing new came in yet
-    assert [lay["name"] for lay in got] == ["WHOLE FARM", "Mine"] and "stream layouts" not in out["restored"]
-    svc.save_config(db2, {"preferences": {"stream_layouts": []}})
-    out = svc.restore(db2)
-    got = svc.get_config(db2)["preferences"]["stream_layouts"]
-    assert "stream layouts" in out["restored"]
-    # VT 1190 came back from its printers/ file, so its camera is here too, in this Farmhand's numbers
-    vt_here = next(p.id for p in printer_service.list_printers(db2) if p.name == "VT 1190")
-    assert got[0]["cells"][0]["image"] == "Elves.png"
-    assert {k: v for k, v in got[0].items() if k != "cells"} == {"name": "Whole farm", "cols": 2, "rows": 2, "layout": "cycle", "seconds_all": 0,
-                                                                  "seconds_each": 40, "show_status": True, "border_color": "#FF0000", "background": "#000000", "font": "play", "color": "#FFFFFF"}
-    assert got[0]["cells"][1:] == [{"camera": f"{vt_here}:Bed"}, None, {"camera": f"{v2_here.id}:Camera"}]
+
+def test_stored_stream_layouts_stay_as_they_were_stored(db_session):
+    """The old Stream page's layouts are never deleted: saving the settings keeps them (for the stream:migrate hand-over)."""
+    layouts = [{"name": "Morning", "cols": 1, "rows": 1, "cells": [None]}]
+    app_settings.put(db_session, svc.KEY_CONFIG, json.dumps({"preferences": {"stream_layouts": layouts}}))
+    db_session.commit()
+    svc.save_config(db_session, {"preferences": {"monitor_order": ["1:Bed"], "stream_layouts": []}})
+    stored = json.loads(app_settings.get(db_session, svc.KEY_CONFIG))
+    assert stored["preferences"]["stream_layouts"] == layouts and stored["preferences"]["monitor_order"] == ["1:Bed"]
+    assert "stream_layouts" not in svc.get_config(db_session)["preferences"]
 
 
 def test_a_folder_that_isnt_on_a_share_is_refused(db_session, share, tmp_path):
@@ -483,35 +468,3 @@ def test_load_all_brings_in_the_projects_another_farmhand_keeps(db_session, othe
     assert other_farmhand.query(Project).one().name == "Shark"
     again = svc.restore(other_farmhand)["brought_in"]  # it has them all now: nothing twice
     assert again == {"models": [], "threemfs": [], "projects": []}
-
-
-def test_the_stream_pages_setup_is_saved_and_loaded(db_session, share, other_farmhand):
-    from app.services import live_stream, printer_service
-
-    vt = printer_service.create_printer(db_session, name="VT 1190", kind=None, wired_ip=None, wireless_ip=None)
-    folder = _folder(share)
-    svc.set_location(db_session, str(folder))
-    live_stream.save(db_session, cols=2, rows=1, cells=[{"camera": f"{vt.id}:Bed", "words_color": "#FF0000"}, {"text": "Hi"}],
-                     title="Live from the farm", font="lato", color="#00FF00", resolution="720p", stream_key="abcd-efgh-1234")
-    svc.mirror(db_session)
-    doc = json.loads((folder / "stream-setup.json").read_text(encoding="utf-8"))
-    assert doc["farmhand_record"] == "stream-setup" and doc["title"] == "Live from the farm" and doc["resolution"] == "720p"
-    assert doc["cells"][0] == {"camera": {"printer": "VT 1190", "camera": "Bed"}, "words_color": "#FF0000"}
-    assert "abcd-efgh-1234" not in json.dumps(doc) and "key" not in " ".join(doc)  # the stream key never leaves Farmhand
-
-    # (one saved while Farmhand still streamed to Twitch: the rest comes back, to YouTube)
-    (folder / "stream-setup.json").write_text(json.dumps({**doc, "destination": "twitch"}), encoding="utf-8")
-
-    # Load all on another Farmhand: the page comes back, its camera followed to this Farmhand's printer by name
-    db2 = other_farmhand
-    printer_service.create_printer(db2, name="Shelf", kind=None, wired_ip=None, wireless_ip=None)
-    app_settings.put(db2, svc.KEY_LOCATION, str(folder))
-    db2.commit()
-    out = svc.restore(db2)
-    assert "stream setup" in out["restored"]
-    got = live_stream.settings(db2)
-    assert got["destination"] == "youtube"
-    vt_here = next(p.id for p in printer_service.list_printers(db2) if p.name == "VT 1190")
-    assert (got["title"], got["font"], got["color"], got["resolution"]) == ("Live from the farm", "lato", "#00FF00", "720p")
-    assert got["cells"][0] == {"camera": f"{vt_here}:Bed", "words_color": "#FF0000"} and got["cells"][1]["text"] == "Hi"
-    assert got["key_set"] is False  # its own key (none) stays as it was

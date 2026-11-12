@@ -1,0 +1,26 @@
+# Farmhand's Hello plugin, the example plugin: each printer and how far along its print is. Put this file in a folder
+# of its own on any machine on the farm's network that has Docker and reaches Farmhand (e.g. /opt/farmhand-hello),
+# then, in that folder:
+#
+#   sudo docker compose up -d --build
+#
+# Docker builds the plugin straight from Farmhand's GitHub repository (git must be installed). Then add it on
+# Farmhand's Plugins page at http://<this machine>:8080, put the two lines Farmhand shows into hello.env (beside this
+# file) and start it again:  sudo docker compose up -d --force-recreate
+services:
+  hello:
+    build: https://github.com/The-Original-Reth/farmhand.git#main:plugins/hello
+    image: farmhand-hello
+    container_name: farmhand-hello
+    restart: unless-stopped        # back by itself after a reboot or a crash
+    ports:
+      - "8080:8080"                # Farmhand reaches the plugin at http://<this machine>:8080. Another plugin already
+                                   # on 8080 here: change the left side only (e.g. "8081:8080") and add it at :8081
+    env_file:
+      - path: hello.env            # FARMHAND_URL and FARMHAND_TOKEN, from Farmhand's Plugins page
+        required: false            # (not there until then)
+    volumes:
+      - hello-data:/data           # its one setting (which printers its page leaves out), kept when it's replaced
+
+volumes:
+  hello-data:

@@ -1,4 +1,4 @@
-"""The docker-compose file Farmhand's Stream page shows (frontend/src/stream/plugin/) is this plugin's own."""
+"""The docker-compose file Farmhand's Plugins page shows for Stream (frontend/src/plugins/compose/stream.yml) is this plugin's own."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 PLUGIN = Path(__file__).resolve().parent.parent
-SHOWN = PLUGIN.parent.parent / "frontend" / "src" / "stream" / "plugin" / "docker-compose.yml"
+SHOWN = PLUGIN.parent.parent / "frontend" / "src" / "plugins" / "compose" / "stream.yml"
 
 
 def test_compose_file_is_valid_and_builds_the_plugin():
@@ -21,7 +21,7 @@ def test_compose_file_is_valid_and_builds_the_plugin():
 
 
 @pytest.mark.skipif(not SHOWN.exists(), reason="Farmhand's frontend isn't beside the plugin")
-def test_stream_page_shows_the_same_compose_file():
+def test_plugins_page_shows_the_same_compose_file():
     ours = (PLUGIN / "docker-compose.yml").read_text(encoding="utf-8").replace("\r\n", "\n")
     shown = SHOWN.read_text(encoding="utf-8").replace("\r\n", "\n")
-    assert shown == ours, "copy plugins/stream/docker-compose.yml to frontend/src/stream/plugin/docker-compose.yml"
+    assert shown == ours, "copy plugins/stream/docker-compose.yml to frontend/src/plugins/compose/stream.yml"

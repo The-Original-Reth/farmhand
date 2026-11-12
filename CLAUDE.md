@@ -55,7 +55,15 @@ stops them: the Plugins page (`routers/plugins.py`, `src/plugins/`) adds one by 
 `/manifest`), and `health.py`'s worker asks each every 30 s. Where a plugin runs is the `plugin_connection` table. Its
 page is an iframe on `/plugins/<id>/`, which nginx sends to the API's `/plugins/<id>/page/` and `pages.py` passes on to
 the plugin. Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
-`services/camera_streams.py`, shared with the Stream page.
+`services/camera_streams.py` (handed to plugins as data; Farmhand runs no ffmpeg itself).
+
+**Stream is only a plugin** (`plugins/stream/`, its own container): Farmhand has no stream code of its own. Once it's
+added, `Sidebar.jsx`'s `MAIN_MENU_SLOTS` puts it in the main menu after Monitor (where the built-in Stream page was), and
+`/stream` opens `plugin/stream`. What the old built-in page saved stays in the database unused (never deleted): the
+`stream:migrate` hand-over (`services/plugins/handover.py`, self-contained, reading those `app_settings` rows by key)
+gives it to the plugin once, and an older settings copy's stream keys are ignored on load. The Plugins page's
+`RunPluginGuide.jsx` shows how to run any plugin with docker compose; the compose files of the plugins in this
+repository are copied in `src/plugins/compose/<id>.yml` (each plugin's `tests/test_compose.py` checks they match).
 
 **Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
 and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores
@@ -71,7 +79,7 @@ unexpected prefix needs an entry there. Share passwords are never written; print
 Moonraker API key and PrusaLink password (asked for, so a restore connects straight away).
 
 **Frontend**: `src/api.js` is the single HTTP client: it re-exports `src/api/<area>.js` (client, printers, library,
-projects, farmCost, stream, storage, settings, plugins), so components always import from `api.js`. It also normalizes API shapes
+projects, farmCost, storage, settings, plugins), so components always import from `api.js`. It also normalizes API shapes
 into the shapes the UI components use. The API host comes from the browser's own hostname at runtime (port 4545), and
 `VITE_API_BASE` overrides it. `src/` has one folder per area (models, bundles, printers, power, storage, settings,
 monitor, notes, compare, plugins). Colours come from `palettes.js`/`theme.js`; don't hard-code colours, or the
@@ -80,9 +88,8 @@ contrast check stops covering them (ones no scheme changes, like the white behin
 **Mock backend** (`frontend/mock/`: `server.js` the Vite plugin, `core.js` the in-memory farm and shared helpers,
 `routes/<area>.js` the routes, `data.js` the sample farm): serves `/mock-api` in exactly the real API's shapes. Each
 `routes/` file gets the helpers of `core.js` and of the files before it from `ctx`, and returns its own. It is never
-built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink/YouTube
-behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`, `tests/fake_google.py`;
-ffmpeg's in `tests/fake_ffmpeg.py`). A typical feature
+built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink
+behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`). A typical feature
 commit touches router → service → test → `src/api/` → mock → UI.
 
 ## Conventions

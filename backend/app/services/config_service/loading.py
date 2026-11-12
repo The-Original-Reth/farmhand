@@ -16,7 +16,7 @@ from ..plugins import registry as plugin_registry
 from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
 
 from .nas_copy import FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
-from .settings import get_config, save_config
+from .settings import save_config
 
 log = logging.getLogger("farmhand.settings")
 
@@ -123,8 +123,9 @@ def restore(db: Session) -> dict:
         raise ValueError("There's no settings file in that folder yet.")
 
     result = {"restored": ["appearance", "display preferences"], "shares_added": [], "shares_kept": [], "needs_password": [], "warnings": []}
-    prefs = {k: v for k, v in doc["preferences"].items() if k != "stream_layouts"}  # those come from streams/, below
-    save_config(db, {"appearance": doc["appearance"], "preferences": _orders_here(db, prefs, doc["printer_names"])})
+    # (a file from when Farmhand had its own Stream page also has its stream folder, layouts and setup: never read,
+    # since streaming is the Stream plugin's now)
+    save_config(db, {"appearance": doc["appearance"], "preferences": _orders_here(db, doc["preferences"], doc["printer_names"])})
 
     same = _shares_here(db, doc["shares"])
     applied, warnings = storage_settings_service.restore_locations(
@@ -142,16 +143,6 @@ def restore(db: Session) -> dict:
             result["restored"].append("farm cost folder")
         except ValueError as e:
             result["warnings"].append(f"The farm cost folder ({farm_cost_path}) wasn't put back: {e}")
-
-    stream_path = _moved_onto(doc["stream"]["media_path"], same)
-    if stream_path and stream_path != app_settings.get(db, app_settings.STREAM_MEDIA_DIR_KEY):
-        from .. import stream_media  # (stream_media reads these settings itself)
-
-        try:
-            stream_media.set_location(db, stream_path)
-            result["restored"].append("stream folder")
-        except ValueError as e:
-            result["warnings"].append(f"The stream folder ({stream_path}) wasn't put back: {e}")
 
     for entry in doc["shares"]:
         label = entry.get("name") or "(unnamed)"
@@ -183,26 +174,6 @@ def restore(db: Session) -> dict:
     # the printer orders once more, now the printers from the printers/ files are here too (a new Farmhand had none)
     ordered = _orders_here(db, doc["preferences"], doc["printer_names"])
     save_config(db, {"preferences": {k: ordered[k] for k in ("farm_cost_order", "monitor_order") if k in ordered}})
-    # the Stream page's saved layouts in streams/, now the printers are here: each one not here yet (by name) added
-    layouts, stream_warnings = records_service.read_streams(db, path)
-    result["warnings"] += stream_warnings
-    have = get_config(db)["preferences"]["stream_layouts"]
-    known = {lay["name"].lower() for lay in have}
-    new = [lay for lay in layouts if lay["name"] and lay["name"].lower() not in known]
-    if new:
-        save_config(db, {"preferences": {"stream_layouts": have + new}})
-        result["restored"].append("stream layouts")
-    # the Stream page as it was saved there (its cameras followed by printer name); its stream key stays as it is here
-    setup, setup_warnings = records_service.read_stream_setup(db, path)
-    result["warnings"] += setup_warnings
-    if setup:
-        from .. import live_stream  # (live_stream reads these settings itself)
-
-        try:
-            live_stream.save(db, **setup)
-            result["restored"].append("stream setup")
-        except ValueError as e:
-            result["warnings"].append(f"The Stream page's setup wasn't put back: {e}")
     # the plugins installed there, each one not here yet registered again: without a token (the file never has one)
     plugins = plugin_registry.restore_entries(db, doc["plugins"])
     result["warnings"] += plugins.pop("warnings")
