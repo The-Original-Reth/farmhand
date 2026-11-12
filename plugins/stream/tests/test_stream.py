@@ -155,6 +155,21 @@ def test_a_pump_writes_the_latest_frame_or_camera_down_steadily(ffmpeg, tmp_path
         pump.stop()
 
 
+def test_time_a_writer_was_held_up_is_made_up_once_its_reader_is_reading():
+    step, slept = 1 / 15, []
+    reading = int(feeders.STEADY_AFTER / step) + 1  # steps written: its reader has been reading
+    # early: wait for it
+    assert feeders.pace(10.0, reading, step, 9.9, slept.append) == 10.0 and slept == [pytest.approx(0.1)]
+    # reading, then held up 5 s: carry on from where it was (no waiting) until caught up
+    assert feeders.pace(10.0, reading, step, 15.0, slept.append) == 10.0 and len(slept) == 1
+    # held up before it was reading (a new picture opening its inputs): that time is let go
+    assert feeders.pace(10.0, 3, step, 15.0, slept.append) == 15.0
+    # a moment behind before then is still made up
+    assert feeders.pace(10.0, 3, step, 10.5, slept.append) == 10.0
+    # held up for longer than is ever made up: a real gap
+    assert feeders.pace(10.0, reading, step, 10.0 + feeders.CATCH_UP_MOST + 1, slept.append) == pytest.approx(131.0)
+
+
 # ------------------------------------------------------------------ going live
 
 

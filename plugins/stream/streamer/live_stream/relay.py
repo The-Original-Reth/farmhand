@@ -21,6 +21,7 @@ PACKET = 188
 CHUNK = PACKET * 64
 VIDEO_PID = 0x100  # ffmpeg's mpegts muxer gives the first stream (the picture) this PID
 TRIM_OVER = 5  # seconds over the delay the buffer may hold before it's trimmed back (Buffer._trim)
+PTS_WRAP = (1 << 33) / 90000  # seconds after which an MPEG-TS time starts again from 0 (about 26.5 hours)
 
 
 def keyframe_at(data: bytes) -> int | None:
@@ -186,6 +187,7 @@ class Buffer:
         self._sink = None
         self._started = False  # the delay has passed once: from then on, what comes is passed on as the sender takes it
         self._first: float | None = None
+        self._newest: float | None = None  # the time (PTS, seconds) of the newest frame written
         self._ended = False
         threading.Thread(target=self._feed, name="stream-buffer", daemon=True).start()
 
@@ -195,6 +197,9 @@ class Buffer:
             if self._first is None:
                 self._first = now
             self._chunks.append((now, bytes(data)))
+            t = last_time(data)
+            if t is not None:
+                self._newest = t
             if self._started and self._chunks and now - self._chunks[0][0] > self.delay + TRIM_OVER:
                 self._trim(now)
             self._cond.notify_all()
@@ -227,9 +232,19 @@ class Buffer:
             self._cond.notify_all()
 
     def held(self) -> float:
-        """How many seconds of stream are held now: how far behind the picture YouTube gets is (0 before the first)."""
+        """
+        How many seconds of stream are held now: how far behind the picture YouTube gets is (0 before the first). By the
+        stream's own times (from the oldest frame held to the newest), not by when it came: a picture that stopped for a
+        moment and then made up the time it lost holds as much stream as before, though none of it came in that moment.
+        """
         with self._cond:
-            return round(time.monotonic() - self._chunks[0][0], 1) if self._chunks else 0.0
+            if not self._chunks:
+                return 0.0
+            oldest = next((t for t in (last_time(data) for _, data in self._chunks) if t is not None), None)
+            if oldest is None or self._newest is None:
+                return round(time.monotonic() - self._chunks[0][0], 1)
+            span = (self._newest - oldest) % PTS_WRAP
+            return round(span if span < PTS_WRAP / 2 else 0.0, 1)  # (a hand-over's times may step back a little)
 
     def filling(self) -> bool:
         """Still collecting the delay, before anything has gone to YouTube."""

@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .constants import FPS
+from .constants import CATCH_UP_MOST, FPS, STEADY_AFTER
 
 DOWN_AFTER = 10  # seconds without a frame before a camera counts as down
 RETRY_FIRST, RETRY_MOST = 5, 60  # seconds before a feeder that stopped is started again (doubling)
@@ -269,6 +269,22 @@ def pipe_input(path: str) -> list[str]:
     return ["-f", "image2pipe", "-framerate", str(FPS), "-analyzeduration", str(PROBE), "-c:v", "mjpeg", "-i", path]
 
 
+def pace(due: float, written: int, step: float, now: float, sleep=time.sleep) -> float:
+    """
+    After writing a step (a frame, a piece of sound) due at `due`, the `written`th: wait for the next if it's early, or
+    go straight on while behind, so time the reader held the writer up is made up (the reader counts its time in what
+    it's given). Behind before the reader has taken STEADY_AFTER seconds of it (a new picture ffmpeg still opening its
+    inputs), or by over CATCH_UP_MOST, the time is let go instead. The next step's due time.
+    """
+    left = due - now
+    if left > 0:
+        sleep(left)
+        return due
+    if left < -CATCH_UP_MOST or (written * step < STEADY_AFTER and left < -1):
+        return now
+    return due
+
+
 class Pump:
     """
     One picture ffmpeg's camera inputs: a pipe per camera square, each written at a steady FPS by its own thread with the
@@ -332,16 +348,12 @@ class Pump:
                 return
             self._files.append(f)
         step = 1 / FPS
-        due = time.monotonic()
+        due, written = time.monotonic(), 0
         try:
             while not self._stopped.is_set():
                 f.write(self.frame_for(feeder, downs))
-                due += step
-                left = due - time.monotonic()
-                if left > 0:
-                    time.sleep(left)
-                elif left < -1:  # (fell behind by over a second, the reader stalled: no rush to catch up)
-                    due = time.monotonic()
+                due, written = due + step, written + 1
+                due = pace(due, written, step, time.monotonic())
         except (OSError, ValueError):
             pass  # the picture ffmpeg ended, or the pump was stopped
         finally:

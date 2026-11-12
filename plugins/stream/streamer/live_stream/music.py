@@ -20,6 +20,9 @@ import time
 from array import array
 from typing import Callable
 
+from .constants import CATCH_UP_MOST, STEADY_AFTER
+from .feeders import pace
+
 SAMPLE_RATE, CHANNELS = 44100, 2
 PER_SECOND = SAMPLE_RATE * CHANNELS * 2  # bytes of sound a second (16-bit)
 CHUNK = PER_SECOND // 50  # 20 ms, a whole number of samples
@@ -232,7 +235,7 @@ class Player:
     def _write(self) -> None:
         """The sound, at the pace it plays, to every picture ffmpeg being fed: each through a queue of its own, so one
         not reading yet (a new one still connecting to its cameras) never holds up the one going out."""
-        due = time.monotonic()
+        due, made = time.monotonic(), 0
         while True:
             with self._cond:
                 if self._ended:
@@ -243,36 +246,36 @@ class Player:
                 outs = list(self._outs)
             if not outs:
                 time.sleep(0.05)
-                due = time.monotonic()
+                due, made = time.monotonic(), 0
                 continue
-            wait = due - time.monotonic()
-            if wait > 0:
-                time.sleep(wait)
-            elif wait < -1:  # well behind: from now, not catching up in a rush
-                due = time.monotonic()
+            due = pace(due, made, CHUNK / PER_SECOND, time.monotonic())
             chunk = self._take()
             for o in outs:
                 o.put(chunk)
-            due += CHUNK / PER_SECOND
+            due, made = due + CHUNK / PER_SECOND, made + 1
 
 
 class _Out:
-    """One picture ffmpeg's stdin, written by a thread of its own from a short queue (two seconds: older sound is dropped
-    while it isn't reading). `alive` turns False once it has ended."""
+    """One picture ffmpeg's stdin, written by a thread of its own from a queue: two seconds until it's reading (older sound
+    is dropped while a new one is still connecting to its cameras), then up to CATCH_UP_MOST, so sound it held up for a
+    moment is made up, not lost (it counts its time in samples). `alive` turns False once it has ended."""
 
-    MOST = 100  # chunks of 20 ms
+    MOST = 100  # chunks of 20 ms, until it's reading
+    READING_AFTER = STEADY_AFTER * 50  # chunks written (far more than its pipe holds): it's reading
+    MOST_READING = CATCH_UP_MOST * 50
 
     def __init__(self, out):
         self._out = out
         self._cond = threading.Condition()
         self._queue: collections.deque[bytes] = collections.deque()
         self.alive = True
+        self.written = 0
         threading.Thread(target=self._run, name="stream-music-out", daemon=True).start()
 
     def put(self, chunk: bytes) -> None:
         with self._cond:
             self._queue.append(chunk)
-            while len(self._queue) > self.MOST:
+            while len(self._queue) > (self.MOST_READING if self.written >= self.READING_AFTER else self.MOST):
                 self._queue.popleft()
             self._cond.notify()
 
@@ -292,6 +295,7 @@ class _Out:
             try:
                 self._out.write(chunk)
                 self._out.flush()
+                self.written += 1
             except (OSError, ValueError):  # that ffmpeg has ended
                 with self._cond:
                     self.alive = False
