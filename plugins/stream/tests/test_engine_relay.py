@@ -129,14 +129,51 @@ def test_the_buffer_says_how_much_stream_it_holds_by_the_streams_own_times():
 
     plain = bytes([0x47, 0x01, 0x00, 0x10]) + bytes(184)
     buffer = relay.Buffer(60)  # (no sender: nothing leaves it)
-    buffer.write(frame_at(10.0) + plain)
-    buffer.write(frame_at(40.0) + plain)
-    buffer.write(frame_at(70.0) + plain)  # come at once, but a minute of stream
+    for i in range(121):  # come at once, but a minute of stream
+        buffer.write(frame_at(10 + i / 2) + plain)
     assert buffer.held() == 60.0
     buffer.close()
 
     across = relay.Buffer(60)
-    across.write(frame_at(relay.PTS_WRAP - 20))
-    across.write(frame_at(relay.PTS_WRAP + 40))  # (its time started again from 0)
+    for i in range(121):
+        across.write(frame_at(relay.PTS_WRAP - 20 + i / 2))  # (its time starts again from 0 on the way)
     assert across.held() == 60.0
     across.close()
+
+    # a layout's hand-over: the new picture's times start a little behind the old one's; the sender plays straight on
+    handed = relay.Buffer(60)
+    for i in range(61):
+        handed.write(frame_at(100 + i / 2))  # 30 s of the old picture, to 130
+    for i in range(21):
+        handed.write(frame_at(121 + i / 2))  # then the new one's, from 121 (9 s back) to 131
+    assert handed.held() == 40.0
+    handed.close()
+
+
+def test_the_sender_starts_once_the_delay_is_held_by_the_streams_own_times(monkeypatch):
+    """A picture just started makes a little less than real time while its cameras connect: the sender waits until the
+    delay is held by the stream's own times (or FILL_MOST more seconds by the clock), so it never starts short of it."""
+    from streamer.live_stream import relay
+
+    def frame_at(seconds):
+        pts = int(seconds * 90000)
+        b = bytes([0x21 | ((pts >> 29) & 0xE), (pts >> 22) & 0xFF, ((pts >> 14) & 0xFE) | 1, (pts >> 7) & 0xFF, ((pts << 1) & 0xFE) | 1])
+        pes = bytes([0, 0, 1, 0xE0, 0, 0, 0x80, 0x80, 5]) + b
+        return bytes([0x47, 0x41, 0x00, 0x10]) + pes + bytes(184 - len(pes))
+
+    buffer, out = relay.Buffer(0.3), _Sink()
+    buffer.set_sink(out)
+    buffer.write(frame_at(10.0))
+    buffer.write(frame_at(10.1))  # by the clock the delay passes, but only 0.1 s of stream is held
+    time.sleep(0.6)
+    assert out.written == b"" and buffer.filling()
+    buffer.write(frame_at(10.35))  # now the delay is held
+    assert _wait_for(lambda: len(out.written) > 0) and not buffer.filling()
+    buffer.close()
+
+    monkeypatch.setattr(relay, "FILL_MOST", 0.2)
+    slow, out = relay.Buffer(0.2), _Sink()
+    slow.set_sink(out)
+    slow.write(frame_at(10.0))  # never more: started anyway, FILL_MOST past the delay
+    assert _wait_for(lambda: len(out.written) > 0)
+    slow.close()

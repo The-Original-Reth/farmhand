@@ -66,8 +66,8 @@ def _made_from(*parts) -> str:
 
 def _draw_words(canvas: Image.Image, w: dict, frame: Frame) -> None:
     """Words on a screen as the stream's drawtext writes them (cards.card_square's words()): `w` {text, tb (x, y, size:
-    parts of the square), font (its file), color "#RRGGBB", band}, centred on tb's spot, in lines a quarter of their
-    size apart, on a dark see-through band when chosen. Words that can't be drawn (an unreadable font) are left off."""
+    parts of the square), font (its file), color "#RRGGBB", band}, centred on tb's spot, each line centred as the page
+    shows it, in lines a quarter of their size apart, on a dark see-through band when chosen. Words that can't be drawn (an unreadable font) are left off."""
     big = round(w["tb"]["size"] * frame.th)
     size = max(frame.px(10), big)
     try:
@@ -77,14 +77,14 @@ def _draw_words(canvas: Image.Image, w: dict, frame: Frame) -> None:
     layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     spacing = big // 4
-    left, top, right, bottom = draw.multiline_textbbox((0, 0), w["text"], font=font, spacing=spacing)
+    left, top, right, bottom = draw.multiline_textbbox((0, 0), w["text"], font=font, spacing=spacing, align="center")
     x = round(w["tb"]["x"] * frame.tw) - (right - left) / 2 - left
     y = round(w["tb"]["y"] * frame.th) - (bottom - top) / 2 - top
     if w.get("band"):
         pad = max(frame.px(4), big // 5)
         draw.rectangle((x + left - pad, y + top - pad, x + right + pad, y + bottom + pad), fill=(0, 0, 0, 128))
     colour = w["color"].lstrip("#")
-    draw.multiline_text((x, y), w["text"], font=font, spacing=spacing,
+    draw.multiline_text((x, y), w["text"], font=font, spacing=spacing, align="center",
                         fill=tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4)) + (255,))
     canvas.alpha_composite(layer)
 

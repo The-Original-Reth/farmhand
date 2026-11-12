@@ -53,14 +53,14 @@ def card_square(c: int, cd: dict, frame: Frame, picture: Callable[[str], int], c
         shown = f"[c{c}o{j}]"
 
     def words(file: str, tb: dict, enable: str = "", style: dict | None = None) -> str:
-        """drawtext for words in `file`, centred on tb's spot; `style`: a piece of text's own {font, color, band} (None:
+        """drawtext for words in `file`, centred on tb's spot, each line centred as the page shows it; `style`: a piece of text's own {font, color, band} (None:
         the card's words', each falling back on the stream's)."""
         own = style if style is not None else {"font": cd.get("font"), "color": cd.get("color"), "band": cd.get("band")}
         big = round(tb["size"] * th)
         band = f":box=1:boxcolor=black@0.5:boxborderw={max(frame.px(4), big // 5)}" if own.get("band") else ""
         return (f"drawtext=fontfile={filter_path(font_file(own.get('font') or font))}:textfile={filter_path(file)}:reload=1:expansion=none"
                 f":fontsize={max(frame.px(10), big)}:fontcolor=0x{(own.get('color') or color or DEFAULT_TEXT_COLOR).lstrip('#')}:line_spacing={big // 4}"
-                f":x={round(tb['x'] * tw)}-text_w/2:y={round(tb['y'] * th)}-text_h/2{band}{enable}")
+                f":text_align=C:x={round(tb['x'] * tw)}-text_w/2:y={round(tb['y'] * th)}-text_h/2{band}{enable}")
 
     # its more pictures and pieces of text, in their order: the card's own, then each slideshow screen's in its turn
     steps = [(layer, "") for layer in cd.get("layers") or []]
