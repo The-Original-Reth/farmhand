@@ -110,12 +110,74 @@ def test_a_camera_sending_fewer_new_pictures_than_the_stream_is_called_slow(ffmp
         b.stop()
 
 
+def test_a_feeder_puts_out_each_picture_the_camera_sends_once():
+    args = feeders.feeder_command("ffmpeg", ["-i", "rtsp://10.0.6.33:8554/chamber"], ["hflip"], (1280, 720))
+    chain = args[args.index("-vf") + 1]
+    # (ffmpeg's fps filter would repeat or drop them on a 1/15 s grid; thinning by time would drop one of two that come
+    # a millisecond apart, as a Pi's go2rtc camera hands them over)
+    assert chain.startswith("hflip,scale=") and "fps=" not in chain and "select=" not in chain
+    assert args[args.index("-fps_mode") + 1] == "passthrough" and "-r" not in args
+    # (each stamped with its count: two that came at the same moment would otherwise share a stamp, and ffmpeg would
+    # throw the second away)
+    assert chain.endswith(",settb=1/1000,setpts=N") and args[args.index("-enc_time_base") + 1] == "1/1000"
+
+
+def _writes(feeder, comes, ticks):
+    """What a writer takes at each of `ticks` steps, with `comes[i]` pictures arriving just before step i."""
+    downs = feeders.DownFrames("#000000", "/no/font.ttf", "#FFFFFF", "VT 1190")
+    pump, last, out = feeders.Pump([], []), None, []
+    for i in range(ticks):
+        for _ in range(comes[i] if i < len(comes) else 0):
+            feeder.picture += 1
+            feeder._keep(jpeg((feeder.picture % 256, 0, 0)) + feeder.picture.to_bytes(4, "big"))
+        frame, last = pump.frame_for(feeder, downs, last)
+        out.append(last)
+    return out
+
+
+def _feeder():
+    f = feeders.Feeder("ffmpeg", "4:Chamber", ["-i", "rtsp://10.0.6.33:8554/chamber"], [], (1280, 720), None)
+    f.picture = 0
+    return f
+
+
+def test_a_camera_at_the_streams_rate_has_every_picture_shown_once_however_unevenly_they_come():
+    """A Pi's camera at 15 a second hands its pictures over 60 to 80 ms apart: some steps get two, the next none.
+    Taking the latest would lose one and show another twice; taking the next shows them all, in order."""
+    comes = [1, 1, 2, 0, 1, 2, 0, 1, 1, 2, 0, 0, 2, 1, 1]  # 15 pictures in 15 steps, unevenly
+    shown = _writes(_feeder(), comes, len(comes))
+    # (the latest at each step would be 1, 2, 4, 4, 5, 7, 7, 8, 9, 11, 11, 11, 13, 14, 15: five lost, five twice)
+    assert shown == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11, 12, 13, 14]  # (one twice: two steps running got none)
+
+
+def test_a_faster_camera_has_its_oldest_let_go_and_a_slower_one_its_last_repeated():
+    fast = _writes(_feeder(), [2] * 20, 20)  # 30 a second (Prusa's Buddy3D camera sends about 25)
+    assert fast[-1] >= 40 - feeders.KEPT_FRAMES  # (kept up: never more than KEPT_FRAMES behind)
+    slow = _writes(_feeder(), [1, 0] * 10, 20)  # 7.5 a second
+    assert slow == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]
+
+
+def test_two_pictures_reading_one_camera_each_get_every_picture():
+    """While one layout hands over to the next, two picture ffmpegs read the same feeders: neither takes pictures from
+    the other."""
+    f = _feeder()
+    downs = feeders.DownFrames("#000000", "/no/font.ttf", "#FFFFFF", "VT 1190")
+    pump, a, b, seen_a, seen_b = feeders.Pump([], []), None, None, [], []
+    for i in range(1, 6):
+        f._keep(jpeg((i, 0, 0)) + bytes([i]))
+        _, a = pump.frame_for(f, downs, a)
+        _, b = pump.frame_for(f, downs, b)
+        seen_a.append(a)
+        seen_b.append(b)
+    assert seen_a == seen_b == [1, 2, 3, 4, 5]
+
+
 def test_a_pump_writes_the_latest_frame_or_camera_down_steadily(ffmpeg, tmp_path, monkeypatch):
     monkeypatch.setattr(feeders, "DOWN_AFTER", 0.3)
     f = feeders.Feeder("ffmpeg", "1:Bed", [], [], (1280, 720), ffmpeg, aspect="16:9")  # no address: always down
     downs = feeders.DownFrames("#000000", "/no/font.ttf", "#FFFFFF", "VT 1190")
     pump = feeders.Pump([(f, downs)], [str(tmp_path / "cam.mjpeg")])
-    assert feeders.jpeg_size(pump.frame_for(f, downs)) == (1280, 720)
+    assert feeders.jpeg_size(pump.frame_for(f, downs)[0]) == (1280, 720)
     pump.start()
     try:
         assert wait_until(lambda: (tmp_path / "cam.mjpeg").stat().st_size > 3 * len(downs.at((1280, 720))))

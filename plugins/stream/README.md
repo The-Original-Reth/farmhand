@@ -14,9 +14,11 @@ What it adds over the Stream page older Farmhands had built in:
   square's background colour and the chosen font and colour, and goes back to live video by itself; the other cameras
   and the connection to YouTube carry on. Going live with a camera off works, and the page lists each camera as live
   or down while live.
-- **Cameras at different frame rates** all play at the stream's 15 a second: each camera's reader drops a fast one's
-  extra frames and repeats a slow one's, so a slow camera just changes less often in its square and never holds the
-  others back. The page shows each live camera's own frame rate (the new pictures it really sent over the last 20 s)
+- **Cameras at different frame rates** all play at the stream's 15 a second: each camera's reader keeps its last few
+  pictures and its square takes them in turn, one each 1/15 s, so a camera at 15 has every picture shown once even
+  when they come unevenly (a Pi's go2rtc camera hands some over a millisecond apart, others late); a fast one has its
+  extra pictures let go and a slow one its last repeated, so a slow camera just changes less often in its square and
+  never holds the others back. The page shows each live camera's own frame rate (the new pictures it really sent over the last 20 s)
   and warns, in amber, about one under 14 a second: set it (or go2rtc on its printer) to send at least 15 at that size.
 - **The preview before going live** shows each camera's snapshot, as the plugin fetches it (the page never talks to
   the cameras). A camera with no snapshot address, or one that doesn't answer (an RTSP camera, or one moved to go2rtc
