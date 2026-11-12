@@ -21,6 +21,8 @@ PACKET = 188
 CHUNK = PACKET * 64
 VIDEO_PID = 0x100  # ffmpeg's mpegts muxer gives the first stream (the picture) this PID
 TRIM_OVER = 5  # seconds over the delay the buffer may hold before it's trimmed back (Buffer._trim)
+FILL_MOST = 30  # seconds past the delay, by the clock, after which the sender is started though less is held
+JUMP = 5  # seconds: a step in the stream's times over this (back or forward) is a hand-over, not stream (Buffer)
 PTS_WRAP = (1 << 33) / 90000  # seconds after which an MPEG-TS time starts again from 0 (about 26.5 hours)
 
 
@@ -178,16 +180,21 @@ class Buffer:
     """The stream's delay: the finished video and sound held for `delay` seconds before any of it goes to the sender, which
     then plays it out at its own real-time pace (-re) from the front. A stall shorter than the delay (a camera's hiccup,
     a moment the processor fell behind, a layout's hand-over) never reaches YouTube. The relay writes into it; the sender
-    is given to it with set_sink (again whenever it's started again)."""
+    is given to it with set_sink (again whenever it's started again).
+
+    What's held is counted by the stream's own times: each piece keeps how much stream it adds (its last frame's time
+    less the one before's), and the held total is the sum. A step back or a leap (over JUMP: a layout's hand-over, whose
+    new picture's times start a little behind the old one's) adds nothing, as the sender plays straight on over it."""
 
     def __init__(self, delay: float):
         self.delay = max(0.0, float(delay))
         self._cond = threading.Condition()
-        self._chunks: collections.deque[tuple[float, bytes]] = collections.deque()  # (when it came, data)
+        self._chunks: collections.deque[tuple[float, bytes, float]] = collections.deque()  # (when it came, data, stream it adds)
+        self._total = 0.0  # the sum of the pieces' stream (held: less the first's, which came before it)
+        self._newest: float | None = None  # the time (PTS, seconds) of the newest frame written
         self._sink = None
         self._started = False  # the delay has passed once: from then on, what comes is passed on as the sender takes it
         self._first: float | None = None
-        self._newest: float | None = None  # the time (PTS, seconds) of the newest frame written
         self._ended = False
         threading.Thread(target=self._feed, name="stream-buffer", daemon=True).start()
 
@@ -196,26 +203,44 @@ class Buffer:
             now = time.monotonic()
             if self._first is None:
                 self._first = now
-            self._chunks.append((now, bytes(data)))
-            t = last_time(data)
+            step, t = 0.0, last_time(data)
             if t is not None:
+                if self._newest is not None:
+                    gone = (t - self._newest) % PTS_WRAP
+                    step = gone if gone <= JUMP else 0.0
                 self._newest = t
-            if self._started and self._chunks and now - self._chunks[0][0] > self.delay + TRIM_OVER:
+            self._push((now, bytes(data), step))
+            if self._started and self._held() > self.delay + TRIM_OVER:
                 self._trim(now)
             self._cond.notify_all()
+
+    def _push(self, chunk, front: bool = False) -> None:
+        (self._chunks.appendleft if front else self._chunks.append)(chunk)
+        self._total += chunk[2]
+
+    def _pop(self):
+        chunk = self._chunks.popleft()
+        self._total -= chunk[2]
+        if not self._chunks:
+            self._total = 0.0  # (no rounding left over)
+        return chunk
 
     def _trim(self, now: float) -> None:
         """More than TRIM_OVER seconds over the delay is held (each hand-over adds a little; a sender that isn't taking
         anything adds a lot): what's older is dropped, back to a keyframe that leaves about the delay held, so the
         sender reads on from a whole picture. (Called holding the lock.)"""
-        for i, (came, data) in enumerate(self._chunks):
-            if now - came > self.delay:
+        timed = self._newest is not None
+        left = self._held()
+        for i, (came, data, step) in enumerate(self._chunks):
+            if i:
+                left -= step
+            if (left if timed else now - came) > self.delay:
                 continue
             at = keyframe_at(data)
             if at is not None:
                 for _ in range(i):
-                    self._chunks.popleft()
-                self._chunks[0] = (came, data[at:])
+                    self._pop()
+                self._chunks[0] = (came, data[at:], self._chunks[0][2])
                 return
 
     def flush(self) -> None:
@@ -234,17 +259,27 @@ class Buffer:
     def held(self) -> float:
         """
         How many seconds of stream are held now: how far behind the picture YouTube gets is (0 before the first). By the
-        stream's own times (from the oldest frame held to the newest), not by when it came: a picture that stopped for a
-        moment and then made up the time it lost holds as much stream as before, though none of it came in that moment.
+        stream's own times, not by when it came: a picture that stopped for a moment and then made up the time it lost
+        holds as much stream as before, though none of it came in that moment. (By when it came for a stream with no
+        times in it.)
         """
         with self._cond:
-            if not self._chunks:
-                return 0.0
-            oldest = next((t for t in (last_time(data) for _, data in self._chunks) if t is not None), None)
-            if oldest is None or self._newest is None:
-                return round(time.monotonic() - self._chunks[0][0], 1)
-            span = (self._newest - oldest) % PTS_WRAP
-            return round(span if span < PTS_WRAP / 2 else 0.0, 1)  # (a hand-over's times may step back a little)
+            return round(self._held(), 1)
+
+    def _held(self) -> float:
+        """held(), called holding the lock."""
+        if not self._chunks:
+            return 0.0
+        if self._newest is None:
+            return time.monotonic() - self._chunks[0][0]
+        return max(0.0, self._total - self._chunks[0][2])
+
+    def _full(self) -> bool:
+        """The delay is held, by the stream's own times (a picture just started makes a little less than real time while
+        its cameras connect: by the clock alone the stream would start, and stay, a few seconds short of its delay); or
+        FILL_MOST seconds more have passed by the clock. (Called holding the lock.)"""
+        waited = time.monotonic() - self._first
+        return waited >= self.delay + FILL_MOST or (waited >= self.delay and self._held() >= self.delay)
 
     def filling(self) -> bool:
         """Still collecting the delay, before anything has gone to YouTube."""
@@ -254,19 +289,18 @@ class Buffer:
     def _feed(self) -> None:
         while True:
             with self._cond:
-                while not self._ended and (self._sink is None or not self._chunks
-                                           or (not self._started and time.monotonic() - self._first < self.delay)):
+                while not self._ended and (self._sink is None or not self._chunks or (not self._started and not self._full())):
                     self._cond.wait(0.2)
                 if self._ended:
                     return
                 self._started = True
-                came, data = self._chunks.popleft()
+                chunk = self._pop()
                 sink = self._sink
             try:
-                sink.write(data)  # (blocks while the sender, reading at real time, has its pipe full)
+                sink.write(chunk[1])  # (blocks while the sender, reading at real time, has its pipe full)
                 sink.flush()
             except (OSError, ValueError):  # that sender has ended: what it didn't take goes to the next one
                 with self._cond:
-                    self._chunks.appendleft((came, data))
+                    self._push(chunk, front=True)
                     if self._sink is sink:
                         self._sink = None

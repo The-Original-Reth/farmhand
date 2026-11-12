@@ -304,3 +304,24 @@ def test_a_slideshow_screens_words_are_drawn_on_that_screen_only(tmp_path):
     # the same screen without words is another picture (the words are part of what it's kept by)
     plain = slides.compose(cd, [str(tmp_path / "b.png")], {}, frame, str(tmp_path / "out2"), cache=str(tmp_path / "cache"))
     assert plain[0] != b
+
+
+def test_each_line_of_a_screens_words_is_centred_as_the_page_shows_it():
+    """Words of more than one line: each line centred on the spot (not lined up on the left, as Pillow and drawtext do
+    unless told), so a short line over a long one sits in the middle, as on the page."""
+    from PIL import Image
+
+    from streamer.live_stream import fonts, slides
+    from streamer.live_stream.frame import Frame
+
+    frame = Frame.of("720p", 1, 1, "#FFFFFF", "#000000")
+    canvas = Image.new("RGBA", (frame.tw, frame.th), (255, 255, 255, 255))
+    words = {"text": "Hi\nhttps://www.3dprintingelves.org", "tb": {"x": 0.5, "y": 0.5, "size": 0.1},
+             "font": fonts.font_file(None), "color": "#FF0000", "band": False}
+    slides._draw_words(canvas, words, frame)
+    red = [(x, y) for y in range(frame.th) for x in range(0, frame.tw, 2)
+           if canvas.getpixel((x, y))[0] > 200 and canvas.getpixel((x, y))[1] < 80]
+    top = min(y for _, y in red)
+    first = [x for x, y in red if y < top + 0.05 * frame.th]  # the short first line
+    middle = (min(first) + max(first)) / 2
+    assert abs(middle - frame.tw / 2) < 0.02 * frame.tw  # centred, not over on the left
