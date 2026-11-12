@@ -65,9 +65,12 @@ class Broadcast:
 
     @classmethod
     def start(cls, creds: dict, own: dict, chosen: dict) -> "Broadcast":
-        """A new broadcast bound to Farmhand's own stream `own`, set from the chosen settings. ValueError says why not."""
+        """The broadcast on Farmhand's own stream `own`: the one still live on it (going live again after the plugin's
+        own restart carries on with it), else a new one set from the chosen settings. ValueError says why not."""
         try:
-            made = youtube_live.start_broadcast(creds, own["id"], chosen["youtube"], chosen["title"], chosen["description"])
+            made = youtube_live.live_on_stream(creds, own["id"])
+            if made is None:
+                made = youtube_live.start_broadcast(creds, own["id"], chosen["youtube"], chosen["title"], chosen["description"])
         except youtube_live.YouTubeError as e:
             raise ValueError(f"YouTube wouldn't make the broadcast: {e}") from None
         return cls(creds, own["id"], made)
