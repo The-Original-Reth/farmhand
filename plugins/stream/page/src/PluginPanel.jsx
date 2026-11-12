@@ -11,6 +11,7 @@ const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-d
 export function PluginPanel({ page, farmhandError, onMigrated }) {
   const status = page.status;
   const down = status.cameraStates.filter((x) => x.state === "down");
+  const slow = status.cameraStates.filter((x) => x.state === "live" && x.slow);
   return (
     <>
       {page.testDestination && (
@@ -23,9 +24,16 @@ export function PluginPanel({ page, farmhandError, onMigrated }) {
           <div style={uiText(12, c.textMuted)}>
             {down.length ? `${down.length} camera${down.length === 1 ? " is" : "s are"} down: ${down.length === 1 ? "its square says" : "their squares say"} “Camera down” until they're back.` : "Every camera is live."}
           </div>
+          {slow.length > 0 && (
+            <div data-testid="stream-camera-slow" style={uiText(12, c.amber, { lineHeight: 1.5 })}>
+              {slow.length === 1 ? "A camera sends" : `${slow.length} cameras send`} fewer than 15 new pictures a second, so{" "}
+              {slow.length === 1 ? "its square moves" : "their squares move"} less smoothly than the stream. Set the camera (or go2rtc on its
+              printer) to send at least 15 frames a second at this size.
+            </div>
+          )}
           {status.cameraStates.map((x) => (
-            <div key={x.key} data-testid="stream-camera-state" style={uiText(12, x.state === "down" ? c.danger : x.state === "live" ? c.green : c.textFaint)}>
-              {x.label}: {x.state === "down" ? `down${x.since ? ` since ${timeOf(x.since)}` : ""}${x.said ? ` (${x.said})` : ""}` : x.state === "live" ? "live" : "connecting…"}
+            <div key={x.key} data-testid="stream-camera-state" style={uiText(12, x.state === "down" ? c.danger : x.state === "live" ? (x.slow ? c.amber : c.green) : c.textFaint)}>
+              {x.label}: {x.state === "down" ? `down${x.since ? ` since ${timeOf(x.since)}` : ""}${x.said ? ` (${x.said})` : ""}` : x.state === "live" ? `live${x.fps != null ? `, ${Math.round(x.fps)} fps` : ""}${x.slow ? " (under 15)" : ""}` : "connecting…"}
             </div>
           ))}
         </div>
