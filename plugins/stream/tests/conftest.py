@@ -70,3 +70,24 @@ def ffmpeg(monkeypatch, tmp_path):
     monkeypatch.setattr(pictures, "SETTLE", 0)  # (a new layout's wait for more changes: none in tests)
     monkeypatch.setattr(feeders, "make_fifo", lambda path: open(path, "wb").close())
     return fake
+
+
+# ------------------------------------------------------------------ the Stream page's API, for the stream tests
+
+KEY = "farmtest-key"
+
+
+@pytest.fixture()
+def api(plugin):
+    from fastapi.testclient import TestClient
+
+    from streamer.app import app
+
+    return TestClient(app)
+
+
+def grid(api, cells, cols=2, rows=1):
+    """The grid saved (with the stream key): the page as the plugin answered."""
+    r = api.put("/api/stream", json={"stream_key": KEY, "cols": cols, "rows": rows, "cells": cells})
+    assert r.status_code == 200, r.text
+    return r.json()
