@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { c, fixed } from "../theme.js";
 import { headerButton, panelBox, primaryButton, uiText } from "../styles.js";
-import { colourBox, help, label12 } from "./streamStyles.js";
+import { help } from "./streamStyles.js";
+import { ColourPick } from "./controls.jsx";
 import { CardScreen } from "./CardScreen.jsx";
 import { CARD, layersOf } from "./shapes.js";
 import { LayersChoice } from "./LayersChoice.jsx";
@@ -93,20 +94,12 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
           {kind === "picture" && <PictureChoice card={card} setCard={setCard} media={media} ask={ask} busy={busy} />}
           {kind === "slideshow" && <SlideshowChoice card={card} setCard={setCard} media={media} ask={ask} busy={busy} slide={slide} onRename={onRenameSlideshow} />}
           {(isCard || (kind === "camera" && cell?.camera)) && (
-            <label style={label12}>
-              <input
-                type="color" data-testid="stream-square-colour" value={(ownColour || streamBackground).toLowerCase()}
-                onChange={(e) => setColour(e.target.value.toUpperCase())} style={colourBox}
-              />
+            <ColourPick
+              testid="stream-square-colour" value={ownColour} onPick={setColour} fallback={streamBackground} idle="(the stream's)"
+              reset={{ label: "Stream's colour", title: "Use the stream's background colour" }}
+            >
               {kind === "text" ? "Background" : kind === "camera" ? "Colour round the camera" : "Colour round the picture"}
-              {ownColour ? (
-                <button type="button" onClick={() => setColour(null)} style={headerButton()} title="Use the stream's background colour">
-                  Stream's colour
-                </button>
-              ) : (
-                <span style={uiText(11, c.textFaint)}>(the stream's)</span>
-              )}
-            </label>
+            </ColourPick>
           )}
           {isCard && <TextChoice card={card} setCard={setCard} fonts={fonts} streamText={streamText} slideName={slideName} />}
           {kind === "camera" && cell?.camera && <CameraWordsChoice cell={cell} put={put} fonts={fonts} showStatus={showStatus} streamText={streamText} />}

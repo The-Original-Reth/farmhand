@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
-import { box, colourBox, help, label12 } from "./streamStyles.js";
-import { FULL_BOX, MIDDLE, fontFamily, isBlank, slideLabel } from "./shapes.js";
+import { box, help, label12 } from "./streamStyles.js";
+import { ColourPick, FontPick, fontLabel } from "./controls.jsx";
+import { FULL_BOX, MIDDLE, isBlank, slideLabel } from "./shapes.js";
 
 // What a camera square and a card's words can be set to, in the square editor (SquareEditor.jsx).
 
@@ -19,36 +20,6 @@ export function CameraChoice({ cells, i, onCells, cameras, label }) {
         <option key={x.key} value={x.key}>{x.label}{placed.has(x.key) && cell?.camera !== x.key ? " (moves here)" : ""}</option>
       ))}
     </select>
-  );
-}
-
-// a font list whose first choice is the stream's own (Defaults, on the right); "" chooses it
-function FontPick({ testid, value, onPick, fonts, streamText }) {
-  const usual = fonts.find((f) => f.key === (streamText.font || "play"))?.label || "Play";
-  return (
-    <select data-testid={testid} value={value || ""} onChange={(e) => onPick(e.target.value || null)} style={{ ...box(), fontFamily: fontFamily(value || streamText.font) }}>
-      <option value="">Default ({usual})</option>
-      {fonts.map((f) => (
-        <option key={f.key} value={f.key} style={{ fontFamily: fontFamily(f.key) }}>{f.label}</option>
-      ))}
-    </select>
-  );
-}
-
-// a colour that's the stream's own (Defaults, on the right) until one is picked; Default goes back to it
-function ColourPick({ testid, value, onPick, streamText, label }) {
-  return (
-    <label style={label12}>
-      <input type="color" data-testid={testid} value={(value || streamText.color || "#FFFFFF").toLowerCase()} onChange={(e) => onPick(e.target.value.toUpperCase())} style={colourBox} />
-      {label}
-      {value ? (
-        <button type="button" onClick={() => onPick(null)} style={headerButton()} title="Use the stream's default colour (Defaults, on the right)">
-          Default
-        </button>
-      ) : (
-        <span style={uiText(11, c.textFaint)}>(default)</span>
-      )}
-    </label>
   );
 }
 
@@ -74,9 +45,14 @@ export function CameraWordsChoice({ cell, put, fonts, showStatus, streamText }) 
         <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           <label style={label12}>
             Font
-            <FontPick testid="stream-camera-words-font" value={cell.words_font} onPick={(v) => set({ words_font: v })} fonts={fonts} streamText={streamText} />
+            <FontPick testid="stream-camera-words-font" value={cell.words_font} onPick={(v) => set({ words_font: v })} fonts={fonts} fallback={streamText.font} defaultLabel={`Default (${fontLabel(fonts, streamText.font)})`} />
           </label>
-          <ColourPick testid="stream-camera-words-color" value={cell.words_color} onPick={(v) => set({ words_color: v })} streamText={streamText} label="Colour" />
+          <ColourPick
+            testid="stream-camera-words-color" value={cell.words_color} onPick={(v) => set({ words_color: v })} fallback={streamText.color || "#FFFFFF"} idle="(default)"
+            reset={{ label: "Default", title: "Use the stream's default colour (Defaults, on the right)" }}
+          >
+            Colour
+          </ColourPick>
           <label style={label12}>
             Size
             <input
@@ -146,9 +122,14 @@ export function TextChoice({ card, setCard, fonts, streamText, slideName = null 
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
         <label style={label12}>
           Font
-          <FontPick testid="stream-square-font" value={card.font} onPick={(v) => setCard({ font: v })} fonts={fonts} streamText={streamText} />
+          <FontPick testid="stream-square-font" value={card.font} onPick={(v) => setCard({ font: v })} fonts={fonts} fallback={streamText.font} defaultLabel={`Default (${fontLabel(fonts, streamText.font)})`} />
         </label>
-        <ColourPick testid="stream-square-color" value={card.color} onPick={(v) => setCard({ color: v })} streamText={streamText} label="Text colour" />
+        <ColourPick
+            testid="stream-square-color" value={card.color} onPick={(v) => setCard({ color: v })} fallback={streamText.color || "#FFFFFF"} idle="(default)"
+            reset={{ label: "Default", title: "Use the stream's default colour (Defaults, on the right)" }}
+          >
+            Text colour
+          </ColourPick>
         <label style={label12} title="A dark band behind the words, so they can be read over a busy picture">
           <input data-testid="stream-square-band" type="checkbox" checked={!!card.band} onChange={(e) => setCard({ band: e.target.checked })} />
           Dark band behind it

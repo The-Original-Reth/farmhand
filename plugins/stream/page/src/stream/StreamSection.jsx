@@ -186,28 +186,25 @@ export function StreamSection({ layouts = [], onSaveLayouts, onSlideshowRenamed,
     ask("start", startStream);
   };
   const stop = () => ask("stop", stopStream);
-  // Save just the holding screen: anything else changed on the page and not saved yet stays as it is, still to be saved
-  const saveHolding = async () => {
-    const p = await ask("holding", () => saveStream({ holding: shown.holding }));
+  // Save just `fields` (busy as `what`): anything else changed on the page and not saved yet stays as it is, still to be
+  // saved. The page as the server answered, or null when it couldn't.
+  const savePart = async (what, fields) => {
+    const p = await ask(what, () => saveStream(fields));
     if (p && draft) {
-      const next = { ...shown, holding: p.settings.holding };
+      const next = { ...shown };
+      for (const k of Object.keys(fields)) next[k] = p.settings[k] ?? fields[k];
       const now = followCameras(p.settings, cams); // (as the page shows the saved settings: cameras renamed since followed)
       const same = Object.keys(now).every((k) => JSON.stringify(now[k]) === JSON.stringify(next[k]));
       setDraft(same ? null : next);
     }
+    return p;
   };
-  // Switch to a saved layout: the stream takes it now (while live, it starts again with it). Anything else changed on
-  // the page and not saved yet stays as it is, still to be saved.
+  // The holding screen's own Save
+  const saveHolding = () => savePart("holding", { holding: shown.holding });
+  // Switch to a saved layout: the stream takes it now (while live, it starts again with it)
   const switchTo = async (l) => {
-    const fields = shownOf(l);
-    const p = await ask("save", () => saveStream(fields));
-    if (!p) return false;
+    if (!(await savePart("save", shownOf(l)))) return false;
     setFromLayout(l.name);
-    if (draft) {
-      const next = { ...shown, ...fields };
-      const same = Object.keys(p.settings).every((k) => JSON.stringify(p.settings[k]) === JSON.stringify(next[k]));
-      setDraft(same ? null : next);
-    }
     return true;
   };
 
