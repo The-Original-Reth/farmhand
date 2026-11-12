@@ -19,7 +19,7 @@ const kbd = (text) => <code style={monoText(12, c.heading)}>{text}</code>;
 // compose file says.
 export const GUIDED_PLUGINS = {
   stream: {
-    name: "Stream",
+    name: "YouTube Stream",
     port: 8080,
     compose: streamCompose,
     notes: (
@@ -35,7 +35,7 @@ export const GUIDED_PLUGINS = {
           driver version).
         </div>
         <div>
-          Once it's added, <b>Stream</b> appears in Farmhand's menu after Monitor. The first time, its page offers to bring
+          Once it's added, <b>YouTube</b> appears in Farmhand's menu after Monitor. The first time, its page offers to bring
           over the Stream page set-up this Farmhand saved before Stream became a plugin (its settings, layouts, stream key
           and YouTube sign-in).
         </div>

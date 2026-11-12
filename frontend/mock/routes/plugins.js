@@ -69,9 +69,9 @@ const ON_THE_NETWORK = {
     page: { menu: "Hello", icon: "dashboard", path: "/" }, permissions: ["printers:read", "prints:read", "farm:read"], health: "/health",
   },
   "http://192.168.10.217:8080": {
-    id: "stream", name: "Stream", version: "1.0.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/stream's manifest
+    id: "stream", name: "YouTube Stream", version: "1.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/stream's manifest
     homepage: "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/stream",
-    page: { menu: "Stream", icon: "video", path: "/" }, permissions: ["cameras:read", "prints:read", "stream:migrate"], health: "/health",
+    page: { menu: "YouTube", icon: "youtube", path: "/" }, permissions: ["cameras:read", "prints:read", "stream:migrate"], health: "/health",
   },
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
@@ -122,7 +122,7 @@ const HELLO_BODY = `<p>The printers it read through the plugin API:</p><ul id="p
     document.getElementById("printers").innerHTML = r.printers.map((p) => "<li><b>" + p.name + "</b> " + p.connection_type + "</li>").join("") || "<li>none</li>";
   }).catch((e) => { document.getElementById("printers").textContent = String(e); });
 </script>`;
-const STREAM_BODY = `<p>The real Stream plugin sends the printers' cameras live to YouTube from a container of its own. Its page
+const STREAM_BODY = `<p>The real YouTube Stream plugin sends the printers' cameras live to YouTube from a container of its own. Its page
 isn't part of the mockup: run <b>plugins/stream</b> (its README says how) to see it.</p>`;
 const CLOCK_BODY = `<p>It's <b id="clock"></b> here.</p>
 <script>setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString(); }, 500);</script>`;

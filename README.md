@@ -386,8 +386,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 
 **Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
-**Stream** — the cameras you choose sent live to YouTube, no OBS needed, by the Stream plugin: once it's added on the
-Plugins page, Stream is in the menu after Monitor (see "Stream")
+**YouTube** — the cameras you choose sent live to YouTube, no OBS needed, by the YouTube Stream plugin: once it's added
+on the Plugins page, YouTube is in the menu after Monitor (see "Stream")
 
 **Power** — the whole farm's energy use (see "Power")
 
