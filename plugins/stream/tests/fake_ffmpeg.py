@@ -24,8 +24,8 @@ class FakeFfmpeg:
         self.feeders: list[list[str]] = []
         self.feeder_procs: list = []
         self.down: set[str] = set()  # cameras (their addresses) that are off: their feeders end at once, with nothing
-        # cameras (their addresses) slower than the stream: each new picture is put out this many times, as ffmpeg's fps
-        # filter repeats a slow camera's frames (others send a new picture every frame)
+        # cameras (their addresses) showing less than they send: each new picture is put out this many times, as a camera
+        # sending the same picture again does (others send a new picture every frame)
         self.repeat: dict[str, int] = {}
         self.holdings: list[list[str]] = []  # the holding screen's ffmpegs (after the plugin's own restart)
         self.holding_procs: list = []

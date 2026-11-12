@@ -3,14 +3,19 @@ Each camera read on its own, and the picture fed from steady pipes, so one camer
 the others: its square says "Camera down" until it's back.
 
 A Feeder per camera: a small ffmpeg reading the camera (as Farmhand's /cameras says), turning it the way Mainsail
-shows it, fitting it in the stream's size and putting out JPEG frames at most FPS a second on its stdout; a thread
-keeps the latest. One that stops is started again after a growing wait (RETRY_FIRST, doubling up to RETRY_MOST),
+shows it, fitting it in the stream's size and putting out each picture the camera sends as a JPEG on its stdout; a thread keeps the last few (KEPT_FRAMES), numbered. One that stops is started again after a growing wait (RETRY_FIRST, doubling up to RETRY_MOST),
 back to the shortest once frames come again. Feeders belong to the time live, not to a layout: a new layout's picture
 reads the same ones, so a camera never gets a second connection.
 
 A Pump per picture ffmpeg: for each camera square, a named pipe the picture ffmpeg reads as an image2pipe input, written
-at a steady FPS with the camera's latest frame, or the "Camera down" frame when it has sent nothing for DOWN_AFTER
+at a steady FPS with the camera's next picture, or the "Camera down" frame when it has sent nothing for DOWN_AFTER
 seconds. The picture's inputs never end or stall, so it never has to be started again for a camera.
+
+Why the next picture and not the latest: a camera set to 15 a second never sends them exactly 1/15 s apart (a Pi's
+encoder hands them over 60 to 80 ms apart). Taking the latest at each 1/15 s, two that come within one step would lose
+the first and show the second twice: a small stutter or two every second. Each writer instead takes the picture after
+the one it wrote last, so the few kept even out the uneven spacing and a camera at 15 has every picture shown once; a
+faster one has the oldest let go (KEPT_FRAMES), a slower one has its last repeated.
 
 The "Camera down" frame: drawn with Pillow at the camera's own size, in the square's background colour, "Camera down"
 in the chosen font and words colour, the printer's name under it.
@@ -36,10 +41,10 @@ READ = 65536
 MOST_HELD = 8 * 1024 * 1024  # bytes read without a whole frame in them: the feeder is started again
 JPEG_QUALITY = 4  # ffmpeg's -q:v for the feeders' frames (2 best .. 31 worst)
 KEPT_LINES = 10
-# A camera's own frame rate: its feeder puts out FPS frames a second whatever the camera sends (ffmpeg's fps filter
-# repeats a frame for a slow camera), and a repeated frame comes out the same, byte for byte. So the frames that differ
-# from the one before, over the last RATE_WINDOW seconds, are what the camera really sent. Under SLOW_FPS (a camera set
-# to 15 a second gives 14.5 to 15.5), its square changes less often than the stream does, and the page says so.
+KEPT_FRAMES = 4  # pictures kept per camera for the writers to take in turn (at FPS: 4/15 s to even out uneven spacing)
+# A camera's own frame rate: the pictures that differ from the one before (a camera that sent the same picture twice
+# hasn't shown anything new), over the last RATE_WINDOW seconds. Under SLOW_FPS (a camera set to 15 a second gives 14.5
+# to 15.5), its square changes less often than the stream does, and the page says so.
 RATE_WINDOW = 20
 SLOW_FPS = 14.0
 
@@ -92,10 +97,16 @@ def frames_in(buffer: bytearray) -> list[bytes]:
 
 
 def feeder_command(ffmpeg: str, input_args: list[str], turn: list[str], size: tuple[int, int]) -> list[str]:
-    """The camera read, turned, fitted in `size` (its own shape kept) and put out as JPEGs on stdout."""
+    """The camera read, turned, fitted in `size` (its own shape kept) and put out as JPEGs on stdout: each picture the
+    camera sends, once (`-fps_mode passthrough`: none repeated or dropped). Not thinned out by when they come: a Pi's
+    go2rtc camera at 15 a second sometimes hands two over a millisecond apart, and both are wanted. Each is stamped with
+    its count (`settb`, `setpts=N`): stamped with when it came, two that share a stamp would have the second thrown away
+    by ffmpeg ("non monotonically increasing dts"), and the pictures here are taken in turn, not by time."""
     w, h = size
-    chain = [*turn, f"fps={FPS}", f"scale={w}:{h}:force_original_aspect_ratio=decrease", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "setsar=1"]
+    chain = [*turn, f"scale={w}:{h}:force_original_aspect_ratio=decrease", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "setsar=1",
+             "settb=1/1000", "setpts=N"]
     return [ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostdin", *input_args, "-an", "-vf", ",".join(chain),
+            "-fps_mode", "passthrough", "-enc_time_base", "1/1000",
             "-c:v", "mjpeg", "-q:v", str(JPEG_QUALITY), "-f", "image2pipe", "pipe:1"]
 
 
@@ -113,6 +124,8 @@ class Feeder:
         self._lock = threading.Lock()
         self._stopped = threading.Event()
         self._frame: bytes | None = None
+        self._kept: collections.deque[tuple[int, bytes]] = collections.deque(maxlen=KEPT_FRAMES)  # (number, picture)
+        self._number = 0  # the latest picture's number (counting up while live)
         self._frame_size: tuple[int, int] | None = None
         self._at = 0.0  # (monotonic) when the latest frame came
         self._proc = None
@@ -142,6 +155,19 @@ class Feeder:
         with self._lock:
             fresh = self._frame is not None and time.monotonic() - self._at < DOWN_AFTER
             return (self._frame if fresh else None), self._frame_size
+
+    def next_after(self, number: int | None) -> tuple[bytes | None, int | None, tuple[int, int] | None]:
+        """For a writer that wrote picture `number` last (None: none yet): the picture after it that's still kept (the
+        oldest kept, when it has fallen behind; the latest, for a writer just starting), or the latest again when no
+        newer one has come. (picture, its number, size); (None, `number`, the last size known) when it's down."""
+        with self._lock:
+            if self._frame is None or time.monotonic() - self._at >= DOWN_AFTER or not self._kept:
+                return None, number, self._frame_size
+            if number is None or number >= self._number:
+                n, frame = self._kept[-1]
+            else:
+                n, frame = next(((n, f) for n, f in self._kept if n > number), self._kept[-1])
+            return frame, n, self._frame_size
 
     def fps(self) -> float | None:
         """The camera's own frame rate (see RATE_WINDOW), once it has sent frames for a whole RATE_WINDOW; else None."""
@@ -208,22 +234,29 @@ class Feeder:
                 break
             buffer += chunk
             for frame in frames_in(buffer):
-                size = jpeg_size(frame)
-                now = time.monotonic()
-                with self._lock:
-                    if not got:  # (this connection's first: its frame rate is counted from here)
-                        self._new.clear()
-                        self._reading_since = now
-                    if frame != self._frame:  # (one the fps filter repeated is the same, byte for byte)
-                        self._new.append(now)
-                    self._frame, self._at = frame, now
-                    if size:
-                        self._frame_size = size
+                self._keep(frame, first=not got)
                 got = True
             if len(buffer) > MOST_HELD:
                 self.said.append("The camera sent something that isn't a picture: reading it again.")
                 break
         return got
+
+    def _keep(self, frame: bytes, first: bool = False) -> None:
+        """A picture as it comes from the camera's ffmpeg (`first`: its connection's first, its frame rate counted from
+        here): kept, numbered, as the latest."""
+        size = jpeg_size(frame)
+        now = time.monotonic()
+        with self._lock:
+            if first:
+                self._new.clear()
+                self._reading_since = now
+            if frame != self._frame:  # (the same picture again shows nothing new)
+                self._new.append(now)
+            self._number += 1
+            self._kept.append((self._number, frame))
+            self._frame, self._at = frame, now
+            if size:
+                self._frame_size = size
 
     def _listen(self, proc) -> None:
         for line in proc.stderr or []:
@@ -345,9 +378,11 @@ class Pump:
             except OSError:
                 pass
 
-    def frame_for(self, feeder: Feeder, downs: DownFrames) -> bytes:
-        frame, size = feeder.latest()
-        return frame if frame is not None else downs.at(size or feeder.guess)
+    def frame_for(self, feeder: Feeder, downs: DownFrames, last: int | None = None) -> tuple[bytes, int | None]:
+        """What a writer that wrote picture `last` writes next: the camera's next picture, or its "Camera down" frame;
+        and the number to pass next time."""
+        frame, number, size = feeder.next_after(last)
+        return (frame if frame is not None else downs.at(size or feeder.guess)), number
 
     def _write(self, feeder: Feeder, downs: DownFrames, path: str) -> None:
         try:
@@ -360,10 +395,11 @@ class Pump:
                 return
             self._files.append(f)
         step = 1 / FPS
-        due, written = time.monotonic(), 0
+        due, written, last = time.monotonic(), 0, None
         try:
             while not self._stopped.is_set():
-                f.write(self.frame_for(feeder, downs))
+                frame, last = self.frame_for(feeder, downs, last)
+                f.write(frame)
                 due, written = due + step, written + 1
                 due = pace(due, written, step, time.monotonic())
         except (OSError, ValueError):
