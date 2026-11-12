@@ -17,7 +17,7 @@ const PERMISSIONS = {
   "cameras:read": "see your printers' cameras and the addresses to stream them from",
   "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
   "farm:read": "see Farmhand's colours and the farm's time zone",
-  "stream:migrate": "take, once, a copy of Farmhand's own Stream page set-up: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its own copy)",
+  "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
 const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
@@ -68,6 +68,11 @@ const ON_THE_NETWORK = {
     id: "hello", name: "Hello", version: "1.0.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/hello's manifest
     page: { menu: "Hello", icon: "dashboard", path: "/" }, permissions: ["printers:read", "prints:read", "farm:read"], health: "/health",
   },
+  "http://192.168.10.217:8080": {
+    id: "stream", name: "Stream", version: "1.0.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/stream's manifest
+    homepage: "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/stream",
+    page: { menu: "Stream", icon: "video", path: "/" }, permissions: ["cameras:read", "prints:read", "stream:migrate"], health: "/health",
+  },
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
     homepage: "https://example.com/shelf-clock", page: { menu: "Shelf clock", path: "/" }, permissions: ["prints:read"], health: "/health",
@@ -117,13 +122,15 @@ const HELLO_BODY = `<p>The printers it read through the plugin API:</p><ul id="p
     document.getElementById("printers").innerHTML = r.printers.map((p) => "<li><b>" + p.name + "</b> " + p.connection_type + "</li>").join("") || "<li>none</li>";
   }).catch((e) => { document.getElementById("printers").textContent = String(e); });
 </script>`;
+const STREAM_BODY = `<p>The real Stream plugin sends the printers' cameras live to YouTube from a container of its own. Its page
+isn't part of the mockup: run <b>plugins/stream</b> (its README says how) to see it.</p>`;
 const CLOCK_BODY = `<p>It's <b id="clock"></b> here.</p>
 <script>setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString(); }, 500);</script>`;
 const pageHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name}</title>
 <script src="/plugins/farmhand-plugin.js"></script><style>${PAGE_STYLE}</style></head><body><div class="box">
 <h1>${p.name}, a pretend plugin</h1>
 <p>This page comes from the plugin (in the mockup, from the mock backend), shown inside Farmhand. Its colours follow Farmhand's: change them on the Appearance page and come back.</p>
-${p.id === "hello" ? HELLO_BODY : CLOCK_BODY}
+${{ hello: HELLO_BODY, stream: STREAM_BODY }[p.id] || CLOCK_BODY}
 </div></body></html>`;
 // A small page where a plugin's page would be (as services/plugins/pages.py's message_page)
 const messagePage = (title, text) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PAGE_STYLE}</style></head>
@@ -140,10 +147,10 @@ export function pluginsRoutes(ctx) {
     id: manifest.id, name: manifest.name, version: manifest.version, image, farmhand_api: manifest.farmhand_api, enabled: true,
     permissions: [...new Set(permissions)], manifest, created_at: now(), address, onlyFromAddress: onlyFrom, health: answered(address),
   });
-  // Hello is added already: the sample farm's plugin (its token isn't given to anyone, it's pretend)
-  const plugins = () => (farm.plugins ??= [record(checkManifest(ON_THE_NETWORK["http://192.168.10.215:8080"]), {
-    permissions: ["printers:read", "prints:read", "farm:read"], address: "http://192.168.10.215:8080", onlyFrom: true,
-  })]);
+  // Hello and Stream are added already: the sample farm's plugins (their tokens aren't given to anyone, they're pretend).
+  // Stream takes its place in the menu after Monitor (Sidebar.jsx MAIN_MENU_SLOTS).
+  const added = (address) => record(checkManifest(ON_THE_NETWORK[address]), { permissions: ON_THE_NETWORK[address].permissions, address, onlyFrom: true });
+  const plugins = () => (farm.plugins ??= [added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080")]);
   const find = (id) => plugins().find((p) => p.id === id) || (() => { throw new HttpError(404, "Plugin not found"); })();
   const out = (p) => ({
     id: p.id, name: p.name, version: p.version, image: p.image, farmhand_api: p.farmhand_api, enabled: p.enabled,
@@ -322,24 +329,20 @@ export function pluginsRoutes(ctx) {
     if (look.file_name_color && look.file_name_color !== "auto") colors.fileName = look.file_name_color;
     return { scheme: look.scheme || "farmhand", mode, colors, time_zone: farm.config.preferences?.time_zone ?? null };
   });
-  // stream:migrate: the Stream page's set-up handed over once (the mockup keeps no real key or sign-in: stand-ins)
+  // stream:migrate: the Stream page set-up an older Farmhand saved, handed over once. The sample farm never had one:
+  // an empty set-up, as the server answers for a Farmhand that never used its own Stream page
   on("GET", api("/stream/migrate"), (_p, _b, _q, h) => {
     const p = needs(h, "stream:migrate");
-    return { available: !p.streamHandedOverAt, handed_over_at: p.streamHandedOverAt ?? null, has_settings: !!farm.stream };
+    return { available: !p.streamHandedOverAt, handed_over_at: p.streamHandedOverAt ?? null, has_settings: false };
   });
   on("POST", api("/stream/migrate"), (_p, _b, _q, h) => {
     const p = needs(h, "stream:migrate");
     if (p.streamHandedOverAt) throw new HttpError(410, `Farmhand already handed its Stream page set-up to this plugin (${p.streamHandedOverAt}), and hands it over only once. To take it again, remove the plugin on Farmhand's Plugins page and add it afresh.`);
     p.streamHandedOverAt = new Date().toISOString();
-    const s = farm.stream || {};
-    const { youtube: account, live: _l, broadcast: _b2, key_set: keySet, ...settings } = s;
     return {
-      settings, layouts: farm.config?.preferences?.stream_layouts || [], stream_key: keySet ? "mock-stream-key" : null,
-      youtube: {
-        client: account?.client_id ? { client_id: account.client_id, client_secret: "mock-client-secret" } : null,
-        refresh_token: account?.signed_in ? "mock-refresh-token" : null, channel: account?.channel ?? null, stream_id: s.own_stream ?? null,
-      },
-      stream_folder: "/data/stream", handed_over_at: p.streamHandedOverAt,
+      settings: {}, layouts: [], stream_key: null,
+      youtube: { client: null, refresh_token: null, channel: null, stream_id: null },
+      stream_folder: null, handed_over_at: p.streamHandedOverAt,
     };
   });
   return { pluginPageRequest };

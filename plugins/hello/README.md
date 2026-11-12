@@ -24,8 +24,33 @@ It's plain Python 3 with only the standard library, so there's nothing to instal
 | `hello/watcher.py` | Keeps a picture of the farm up to date: events, a refresh every 20 s, retrying |
 | `hello/server.py` | The plugin's web server: `/manifest`, `/health`, the page, `api/status`, `api/events`, `api/settings` |
 | `hello/page.html` | The page shown inside Farmhand |
-| `tests/` | Tests against a stand-in plugin API (`tests/fake_farmhand.py`) |
+| `tests/` | Tests against a stand-in plugin API (`tests/fake_farmhand.py`), and that the compose file is Farmhand's copy |
 | `Dockerfile` | The image |
+| `docker-compose.yml` | Builds and runs it with docker compose, straight from Farmhand's GitHub |
+
+## Run it with docker compose
+
+The easiest way. [`docker-compose.yml`](docker-compose.yml) here builds the plugin straight from Farmhand's repository
+on GitHub (git must be installed), restarts it by itself, keeps its setting in a volume (`hello-data`, at `/data`) and
+reads `hello.env` once Farmhand gives the token. Farmhand's Plugins page shows the same steps and file under **Run a
+plugin in its own container**, with Hello chosen (a copy in `frontend/src/plugins/compose/hello.yml`;
+`tests/test_compose.py` checks the two match).
+
+```bash
+sudo mkdir -p /opt/farmhand-hello && cd /opt/farmhand-hello
+sudo curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/The-Original-Reth/farmhand/main/plugins/hello/docker-compose.yml
+sudo docker compose up -d --build
+```
+
+It's published on port 8080; if another plugin already uses 8080 on that machine, change the left side of the `ports:`
+line (e.g. `"8081:8080"`). Add it on Farmhand's Plugins page at `http://<this machine>:8080` (see "Add it to Farmhand"
+below), put the two lines Farmhand shows in `hello.env` beside the compose file, and start it again:
+
+```bash
+sudo docker compose up -d --force-recreate
+```
+
+Or build and run it by hand, as below.
 
 ## Build it
 

@@ -9,7 +9,6 @@ reusing one already there whatever its capitals, and making the rest:
     3MF               the sliced 3MF files and their G-code
     Projects          each project's own files
     farm-cost         the monthly farm cost records ("farm cost" before: renamed)
-    stream            the Stream page's pictures and slideshows
     farmhand-configs  the settings copy (Save all / Load all settings) ("Farmhand Configs" before: renamed)
 
 Files already saved elsewhere stay where they are (Settings offers to move them); only new ones go to the new folders.
@@ -25,12 +24,12 @@ from sqlalchemy.orm import Session
 
 from .. import mounts, storage
 from ..models import NetworkShare
-from . import app_settings, config_service, farm_cost, network_shares_service, storage_settings_service, stream_media
+from . import app_settings, config_service, farm_cost, network_shares_service, storage_settings_service
 
 KEY = "save_location"  # the address as typed
 FOLDERS = {
     "stl": storage.STL_FOLDER, "threemf": storage.THREEMF_FOLDER, "project": storage.PROJECTS_FOLDER,
-    "farm_cost": storage.FARM_COST_FOLDER, "stream": stream_media.STREAM_FOLDER, "config": storage.CONFIG_FOLDER,
+    "farm_cost": storage.FARM_COST_FOLDER, "config": storage.CONFIG_FOLDER,
 }
 
 
@@ -95,7 +94,6 @@ def describe(db: Session) -> dict:
             "threemf": str(storage.effective_root("threemf")),
             "project": str(storage.effective_root("project")),
             "farm_cost": farm_cost.location_info(db)["path"],
-            "stream": stream_media.location_info(db)["path"],
             "config": config_path,
         },
     }
@@ -151,7 +149,6 @@ def set_save_location(db: Session, data: dict) -> dict:
     folders = {kind: _folder(base, name) for kind, name in FOLDERS.items()}
     storage_settings_service.save(db, {f"{k}_path": str(folders[k]) for k in ("stl", "threemf", "project")})
     farm_cost.set_location(db, str(folders["farm_cost"]))
-    stream_media.set_location(db, str(folders["stream"]))
 
     config_choice = None
     target = os.path.realpath(folders["config"])

@@ -1,7 +1,7 @@
 """
 Where ffmpeg reads a printer's camera: a Mainsail MJPEG stream, go2rtc on the printer (over RTSP), camera-streamer's
-MJPEG beside its WebRTC page, or a Buddy3D's RTSP. One set of rules, used by the Stream page (live_stream/sources.py)
-and by plugins (the plugin API's /cameras).
+MJPEG beside its WebRTC page, or a Buddy3D's RTSP. Farmhand runs no ffmpeg itself: these are handed to plugins (the
+plugin API's /cameras), such as the Stream plugin, as the arguments to read each camera with.
 """
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from . import go2rtc
 # instead of its square freezing on its last frame; one that goes quiet for 10 s counts as dropped.
 MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
          "-rw_timeout", "10000000", "-use_wallclock_as_timestamps", "1", "-f", "mpjpeg"]
-# An RTSP camera that goes quiet for 10 s ends its input (RTSP can't reconnect by itself): the Stream page's runner
-# sees that in what ffmpeg says and hands over to a fresh picture, with new connections (runner.INPUT_ENDED).
+# An RTSP camera that goes quiet for 10 s ends its input (RTSP can't reconnect by itself): the plugin running ffmpeg
+# sees that in what ffmpeg says and starts again with new connections (the Stream plugin's runner.INPUT_ENDED).
 RTSP = ["-rtsp_transport", "tcp", "-timeout", "10000000"]
 
 

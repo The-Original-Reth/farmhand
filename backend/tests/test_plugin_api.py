@@ -405,7 +405,7 @@ def test_print_progress_feeds_events(api, moonraker):
     assert [(e["type"], e["printer_name"], e["file"]) for e in heard] == [("print.started", "V2Blue", "Frog.gcode")]
 
 
-# ------------------------------------------------------------------ stream:migrate: the Stream page's set-up, once
+# ------------------------------------------------------------------ stream:migrate: the old Stream page's set-up, once
 
 
 def _install_migrating(api) -> str:
@@ -415,13 +415,30 @@ def _install_migrating(api) -> str:
     return r.json()["token"]
 
 
-def test_stream_migrate_hands_the_stream_page_over_once(api):
+def _old_stream_page(api, **rows):
+    """What Farmhand's own Stream page left in the app_settings table, before Stream became a plugin."""
+    from app.services import app_settings
+
+    from .factories import api_db
+
+    db = api_db(api)
+    for key, value in rows.items():
+        app_settings.put(db, key, value)
+    db.commit()
+    return db
+
+
+def test_stream_migrate_hands_the_old_stream_page_over_once(api):
     stream_key = "abcd-efgh-ijkl-mnop"
-    assert api.put("/stream", json={"stream_key": stream_key, "title": "The farm", "border_color": "#ff8800"}).status_code == 200
-    assert api.put("/stream/youtube", json={"client_id": "123-abc.apps.googleusercontent.com",
-                                            "client_secret": "GOCSPX-secret-value"}).status_code == 200
     layout = {"name": "Morning", "cols": 1, "rows": 1, "cells": [None]}
-    assert api.put("/settings/config", json={"preferences": {"stream_layouts": [layout]}}).status_code == 200
+    db = _old_stream_page(
+        api, live_stream=json.dumps({"title": "The farm", "border_color": "#FF8800"}), live_stream_key=stream_key,
+        youtube_client=json.dumps({"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-value"}),
+        youtube_channel="Print Farm", stream_media_dir="/data/nas/farmhand/stream",
+        config_json=json.dumps({"preferences": {"stream_layouts": [layout]}}),
+    )
+    # the settings saved since keep the old layouts as they were stored
+    assert api.put("/settings/config", json={"preferences": {"monitor_order": ["1:Bed"]}}).status_code == 200
 
     token = _install_migrating(api)
     state = api.get("/plugin-api/v1/stream/migrate", headers=bearer(token)).json()
@@ -430,23 +447,35 @@ def test_stream_migrate_hands_the_stream_page_over_once(api):
     got = api.post("/plugin-api/v1/stream/migrate", headers=bearer(token))
     assert got.status_code == 200, got.text
     body = got.json()
-    assert body["settings"]["title"] == "The farm" and body["settings"]["border_color"] == "#FF8800"
+    assert body["settings"] == {"title": "The farm", "border_color": "#FF8800"}
     assert body["stream_key"] == stream_key
-    assert body["youtube"]["client"] == {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-value"}
-    assert body["youtube"]["refresh_token"] is None
-    assert [x["name"] for x in body["layouts"]] == ["Morning"]
+    assert body["youtube"] == {"client": {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-value"},
+                               "refresh_token": None, "channel": "Print Farm", "stream_id": None}
+    assert body["layouts"] == [layout]
+    assert body["stream_folder"] == "/data/nas/farmhand/stream"
     assert body["handed_over_at"]
 
-    # only once; Farmhand keeps its own copy
+    # only once; Farmhand keeps its copy
     again = api.post("/plugin-api/v1/stream/migrate", headers=bearer(token))
     assert again.status_code == 410 and "only once" in again.json()["detail"]
     assert api.get("/plugin-api/v1/stream/migrate", headers=bearer(token)).json()["available"] is False
-    assert api.get("/stream").json()["settings"]["key_set"] is True
+    from app.services import app_settings
+
+    db.expire_all()
+    assert app_settings.get(db, "live_stream_key") == stream_key
 
     # removed and added again: it may ask again
     assert api.delete("/plugins/stream?confirm=true").status_code in (200, 204)
     token = _install_migrating(api)
     assert api.post("/plugin-api/v1/stream/migrate", headers=bearer(token)).status_code == 200
+
+
+def test_stream_migrate_with_nothing_saved(api):
+    token = _install_migrating(api)
+    assert api.get("/plugin-api/v1/stream/migrate", headers=bearer(token)).json() == {"available": True, "handed_over_at": None, "has_settings": False}
+    body = api.post("/plugin-api/v1/stream/migrate", headers=bearer(token)).json()
+    assert (body["settings"], body["layouts"], body["stream_key"], body["stream_folder"]) == ({}, [], None, None)
+    assert body["youtube"] == {"client": None, "refresh_token": None, "channel": None, "stream_id": None}
 
 
 def test_stream_migrate_needs_its_own_permission(api):

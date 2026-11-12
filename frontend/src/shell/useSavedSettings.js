@@ -43,7 +43,7 @@ const sameLook = (a, b) =>
   a.scheme === b.scheme && a.contrast === b.contrast && a.font === b.font && a.size === b.size && a.file_name_color === b.file_name_color;
 
 // The settings the server keeps for every browser: the look, the models' and printers' sort orders, Monitor's layout and zoom, the
-// order of Farm cost's printers, the Stream page's saved layouts, the Tools page's links and the price of electricity. Each change shows at once and is sent to the server; most wait a
+// order of Farm cost's printers, the Tools page's links and the price of electricity. Each change shows at once and is sent to the server; most wait a
 // moment so a slider dragged through many values is sent once (queueSave). The server also copies them to the
 // network folder chosen in Settings.
 //
@@ -59,7 +59,6 @@ export function useSavedSettings() {
   const [monitorMaxZoom, setMonitorMaxZoom] = useState(4); // how far in a Monitor camera can be zoomed
   const [farmCostOrder, setFarmCostOrder] = useState([]); // the Farm cost page's printers as dragged into order (ids)
   const [toolLinks, setToolLinks] = useState([]); // the Tools page's websites
-  const [streamLayouts, setStreamLayouts] = useState([]); // the Stream page's saved layouts
   const [energyPrices, setEnergyPrices] = useState(NO_ENERGY_PRICES); // the price of electricity set on the Power page
   const [saveState, setSaveState] = useState({ phase: "idle" }); // idle | saving | saved | error
   const pendingSave = useRef({});
@@ -89,7 +88,6 @@ export function useSavedSettings() {
     setMonitorMaxZoom(prefs.monitor_max_zoom || 4);
     setFarmCostOrder(listOr(prefs.farm_cost_order));
     setToolLinks(listOr(prefs.tool_links));
-    setStreamLayouts(listOr(prefs.stream_layouts));
     // The server saves each month's Farm cost record when the month ends in the farm's time zone: tell it this
     // browser's, when it doesn't know it yet or it's moved
     const zone = browserTimeZone();
@@ -180,14 +178,6 @@ export function useSavedSettings() {
     const r = await saveConfig({ preferences: { tool_links: next } });
     setToolLinks(r.config.preferences.tool_links);
   };
-  // The Stream page's saved layouts, as a whole list (saved, replaced or deleted there): an error is shown there
-  // a slideshow renamed: the server has already changed the saved layouts' squares showing it; the list here follows
-  const slideshowRenamed = (old, name) =>
-    setStreamLayouts((list) => list.map((lay) => ({ ...lay, cells: (lay.cells || []).map((x) => (x && !x.camera && x.slideshow === old ? { ...x, slideshow: name } : x)) })));
-  const saveStreamLayouts = async (next) => {
-    const r = await saveConfig({ preferences: { stream_layouts: next } });
-    setStreamLayouts(r.config.preferences.stream_layouts);
-  };
   const changeMonitorMaxZoom = (next) => {
     setMonitorMaxZoom(next);
     queueSave({ preferences: { monitor_max_zoom: next } });
@@ -221,7 +211,6 @@ export function useSavedSettings() {
     monitor: { order: monitorOrder, saveOrder: saveMonitorOrder, maxZoom: monitorMaxZoom, changeMaxZoom: changeMonitorMaxZoom },
     farmCost: { order: farmCostOrder, changeOrder: changeFarmCostOrder },
     tools: { links: toolLinks, save: saveToolLinks },
-    streamLayouts: { list: streamLayouts, save: saveStreamLayouts, renamed: slideshowRenamed },
     energy: { prices: energyPrices, changePrice: changeEnergyPrice, changeMonthPrice },
   };
 }

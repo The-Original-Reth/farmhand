@@ -14,7 +14,6 @@ import { PowerSection } from "./power/PowerSection.jsx";
 import { FarmCostSection } from "./farmcost/FarmCostSection.jsx";
 import { EnergyPricesContext } from "./lib/energyPrice.js";
 import { MonitorSection } from "./monitor/MonitorSection.jsx";
-import { StreamSection } from "./stream/StreamSection.jsx";
 import { StorageSection } from "./storage/StorageSection.jsx";
 import { ToolsSection } from "./tools/ToolsSection.jsx";
 import { PluginsSection } from "./plugins/PluginsSection.jsx";
@@ -28,7 +27,7 @@ import { useSavedSettings } from "./shell/useSavedSettings.js";
 
 // The page of the section open now
 function SectionPage({ section, nav, compare, settings, plugins }) {
-  const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, streamLayouts, tools } = settings;
+  const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
   const pluginId = section.match(PLUGIN_SECTION)?.[1];
   if (pluginId) {
@@ -66,8 +65,6 @@ function SectionPage({ section, nav, compare, settings, plugins }) {
       return <PowerSection prices={energy.prices} onEnergyPrice={energy.changePrice} onMonthPrice={energy.changeMonthPrice} saveState={saveState} />;
     case "monitor":
       return <MonitorSection order={monitor.order} onSave={monitor.saveOrder} maxZoom={monitor.maxZoom} onMaxZoom={monitor.changeMaxZoom} />;
-    case "stream":
-      return <StreamSection layouts={streamLayouts.list} onSaveLayouts={streamLayouts.save} onSlideshowRenamed={streamLayouts.renamed} />;
     case "tools":
       return <ToolsSection links={tools.links} onSave={tools.save} />;
     case "plugins":
@@ -151,8 +148,8 @@ function FarmhandApp() {
           }}
         >
           <Crumb items={nav.crumbs()} onJump={nav.jumpTo} />
-          {/* in the middle of the top bar on the Stream page: the cameras see what the printers' panels reflect */}
-          {nav.section === "stream" && <div
+          {/* in the middle of the top bar on the Stream plugin's page: the cameras see what the printers' panels reflect */}
+          {nav.section === pluginSection("stream") && <div
             data-testid="panels-warning"
             style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", pointerEvents: "none",

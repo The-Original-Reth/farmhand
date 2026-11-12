@@ -7,6 +7,7 @@ import { useAction } from "../hooks/useAction.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { Badge } from "../components/common/ui.jsx";
 import { fmtWhen } from "../lib/format.js";
+import { GUIDED_PLUGINS, RunPluginGuide } from "./RunPluginGuide.jsx";
 
 // How a plugin is doing, as its badge says it
 const STATES = {
@@ -38,6 +39,7 @@ export function PluginsSection({ plugins, onChanged, onOpenPage }) {
       </div>
 
       <AddPlugin onAdded={(r) => { setToken(r); onChanged(); }} />
+      <RunPluginGuide />
 
       {plugins.length === 0 ? (
         <div style={uiText(13, c.textFaint)}>No plugins added yet.</div>
@@ -280,23 +282,29 @@ function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
   );
 }
 
-// The token, shown once, with how to give it to the plugin
+// The token, shown once, with how to give it to the plugin: the two lines for the env file its compose file names
+// (stream.env for Stream...), as "Run a plugin in its own container" says
 function TokenDialog({ plugin, token, onClose }) {
   const url = pluginApiUrl();
-  const snippet = `    environment:\n      FARMHAND_URL: ${url}\n      FARMHAND_TOKEN: ${token}`;
+  const lines = `FARMHAND_URL=${url}\nFARMHAND_TOKEN=${token}`;
+  const envFile = GUIDED_PLUGINS[plugin.id] ? `${plugin.id}.env` : null;
+  const mono = (text) => <span style={monoText(12, c.textPrimary)}>{text}</span>;
   return (
     <Modal title={`Give ${plugin.name} its token`} onClose={onClose} width={640} closeOnBackdrop={false}>
       <div style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 12 })}>
-        {plugin.name} needs these two settings to read Farmhand. Give them to its container as environment variables
-        (in its docker-compose.yml, under <span style={monoText(12, c.textPrimary)}>environment:</span>, as below), then
-        restart it.
+        {plugin.name} needs these two lines to read Farmhand. Put both in{" "}
+        {envFile ? <>its env file, {mono(envFile)},</> : <>the env file its docker-compose.yml names under {mono("env_file:")},</>}{" "}
+        beside its docker-compose.yml, then start it again there with {mono("sudo docker compose up -d --force-recreate")}.
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0 6px" }}>
+        <div style={uiText(12, c.textFaint, { flex: 1 })}>{envFile ? `In ${envFile}:` : "In its env file:"}</div>
+        <CopyButton value={lines} testId="plugin-env-copy" />
+      </div>
+      <pre data-testid="plugin-env-lines" style={monoText(12, c.textPrimary, { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, padding: 10, margin: "0 0 12px", overflowX: "auto" })}>
+        {lines}
+      </pre>
       <Copyable label="FARMHAND_URL" value={url} />
       <Copyable label="FARMHAND_TOKEN" value={token} testId="plugin-token" />
-      <div style={uiText(12, c.textFaint, { margin: "4px 0 6px" })}>In its docker-compose.yml:</div>
-      <pre style={monoText(12, c.textPrimary, { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, padding: 10, margin: 0, overflowX: "auto" })}>
-        {snippet}
-      </pre>
       <div style={uiText(12, c.amber, { lineHeight: 1.5, marginTop: 12 })}>
         This is the only time Farmhand shows this token: it keeps only a scrambled copy. If it's lost, make a new one on
         this page. A plugin running in Docker beside Farmhand can use http://api:4545/plugin-api/v1 as its FARMHAND_URL.
@@ -305,6 +313,28 @@ function TokenDialog({ plugin, token, onClose }) {
         <button onClick={onClose} style={primaryButton()}>Done</button>
       </div>
     </Modal>
+  );
+}
+
+function CopyButton({ value, testId }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState(null);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      setError(`Couldn't copy it (${errorText(e)}): select it and copy it by hand.`);
+    }
+  };
+  return (
+    <>
+      {error && <span style={uiText(12, c.amber)}>{error}</span>}
+      <button data-testid={testId} onClick={copy} style={{ ...toolButton(12), ...ui, fontSize: fs(12) }}>
+        {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
+      </button>
+    </>
   );
 }
 

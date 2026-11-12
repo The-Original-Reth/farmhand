@@ -129,13 +129,13 @@ def farm(db: Session = Depends(get_db)):
 
 @router.get("/stream/migrate")
 def stream_migrate_state(db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:migrate"))):
-    """Whether Farmhand's Stream page set-up can still be handed to this plugin: {available, handed_over_at, has_settings}."""
+    """Whether the Stream page set-up an older Farmhand saved can still be handed to this plugin: {available, handed_over_at, has_settings}."""
     return handover.stream_state(db, caller.plugin_id)
 
 
 @router.post("/stream/migrate")
 def stream_migrate(db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:migrate"))):
-    """The Stream page's set-up, stream key and YouTube sign-in, handed over once (410 after that). Farmhand keeps its own."""
+    """The old Stream page's set-up, stream key and YouTube sign-in, handed over once (410 after that). Farmhand keeps its copy."""
     try:
         return handover.stream_handover(db, caller.plugin_id)
     except handover.AlreadyHandedOver as e:

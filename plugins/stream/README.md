@@ -1,12 +1,14 @@
 # Stream: the live stream as a Farmhand plugin
 
-The Stream plugin sends printers' cameras live to **YouTube Live**, no OBS needed: Farmhand's Stream page, running in a
-container of its own, so a Farmhand update, restart or crash never stops the stream. Its page is shown inside Farmhand
-at **Stream** in the menu (`/plugins/stream/`), in Farmhand's colours, and works as the Stream page always has: the grid
+The Stream plugin sends printers' cameras live to **YouTube Live**, no OBS needed, from a container of its own, so a
+Farmhand update, restart or crash never stops the stream. It is the only way Farmhand streams: Farmhand's own Stream
+page is gone. Once the plugin is added, **Stream** is in Farmhand's menu where that page was, after Monitor, and opens
+the plugin's page inside Farmhand (`/plugin/stream`; an old `/stream` bookmark leads there too), in Farmhand's colours.
+It works as the Stream page always did: the grid
 of squares, cards with pictures, slideshows and words, the music, the words under the cameras, taking turns, the
 resolution, the delay, saved layouts, YouTube sign-in and broadcasts, or a pasted stream key.
 
-What it adds over the Stream page built into Farmhand:
+What it adds over the Stream page older Farmhands had built in:
 
 - **Each camera is read on its own.** A camera that stops shows **Camera down** with the printer's name, in the
   square's background colour and the chosen font and colour, and goes back to live video by itself; the other cameras
@@ -21,16 +23,17 @@ What it adds over the Stream page built into Farmhand:
 - **It reads only what it needs**: the cameras' addresses (`cameras:read`) and what each printer is printing
   (`prints:read`). It has no database: its settings, stream key, YouTube sign-in and saved layouts are in its own
   volume (`/data/settings.json`, readable only by the plugin), and its API never answers the key or the sign-in.
-- **Moving over from the Stream page**: with `stream:migrate`, the first time it starts it brings over, once, the
-  Stream page's settings, saved layouts, stream key and YouTube sign-in. Farmhand keeps its own copy.
+- **Moving over from the old Stream page**: with `stream:migrate`, the first time it starts it brings over, once, what
+  a Farmhand from before Stream became a plugin had set up on its Stream page: settings, saved layouts, stream key and
+  YouTube sign-in. Farmhand keeps its copy in its database, unused.
 
 | Path | What it is |
 |---|---|
 | `farmhand-plugin.json` | The manifest: id `stream`, port 8080, a page in Farmhand's menu, its permissions |
-| `streamer/live_stream/` | The engine, copied from Farmhand's `backend/app/services/live_stream/`; `feeders.py` (each camera's reader, the "Camera down" square) is new, `sources.py` and `runner.py` changed |
-| `streamer/stream_media.py`, `youtube_live.py`, `routes.py` | The stream folder, YouTube sign-in and the page's API, copied from Farmhand |
+| `streamer/live_stream/` | The engine (first copied from Farmhand's own, now gone); `feeders.py` reads each camera and draws the "Camera down" square |
+| `streamer/stream_media.py`, `youtube_live.py`, `routes.py` | The stream folder, YouTube sign-in and the page's API |
 | `streamer/store.py`, `farm.py`, `migrate.py`, `layouts.py`, `app.py` | The plugin's own: its settings file, reading Farmhand, the one-off move, saved layouts, the web server |
-| `page/` | The page: Farmhand's `frontend/src/stream/` copied, as a small Vite build of its own (`npm run build` puts it in `streamer/web/`) |
+| `page/` | The page (first copied from Farmhand's own Stream page), a small Vite build of its own (`npm run build` puts it in `streamer/web/`) |
 | `tests/` | Tests against stand-ins for Farmhand's plugin API and ffmpeg (`python -m pytest -q`) |
 
 ## Build it
@@ -44,8 +47,9 @@ docker build -t farmhand-stream plugins/stream
 ## The stream folder
 
 The stream's pictures, slideshows and music are files in a folder you give the container at `/media` (`images/`,
-`slideshows/<name>/`, `music/`; the plugin makes them). Give it the same folder Farmhand's Stream page used (Farmhand's
-Settings page shows where, and the move from Farmhand says it too), so the squares find their pictures:
+`slideshows/<name>/`, `music/`; the plugin makes them). Moving over from Farmhand's old Stream page, give it the same
+stream folder that page used (usually `stream` beside the STL folder on the NAS; the move from Farmhand says where, if
+one was chosen), so the squares find their pictures:
 
 - **A folder on the plugin's machine**: `-v /opt/farmhand-stream/media:/media`.
 - **A NAS share**: mount it on the plugin's machine (in `/etc/fstab`, e.g. `//nas/3d_Printing_Elves/Farmhand/stream
@@ -61,8 +65,9 @@ and the page shows it, for copying files in by hand.
 It runs on Farmhand's machine or any other machine on the farm's network that reaches Farmhand's API port (4545) and the
 cameras. [`docker-compose.yml`](docker-compose.yml) here is ready to use: it builds the plugin straight from this repository
 on GitHub (git must be installed), restarts it by itself, keeps its settings in a volume and reads `stream.env` once
-Farmhand gives the token. Farmhand's own Stream page shows the same file and these steps under **Run the stream in its
-own container** (a copy in `frontend/src/stream/plugin/`; `tests/test_compose.py` checks the two match).
+Farmhand gives the token. Farmhand's Plugins page shows the same file and these steps under **Run a plugin in its own
+container**, with Stream chosen (a copy in `frontend/src/plugins/compose/stream.yml`; `tests/test_compose.py` checks the
+two match).
 
 ```bash
 sudo mkdir -p /opt/farmhand-stream && cd /opt/farmhand-stream
@@ -95,11 +100,37 @@ version, held with `apt-mark hold`), and the container is given the card and the
 
 `FARMHAND_STREAM_ENCODER` (`auto`, `nvenc` or `cpu`) says which to use; `auto` (the default) tries the card.
 
+On a Proxmox LXC container, with the NVIDIA driver already on the host, share the card into the container first: add
+to `/etc/pve/lxc/<id>.conf` on the host, then restart the container (`ls -l /dev/nvidia*` on the host shows the numbers
+after `c`; these are the usual ones):
+
+```
+lxc.cgroup2.devices.allow: c 195:* rwm
+lxc.cgroup2.devices.allow: c 234:* rwm
+lxc.cgroup2.devices.allow: c 238:* rwm
+lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file
+lxc.mount.entry: /dev/nvidiactl dev/nvidiactl none bind,optional,create=file
+lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,create=file
+lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
+lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
+```
+
+Then, in the container, install NVIDIA's libraries at **exactly** the host's driver version (`nvidia-smi` on the host
+says it) and hold them there, so an update can't move them away from it:
+
+```bash
+sudo apt install --no-install-recommends libnvidia-encode-580=<version> nvidia-utils-580=<version>
+sudo apt-mark hold libnvidia-encode-580 nvidia-utils-580 libnvidia-compute-580 libnvidia-decode-580
+```
+
+`nvidia-smi` in the container should then show the card. When the host's driver is updated, update the container's
+libraries to the same version (until then the stream quietly goes back to the processor).
+
 ## Add it to Farmhand
 
 1. In Farmhand, open the **Plugins** page (in the menu, under Settings).
 2. Under **Add a plugin**, type its address, e.g. `http://192.168.10.215:8080`.
-3. Farmhand shows what Stream wants: your printers' cameras, what they're printing, and (once) the Stream page's
+3. Farmhand shows what Stream wants: your printers' cameras, what they're printing, and (once) the old Stream page's
    set-up. Untick **stream:migrate** to start afresh instead. Say yes.
 4. Farmhand shows `FARMHAND_URL` and `FARMHAND_TOKEN` **once**. Put them in `stream.env`:
 
@@ -110,9 +141,8 @@ version, held with `apt-mark hold`), and the container is given the card and the
 
    and start it again: `docker compose up -d --force-recreate`.
 
-**Stream** appears in Farmhand's menu. The first time it starts with `stream:migrate`, it brings the Stream page's set-up
-over (or press **Bring over Farmhand's Stream settings** on its page). Farmhand's own Stream page carries on beside it
-for now: don't go live on both with the same key.
+**Stream** appears in Farmhand's menu, after Monitor. The first time it starts with `stream:migrate`, it brings the old
+Stream page's set-up over (or press **Bring over Farmhand's Stream settings** on its page).
 
 ## Trying it out without YouTube
 
@@ -148,5 +178,5 @@ STREAM_DATA=./data STREAM_FOLDER=./media python -m streamer  # the plugin on :80
 cd plugins/stream/page && npm run dev                      # the page on :3638, its API passed to :8080
 ```
 
-Much of the code is Farmhand's own Stream page, copied (the first commit adding this folder copies it unchanged): a
-change to one usually belongs in the other too, until Farmhand's own Stream page is removed.
+Much of the code began as Farmhand's own Stream page, copied (the first commit adding this folder copies it unchanged).
+That page is gone from Farmhand now, so this folder is the only copy.

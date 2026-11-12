@@ -16,12 +16,16 @@ log = logging.getLogger("farmhand.settings")
 KEY_CONFIG = "config_json"  # the settings themselves (appearance + preferences), as the server holds them
 
 
-def get_config(db: Session) -> dict:
+def _stored(db: Session) -> dict:
     try:
         raw = json.loads(app_settings.get(db, KEY_CONFIG) or "{}")
     except ValueError:
         raw = {}
-    return config_store.normalize_config(raw)
+    return raw if isinstance(raw, dict) else {}
+
+
+def get_config(db: Session) -> dict:
+    return config_store.normalize_config(_stored(db))
 
 
 def save_config(db: Session, patch: dict) -> dict:
@@ -39,7 +43,11 @@ def save_config(db: Session, patch: dict) -> dict:
         "preferences": {**current["preferences"], **prefs},
     }
     config = config_store.normalize_config(merged)
-    app_settings.put(db, KEY_CONFIG, json.dumps(config))
+    # Preferences stored that this Farmhand no longer has (stream_layouts, from when it had its own Stream page) stay
+    # as they were stored: never deleted, and still there for the stream:migrate hand-over (plugins/handover.py).
+    stored = _stored(db).get("preferences")
+    gone = {k: v for k, v in stored.items() if k not in config["preferences"]} if isinstance(stored, dict) else {}
+    app_settings.put(db, KEY_CONFIG, json.dumps({**config, "preferences": {**gone, **config["preferences"]}}))
     db.commit()
     return config
 

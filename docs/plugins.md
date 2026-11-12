@@ -1,7 +1,8 @@
 # Writing a Farmhand plugin
 
 A plugin is a program of your own that adds something to a print farm's Farmhand: a live stream, a dashboard, a
-notifier. It runs in **its own Docker container**, with its own storage, written in any language. It never touches
+notifier. Streaming to YouTube is itself a plugin, [`plugins/stream`](../plugins/stream/README.md): Farmhand has no
+Stream page of its own any more. It runs in **its own Docker container**, with its own storage, written in any language. It never touches
 Farmhand's database, files or other containers. It reads what it needs from Farmhand through the **plugin API**
 described here, using a token the operator gave it, and only what the operator allowed.
 
@@ -22,8 +23,16 @@ way your instructions say, and adds it to Farmhand by its address.
 2. On Farmhand's **Plugins** page they type that address. Farmhand asks it for `GET <address>/manifest`, checks it,
    and shows its name and the permissions it asks for in plain words. They can untick permissions, and choose whether
    Farmhand takes your token only from that address (on by default).
-3. Once they say yes, Farmhand shows them your plugin's `FARMHAND_URL` and `FARMHAND_TOKEN`, once. They set those as
-   environment variables for your container and restart it.
+3. Once they say yes, Farmhand shows them your plugin's `FARMHAND_URL` and `FARMHAND_TOKEN`, once, as two
+   `KEY=value` lines. They put those in the env file your docker-compose.yml names under `env_file:` (beside it,
+   like `stream.env` or `hello.env`) and start your container again (`sudo docker compose up -d --force-recreate`).
+
+The Plugins page's **Run a plugin in its own container** walks the operator through it for any plugin with a compose
+file: a folder for it (`/opt/farmhand-<name>`), your `docker-compose.yml` in it, `sudo docker compose up -d --build`,
+adding it at `http://<that machine>:<its port>`, the two lines in its env file, and starting it again. So ship a
+`docker-compose.yml` that builds or pulls your image, publishes your port, names an env file with `required: false`
+(it isn't there until the plugin is added), and keeps your data in a volume: [`plugins/hello`](../plugins/hello/docker-compose.yml)'s
+is a short one to copy.
 
 From then on Farmhand asks your health path every 30 seconds, shows your page in its menu, and the operator can switch
 your plugin off (its token is refused and its page leaves the menu), give it a new token, or remove it.
@@ -71,12 +80,12 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `cameras:read` | see your printers' cameras and the addresses to stream them from | `GET /cameras` |
 | `prints:read` | see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends | `GET /printers/{id}/print`, `GET /events` |
 | `farm:read` | see Farmhand's colours and the farm's time zone | `GET /farm` |
-| `stream:migrate` | take, once, a copy of Farmhand's own Stream page set-up: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its own copy) | `GET /stream/migrate`, `POST /stream/migrate` |
+| `stream:migrate` | take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy) | `GET /stream/migrate`, `POST /stream/migrate` |
 
 The operator grants some or all of the permissions the manifest asks for, never more. There are no write permissions
 yet; they'll be added one at a time, when a plugin needs one.
 
-`stream:migrate` is only for a Stream plugin taking over from the Stream page built into Farmhand (like
+`stream:migrate` is only for a Stream plugin taking over from the Stream page older Farmhands had built in (like
 [`plugins/stream`](../plugins/stream/README.md)): ask for it only if that's what your plugin is. It hands over secrets
 (the stream key, the Google client secret and the YouTube sign-in), so it's granted only when the manifest asks and the
 operator leaves it ticked, and handed over just once.
@@ -156,8 +165,8 @@ Every printer in service (retired ones are left out), by name. `connection_type`
 ### `GET /cameras` (`cameras:read`)
 
 Every printer in service with its cameras, as set up in Mainsail (or a Prusa's Buddy3D camera), each with an address
-ffmpeg can read: `kind` is `mjpeg` or `rtsp`, `url` the address, and `ffmpeg_input` the options Farmhand's own stream
-uses to read it (reconnecting, timeouts), ending in `-i <url>`. `rotation` and the flips are as set in Mainsail;
+ffmpeg can read: `kind` is `mjpeg` or `rtsp`, `url` the address, and `ffmpeg_input` the options to read it with
+(reconnecting, timeouts; the Stream plugin uses them as they are), ending in `-i <url>`. Farmhand runs no ffmpeg itself. `rotation` and the flips are as set in Mainsail;
 `ffmpeg_filters` turns the picture that way (add them to your filter graph). A camera that can't be streamed (one
 that only plays in a browser, over WebRTC) has `kind`, `url` and `ffmpeg_input` `null` and says why in `error`. A
 printer whose cameras couldn't be asked (it's off) has no cameras and says why in its own `error`.
@@ -261,8 +270,9 @@ second one, whatever their hue in the scheme.
 
 ### `GET /stream/migrate` and `POST /stream/migrate` (`stream:migrate`)
 
-Farmhand's own Stream page set-up, handed to the plugin **once**, so the operator doesn't set it all up again. Farmhand
-only reads its copy (it keeps it; it isn't changed or deleted), and records that it was handed over: a second `POST` is
+For moving a Farmhand that had its own Stream page (before Stream became a plugin) onto the Stream plugin: what that page
+had set up, handed to the plugin **once**, so the operator doesn't set it all up again. Farmhand no longer has that
+page, but what it saved is still in Farmhand's database. Farmhand only reads it (it keeps it; it isn't changed or deleted), and records that it was handed over: a second `POST` is
 **410**, saying when. Removing the plugin on the Plugins page and adding it afresh lets it ask again.
 
 `GET` says whether it can still be handed over, with nothing secret in it:
@@ -271,11 +281,12 @@ only reads its copy (it keeps it; it isn't changed or deleted), and records that
 { "available": true, "handed_over_at": null, "has_settings": true }
 ```
 
-`POST` hands it over. `settings` is the Stream page's settings exactly as Farmhand keeps them (its grid and squares,
-taking turns, resolution, colours, font, music, delay, YouTube title, description and settings: see
-`backend/app/services/live_stream/choices.py`), `layouts` its saved layouts, `stream_key` the pasted key (or `null`),
-`youtube` the Google OAuth client and sign-in (each `null` when there's none), and `stream_folder` where Farmhand's
-stream folder is (its pictures, slideshows and music, for the operator to give your container the same folder):
+`POST` hands it over. `settings` is the Stream page's settings exactly as Farmhand kept them (its grid and squares,
+taking turns, resolution, colours, font, music, delay, YouTube title, description and settings: the Stream plugin's
+`streamer/live_stream/choices.py` reads the same shape), `layouts` its saved layouts as stored, `stream_key` the pasted
+key (or `null`), `youtube` the Google OAuth client and sign-in (each `null` when there's none), and `stream_folder` the
+stream folder that page had chosen (its pictures, slideshows and music, for the operator to give your container the
+same folder), or `null` when it used the default. A Farmhand that never had the page answers `{}`, `[]` and `null`s:
 
 ```json
 {

@@ -30,30 +30,12 @@ class EnergyPriceData(BaseModel):
     price: float | None
 
 
-class StreamLayoutData(BaseModel):
-    """One of the Stream page's saved layouts."""
-
-    name: str
-    cols: int = 1  # the grid, 1 to 5 squares across and down
-    rows: int = 1
-    cells: list[dict | None] = []  # each square, row by row: {"camera": "printer id:camera name"} | a card | null
-    layout: str = "grid"  # "grid" (the whole grid) | "cycle" (taking turns)
-    seconds_all: int = 30
-    seconds_each: int = 20
-    show_status: bool = True
-    border_color: str = "#000000"
-    background: str = "#000000"  # the stream's own colour
-    font: str = "play"  # the stream's words, every square's and camera's unless it has its own
-    color: str = "#FFFFFF"
-
-
 class PreferencesData(BaseModel):
     model_sort: SortData
     printer_sort: SortData = SortData(key="name", dir="asc")  # the Printers page's list
     monitor_order: list[str] = []
     monitor_max_zoom: int = 4
     farm_cost_order: list[int] = []  # the Farm cost page's printers as dragged into order (printer ids)
-    stream_layouts: list[StreamLayoutData] = []  # the Stream page's saved layouts, in the order saved
     tool_links: list[ToolLinkData] = []  # the Tools page's websites, in order
     energy_price_per_kwh: float | None = None  # $ per kWh, typed on the Power page; null = not set
     energy_price_history: list[EnergyPriceData] = []  # each time it was set: counts from that month on
