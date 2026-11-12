@@ -9,6 +9,7 @@ itself, and nothing here ever answers the stream key, the Google client secret o
 """
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import threading
@@ -19,6 +20,7 @@ from pathlib import Path
 from fastapi import Body, Depends, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 
 from . import farm, layouts, live_stream, migrate
 from .live_stream import runner
@@ -105,7 +107,9 @@ def print_progress(printer_id: int):
 def camera_picture(printer_id: int, name: str, db: Session = Depends(get_db)):
     """A camera's latest picture for the page's preview: its feeder's while live, else its snapshot address's, else (no
     snapshot address, or one that doesn't answer, as Mainsail can still list after a camera moved to go2rtc) a frame
-    taken from its video. 404 when there's none to give, 502 when the camera didn't give one."""
+    taken from its video. Always turned the way Mainsail shows the camera, as the stream shows it (a feeder's frame is
+    already; the others are turned here), so the page never turns it itself. 404 when there's none to give, 502 when the
+    camera didn't give one."""
     frame = live_stream.stream.latest_frame(f"{printer_id}:{name}")
     if frame is None:
         printer = (known(db) or {}).get(str(printer_id)) or {}
@@ -117,7 +121,7 @@ def camera_picture(printer_id: int, name: str, db: Session = Depends(get_db)):
         if url:
             try:
                 with urllib.request.urlopen(url, timeout=SNAPSHOT_TIMEOUT) as r:
-                    frame = r.read(8 * 1024 * 1024)
+                    frame = turned(r.read(8 * 1024 * 1024), cam.get("ffmpeg_filters") or [])
             except OSError as e:
                 snapshot_error = f"The camera didn't give a picture ({e})."
         if frame is None:
@@ -131,6 +135,29 @@ VIDEO_FRAME_SECONDS = 3
 VIDEO_FRAME_TIMEOUT = 12
 _frames_lock = threading.Lock()
 _frames: dict[str, dict] = {}  # "printer id:camera" -> {lock, at, frame, error}
+
+
+# Farmhand's turn filters (camera_streams: Mainsail's rotation, then its flips), as Pillow does them
+_PIL_TURNS = {"transpose=1": Image.Transpose.ROTATE_270, "transpose=2": Image.Transpose.ROTATE_90,
+              "hflip": Image.Transpose.FLIP_LEFT_RIGHT, "vflip": Image.Transpose.FLIP_TOP_BOTTOM}
+
+
+def turned(jpeg: bytes, turn: list[str]) -> bytes:
+    """A snapshot turned as the stream turns the camera (`turn`: its ffmpeg filters); as it was when there's nothing to
+    turn, or it isn't a picture Pillow reads."""
+    steps = [_PIL_TURNS[t] for t in turn if t in _PIL_TURNS]
+    if not steps:
+        return jpeg
+    try:
+        with Image.open(io.BytesIO(jpeg)) as im:
+            pic = im.convert("RGB")
+        for step in steps:
+            pic = pic.transpose(step)
+        out = io.BytesIO()
+        pic.save(out, "JPEG", quality=85)
+        return out.getvalue()
+    except (OSError, ValueError):
+        return jpeg
 
 
 def take_frame(args: list[str]) -> bytes:
@@ -159,7 +186,9 @@ def _frame_from_video(key: str, cam: dict, snapshot_error: str | None) -> bytes:
     with kept["lock"]:  # (the page's asks for the same camera share one connection to it)
         if kept["at"] is None or time.monotonic() - kept["at"] >= VIDEO_FRAME_SECONDS:
             try:
+                turn = cam.get("ffmpeg_filters") or []
                 kept.update(frame=take_frame([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", *args,
+                                              *(["-vf", ",".join(turn)] if turn else []),
                                               "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]), error=None)
             except RuntimeError as e:
                 kept.update(frame=None, error=f"The camera didn't give a picture ({e}).")
