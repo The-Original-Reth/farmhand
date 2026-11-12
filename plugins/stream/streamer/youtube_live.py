@@ -322,6 +322,33 @@ def _video_snippet(yt: dict, title: str, description: str) -> dict:
     return snippet
 
 
+def _links(bid: str) -> dict:
+    return {"id": bid, "watch_url": f"https://www.youtube.com/watch?v={bid}", "studio_url": f"https://studio.youtube.com/video/{bid}/livestreaming"}
+
+
+def live_on_stream(creds: dict, stream_id: str) -> dict | None:
+    """The channel's broadcast still live on Farmhand's own stream, {id, watch_url, studio_url}, or None. After the
+    plugin's own restart (a new image, a reboot) the broadcast it was sending to is still live on YouTube, and goes on
+    as soon as the video comes back: a new one made then would wait, "ready", for as long as the old one is live. Any
+    broadcast on the stream that never went live (one made like that before) is deleted, as it would never start."""
+    token = _access_token(creds)
+    found = None
+    for status in ("active", "upcoming"):
+        items = _api("GET", "/liveBroadcasts", token, {"part": "id,status,contentDetails", "broadcastStatus": status,
+                                                       "broadcastType": "all", "maxResults": 25}).get("items") or []
+        for item in items:
+            if (item.get("contentDetails") or {}).get("boundStreamId") != stream_id:
+                continue
+            if status == "active" and found is None:
+                found = _links(item["id"])
+            elif status == "upcoming":
+                try:
+                    _api("DELETE", "/liveBroadcasts", token, {"id": item["id"]})
+                except YouTubeError:
+                    pass  # (left "ready" in Studio; it harms nothing)
+    return found
+
+
 def start_broadcast(creds: dict, stream_id: str, yt: dict, title: str, description: str) -> dict:
     """A new broadcast on the channel, bound to Farmhand's own stream, set from the YouTube settings (`yt`: privacy, tags,
     category, made_for_kids, latency, dvr, auto_start, auto_stop): {id, watch_url, studio_url}. It starts by itself
@@ -341,7 +368,7 @@ def start_broadcast(creds: dict, stream_id: str, yt: dict, title: str, descripti
         _api("PUT", "/videos", token, {"part": "snippet"}, {"id": bid, "snippet": _video_snippet(yt, title, description)})
     except YouTubeError:
         pass  # (the broadcast still goes ahead; the page says the tags weren't set when it reads the health)
-    return {"id": bid, "watch_url": f"https://www.youtube.com/watch?v={bid}", "studio_url": f"https://studio.youtube.com/video/{bid}/livestreaming"}
+    return _links(bid)
 
 
 def update_broadcast(creds: dict, broadcast_id: str, yt: dict, title: str, description: str) -> None:

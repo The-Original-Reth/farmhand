@@ -353,3 +353,36 @@ def test_preview_pictures_come_turned_as_the_stream_turns_them(api, plugin, farm
     farm.cameras(plugin)
     assert api.get("/api/cameras/1/Bed/picture").status_code == 200
     assert taken[0][taken[0].index("-vf") + 1] == "hflip,vflip"
+
+
+def test_going_live_again_carries_on_with_the_broadcast_still_live_on_the_stream(monkeypatch):
+    """After the plugin's own restart the broadcast it sent to is still live on YouTube (and goes on once the video is
+    back): it's carried on with, not a new one made that would wait "ready" behind it; one that never started is deleted."""
+    from streamer import youtube_live
+    from streamer.live_stream.broadcast import Broadcast
+
+    calls = []
+    listed = {
+        "active": [{"id": "other", "contentDetails": {"boundStreamId": "someone-else"}},
+                   {"id": "J4aj", "contentDetails": {"boundStreamId": "own"}}],
+        "upcoming": [{"id": "aHYU", "contentDetails": {"boundStreamId": "own"}}],
+    }
+
+    def api(method, path, token, params, body=None):
+        calls.append((method, path, params.get("id") or params.get("broadcastStatus")))
+        if method == "GET" and path == "/liveBroadcasts":
+            return {"items": listed[params["broadcastStatus"]]}
+        if method == "POST" and path == "/liveBroadcasts":
+            return {"id": "new"}
+        return {}
+
+    monkeypatch.setattr(youtube_live, "_access_token", lambda creds: "token")
+    monkeypatch.setattr(youtube_live, "_api", api)
+    chosen = {"youtube": {"privacy": "public"}, "title": "Printing", "description": ""}
+
+    b = Broadcast.start({}, {"id": "own"}, chosen)
+    assert b.id == "J4aj" and b.status()["watch_url"].endswith("v=J4aj")
+    assert ("DELETE", "/liveBroadcasts", "aHYU") in calls and not any(c[:2] == ("POST", "/liveBroadcasts") for c in calls)
+
+    listed["active"], listed["upcoming"] = [], []  # nothing live on it: a new one
+    assert Broadcast.start({}, {"id": "own"}, chosen).id == "new"
