@@ -196,7 +196,24 @@ class Buffer:
         self._started = False  # the delay has passed once: from then on, what comes is passed on as the sender takes it
         self._first: float | None = None
         self._ended = False
+        self._filler = None  # while filling: what the sender is given meanwhile (the holding screen's ffmpeg), or None
         threading.Thread(target=self._feed, name="stream-buffer", daemon=True).start()
+
+    def fill_from(self, proc) -> None:
+        """While the delay fills, give the sender `proc`'s stream (the holding screen: MPEG-TS on its stdout) so YouTube
+        has video meanwhile; once the delay is held it's switched to what's held, at a whole frame, and `proc` is
+        ended (terminate())."""
+        with self._cond:
+            if self._started or self._ended:
+                _stop(proc)
+                return
+            self._filler = proc
+            self._cond.notify_all()
+
+    def filled_from(self):
+        """The holding screen's ffmpeg while it's going out, else None."""
+        with self._cond:
+            return self._filler
 
     def write(self, data: bytes) -> None:
         with self._cond:
@@ -254,7 +271,9 @@ class Buffer:
     def close(self) -> None:
         with self._cond:
             self._ended = True
+            filler, self._filler = self._filler, None
             self._cond.notify_all()
+        _stop(filler)
 
     def held(self) -> float:
         """
@@ -286,21 +305,68 @@ class Buffer:
         with self._cond:
             return not self._started
 
+    def _ready(self) -> bool:
+        """What's held can go to the sender: started already, or the delay is held. (Called holding the lock.)"""
+        return bool(self._chunks) and (self._started or self._full())
+
     def _feed(self) -> None:
+        spare = b""  # the holding screen's frame being read, not yet whole
         while True:
             with self._cond:
-                while not self._ended and (self._sink is None or not self._chunks or (not self._started and not self._full())):
+                while not self._ended and (self._sink is None or not (self._ready() or self._filler is not None)):
                     self._cond.wait(0.2)
                 if self._ended:
                     return
-                self._started = True
-                chunk = self._pop()
-                sink = self._sink
-            try:
-                sink.write(chunk[1])  # (blocks while the sender, reading at real time, has its pipe full)
-                sink.flush()
-            except (OSError, ValueError):  # that sender has ended: what it didn't take goes to the next one
+                sink, chunk, filler = self._sink, None, None
+                if self._ready():
+                    self._started = True
+                    filler, self._filler = self._filler, None
+                    chunk = self._pop()
+                else:
+                    filler = self._filler
+            if chunk is None:  # filling: a piece of the holding screen meanwhile, in whole frames
+                try:
+                    data = _read_packets(filler.stdout)
+                except (OSError, ValueError, AttributeError):
+                    data = b""
+                if not data:  # (it ended: nothing more meanwhile)
+                    with self._cond:
+                        if self._filler is filler:
+                            self._filler = None
+                    continue
+                data = spare + data
+                cut = last_frame_start(data)
+                data, spare = (data[:cut], data[cut:]) if cut is not None else (data, b"")
+                if data and not self._send(sink, data):
+                    spare = b""
+                continue
+            if filler is not None:  # the delay is held: the holding screen ends, and what's held goes out from here
+                _stop(filler)
+                spare = b""
+            if not self._send(sink, chunk[1]):  # that sender has ended: what it didn't take goes to the next one
                 with self._cond:
                     self._push(chunk, front=True)
-                    if self._sink is sink:
-                        self._sink = None
+
+    def _send(self, sink, data: bytes) -> bool:
+        """`data` to the sender (blocking while the sender, reading at real time, has its pipe full). False when it has
+        ended (it's started again, with set_sink)."""
+        try:
+            sink.write(data)
+            sink.flush()
+            return True
+        except (OSError, ValueError):
+            with self._cond:
+                if self._sink is sink:
+                    self._sink = None
+            return False
+
+
+def _stop(proc) -> None:
+    """End the holding screen's ffmpeg (a stand-in may have nothing to end)."""
+    if proc is None:
+        return
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+    except (AttributeError, OSError):
+        pass

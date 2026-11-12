@@ -24,6 +24,8 @@ class FakeFfmpeg:
         self.feeders: list[list[str]] = []
         self.feeder_procs: list = []
         self.down: set[str] = set()  # cameras (their addresses) that are off: their feeders end at once, with nothing
+        self.holdings: list[list[str]] = []  # the holding screen's ffmpegs (after the plugin's own restart)
+        self.holding_procs: list = []
 
     def __call__(self, args, feed=False, out=False):
         if "-vf" in args and args[-1] == "pipe:1":  # a camera's feeder
@@ -31,6 +33,11 @@ class FakeFfmpeg:
             proc = _Feeder(self, url)
             self.feeders.append(args)
             self.feeder_procs.append(proc)
+            return proc
+        if "-loop" in args and args[-1] == "pipe:1":  # the holding screen
+            proc = _Holding()
+            self.holdings.append(args)
+            self.holding_procs.append(proc)
             return proc
         picture = "-filter_complex" in args
         proc = _Proc(self.lines, self.exits, picture=picture)
@@ -96,6 +103,30 @@ class _Proc:
         self._ended.set()
 
     kill = terminate
+
+
+HOLDING_FRAME = bytes([0x47, 0x41, 0x00, 0x10]) + b"HOLD" + bytes(180)  # a frame of the holding screen starting
+
+
+class _HoldingOut:
+    """The holding screen's stdout: a frame's first packet every 20 ms until it's ended."""
+
+    def __init__(self, ended):
+        self._ended = ended
+
+    def read(self, n=-1):
+        import time
+
+        if self._ended.is_set():
+            return b""
+        time.sleep(0.02)
+        return HOLDING_FRAME
+
+
+class _Holding(_Proc):
+    def __init__(self):
+        super().__init__([], False)
+        self.stdout = _HoldingOut(self._ended)
 
 
 def jpeg(colour=(200, 40, 40), size=(64, 48)) -> bytes:

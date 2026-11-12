@@ -57,4 +57,9 @@ TAGS_MAX = 500  # YouTube's limit, all the tags together (commas between)
 DELAY = (0, 120, 60)  # (least, most, default) seconds the stream is held before YouTube gets it (relay.Buffer)
 DEFAULT_MUSIC_VOLUME = 50  # the music's loudness, 0 to 100 (100: as the tracks are)
 SAVED = ("destination", "cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "title", "description", "font", "color", "enabled",
-         "resolution", "border_color", "background", "music", "music_volume", "music_shuffle", "delay", "youtube")
+         "resolution", "border_color", "background", "music", "music_volume", "music_shuffle", "delay", "youtube", "holding")
+# The holding screen: what YouTube is shown for the first minute after the plugin's own restart, while the delay fills
+# again behind it (so the broadcast never goes without video). Its words, a picture from the stream folder's images (None:
+# none), and its colours and font (None: the stream's own).
+HOLDING_DEFAULTS = {"text": "Back in a minute", "image": None, "background": None, "color": None, "font": None}
+HOLDING_TEXT_MAX = 300

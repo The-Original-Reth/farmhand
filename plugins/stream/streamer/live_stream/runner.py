@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 from ..store import Session, store
 from .. import app_settings, config, farm, stream_media, youtube_live
-from . import feeders, music, staging
+from . import feeders, holding, music, staging
 from .broadcast import Broadcast, own_stream, title_on_active
 from .constants import DEFAULT_RESOLUTION, DESTINATIONS, KEPT_LINES, RESOLUTIONS, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY
 from .fonts import font_file
@@ -153,6 +153,8 @@ class Stream:
                 # the delay before YouTube, while live: {seconds (as chosen), held (seconds of stream held now), filling
                 # (still collecting it: nothing has gone to YouTube yet)}
                 "delay": {"seconds": buffer.delay, "held": buffer.held(), "filling": buffer.filling()} if buffer and wanted else None,
+                # the holding screen is going out (after the plugin's own restart, while the delay fills again)
+                "holding": bool(buffer and wanted and buffer.filled_from() is not None),
                 # a new layout is on its way: waiting for more changes, or its picture warming up beside the one going out
                 "changing": self._changing and wanted,
                 # what the self-check last did this time live, {at (ISO time), message}, or None
@@ -188,9 +190,10 @@ class Stream:
             raise ValueError("The music is off: tick Play music on the stream, and Save.")
         getattr(player, action)()
 
-    def go_live(self, db: Session, session_factory) -> dict:
+    def go_live(self, db: Session, session_factory, resumed: bool = False) -> dict:
         """Go live with what's chosen now; while live already (to the same place), hand over to it with no break in what
-        YouTube gets. ValueError says why it can't."""
+        YouTube gets. `resumed`: going live again after the plugin's own restart (the holding screen goes out while the
+        delay fills, so the broadcast never goes without video). ValueError says why it can't."""
         chosen = settings(db)
         if not chosen["enabled"]:
             raise ValueError("The stream is turned off: turn it on at the top of the Stream page first.")
@@ -215,7 +218,7 @@ class Stream:
             sender = self._sender
             handover = self._wanted.is_set() and self._url == url and sender is not None and sender.poll() is None
         if not handover:
-            self._start_session(db, session_factory, chosen, ffmpeg, url, key, creds if own else None, own)
+            self._start_session(db, session_factory, chosen, ffmpeg, url, key, creds if own else None, own, resumed=resumed)
         elif self._player:
             self.music_settings(chosen)
 
@@ -331,7 +334,7 @@ class Stream:
         def run():
             while db.get(LIVE_KEY) and not self._wanted.is_set():
                 try:
-                    self.go_live(db, session_factory)
+                    self.go_live(db, session_factory, resumed=True)
                     print("stream: live again after a restart, as it was before", flush=True)
                     return
                 except Exception as e:  # noqa: BLE001 - said on the page, and tried again
@@ -344,7 +347,7 @@ class Stream:
             threading.Thread(target=run, name="stream-resume", daemon=True).start()
 
     def _start_session(self, db: Session, session_factory, chosen: dict, ffmpeg: str, url: str, key: str,
-                       creds: dict | None = None, own: dict | None = None) -> None:
+                       creds: dict | None = None, own: dict | None = None, resumed: bool = False) -> None:
         """Going live afresh: signed in, a new broadcast on the channel first (bound to Farmhand's own stream `own`, set
         from the YouTube settings; it starts by itself when the stream arrives); then the sender (the connection to
         YouTube), the delay's buffer and the music. With a pasted key instead, YouTube makes the broadcast itself and
@@ -383,6 +386,8 @@ class Stream:
             self._broadcast = broadcast
             self._healed = None
             self._wanted.set()
+        if resumed and buffer.delay > 0:
+            self._hold(db, chosen, ffmpeg, buffer, player)
         threading.Thread(target=self._keep_sending, args=(gen, sender_command(ffmpeg, url), buffer), name="stream-sender", daemon=True).start()
         threading.Thread(target=self._watch_flow, args=(gen, self._relay), name="stream-self-check", daemon=True).start()
         if broadcast:
@@ -392,6 +397,32 @@ class Stream:
 
             threading.Thread(target=broadcast.watch, name="stream-youtube", daemon=True, args=(
                 buffer.delay, lambda seconds: _sleep_unless(self, gen, seconds), read_settings, lambda said: self._said_by_youtube(gen, said))).start()
+
+    def _hold(self, db: Session, chosen: dict, ffmpeg: str, buffer: Buffer, player) -> None:
+        """After the plugin's own restart: the holding screen to YouTube straight away, while the delay fills again
+        behind it (holding.py). Best tried: without it the stream still goes live, as from Go live."""
+        width, height, kbps = RESOLUTIONS.get(chosen["resolution"], RESOLUTIONS[DEFAULT_RESOLUTION])
+        mine = chosen["holding"]
+        colours = holding.look(mine, chosen)
+        picture = None
+        if mine.get("image"):
+            try:
+                picture = str(stream_media.picture_path(db, None, mine["image"]))
+            except (ValueError, OSError, LookupError):
+                picture = None  # (gone from the stream folder: the words alone)
+        with self._lock:
+            folder = self._cache
+        try:
+            png = os.path.join(folder, "holding.png")
+            holding.draw(png, width, height, mine["text"], colours["background"], colours["color"], font_file(colours["font"]), picture)
+            proc = popen(holding.command(ffmpeg, png, encoder(ffmpeg), kbps), feed=True, out=True)
+        except (OSError, ValueError, TypeError) as e:
+            print(f"stream: the holding screen couldn't be shown ({e}); going live without it", flush=True)
+            return
+        threading.Thread(target=self._listen, args=(proc,), name="stream-holding-listen", daemon=True).start()
+        if player:
+            player.attach(proc.stdin)
+        buffer.fill_from(proc)
 
     def stop(self, forget: bool = True, end_broadcast: bool = True) -> dict:
         """Stop the stream. `forget`: Stop pressed (it won't go live again after a restart); False when the plugin is

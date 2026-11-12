@@ -19,6 +19,8 @@ What it adds over the Stream page older Farmhands had built in:
   that Mainsail still lists an old snapshot address for), shows a frame taken from its video every few seconds.
 - **It goes live again by itself** after its own restart (a reboot, a power cut, a new image), if it was live, on the
   same YouTube broadcast: a restart leaves the broadcast live, and only Stop ends it.
+  While its delay fills again, YouTube is shown a **holding screen** (its words, picture, colours and font are set on the
+  Stream page), so the broadcast keeps getting video; then it switches to the cameras with the whole delay in place.
 - **Farmhand going down doesn't stop it.** The cameras are read at the addresses last heard of, and the words under
   them become just the printers' names until Farmhand is back.
 - **It reads only what it needs**: the cameras' addresses (`cameras:read`) and what each printer is printing

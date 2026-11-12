@@ -31,6 +31,9 @@ const normalizeStream = (s) => ({
     musicVolume: s.settings.music_volume ?? 50,
     musicShuffle: s.settings.music_shuffle !== false,
     delay: s.settings.delay ?? 60, // seconds the stream is held before YouTube gets it (0 to 120)
+    // the holding screen, shown after the plugin's own restart while the delay fills again: { text, image, background,
+    // color, font } (null colours and font: the stream's own)
+    holding: { text: "Back in a minute", image: null, background: null, color: null, font: null, ...(s.settings.holding || {}) },
     // the video's own YouTube settings (the YouTube settings window): privacy "public" | "unlisted" | "private", tags
     // [words], category (YouTube's number), madeForKids, latency "normal" | "low" | "ultraLow", dvr, autoStart, autoStop
     youtube: ((y) => ({
@@ -70,6 +73,7 @@ const normalizeStream = (s) => ({
     music: s.status.music || null,
     // the delay before YouTube, while live: { seconds, held (seconds held now), filling (nothing sent to YouTube yet) }
     delay: s.status.delay || null,
+    holding: !!s.status.holding, // the holding screen is going out (after the plugin's own restart, while the delay fills)
     // a new layout is on its way (waiting a moment for more changes, then warming up beside the one going out)
     changing: !!s.status.changing,
     // signed in, while live: the broadcast Farmhand made { watchUrl, studioUrl, state (YouTube's: ready, live...),
@@ -108,7 +112,7 @@ export const saveStream = async (s = {}) =>
         destination: s.destination, cols: s.cols, rows: s.rows, cells: s.cells, show_status: s.showStatus, layout: s.layout,
         resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor, background: s.background, font: s.font, color: s.color,
         title: s.title, description: s.description, music: s.music, music_volume: s.musicVolume, music_shuffle: s.musicShuffle, delay: s.delay,
-        stream_key: s.streamKey || null, clear_key: !!s.clearKey, enabled: s.enabled,
+        stream_key: s.streamKey || null, clear_key: !!s.clearKey, enabled: s.enabled, holding: s.holding,
         youtube: s.youtube ? {
           privacy: s.youtube.privacy, tags: s.youtube.tags, category: s.youtube.category, made_for_kids: s.youtube.madeForKids,
           latency: s.youtube.latency, dvr: s.youtube.dvr, auto_start: s.youtube.autoStart, auto_stop: s.youtube.autoStop,
