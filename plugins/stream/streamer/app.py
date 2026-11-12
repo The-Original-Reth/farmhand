@@ -4,12 +4,13 @@ The Stream plugin's web server: its page (shown inside Farmhand at /plugins/stre
 
 Besides the stream itself, the page reads only what the plugin hands it: the farm's printers and cameras (from
 Farmhand's /cameras, through the plugin), each printer's print, and a camera's latest picture for the preview (from
-its feeder while live, else from the camera's snapshot address). The page never talks to Farmhand or the cameras
+its feeder while live, else from the camera's snapshot address, else a frame taken from its video). The page never talks to Farmhand or the cameras
 itself, and nothing here ever answers the stream key, the Google client secret or the YouTube sign-in.
 """
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 import time
 import urllib.request
@@ -20,7 +21,8 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import farm, layouts, live_stream, migrate
-from .live_stream.sources import known
+from .live_stream import runner
+from .live_stream.sources import followed_camera, known
 from .errors import answer_errors
 from .routes import get_db, router
 from .store import Session
@@ -101,21 +103,70 @@ def print_progress(printer_id: int):
 
 @app.get("/api/cameras/{printer_id}/{name}/picture")
 def camera_picture(printer_id: int, name: str, db: Session = Depends(get_db)):
-    """A camera's latest picture for the page's preview: its feeder's while live, else its snapshot address's. 404 when
-    there's none to give (an RTSP camera with no snapshot address, before going live)."""
+    """A camera's latest picture for the page's preview: its feeder's while live, else its snapshot address's, else (no
+    snapshot address, or one that doesn't answer, as Mainsail can still list after a camera moved to go2rtc) a frame
+    taken from its video. 404 when there's none to give, 502 when the camera didn't give one."""
     frame = live_stream.stream.latest_frame(f"{printer_id}:{name}")
     if frame is None:
         printer = (known(db) or {}).get(str(printer_id)) or {}
-        cam = next((c for c in printer.get("cameras") or [] if c.get("name") == name), None)
-        url = cam and cam.get("snapshot_url")
-        if not url:
-            raise HTTPException(status_code=404, detail="No picture from this camera until the stream is live.")
-        try:
-            with urllib.request.urlopen(url, timeout=SNAPSHOT_TIMEOUT) as r:
-                frame = r.read(8 * 1024 * 1024)
-        except OSError as e:
-            raise HTTPException(status_code=502, detail=f"The camera didn't give a picture ({e}).") from None
+        cam = followed_camera(name, printer.get("cameras") or [], printer.get("error"))
+        if cam is None:
+            raise HTTPException(status_code=404, detail="Farmhand doesn't list this camera.")
+        url = cam.get("snapshot_url")
+        snapshot_error = None
+        if url:
+            try:
+                with urllib.request.urlopen(url, timeout=SNAPSHOT_TIMEOUT) as r:
+                    frame = r.read(8 * 1024 * 1024)
+            except OSError as e:
+                snapshot_error = f"The camera didn't give a picture ({e})."
+        if frame is None:
+            frame = _frame_from_video(f"{printer_id}:{cam.get('name')}", cam, snapshot_error)
     return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+# A frame taken from a camera's video (for the preview, before going live) is shown again for this long before another
+# is taken: the page asks twice a second, and each one opens a connection to the camera.
+VIDEO_FRAME_SECONDS = 3
+VIDEO_FRAME_TIMEOUT = 12
+_frames_lock = threading.Lock()
+_frames: dict[str, dict] = {}  # "printer id:camera" -> {lock, at, frame, error}
+
+
+def take_frame(args: list[str]) -> bytes:
+    """One JPEG from ffmpeg (its own command line); RuntimeError says why there's none."""
+    try:
+        done = subprocess.run(args, capture_output=True, timeout=VIDEO_FRAME_TIMEOUT, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("the camera didn't answer in time") from None
+    except OSError as e:
+        raise RuntimeError(str(e)) from None
+    if done.returncode != 0 or not done.stdout:
+        said = done.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError(said[-1] if said else "ffmpeg gave no picture")
+    return done.stdout
+
+
+def _frame_from_video(key: str, cam: dict, snapshot_error: str | None) -> bytes:
+    args = cam.get("ffmpeg_input")
+    ffmpeg = runner.ffmpeg_path()
+    if not args or not ffmpeg:
+        if snapshot_error:
+            raise HTTPException(status_code=502, detail=snapshot_error)
+        raise HTTPException(status_code=404, detail="No picture from this camera until the stream is live.")
+    with _frames_lock:
+        kept = _frames.setdefault(key, {"lock": threading.Lock(), "at": None, "frame": None, "error": None})
+    with kept["lock"]:  # (the page's asks for the same camera share one connection to it)
+        if kept["at"] is None or time.monotonic() - kept["at"] >= VIDEO_FRAME_SECONDS:
+            try:
+                kept.update(frame=take_frame([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", *args,
+                                              "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]), error=None)
+            except RuntimeError as e:
+                kept.update(frame=None, error=f"The camera didn't give a picture ({e}).")
+            kept["at"] = time.monotonic()
+        if kept["frame"] is None:
+            raise HTTPException(status_code=502, detail=kept["error"])
+        return kept["frame"]
 
 
 # ------------------------------------------------------------------ saved layouts, and the move from Farmhand

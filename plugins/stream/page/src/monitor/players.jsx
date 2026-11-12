@@ -3,7 +3,8 @@ import { cameraPictureUrl } from "../api.js";
 
 // A camera in the Stream page's preview. Farmhand's Monitor plays each camera from the camera itself; the plugin's page
 // only talks to its plugin, so it shows the camera's latest picture as the plugin gives it (its feeder's while live, its
-// snapshot otherwise), a few times a second while the page is in view. A picture replaces the last only once loaded.
+// snapshot otherwise, or a frame from its video every few seconds when it has no snapshot that works), a few times a
+// second while the page is in view. A picture replaces the last only once loaded.
 const EVERY_MS = 500;
 
 export function CameraPicture({ cam, label, style, onState }) {
