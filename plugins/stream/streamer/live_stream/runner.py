@@ -393,9 +393,10 @@ class Stream:
             threading.Thread(target=broadcast.watch, name="stream-youtube", daemon=True, args=(
                 buffer.delay, lambda seconds: _sleep_unless(self, gen, seconds), read_settings, lambda said: self._said_by_youtube(gen, said))).start()
 
-    def stop(self, forget: bool = True) -> dict:
+    def stop(self, forget: bool = True, end_broadcast: bool = True) -> dict:
         """Stop the stream. `forget`: Stop pressed (it won't go live again after a restart); False when the plugin is
-        only shutting down, or going live afresh."""
+        only shutting down, or going live afresh. `end_broadcast`: end the broadcast on YouTube too; False when the
+        plugin is only shutting down (a new image, a reboot): it carries on with that broadcast when it's back."""
         if forget:
             s = store()
             s.put(LIVE_KEY, None)
@@ -429,8 +430,10 @@ class Stream:
         _end(warming)
         if cache:
             shutil.rmtree(cache, ignore_errors=True)
-        if broadcast:  # ended on YouTube (it becomes the channel's saved video)
+        if broadcast and end_broadcast:  # ended on YouTube (it becomes the channel's saved video)
             broadcast.end()
+        elif broadcast:
+            broadcast.ended = True  # (left live on YouTube; nothing more is asked of it here)
         if buffer:
             buffer.close()
         for p in (proc, sender):

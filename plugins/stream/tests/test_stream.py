@@ -405,3 +405,51 @@ def test_going_live_again_carries_on_with_the_broadcast_still_live_on_the_stream
 
     listed["active"], listed["upcoming"] = [], []  # nothing live on it: a new one
     assert Broadcast.start({}, {"id": "own"}, chosen).id == "new"
+
+
+def test_the_plugin_shutting_down_leaves_the_youtube_broadcast_live():
+    """A new image or a reboot stops the container: the broadcast is left live on YouTube, and the plugin carries on with
+    it when it's back. Only Stop (and going live afresh) ends it."""
+    ended = []
+
+    class Fake:
+        def __init__(self, name):
+            self.name, self.ended = name, False
+
+        def end(self):
+            ended.append(self.name)
+
+    stream._broadcast = Fake("kept")
+    stream.stop(forget=False, end_broadcast=False)
+    assert ended == [] and stream._broadcast is None
+    stream._broadcast = Fake("stopped")
+    stream.stop()
+    assert ended == ["stopped"]
+
+
+def test_a_broadcast_left_waiting_while_its_video_arrives_is_started(monkeypatch):
+    """YouTube starts a broadcast by itself only when its video begins: one made while the video was already arriving
+    (going live again after a restart) would wait "ready" for ever, so the plugin starts it, unless auto-start is off."""
+    from streamer import youtube_live
+    from streamer.live_stream.broadcast import Broadcast
+
+    started, said = [], []
+    monkeypatch.setattr(youtube_live, "go_live", lambda creds, bid: started.append(bid))
+    health = {"state": "ready", "health": "good", "issues": [], "viewers": None}
+    monkeypatch.setattr(youtube_live, "health", lambda creds, stream_id, bid: dict(health))
+    settings = {"youtube": {"auto_start": True}, "title": "Printing", "description": ""}
+
+    def once(b):
+        rounds = iter([True, False])  # past the delay, then one look at YouTube
+        b.watch(0, lambda seconds: next(rounds), lambda: settings, said.append)
+
+    b = Broadcast({}, "own", {"id": "9zj2", "watch_url": "", "studio_url": ""})
+    once(b)
+    assert started == ["9zj2"] and said[-1]["state"] == "done"
+
+    health["health"] = "noData"  # no video reaching YouTube yet: it starts by itself when it comes
+    once(b)
+    settings["youtube"]["auto_start"] = False  # auto-start off: started in Studio
+    health["health"] = "good"
+    once(b)
+    assert started == ["9zj2"] and len(said) == 1
