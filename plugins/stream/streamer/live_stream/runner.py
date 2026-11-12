@@ -19,7 +19,7 @@ import time
 
 from datetime import datetime, timezone
 
-from ..store import Session, store
+from ..store import Store, store
 from .. import app_settings, config, farm, stream_media, youtube_live
 from . import feeders, holding, music, procs, staging
 from .cameras import CamerasMixin
@@ -146,7 +146,7 @@ class Stream(CamerasMixin, PicturesMixin, SendingMixin, SelfCheckMixin):
             raise ValueError("The music is off: tick Play music on the stream, and Save.")
         getattr(player, action)()
 
-    def go_live(self, db: Session, session_factory, resumed: bool = False) -> dict:
+    def go_live(self, db: Store, session_factory, resumed: bool = False) -> dict:
         """Go live with what's chosen now; while live already (to the same place), hand over to it with no break in what
         YouTube gets. `resumed`: going live again after the plugin's own restart (the holding screen goes out while the
         delay fills, so the broadcast never goes without video). ValueError says why it can't."""
@@ -246,7 +246,7 @@ class Stream(CamerasMixin, PicturesMixin, SendingMixin, SelfCheckMixin):
             threading.Thread(target=self._keep_words_current, args=(gen, picture, srcs, files), name="stream-words", daemon=True).start()
         return self.status()
 
-    def resume(self, db: Session, session_factory) -> None:
+    def resume(self, db: Store, session_factory) -> None:
         """After the plugin's own restart: live again by itself when it was live (LIVE_KEY), trying every RESUME_EVERY
         seconds while it can't yet, until it is, or Stop is pressed."""
         def run():
@@ -264,7 +264,7 @@ class Stream(CamerasMixin, PicturesMixin, SendingMixin, SelfCheckMixin):
         if db.get(LIVE_KEY):
             threading.Thread(target=run, name="stream-resume", daemon=True).start()
 
-    def _start_session(self, db: Session, session_factory, chosen: dict, ffmpeg: str, url: str, key: str,
+    def _start_session(self, db: Store, session_factory, chosen: dict, ffmpeg: str, url: str, key: str,
                        creds: dict | None = None, own: dict | None = None, resumed: bool = False) -> None:
         """Going live afresh: signed in, a new broadcast on the channel first (bound to Farmhand's own stream `own`, set
         from the YouTube settings; it starts by itself when the stream arrives); then the sender (the connection to
@@ -316,7 +316,7 @@ class Stream(CamerasMixin, PicturesMixin, SendingMixin, SelfCheckMixin):
             threading.Thread(target=broadcast.watch, name="stream-youtube", daemon=True, args=(
                 buffer.delay, lambda seconds: self._wait(gen, seconds), read_settings, lambda said: self._said_by_youtube(gen, said))).start()
 
-    def _hold(self, db: Session, chosen: dict, ffmpeg: str, buffer: Buffer, player) -> None:
+    def _hold(self, db: Store, chosen: dict, ffmpeg: str, buffer: Buffer, player) -> None:
         """After the plugin's own restart: the holding screen to YouTube straight away, while the delay fills again
         behind it (holding.py). Best tried: without it the stream still goes live, as from Go live."""
         width, height, kbps = RESOLUTIONS.get(chosen["resolution"], RESOLUTIONS[DEFAULT_RESOLUTION])
@@ -391,7 +391,7 @@ class Stream(CamerasMixin, PicturesMixin, SendingMixin, SelfCheckMixin):
             shutil.rmtree(folder, ignore_errors=True)
         return self.status()
 
-    def send_to_youtube(self, db: Session, chosen: dict, text_changed: bool = True, asked: bool = False) -> None:
+    def send_to_youtube(self, db: Store, chosen: dict, text_changed: bool = True, asked: bool = False) -> None:
         """The YouTube settings (`chosen`) saved while live: onto Farmhand's own broadcast, all of them; live on a pasted
         key, just the title and description, on the broadcast YouTube made (when they changed, or `asked`: the page's
         button). Asked, ValueError says why it can't be tried; otherwise that's left quietly. status.title says how

@@ -315,7 +315,7 @@ def test_a_camera_without_a_working_snapshot_is_previewed_from_its_video(api, pl
     """An RTSP camera has no snapshot address, and one moved to go2rtc can keep a snapshot address that answers 502:
     before going live, the preview takes a frame from its video instead, kept a few seconds so the page's asks (twice a
     second) don't each open a connection to the camera."""
-    import streamer.app as app_module
+    import streamer.page_routes as app_module
 
     taken = []
 
@@ -351,7 +351,7 @@ def test_preview_pictures_come_turned_as_the_stream_turns_them(api, plugin, farm
 
     from PIL import Image
 
-    import streamer.app as app_module
+    import streamer.page_routes as app_module
 
     # a picture red on its left half and blue on its right: flipped both ways, the blue is on the left
     im = Image.new("RGB", (40, 20), (220, 0, 0))

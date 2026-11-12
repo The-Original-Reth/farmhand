@@ -6,7 +6,7 @@ heard of and what was last live. The file is readable only by the plugin (mode 6
 sign-in are in it, and the plugin's API never answers them.
 
 The engine code copied from Farmhand takes a `db` everywhere: here that is the Store (its type is still called
-Session in those files, so they differ from Farmhand's as little as possible). put() changes it in memory; commit()
+Store in those files, so they differ from Farmhand's as little as possible). put() changes it in memory; commit()
 writes the file, whole or not at all.
 """
 from __future__ import annotations
@@ -74,7 +74,6 @@ class Store:
         self.put(key, None if value is None else json.dumps(value))
 
 
-Session = Store  # what the copied engine code calls it
 
 _store: Store | None = None
 

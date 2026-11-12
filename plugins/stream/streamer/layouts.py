@@ -47,7 +47,7 @@ def _camera_keys(raw) -> list[str]:
 
 
 def _stream_cell(raw) -> dict | None:
-    """A saved layout's square: a camera, or a card (as services/live_stream/squares.py _cell keeps them), or None."""
+    """A saved layout's square: a camera, or a card (as live_stream/squares.py _cell keeps them), or None."""
     if isinstance(raw, dict) and isinstance(raw.get("camera"), str) and 0 < len(raw["camera"]) <= 200:
         return {**_cell({**raw, "camera": "0:x"}), "camera": raw["camera"]}  # its own choices, as the Stream page keeps them
     cell = _cell(raw)
