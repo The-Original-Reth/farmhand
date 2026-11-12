@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from streamer import config, farm, layouts, migrate, store
 from streamer.app import app
-from streamer.live_stream import feeders, pacing, runner, stream
+from streamer.live_stream import cameras, feeders, pacing, procs, runner, stream
 import importlib
 sources_module = importlib.import_module("streamer.live_stream.sources")
 from streamer.live_stream.constants import SETTINGS_KEY, STREAM_KEY_KEY
@@ -232,7 +232,7 @@ def test_it_goes_live_again_by_itself_after_a_restart(api, ffmpeg, farmhand, plu
 
 
 def test_the_words_fall_back_to_the_printers_name_while_farmhand_is_down(api, ffmpeg, farmhand, monkeypatch):
-    monkeypatch.setattr(runner, "STATUS_EVERY", 0.2)
+    monkeypatch.setattr(cameras, "STATUS_EVERY", 0.2)
     _grid(api, [{"camera": "1:Bed"}, None])
     api.post("/api/stream/start")
     assert wait_until(lambda: len(ffmpeg.commands) == 1)
@@ -323,7 +323,7 @@ def test_a_camera_without_a_working_snapshot_is_previewed_from_its_video(api, pl
         taken.append(args)
         return jpeg()
 
-    monkeypatch.setattr(runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(procs, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(app_module, "take_frame", take)
     monkeypatch.setattr(app_module, "_frames", {})
     farmhand.cameras[1]["cameras"][0]["snapshot_url"] = "http://127.0.0.1:9/webcam/?action=snapshot"  # (nothing there)
@@ -365,7 +365,7 @@ def test_preview_pictures_come_turned_as_the_stream_turns_them(api, plugin, farm
     assert app_module.turned(b"not a picture", ["hflip"]) == b"not a picture"
 
     taken = []
-    monkeypatch.setattr(runner, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(procs, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(app_module, "take_frame", lambda args: taken.append(args) or jpeg())
     monkeypatch.setattr(app_module, "_frames", {})
     farmhand.cameras[1]["cameras"][0]["ffmpeg_filters"] = ["hflip", "vflip"]

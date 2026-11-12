@@ -14,7 +14,6 @@ were one.
 from __future__ import annotations
 
 import threading
-import time
 
 PACKET = 188
 CHUNK = PACKET * 64

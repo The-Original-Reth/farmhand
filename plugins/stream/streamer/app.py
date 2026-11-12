@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 from . import farm, layouts, live_stream, migrate
-from .live_stream import runner
+from .live_stream import procs
 from .live_stream.sources import followed_camera, known
 from .errors import answer_errors
 from .routes import get_db, router
@@ -176,7 +176,7 @@ def take_frame(args: list[str]) -> bytes:
 
 def _frame_from_video(key: str, cam: dict, snapshot_error: str | None) -> bytes:
     args = cam.get("ffmpeg_input")
-    ffmpeg = runner.ffmpeg_path()
+    ffmpeg = procs.ffmpeg_path()
     if not args or not ffmpeg:
         if snapshot_error:
             raise HTTPException(status_code=502, detail=snapshot_error)

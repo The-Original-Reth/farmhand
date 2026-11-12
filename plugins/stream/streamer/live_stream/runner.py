@@ -11,10 +11,8 @@ the plugin's own restart it goes live again by itself (resume()).
 from __future__ import annotations
 
 import collections
-import io
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -23,69 +21,26 @@ from datetime import datetime, timezone
 
 from ..store import Session, store
 from .. import app_settings, config, farm, stream_media, youtube_live
-from . import feeders, holding, music, staging
+from . import feeders, holding, music, procs, staging
+from .cameras import CamerasMixin
+from .pictures import PicturesMixin
+from .self_check import SelfCheckMixin
+from .sending import SendingMixin
 from .broadcast import Broadcast, own_stream, title_on_active
-from .constants import DEFAULT_RESOLUTION, DESTINATIONS, KEPT_LINES, RESOLUTIONS, RETRY_SECONDS, STATUS_EVERY, STREAM_KEY_KEY
+from .constants import DEFAULT_RESOLUTION, DESTINATIONS, KEPT_LINES, RESOLUTIONS, STREAM_KEY_KEY
 from .fonts import font_file
 from .choices import settings
 from .encoders import encoder
 from .buffer import Buffer
 from .relay import Relay
 from .sources import Source, sources
-from .picture import Look, TURNS_FOR, command, sender_command, timetable
+from .picture import Look, command, sender_command, timetable
 from .staging import write_atomically
-from .words import status_line
 
-HANDOVER_WAIT = 30  # seconds a new layout's picture ffmpeg has to start going before the old one is kept on instead
-SETTLE = 3  # seconds a new layout waits before its picture ffmpeg starts: a burst of saves becomes one hand-over
-WARMING_NICE = 10  # a picture ffmpeg warming up runs at this lower priority, so the one going out keeps the processor
-SENDER_STEADY = 30  # seconds a sender connected again has to keep sending before its drop's message is cleared
 LIVE_KEY = "live_wanted"  # in the plugin's store while the stream is meant to be live: it goes live again after a restart
 RESUME_EVERY = 30  # seconds between tries at going live again after a restart, while it can't yet
-FEEDERS_KEPT = 60  # seconds a camera no layout shows any more keeps its feeder (the old picture may still be going out)
-# The self-check: while live, how much video the picture has passed on is looked at every CHECK_EVERY seconds. Less than
-# ENOUGH of STALL seconds' worth in the last STALL seconds means YouTube is (or soon will be, once the delay runs out)
-# getting next to nothing: the picture stopped giving video, or gives it far slower than it plays. The picture is then
-# started again, and if that doesn't help within another STALL, the connection to YouTube too.
-CHECK_EVERY = 5
-STALL = 60
-ENOUGH = 0.5
 
-# ------------------------------------------------------------------ the stream itself
-
-
-def ffmpeg_path() -> str | None:
-    return shutil.which("ffmpeg")
-
-
-def popen(args: list[str], feed: bool = False, out: bool = False):
-    """ffmpeg started (tests swap this for a stand-in). `feed`: its stdin open for writing to (raw bytes: the music, or
-    the stream for the sender); `out`: its stdout open for reading (the picture, for the relay); what it says comes as
-    text either way."""
-    proc = subprocess.Popen(args, stdin=subprocess.PIPE if feed else subprocess.DEVNULL, stdout=subprocess.PIPE if out else subprocess.DEVNULL,
-                            stderr=subprocess.PIPE)
-    proc.stderr = io.TextIOWrapper(proc.stderr, encoding="utf-8", errors="replace")
-    return proc
-
-
-def _nice(proc, level: int) -> None:
-    """Run `proc` at this priority (0: as usual; higher: gives way to others). (Best tried: a stand-in has no pid.)"""
-    try:
-        os.setpriority(os.PRIO_PROCESS, proc.pid, level)
-    except (AttributeError, OSError):
-        pass
-
-
-def _end(proc) -> None:
-    if proc is not None and proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except Exception:  # noqa: BLE001 - one that won't end is killed
-            proc.kill()
-
-
-class Stream:
+class Stream(CamerasMixin, PicturesMixin, SendingMixin, SelfCheckMixin):
     """The one live stream: started with go_live (which, while live, hands over to the new layout), ended with stop.
     Its threads keep the sender and the picture ffmpeg running, the words on the video current, and set the YouTube
     title once the broadcast is there, while it's meant to be live."""
@@ -206,7 +161,7 @@ class Stream:
             raise ValueError(f"Sign in to YouTube, or add your {where['label']} stream key, first (YouTube settings).")
         if not chosen["cameras"]:
             raise ValueError("Put at least one camera in the grid.")
-        ffmpeg = ffmpeg_path()
+        ffmpeg = procs.ffmpeg_path()
         if not ffmpeg:
             raise ValueError("ffmpeg isn't installed in the Stream plugin's container, so it can't stream. Rebuild its image.")
         known, note = farm.cameras(db)  # (Farmhand not answering: the addresses last heard of)
@@ -285,49 +240,11 @@ class Stream:
             warming, self._warming = self._warming, None
             if handover:
                 self._changing = True
-        _end(warming)  # a newer layout came while one was still warming up: that one is dropped at once
+        procs.end(warming)  # a newer layout came while one was still warming up: that one is dropped at once
         threading.Thread(target=self._keep_picture, args=(gen, picture, make, folder, handover, {s.key for s in srcs}), name="stream", daemon=True).start()
         if files:
             threading.Thread(target=self._keep_words_current, args=(gen, picture, srcs, files), name="stream-words", daemon=True).start()
         return self.status()
-
-    def _feed(self, ffmpeg: str, srcs: list[Source], size: tuple[int, int]) -> list[feeders.Feeder]:
-        """Each camera's feeder, started if it hasn't one reading it the same way already."""
-        out, old = [], []
-        with self._lock:
-            for s in srcs:
-                f = self._feeders.get(s.key)
-                if f is None or not f.same(s.input_args, s.turn, size):
-                    if f is not None:
-                        old.append(f)
-                    f = self._feeders[s.key] = feeders.Feeder(ffmpeg, s.key, s.input_args, s.turn, size, popen, aspect=s.aspect).start()
-                out.append(f)
-        for f in old:
-            f.stop()
-        return out
-
-    def _drop_feeders(self, gen: int, picture: int, keep: set[str]) -> None:
-        """A layout took over: after a while (its old picture may still be going out), cameras no layout shows are let go."""
-        if not _sleep_unless(self, gen, FEEDERS_KEPT, picture):
-            return
-        with self._lock:
-            gone = [self._feeders.pop(k) for k in list(self._feeders) if k not in keep]
-        for f in gone:
-            f.stop()
-
-    def latest_frame(self, key: str) -> bytes | None:
-        """A camera's latest picture from its feeder (a JPEG), while live and fresh; None otherwise."""
-        with self._lock:
-            f = self._feeders.get(key)
-        return f.latest()[0] if f else None
-
-    def _camera_states(self) -> list[dict]:
-        out = []
-        for key, label in self._showing:
-            f = self._feeders.get(key)
-            state = f.state() if f else {"state": "down", "since": None}
-            out.append({"key": key, "label": label, **state})
-        return out
 
     def resume(self, db: Session, session_factory) -> None:
         """After the plugin's own restart: live again by itself when it was live (LIVE_KEY), trying every RESUME_EVERY
@@ -397,7 +314,7 @@ class Stream:
                     return settings(s)
 
             threading.Thread(target=broadcast.watch, name="stream-youtube", daemon=True, args=(
-                buffer.delay, lambda seconds: _sleep_unless(self, gen, seconds), read_settings, lambda said: self._said_by_youtube(gen, said))).start()
+                buffer.delay, lambda seconds: self._wait(gen, seconds), read_settings, lambda said: self._said_by_youtube(gen, said))).start()
 
     def _hold(self, db: Session, chosen: dict, ffmpeg: str, buffer: Buffer, player) -> None:
         """After the plugin's own restart: the holding screen to YouTube straight away, while the delay fills again
@@ -416,7 +333,7 @@ class Stream:
         try:
             png = os.path.join(folder, "holding.png")
             holding.draw(png, width, height, mine["text"], colours["background"], colours["color"], font_file(colours["font"]), picture)
-            proc = popen(holding.command(ffmpeg, png, encoder(ffmpeg), kbps), feed=True, out=True)
+            proc = procs.popen(holding.command(ffmpeg, png, encoder(ffmpeg), kbps), feed=True, out=True)
         except (OSError, ValueError, TypeError) as e:
             print(f"stream: the holding screen couldn't be shown ({e}); going live without it", flush=True)
             return
@@ -459,7 +376,7 @@ class Stream:
             f.stop()
         if player:
             player.stop()
-        _end(warming)
+        procs.end(warming)
         if cache:
             shutil.rmtree(cache, ignore_errors=True)
         if broadcast and end_broadcast:  # ended on YouTube (it becomes the channel's saved video)
@@ -469,7 +386,7 @@ class Stream:
         if buffer:
             buffer.close()
         for p in (proc, sender):
-            _end(p)
+            procs.end(p)
         if folder:
             shutil.rmtree(folder, ignore_errors=True)
         return self.status()
@@ -501,223 +418,13 @@ class Stream:
     def _current(self, gen: int, picture: int | None = None) -> bool:
         return self._wanted.is_set() and self._generation == gen and (picture is None or self._picture == picture)
 
-    def _hide_key(self, text: str) -> str:
-        return text.replace(self._key, "<stream key>") if self._key else text
-
-    def _listen(self, proc) -> None:
-        """What ffmpeg says, kept (the stream key blanked out)."""
-        for line in proc.stderr or []:
-            line = self._hide_key(line.strip())
-            if line:
-                self._said.append(line)
-
-    def _watch_flow(self, gen: int, relay: Relay) -> None:
-        """The self-check, for as long as this time live lasts (see CHECK_EVERY): a stream left running day and night
-        mends itself when next to no video has come through for STALL seconds, first by starting the picture again (its
-        cameras' pipes opened afresh), then, if that didn't help, the connection to YouTube as well."""
-        seen = collections.deque()  # (when, the time of the last frame passed on then)
-        tried_picture = False
-        while _sleep_unless(self, gen, CHECK_EVERY):
-            now = time.monotonic()
-            seen.append((now, relay.last_time()))
-            while seen and now - seen[0][0] > STALL + CHECK_EVERY / 2:
-                seen.popleft()
-            then, was = seen[0]
-            if now - then < STALL - CHECK_EVERY / 2:
-                continue  # (not a whole STALL looked at yet)
-            last = seen[-1][1]
-            came = (last - was) if last is not None and was is not None else (0.0 if last is None else STALL)
-            if came >= ENOUGH * STALL:
-                tried_picture = False
-                continue
-            seen.clear()  # (a whole STALL again before it's judged afresh)
-            with self._lock:
-                if not self._current(gen):
-                    return
-                picture, warming = self._proc, self._warming
-                sender = self._sender if tried_picture else None
-                what = ("the picture and the connection to YouTube were started again" if sender
-                        else "the picture was started again")
-                self._healed = {"at": datetime.now(timezone.utc).isoformat(),
-                                "message": f"Next to nothing was reaching YouTube for {STALL} seconds, so {what}."}
-            for proc in (warming, picture, sender):
-                _end(proc)  # (each is started again by its own loop)
-            tried_picture = True
-
-    def _keep_sending(self, gen: int, args: list[str], buffer: Buffer) -> None:
-        """The sender, started again whenever it stops (the connection to YouTube dropped), for as long as it's live."""
-        while self._current(gen):
-            try:
-                proc = popen(args, feed=True)
-            except OSError as e:
-                with self._lock:
-                    self._error = f"ffmpeg couldn't be started: {e.strerror or e}"
-                    self._wanted.clear()
-                return
-            with self._lock:
-                if not self._current(gen):
-                    _end(proc)
-                    return
-                self._sender = proc
-            buffer.set_sink(proc.stdin)
-            started = time.monotonic()
-            threading.Thread(target=self._clear_when_steady, args=(gen, proc), name="stream-sender-ok", daemon=True).start()
-            self._listen(proc)
-            code = proc.wait()
-            if not self._current(gen):
-                return
-            with self._lock:
-                last = next((l for l in reversed(self._said) if l), None)
-                self._error = (f"The connection to {self._destination and DESTINATIONS[self._destination]['label'] or 'YouTube'} dropped "
-                               f"(ffmpeg exit {code}): {last or 'no reason given'}. Connecting again in {RETRY_SECONDS} s.")
-                if time.monotonic() - started > 60:
-                    self._said.clear()
-            if not _sleep_unless(self, gen, RETRY_SECONDS):
-                return
-
-    def _start_picture(self, gen: int, picture: int, make, handover: bool, folder: str | None = None):
-        """A picture ffmpeg for this layout, started and going out: handed over to from the one going out when `handover`
-        (warming up at a lower priority until it takes over; the old one is then stopped), or straight away. It reads
-        the cameras from its own pump's pipes, so it never connects to a camera itself. The new one, or None when it
-        didn't take over (dropped for a newer layout, failed, or too slow: the old one stays on)."""
-        with self._lock:
-            relay, player, since = self._relay, self._player, self._live_since or time.monotonic()
-        # its times carry on from the last frame passed on, a little behind: after a break, a jump ahead would have the
-        # sender (playing to the times) wait it out; a step back is just closed up (mpegts starts ~1.4 s after its offset)
-        last = relay.last_time() if relay else None
-        offset = max(0.0, last - 2.0) if last is not None else time.monotonic() - since
-        args, pump = make(time.time(), offset)
-        pump.start()
-        try:
-            proc = popen(args, feed=True, out=True)
-        except OSError:
-            pump.stop()
-            raise
-        pump.watch(proc)
-        threading.Thread(target=self._listen, args=(proc,), name="stream-listen", daemon=True).start()
-        if player:
-            player.attach(proc.stdin)
-        with self._lock:
-            old = self._proc
-        if handover and old is not None and old.poll() is None:
-            _nice(proc, WARMING_NICE)
-            with self._lock:
-                if not self._current(gen, picture):
-                    _end(proc)
-                    return None
-                self._warming = proc
-            took = relay.switch_to(proc, HANDOVER_WAIT)
-            with self._lock:
-                if self._warming is proc:
-                    self._warming = None
-            if not took:
-                _end(proc)
-                return None
-            _nice(proc, 0)
-        else:
-            relay.start(proc)
-        with self._lock:
-            if not self._current(gen, picture):
-                _end(proc)
-                return None
-            old, self._proc = self._proc, proc
-            if folder:
-                self._dir = folder
-            self._run_started = time.monotonic()
-            self._error = None
-            self._changing = False
-        if old is not None and old is not proc:
-            _end(old)  # the one it took over from
-        return proc
-
-    def _clear_when_steady(self, gen: int, proc) -> None:
-        """A sender connected again and still sending after SENDER_STEADY seconds: the message that it dropped is
-        cleared (it said it would connect again, and it has)."""
-        if _sleep_unless(self, gen, SENDER_STEADY) and proc.poll() is None:
-            with self._lock:
-                if self._error and self._error.startswith("The connection to"):
-                    self._error = None
-
-    def _keep_picture(self, gen: int, picture: int, make, folder: str, handover: bool, keys: set[str]) -> None:
-        """This layout's picture, for as long as it's the layout and the stream is live: after settling (a newer layout
-        within SETTLE seconds takes its place), handed over to from the one going out, or started straight away. Its
-        camera inputs never end (a camera that stops is a "Camera down" square), so it only needs starting again when
-        it stops itself. Once it's going out, cameras no layout shows are let go (`keys`: this layout's). Its folder is
-        deleted once it's done with."""
-        try:
-            if handover and not _sleep_unless(self, gen, SETTLE, picture):
-                return
-            proc, dropping = None, False
-            while self._current(gen, picture):
-                if proc is None:
-                    try:
-                        proc = self._start_picture(gen, picture, make, handover, folder)
-                    except OSError as e:
-                        with self._lock:
-                            self._error = f"ffmpeg couldn't be started: {e.strerror or e}"
-                        return
-                    if proc is None:  # it couldn't start beside the one going out (unless a newer layout came)
-                        if not self._current(gen, picture):
-                            return
-                        with self._lock:
-                            self._error = f"The new layout's picture didn't start. Trying again in {RETRY_SECONDS} s."
-                        if not _sleep_unless(self, gen, RETRY_SECONDS, picture):
-                            return
-                        continue
-                    started = time.monotonic()
-                    if not dropping:
-                        dropping = True
-                        threading.Thread(target=self._drop_feeders, args=(gen, picture, keys), name="stream-feeders", daemon=True).start()
-                # going out: until it stops, or the layout is handed over from
-                while self._current(gen, picture) and proc.poll() is None:
-                    time.sleep(0.5)
-                if not self._current(gen, picture):
-                    return
-                code = proc.wait()
-                proc, handover = None, False  # (from here, one started again just takes over)
-                if code == 0 and time.monotonic() - started >= TURNS_FOR - 60:
-                    continue  # the day's timetable and lists are done: started again at once, from the top
-                with self._lock:
-                    last = next((l for l in reversed(self._said) if l), None)
-                    self._error = f"The picture stopped (ffmpeg exit {code}): {last or 'no reason given'}. Trying again in {RETRY_SECONDS} s."
-                if not _sleep_unless(self, gen, RETRY_SECONDS, picture):
-                    return
-        finally:
-            with self._lock:
-                mine = self._dir == folder
-                if self._current(gen) and self._picture == picture:
-                    self._changing = False
-            if not mine:
-                shutil.rmtree(folder, ignore_errors=True)
-
-    def _keep_words_current(self, gen: int, picture: int, srcs: list[Source], files: list[str]) -> None:
-        """Each camera's words: its printer's print, asked of Farmhand every STATUS_EVERY seconds. A printer Farmhand
-        can't be asked about (Farmhand down, or refusing the plugin) has just its name: never old progress, and the
-        picture never waits for it (drawtext reads the files as they are)."""
-        while self._current(gen, picture):
-            by_printer: dict[int, dict | None] = {}
-            for s in srcs:
-                if s.printer_id not in by_printer:
-                    by_printer[s.printer_id] = farm.print_of(s.printer_id)
-                    if not self._current(gen, picture):
-                        return
-            for s, f in zip(srcs, files):
-                p = by_printer.get(s.printer_id)
-                try:
-                    write_atomically(f, s.label if p is None else status_line(s.label, p))
-                except OSError:
-                    pass  # (its folder gone: the layout was handed over from)
-            if not _sleep_unless(self, gen, STATUS_EVERY, picture):
-                return
-
-
-def _sleep_unless(stream: Stream, gen: int, seconds: float, picture: int | None = None) -> bool:
-    """Wait `seconds`, in short steps; False as soon as the stream is stopped or started again (or, given `picture`, its
-    layout is handed over from)."""
-    end = time.monotonic() + seconds
-    while stream._current(gen, picture) and (left := end - time.monotonic()) > 0:
-        time.sleep(min(0.5, left))
-    return stream._current(gen, picture)
+    def _wait(self, gen: int, seconds: float, picture: int | None = None) -> bool:
+        """Wait `seconds`, in short steps; False as soon as the stream is stopped or started again (or, given `picture`,
+        its layout is handed over from)."""
+        end = time.monotonic() + seconds
+        while self._current(gen, picture) and (left := end - time.monotonic()) > 0:
+            time.sleep(min(0.5, left))
+        return self._current(gen, picture)
 
 
 stream = Stream()
