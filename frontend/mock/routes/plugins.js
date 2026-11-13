@@ -128,14 +128,17 @@ isn't part of the mockup: run <b>plugins/stream</b> (its README says how) to see
 // The YouTube plugin's settings as Farmhand's Settings page shows them under its name (its settings_page): where it saves
 const settingsHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name} settings</title>
 <script src="/plugins/farmhand-plugin.js"></script><style>${PAGE_STYLE} body { padding: 0; } .box { max-width: none; }
-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
-dt { color: var(--farmhand-text-muted, #CBCED0); } dd { margin: 0; font-family: monospace; color: var(--farmhand-heading, #fff); }
-.ok { color: var(--farmhand-green, #6FBE7A); font-family: inherit; }</style></head><body><div class="box">
-<h1>Where it saves</h1><dl>
-<dt>Stream folder</dt><dd>&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;stream <span class="ok">· ready</span></dd>
-<dt>YouTube clips</dt><dd>&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;YouTube clips <span class="ok">· ready</span></dd>
-<dt>Clip length</dt><dd>3 s</dd></dl>
-<p>A pretend plugin's settings: the real YouTube plugin shows its own here.</p></div></body></html>`;
+.list { border: 1px solid var(--farmhand-border, #3D4042); border-radius: 4px; background: var(--farmhand-panel-alt, #2A2C2E); }
+.row { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12px; }
+.row + .row { border-top: 1px solid var(--farmhand-border, #3D4042); }
+.what { width: 170px; color: var(--farmhand-text-muted, #CBCED0); } .where { flex: 1; font-family: monospace; color: var(--farmhand-heading, #fff); }
+.ok { color: var(--farmhand-green, #6FBE7A); } small { color: var(--farmhand-text-faint, #A3A7AA); font-size: 12px; }</style></head><body><div class="box">
+<h1>Where it saves</h1><small>The folders given to the plugin's container where it runs: change them in its docker-compose.yml there.</small>
+<div class="list" style="margin-top: 12px">
+<div class="row"><span class="what">Stream folder</span><span class="where">&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;stream</span><span class="ok">ready</span></div>
+<div class="row"><span class="what">YouTube clips</span><span class="where">&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;YouTube clips</span><span class="ok">ready</span></div>
+</div>
+<p>Clips · Length <b>3</b> seconds. (A pretend plugin's settings: the real YouTube plugin shows its own here.)</p></div></body></html>`;
 const CLOCK_BODY = `<p>It's <b id="clock"></b> here.</p>
 <script>setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString(); }, 500);</script>`;
 const pageHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name}</title>
