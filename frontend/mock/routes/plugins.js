@@ -135,8 +135,8 @@ const settingsHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><t
 .ok { color: var(--farmhand-green, #6FBE7A); } small { color: var(--farmhand-text-faint, #A3A7AA); font-size: 12px; }</style></head><body><div class="box">
 <h1>Where it saves</h1><small>The folders given to the plugin's container where it runs: change them in its docker-compose.yml there.</small>
 <div class="list" style="margin-top: 12px">
-<div class="row"><span class="what">Stream folder</span><span class="where">&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;stream</span><span class="ok">ready</span></div>
-<div class="row"><span class="what">YouTube clips</span><span class="where">&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;YouTube clips</span><span class="ok">ready</span></div>
+<div class="row"><span class="what">Stream folder</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;stream</span><span class="ok">ready</span></div>
+<div class="row"><span class="what">YouTube clips</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;YouTube clips</span><span class="ok">ready</span></div>
 </div>
 <p>Clips · Length <b>3</b> seconds. (A pretend plugin's settings: the real YouTube plugin shows its own here.)</p></div></body></html>`;
 const CLOCK_BODY = `<p>It's <b id="clock"></b> here.</p>

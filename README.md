@@ -110,8 +110,9 @@ The first things to do, in this order. Everything is done in the web page; there
    settings when you set the save location, Farmhand asks whether to load them or replace them.
 
    The card's own **Advanced** has the network share's settings: whether it's connected (and why not), **Reconnect**,
-   the domain or workgroup, and the SMB or NFS version. Under **Use this location** each folder is listed with its own
-   **Change…**, for a farm that keeps one of them somewhere else.
+   the domain or workgroup, and the SMB or NFS version. Under **Use this location** each folder is listed as people
+   reach it on the network (`\server\shareolder`, ready to paste into File Explorer; point at it for the path inside
+   Farmhand's container), with its own **Change…**, for a farm that keeps one of them somewhere else.
 3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
    - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
      key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.

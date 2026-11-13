@@ -29,6 +29,19 @@ function pickedAt(path, shares) {
   return { address: rest ? `${base}/${rest}` : base, share };
 }
 
+// A folder as people reach it on the network, as Windows writes it: \\server\share\rest, from where Farmhand has it
+// mounted (/data/nas/farm-nas/models on //192.168.10.5/farmhand is \\192.168.10.5\farmhand\models). The path as it
+// is when it isn't on a connected share (Farmhand's own storage).
+export function networkPath(path, shares) {
+  if (!path) return path;
+  const share = shares
+    .filter((x) => x.mountPoint && (path === x.mountPoint || path.startsWith(`${x.mountPoint}/`)))
+    .sort((x, y) => y.mountPoint.length - x.mountPoint.length)[0];
+  if (!share) return path;
+  const parts = [share.server, ...String(share.share).split("/"), ...path.slice(share.mountPoint.length).split("/")].filter(Boolean);
+  return `\\\\${parts.join("\\")}`;
+}
+
 const looksNfs = (address) => /^nfs:\/\//i.test(address.trim()) || /^[^/\\]+:\//.test(address.trim()); // nas:/volume1/...
 
 // The save location: the one place on the NAS everything goes, typed as its address with its login. Farmhand connects
@@ -232,8 +245,11 @@ export function SaveLocationCard({ shares, copy, onSaved, onChangeFolder, refres
             <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", borderTop: i ? `1px solid ${c.border}` : "none", flexWrap: "wrap" }}>
               <HardDrive size={13} color={c.textFaint} style={{ flexShrink: 0 }} />
               <span style={uiText(12, c.textMuted, { width: 170, flexShrink: 0 })}>{what}</span>
-              <span style={monoText(12, location.folders[key] ? c.heading : c.textFaint, { minWidth: 0, overflowWrap: "anywhere", flex: "1 1 200px" })}>
-                {location.folders[key] || `not set yet (${name})`}
+              <span
+                title={location.folders[key] ? `Inside Farmhand's container: ${location.folders[key]}` : undefined}
+                style={monoText(12, location.folders[key] ? c.heading : c.textFaint, { minWidth: 0, overflowWrap: "anywhere", flex: "1 1 200px" })}
+              >
+                {networkPath(location.folders[key], shares) || `not set yet (${name})`}
               </span>
               {onChangeFolder && (
                 <button
