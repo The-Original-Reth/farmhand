@@ -1,5 +1,8 @@
 # YouTube Stream: the live stream to YouTube as a Farmhand plugin
 
+> **Moved:** the plugin now lives in its own repository, [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), and is built from
+> there. This copy is kept for now and is no longer worked on; changes go to the new repository.
+
 The YouTube Stream plugin (id `stream`) sends printers' cameras live to **YouTube Live**, no OBS needed, from a container of its own, so a
 Farmhand update, restart or crash never stops the stream. It is the only way Farmhand streams: Farmhand's own Stream
 page is gone. Once the plugin is added, **YouTube** is in Farmhand's menu where that page was, after Monitor, and opens

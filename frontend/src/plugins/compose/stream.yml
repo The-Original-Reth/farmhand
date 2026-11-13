@@ -4,12 +4,12 @@
 #
 #   sudo docker compose up -d --build
 #
-# Docker builds the plugin straight from Farmhand's GitHub repository (git must be installed). Then add it on
+# Docker builds the plugin straight from its GitHub repository (git must be installed). Then add it on
 # Farmhand's Plugins page at http://<this machine>:8080, put the two lines Farmhand shows into stream.env (beside this
 # file) and start it again:  sudo docker compose up -d --force-recreate
 services:
   stream:
-    build: https://github.com/The-Original-Reth/farmhand.git#main:plugins/stream
+    build: https://github.com/The-Original-Reth/farmhand-youtube-plugin.git#main
     image: farmhand-stream
     container_name: farmhand-stream
     restart: unless-stopped        # back by itself after a reboot or a crash (and live again, if it was)
@@ -24,8 +24,11 @@ services:
       - ./media:/media             # the stream folder: pictures, slideshows and music.
                                    # Use the stream folder on the NAS (a share mounted on this machine),
                                    # e.g.  - /mnt/stream:/media
+      - ./clips:/clips             # where Save clip puts its MP4s: the NAS's "YouTube clips" folder, beside the stream
+                                   # folder (a share mounted on this machine), e.g.  - "/mnt/youtube-clips:/clips"
     # environment:
     #   STREAM_FOLDER_SHOWN_AS: '\\nas\share\Farmhand\stream'   # the stream folder as people reach it, shown on the page
+    #   STREAM_CLIPS_SHOWN_AS: '\\nas\share\Farmhand\YouTube clips'   # the clips folder as people reach it, on the page
     #   FARMHAND_STREAM_ENCODER: auto                            # auto (default), nvenc or cpu
 
     # An NVIDIA card: the stream is compressed on the card, leaving the processor for the cameras. The machine needs

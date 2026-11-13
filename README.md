@@ -638,7 +638,7 @@ page only passes through its own camera streams, never the rest of go2rtc.
 ## Stream
 
 Streaming the printers' cameras live to **YouTube Live** is the **Stream plugin**'s job
-([plugins/stream](plugins/stream/README.md)): the grid of cameras, cards, slideshows and music, taking turns, the
+([FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), a repository of its own): the grid of cameras, cards, slideshows and music, taking turns, the
 YouTube sign-in or a pasted stream key, and the NVIDIA card. It runs in a Docker container of its own, on this machine
 or another one, so a Farmhand update, restart or crash never stops the stream. Farmhand itself no longer has a Stream
 page of its own and runs no ffmpeg.
@@ -1019,7 +1019,7 @@ it needs through Farmhand's **plugin API**, with a token of its own, and only wh
 Writing one: see [docs/plugins.md](docs/plugins.md), and start from [plugins/hello](plugins/hello/README.md), a small
 example plugin (each printer and its print's progress, live) made to be copied.
 
-**The Stream plugin** ([plugins/stream](plugins/stream/README.md)) is how Farmhand streams to YouTube: Farmhand's own
+**The Stream plugin** ([FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), its own repository) is how Farmhand streams to YouTube: Farmhand's own
 Stream page is gone, and the plugin, in a container of its own, has it all (grid, cards, slideshows, music, taking
 turns, YouTube sign-in or a pasted key), so Farmhand's updates and restarts never stop the stream. Each camera is read
 on its own (one that stops shows a "Camera down" square with the printer's name until it's back); it goes live again
