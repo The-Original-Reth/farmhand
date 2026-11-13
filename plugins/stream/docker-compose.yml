@@ -13,6 +13,14 @@ services:
     image: farmhand-stream
     container_name: farmhand-stream
     restart: unless-stopped        # back by itself after a reboot or a crash (and live again, if it was)
+    # The plugin connects to its save location on the NAS itself (set on its settings, shown on Farmhand's Settings
+    # page under its name): mounting needs SYS_ADMIN, and SMB also DAC_READ_SEARCH, as Farmhand's own container has;
+    # AppArmor's default profile would block it on hosts that run AppArmor.
+    cap_add:
+      - SYS_ADMIN
+      - DAC_READ_SEARCH
+    security_opt:
+      - apparmor:unconfined
     ports:
       - "8080:8080"                # Farmhand reaches the plugin at http://<this machine>:8080. Another plugin already
                                    # on 8080 here: change the left side only (e.g. "8081:8080") and add it at :8081
@@ -21,11 +29,10 @@ services:
         required: false            # (not there until then)
     volumes:
       - stream-data:/data          # its settings, stream key, YouTube sign-in and saved layouts
-      - ./media:/media             # the stream folder: pictures, slideshows and music.
-                                   # Use the stream folder on the NAS (a share mounted on this machine),
-                                   # e.g.  - /mnt/stream:/media
-      - ./clips:/clips             # where Save clip puts its MP4s: the NAS's "YouTube clips" folder, beside the stream
-                                   # folder (a share mounted on this machine), e.g.  - "/mnt/youtube-clips:/clips"
+      # The two below are used only until a save location is set on the plugin's settings: from then on its folders
+      # on the NAS are used, and these can be left as they are.
+      - ./media:/media             # the stream folder: pictures, slideshows and music
+      - ./clips:/clips             # where Save clip puts its MP4s
     # environment:
     #   STREAM_FOLDER_SHOWN_AS: '\\nas\share\Farmhand\stream'   # the stream folder as people reach it, shown on the page
     #   STREAM_CLIPS_SHOWN_AS: '\\nas\share\Farmhand\YouTube clips'   # the clips folder as people reach it, on the page
