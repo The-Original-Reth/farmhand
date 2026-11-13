@@ -233,16 +233,31 @@ def _on_answering_ip(printer: Printer, url: str) -> str:
     return urlunsplit(parts._replace(netloc=host + (f":{parts.port}" if parts.port else "")))
 
 
+def system_info(printer: Printer) -> dict | None:
+    """/machine/system_info's system_info (the board, the services Moonraker watches and their state), or None when it
+    won't say (an older Moonraker, or one that can't be reached)."""
+    try:
+        info = call(printer, "GET", "/machine/system_info")["system_info"]
+    except (MoonrakerError, KeyError, TypeError):
+        return None
+    return info if isinstance(info, dict) else None
+
+
 def board(printer: Printer) -> dict | None:
     """
     The computer Klipper runs on, as /machine/system_info describes it: {name, model, memory_gb}. name is short, the
     way it's spoken of ("Pi 4", "CM4"); model is the board's own words ("Raspberry Pi Compute Module 4 Rev 1.1").
     None when it won't say (an older Moonraker, or one that can't be reached).
     """
+    return board_of(system_info(printer))
+
+
+def board_of(info: dict | None) -> dict | None:
+    """board(), from a system_info already asked for."""
     try:
-        cpu = call(printer, "GET", "/machine/system_info")["system_info"]["cpu_info"]
+        cpu = info["cpu_info"]
         model = str(cpu.get("model") or "").strip()
-    except (MoonrakerError, KeyError, TypeError, AttributeError):
+    except (KeyError, TypeError, AttributeError):
         return None
     name = board_name(model) or cpu.get("hardware_desc") or cpu.get("cpu_desc") or cpu.get("processor") or None
     if not name:

@@ -17,10 +17,11 @@ from app import storage
 from app.database import Base, get_db
 from app.main import app
 from app import mounts, printer_links
+from app.services import printer_go2rtc as printer_go2rtc_module
 from app.services.moonraker import client as mr_client
 from app.services.prusalink import client as pl_client
 
-from .fake_moonraker import FakeMoonraker
+from .fake_moonraker import FakeMoonraker, FakePrinterGo2rtc
 from .fake_nas import FakeNas
 from .fake_prusalink import FakePrusaLink
 
@@ -127,6 +128,14 @@ def moonraker(monkeypatch):
     """A Klipper printer's Moonraker (tests/fake_moonraker.py), answering every address Farmhand asks."""
     f = FakeMoonraker()
     monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
+    return f
+
+
+@pytest.fixture()
+def printer_go2rtc(monkeypatch):
+    """go2rtc on a Klipper printer (tests/fake_moonraker.py's FakePrinterGo2rtc), answering on every printer's port 1984."""
+    f = FakePrinterGo2rtc()
+    monkeypatch.setattr(printer_go2rtc_module, "transport", httpx.MockTransport(f.handle))
     return f
 
 

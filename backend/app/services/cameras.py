@@ -1,11 +1,12 @@
 """
-A printer's cameras for the Monitor page: as set up in Mainsail, plus one Farmhand plays itself through go2rtc (a
-Buddy3D's). Never fails: says why there are none.
+A printer's cameras for the Monitor page: as set up in Mainsail (those Crowsnest no longer serves played from go2rtc on
+the printer, when it has it: see printer_go2rtc), plus one Farmhand plays itself through go2rtc (a Buddy3D's). Never
+fails: says why there are none.
 """
 from __future__ import annotations
 
 from ..models import Printer
-from . import go2rtc
+from . import go2rtc, printer_go2rtc
 from . import moonraker as mr
 
 
@@ -17,8 +18,10 @@ def printer_cameras(printer: Printer) -> dict:
     cams, errors, board = [], [], None
     if printer.connection_type == "moonraker":
         try:
-            cams += mr.webcams(printer)
-            board = mr.board(printer)  # only once it has answered: an unreachable one isn't waited for twice
+            listed = mr.webcams(printer)
+            info = mr.system_info(printer)  # only once it has answered: an unreachable one isn't waited for twice
+            board = mr.board_of(info)
+            cams += printer_go2rtc.apply(printer_go2rtc.host_of(printer.mainsail_url), listed, info)
         except mr.MoonrakerError as e:
             errors.append(str(e))
     if printer.camera_address:

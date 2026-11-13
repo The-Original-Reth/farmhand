@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // What the camera runs on. `crowsnest`: its ustreamer answered (below), so it's Crowsnest's MJPEG streamer.
 export function cameraSource(cam, crowsnest) {
   if (cam.service === "farmhand-go2rtc") return "Buddy3D RTSP";
-  if (cam.service === "webrtc-go2rtc") return "go2rtc";
+  if (cam.service === "webrtc-go2rtc") return cam.found === "go2rtc" ? "go2rtc (found)" : "go2rtc"; // (found: not set in Mainsail)
   if (cam.service === "webrtc-camerastreamer") return "camera-streamer";
   if (cam.service === "iframe") return null;
   if (crowsnest) return "Crowsnest";

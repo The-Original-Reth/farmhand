@@ -36,7 +36,7 @@ export function printingRoutes(ctx) {
   };
   // The sample cameras come in the three kinds a farm has, each showing snapshots of the drawn picture at its own size and
   // rate, as the mockup has no video: a Buddy3D ("farmhand-go2rtc", 1920x1080), go2rtc on even-numbered Klipper printers
-  // (1280x720 at 15 fps), and Crowsnest on the rest, whose ustreamer says what it captures (its "state", below)
+  // (1280x720 at 15 fps; on some, found on the printer rather than set up in Mainsail), and Crowsnest on the rest, whose ustreamer says what it captures (its "state", below)
   const camera = (more) => ({ name: "Bed", mjpeg: false, stream_url: null, flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", ...more });
   const crowsnestCapture = (p) => (p.id % 4 === 1 ? { width: 1920, height: 1080, fps: 15 } : { width: 640, height: 480, fps: 10 });
   on("GET", "/printers/:id/webcams", ({ id }) => {
@@ -47,7 +47,9 @@ export function printingRoutes(ctx) {
     if (!p.moonraker.reachable) return { webcams: [], error: p.moonraker.error, board: null };
     // the computer Klipper runs on: every other sample printer is a CM4
     const board = p.id % 2 ? { name: "Pi 4", model: "Raspberry Pi 4 Model B Rev 1.5", memory_gb: 4 } : { name: "CM4", model: "Raspberry Pi Compute Module 4 Rev 1.1", memory_gb: 2 };
-    if (p.id % 2 === 0) return { webcams: [camera({ name: "Chamber", service: "webrtc-go2rtc", snapshot_url: cameraPicture(1280, 720), target_fps: 15 })], error: null, board };
+    // (found: Crowsnest stopped and go2rtc found on the printer, Mainsail still listing Crowsnest's camera, as on even
+    // ones whose id is 2 more than a multiple of 4: the sample V2 BOG; the other even ones have it set up in Mainsail)
+    if (p.id % 2 === 0) return { webcams: [camera({ name: p.id % 4 === 2 ? "rear" : "Chamber", service: "webrtc-go2rtc", snapshot_url: cameraPicture(1280, 720), target_fps: 15, ...(p.id % 4 === 2 ? { found: "go2rtc" } : {}) })], error: null, board };
     const { width, height, fps } = crowsnestCapture(p);
     const stream = `/mock-api/printers/${p.id}/webcam/?action=stream`;
     return { webcams: [camera({ service: "mjpegstreamer-adaptive", stream_url: stream, snapshot_url: cameraPicture(width, height), target_fps: fps, aspect_ratio: width / height > 1.5 ? "16:9" : "4:3" })], error: null, board };

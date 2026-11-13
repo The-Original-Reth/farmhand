@@ -125,3 +125,88 @@ def test_go2rtc_not_answering_says_so(api, relay):
     pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "camera_address": "192.168.10.131"}).json()["id"]
     r = api.get(f"/printers/{pid}/webcams").json()
     assert r["webcams"] == [] and "go2rtc" in r["error"]
+
+
+# ------------------------------------------------------------------ go2rtc on the printer, found by itself
+
+
+GO2RTC_LINE = "exec:ffmpeg -f v4l2 -input_format mjpeg -video_size 1280x720 -framerate 15 -i /dev/video0 -c:v h264_v4l2m2m -f h264 -"
+
+
+def _go2rtc_cam(host, src, **kw):
+    return {"service": "webrtc-go2rtc", "mjpeg": False, "stream_url": f"http://{host}:1984/stream.html?src={src}&mode=webrtc",
+            "snapshot_url": f"http://{host}:1984/api/frame.jpeg?src={src}", "found": "go2rtc", **kw}
+
+
+def test_a_camera_moved_from_crowsnest_to_go2rtc_is_played_from_go2rtc(api, moonraker, printer_go2rtc):
+    """Crowsnest stopped and go2rtc running on the printer, with Mainsail still listing Crowsnest's camera: Farmhand
+    plays it from go2rtc, under the name (and turned the way) Mainsail has it, without Mainsail being changed."""
+    pid = api.post("/printers", json={"name": "VT 1026", "wired_ip": "10.0.6.21"}).json()["id"]
+    moonraker.webcams = [_cam(name="Front", service="mjpegstreamer-adaptive", flip_horizontal=True, target_fps=10)]
+    printer_go2rtc.streams = {"chamber": GO2RTC_LINE}
+
+    # Crowsnest running: Mainsail's camera as it is, and go2rtc isn't asked
+    assert api.get(f"/printers/{pid}/webcams").json()["webcams"][0]["service"] == "mjpegstreamer-adaptive"
+    assert printer_go2rtc.asked == []
+
+    moonraker.services["crowsnest"] = "inactive"
+    [cam] = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert cam == {"name": "Front", "flip_horizontal": True, "flip_vertical": False, "rotation": 0, "aspect_ratio": "4:3",
+                   "target_fps": 10, **_go2rtc_cam("10.0.6.21", "chamber")}
+
+    # what plugins are given to read it with: go2rtc's RTSP, under the same name
+    from app.models import Printer
+    from app.services import camera_streams
+    address = camera_streams.stream_address(Printer(name="VT 1026"), cam)
+    assert (address.kind, address.url) == ("rtsp", "rtsp://10.0.6.21:8554/chamber")
+
+
+def test_go2rtc_is_only_used_when_it_has_streams(api, moonraker, printer_go2rtc):
+    pid = api.post("/printers", json={"name": "VT 1026", "wired_ip": "10.0.6.21"}).json()["id"]
+    moonraker.webcams = [_cam(name="Front", service="mjpegstreamer-adaptive")]
+    moonraker.services["crowsnest"] = "inactive"
+    printer_go2rtc.down = True  # Crowsnest stopped, no go2rtc: Mainsail's camera as it is (it says why it's blank)
+    assert api.get(f"/printers/{pid}/webcams").json()["webcams"][0]["service"] == "mjpegstreamer-adaptive"
+    printer_go2rtc.down = False  # go2rtc there, but with no streams
+    assert api.get(f"/printers/{pid}/webcams").json()["webcams"][0]["service"] == "mjpegstreamer-adaptive"
+
+
+def test_a_camera_already_on_go2rtc_or_crowsnest_unknown_is_left_as_mainsail_has_it(api, moonraker, printer_go2rtc):
+    pid = api.post("/printers", json={"name": "V2-250B", "wired_ip": "10.0.6.21"}).json()["id"]
+    printer_go2rtc.streams = {"chamber": GO2RTC_LINE}
+    moonraker.services = {"klipper": "active", "moonraker": "active", "crowsnest": "inactive"}
+    set_up = _cam(name="Chamber", service="webrtc-go2rtc", stream_url="http://10.0.6.21:1984/stream.html?src=chamber&mode=webrtc",
+                  snapshot_url="http://10.0.6.21:1984/api/frame.jpeg?src=chamber")
+    moonraker.webcams = [set_up]
+    [cam] = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert cam["service"] == "webrtc-go2rtc" and "found" not in cam and printer_go2rtc.asked == []
+
+    # Moonraker not watching Crowsnest: whether it runs isn't known, so nothing is guessed
+    moonraker.services = {"klipper": "active", "moonraker": "active"}
+    moonraker.webcams = [_cam(name="Front", service="mjpegstreamer-adaptive")]
+    assert api.get(f"/printers/{pid}/webcams").json()["webcams"][0]["service"] == "mjpegstreamer-adaptive"
+    assert printer_go2rtc.asked == []
+
+
+def test_go2rtc_streams_are_matched_by_name_then_in_order(api, moonraker, printer_go2rtc):
+    pid = api.post("/printers", json={"name": "VT 1190", "wired_ip": "10.0.6.21"}).json()["id"]
+    moonraker.services["crowsnest"] = "inactive"
+    moonraker.webcams = [_cam(name="Bed"), _cam(name="Nozzle", stream_url="/webcam2/?action=stream", snapshot_url="/webcam2/?action=snapshot")]
+    printer_go2rtc.streams = {"top": GO2RTC_LINE, "nozzle": GO2RTC_LINE}
+    bed, nozzle = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert (bed["name"], bed["stream_url"]) == ("Bed", "http://10.0.6.21:1984/stream.html?src=top&mode=webrtc")
+    assert (nozzle["name"], nozzle["stream_url"]) == ("Nozzle", "http://10.0.6.21:1984/stream.html?src=nozzle&mode=webrtc")
+
+    # more Crowsnest cameras than streams: the one left over stays as Mainsail has it
+    printer_go2rtc.streams = {"nozzle": GO2RTC_LINE}
+    bed, nozzle = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert bed["service"] == "mjpegstreamer" and nozzle["service"] == "webrtc-go2rtc"
+
+
+def test_a_printer_with_no_camera_in_mainsail_gets_its_go2rtc_streams(api, moonraker, printer_go2rtc):
+    pid = api.post("/printers", json={"name": "BOG", "wired_ip": "10.0.6.21"}).json()["id"]
+    moonraker.services["crowsnest"] = "inactive"
+    printer_go2rtc.streams = {"chamber": GO2RTC_LINE}
+    [cam] = api.get(f"/printers/{pid}/webcams").json()["webcams"]
+    assert cam == {"name": "chamber", "flip_horizontal": False, "flip_vertical": False, "rotation": 0, "aspect_ratio": "16:9",
+                   "target_fps": 15, **_go2rtc_cam("10.0.6.21", "chamber")}

@@ -37,6 +37,8 @@ class FakeMoonraker:
         self.webcams: list[dict] = []  # as Mainsail's camera settings save them
         # The computer it runs on, as /machine/system_info's cpu_info gives it; None = won't say
         self.cpu_info: dict | None = {"model": "Raspberry Pi 4 Model B Rev 1.5", "processor": "aarch64", "total_memory": 3886824, "memory_units": "kB"}
+        # The services Moonraker watches, as /machine/system_info lists them: {name: its active_state}
+        self.services: dict[str, str] = {"klipper": "active", "moonraker": "active", "crowsnest": "active"}
         self.files: dict[str, bytes] = {}  # the gcodes folder: {path in it: contents}
         self.ranges: list[str | None] = []  # the Range header of each file request, in order
 
@@ -96,13 +98,13 @@ class FakeMoonraker:
             return self._ok({"state": "ready", "hostname": self.hostname, "app": self.app, "software_version": "v0.12.0-fake"})
         if path == "/machine/system_info":
             if self.network_as_said is not None:
-                return self._ok({"system_info": {"network": self.network_as_said, "cpu_info": self.cpu_info}})
+                return self._ok({"system_info": {"network": self.network_as_said, "cpu_info": self.cpu_info, **self._services()}})
             if self.interfaces is None:
                 return self._error(404, "Not Found")
             network = {name: {"mac_address": f"02:00:00:00:00:{i:02x}", "ip_addresses": [
                 {"family": "ipv4", "address": a, "is_link_local": False} for a in addresses
             ]} for i, (name, addresses) in enumerate(self.interfaces.items())}
-            return self._ok({"system_info": {"network": network, "cpu_info": self.cpu_info}})
+            return self._ok({"system_info": {"network": network, "cpu_info": self.cpu_info, **self._services()}})
         if path == "/server/history/totals":
             aux = []
             if hasattr(self, "energy_total"):
@@ -187,6 +189,11 @@ class FakeMoonraker:
         part = data[-int(last):] if not first else data[int(first):]
         return httpx.Response(206, content=part)
 
+    def _services(self) -> dict:
+        return {"available_services": list(self.services), "service_state": {
+            name: {"active_state": state, "sub_state": "running" if state == "active" else "dead"} for name, state in self.services.items()
+        }}
+
     @staticmethod
     def _ok(result) -> httpx.Response:
         return httpx.Response(200, json={"result": result})
@@ -194,3 +201,21 @@ class FakeMoonraker:
     @staticmethod
     def _error(code: int, message: str) -> httpx.Response:
         return httpx.Response(code, json={"error": {"code": code, "message": message}})
+
+
+class FakePrinterGo2rtc:
+    """go2rtc on a printer (port 1984), enough of it for Farmhand to find its streams. Plug it in with
+    `printer_go2rtc.transport = httpx.MockTransport(fake.handle)`."""
+
+    def __init__(self):
+        self.streams: dict[str, str] = {}  # name -> its source, in the order its settings list them
+        self.down = False  # True: no go2rtc on the printer
+        self.asked: list[str] = []  # the hosts asked
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.asked.append(request.url.host)
+        if self.down or request.url.port != 1984:
+            raise httpx.ConnectError("connection refused", request=request)
+        if request.url.path == "/api/streams":
+            return httpx.Response(200, json={n: {"producers": [{"url": src}], "consumers": None} for n, src in self.streams.items()})
+        return httpx.Response(404, text="404 page not found")
