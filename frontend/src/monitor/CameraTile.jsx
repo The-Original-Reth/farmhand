@@ -179,7 +179,7 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
           data-testid="monitor-live"
           title={own
             ? "What Crowsnest's camera streamer is capturing right now, as it reports it"
-            : "Measured live in this browser: the picture's size and the frames arriving each second"}
+            : `Measured live in this browser: the picture's size and the frames arriving each second${cam.found === "go2rtc" ? ". Found on the printer: Crowsnest is stopped and go2rtc runs there, so it plays from go2rtc though Mainsail still lists Crowsnest's camera" : ""}`}
           style={badge({ fontSize: fs(10) })}
         >
           {liveText(source, live)}

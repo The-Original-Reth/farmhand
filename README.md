@@ -585,6 +585,13 @@ for a printer.
   the way Mainsail plays them (MJPEG, WebRTC through go2rtc or camera-streamer, snapshots at the frame rate set
   there). A Prusa's **Buddy3D camera** is added by its IP (below). Printers without a camera are listed
   underneath; point at a name to see why.
+- **Moved to go2rtc, found by itself:** a printer whose Crowsnest is stopped (as Moonraker reports it) while go2rtc runs
+  on it (port 1984) has its camera played from go2rtc, with nothing to change in Mainsail. The camera keeps the
+  name, rotation and flips Mainsail gives it, so the Monitor layout and the YouTube Stream plugin's squares keep
+  finding it. A go2rtc stream named like the camera is taken first, the rest in order; a printer with no camera in
+  Mainsail gets one per go2rtc stream. While Crowsnest runs, Mainsail's cameras are used as they are. The corner says
+  *go2rtc (found)* for such a camera; setting it up in Mainsail as WebRTC (go2rtc) works too, and is what other
+  programs reading Mainsail's cameras see.
 - **Same-size tiles** that fill the window and resize with it. A camera of another shape sits in its tile with
   black bars. Click a camera to see it on its own, filling the window; click again (or **Esc**) to go back.
 - **Arranging:** drag a camera onto another to move it there, then **Save layout**. The order is kept on the
