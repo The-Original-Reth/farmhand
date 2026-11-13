@@ -4,12 +4,12 @@
 #
 #   sudo docker compose up -d --build
 #
-# Docker builds the plugin straight from Farmhand's GitHub repository (git must be installed). Then add it on
+# Docker builds the plugin straight from its GitHub repository (git must be installed). Then add it on
 # Farmhand's Plugins page at http://<this machine>:8080, put the two lines Farmhand shows into stream.env (beside this
 # file) and start it again:  sudo docker compose up -d --force-recreate
 services:
   stream:
-    build: https://github.com/The-Original-Reth/farmhand.git#main:plugins/stream
+    build: https://github.com/The-Original-Reth/farmhand-youtube-plugin.git#main
     image: farmhand-stream
     container_name: farmhand-stream
     restart: unless-stopped        # back by itself after a reboot or a crash (and live again, if it was)

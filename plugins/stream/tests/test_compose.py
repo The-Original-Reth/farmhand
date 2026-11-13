@@ -13,7 +13,7 @@ SHOWN = PLUGIN.parent.parent / "frontend" / "src" / "plugins" / "compose" / "str
 def test_compose_file_is_valid_and_builds_the_plugin():
     data = yaml.safe_load((PLUGIN / "docker-compose.yml").read_text(encoding="utf-8"))
     stream = data["services"]["stream"]
-    assert stream["build"].endswith("#main:plugins/stream")
+    assert stream["build"] == "https://github.com/The-Original-Reth/farmhand-youtube-plugin.git#main"  # (built from its own repository now)
     assert stream["ports"] == ["8080:8080"]
     assert stream["env_file"] == [{"path": "stream.env", "required": False}]
     assert "stream-data:/data" in stream["volumes"]

@@ -1,7 +1,7 @@
 # Writing a Farmhand plugin
 
 A plugin is a program of your own that adds something to a print farm's Farmhand: a live stream, a dashboard, a
-notifier. Streaming to YouTube is itself a plugin, [`plugins/stream`](../plugins/stream/README.md): Farmhand has no
+notifier. Streaming to YouTube is itself a plugin, [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), in a repository of its own: Farmhand has no
 Stream page of its own any more. It runs in **its own Docker container**, with its own storage, written in any language. It never touches
 Farmhand's database, files or other containers. It reads what it needs from Farmhand through the **plugin API**
 described here, using a token the operator gave it, and only what the operator allowed.
@@ -86,7 +86,7 @@ The operator grants some or all of the permissions the manifest asks for, never 
 yet; they'll be added one at a time, when a plugin needs one.
 
 `stream:migrate` is only for a Stream plugin taking over from the Stream page older Farmhands had built in (like
-[`plugins/stream`](../plugins/stream/README.md)): ask for it only if that's what your plugin is. It hands over secrets
+[FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin)): ask for it only if that's what your plugin is. It hands over secrets
 (the stream key, the Google client secret and the YouTube sign-in), so it's granted only when the manifest asks and the
 operator leaves it ticked, and handed over just once.
 
