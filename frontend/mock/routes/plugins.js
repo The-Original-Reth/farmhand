@@ -138,7 +138,14 @@ const settingsHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><t
 <div class="row"><span class="what">Stream folder</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;stream</span><span class="ok">ready</span></div>
 <div class="row"><span class="what">YouTube clips</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;YouTube clips</span><span class="ok">ready</span></div>
 </div>
-<p>Clips · Length <b>3</b> seconds. (A pretend plugin's settings: the real YouTube plugin shows its own here.)</p></div></body></html>`;
+<p>Clips · Length <input id="len" value="3" size="4"> seconds. (A pretend plugin's settings: change the length and the Save on its
+heading row lights up.)</p></div>
+<script>
+  let saved = "3"; const box = document.getElementById("len");
+  box.addEventListener("input", () => window.farmhand.changed(box.value !== saved));
+  window.farmhand.onSave(() => { if (!/^[0-9]+$/.test(box.value)) return { ok: false, text: "Type the length in seconds." };
+    saved = box.value; window.farmhand.changed(false); return { ok: true, text: "Saved." }; });
+</script></body></html>`;
 const CLOCK_BODY = `<p>It's <b id="clock"></b> here.</p>
 <script>setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString(); }, 500);</script>`;
 const pageHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name}</title>

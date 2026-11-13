@@ -251,6 +251,7 @@ def test_the_plugin_pages_script_is_served(api):
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
     assert "farmhand:theme" in r.text and "window.farmhand" in r.text
     assert "farmhand:height" in r.text  # (a settings page shown on Farmhand's Settings page says how tall it is)
+    assert "farmhand:save" in r.text and "onSave" in r.text  # (and its Save, on the plugin's heading row)
 
 
 def test_looking_at_a_plugin_or_its_page_doesnt_rewrite_the_settings_copy():
