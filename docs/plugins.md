@@ -67,7 +67,7 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `author`, `homepage` | no | Shown to the operator |
 | `page` | no | A page in Farmhand's menu: `menu` (its label, up to 40 characters), `icon` (optional: `youtube`, `video`, `camera`, `chart`, `bell` or `dashboard`; a puzzle piece otherwise), `path` on your plugin (default `/`). See "Your page inside Farmhand" |
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
-| `settings_page` | no | A path on your plugin shown on Farmhand's Settings page |
+| `settings_page` | no | Your plugin's settings, shown on Farmhand's Settings page under your plugin's name (below Farmhand's own): a path on your plugin, like `/settings` or `/?view=settings`. See "Your settings on Farmhand's Settings page" |
 | `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is not taken (the operator adds the plugin again to grant it) |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
@@ -344,6 +344,18 @@ It sets a CSS variable on `<html>` for every colour of `GET /farm` (`--farmhand-
 script: `window.farmhand.theme` (`{mode, colors, font}`, or `null` until Farmhand sends it),
 `window.farmhand.onTheme(fn)` (called now and on every change; returns a function that stops it),
 `window.farmhand.inFarmhand`, and a `farmhand:theme` event on `document`.
+
+### Your settings on Farmhand's Settings page
+
+Farmhand's **Settings** page has Farmhand's own settings (where it saves its files) under a **Farmhand** heading, then a
+heading for each plugin, its name, with that plugin's settings under it. Give your manifest a `settings_page` and
+Farmhand shows that page of yours there, in a frame, the same way as your main page (from `/plugins/<id>/<path>`):
+where your plugin saves things, and anything the operator sets. Without one, the operator is told your plugin has no
+settings to show there (with a link to your page, if you have one).
+
+The frame is as tall as your page: `farmhand-plugin.js` tells Farmhand your page's height whenever it changes, so load
+it on that page too. Keep the page short and to the point: no page-wide background or padding of its own is needed,
+as it sits inside Farmhand's own page. A plugin that's switched off or not answering shows that instead.
 
 ## Across the network
 

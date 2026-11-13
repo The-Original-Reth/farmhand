@@ -5,7 +5,7 @@
 import { API_BASE, del, jsonBody, request } from "./client.js";
 
 // { id, name, version, author, homepage, enabled, permissions, permissionsDescribed: [{ permission, means }], address,
-// onlyFromAddress, needsToken (brought back by Load all settings: no token yet), page: { menu, icon, path } | null,
+// onlyFromAddress, needsToken (brought back by Load all settings: no token yet), page: { menu, icon, path } | null, settingsPage,
 // health: { state: "running" | "unwell" | "not_answering" | "unknown" | "off", lastError, lastSeenAt, checkedAt }, createdAt,
 // tokenCreatedAt, tokenLastUsedAt }
 const normalizePlugin = (p) => ({
@@ -21,6 +21,7 @@ const normalizePlugin = (p) => ({
   onlyFromAddress: p.only_from_address,
   needsToken: !!p.needs_token,
   page: p.page || null,
+  settingsPage: p.manifest?.settings_page || null, // its settings, shown under its name on the Settings page
   health: {
     state: p.health?.state || "unknown",
     lastError: p.health?.last_error || null,

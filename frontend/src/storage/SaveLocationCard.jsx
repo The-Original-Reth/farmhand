@@ -29,14 +29,28 @@ function pickedAt(path, shares) {
   return { address: rest ? `${base}/${rest}` : base, share };
 }
 
+// A folder as people reach it on the network, as Windows writes it: \\server\share\rest, from where Farmhand has it
+// mounted (/data/nas/farm-nas/models on //192.168.10.5/farmhand is \\192.168.10.5\farmhand\models). The path as it
+// is when it isn't on a connected share (Farmhand's own storage).
+export function networkPath(path, shares) {
+  if (!path) return path;
+  const share = shares
+    .filter((x) => x.mountPoint && (path === x.mountPoint || path.startsWith(`${x.mountPoint}/`)))
+    .sort((x, y) => y.mountPoint.length - x.mountPoint.length)[0];
+  if (!share) return path;
+  const parts = [share.server, ...String(share.share).split("/"), ...path.slice(share.mountPoint.length).split("/")].filter(Boolean);
+  return `\\\\${parts.join("\\")}`;
+}
+
 const looksNfs = (address) => /^nfs:\/\//i.test(address.trim()) || /^[^/\\]+:\//.test(address.trim()); // nas:/volume1/...
 
 // The save location: the one place on the NAS everything goes, typed as its address with its login. Farmhand connects
-// to it and uses (or makes) a folder inside it for each kind of file. Its Advanced fold has the network share's own
+// to it and uses (or makes) a folder inside it for each kind of file, each listed with its own Change… (onChangeFolder(key):
+// that folder alone moved somewhere else; `refresh` going up reads the list again). Its Advanced fold has the network share's own
 // settings (how it's connected, Reconnect, the workgroup and the SMB / NFS version). Then Save all / Load all settings.
 // shares: the connected shares (the first one fills the address in until a location is saved). copy: useSettingsCopy.
 // onSaved(result): the folders changed (the page reloads; result.configChoice asks about settings already there).
-export function SaveLocationCard({ shares, copy, onSaved }) {
+export function SaveLocationCard({ shares, copy, onSaved, onChangeFolder, refresh = 0 }) {
   const [location, setLocation] = useState(null); // as the server has it: { address, share, capability, folders }
   const [address, setAddress] = useState("");
   const [username, setUsername] = useState("");
@@ -68,6 +82,9 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
   useEffect(() => {
     load().then((l) => l && fill(l));
   }, []);
+  useEffect(() => {
+    if (refresh) load(); // a folder changed with its Change…: the list as it is now
+  }, [refresh]);
 
   const nfs = looksNfs(address);
   const versions = nfs ? ["4", "3"] : ["auto", "3.1.1", "3.0", "2.1"];
@@ -228,9 +245,22 @@ export function SaveLocationCard({ shares, copy, onSaved }) {
             <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", borderTop: i ? `1px solid ${c.border}` : "none", flexWrap: "wrap" }}>
               <HardDrive size={13} color={c.textFaint} style={{ flexShrink: 0 }} />
               <span style={uiText(12, c.textMuted, { width: 170, flexShrink: 0 })}>{what}</span>
-              <span style={monoText(12, location.folders[key] ? c.heading : c.textFaint, { minWidth: 0, overflowWrap: "anywhere" })}>
-                {location.folders[key] || `not set yet (${name})`}
+              <span
+                title={location.folders[key] ? `Inside Farmhand's container: ${location.folders[key]}` : undefined}
+                style={monoText(12, location.folders[key] ? c.heading : c.textFaint, { minWidth: 0, overflowWrap: "anywhere", flex: "1 1 200px" })}
+              >
+                {networkPath(location.folders[key], shares) || `not set yet (${name})`}
               </span>
+              {onChangeFolder && (
+                <button
+                  data-testid={`save-location-change-${key}`}
+                  onClick={() => onChangeFolder(key)}
+                  title={`Choose another folder for the ${what.toLowerCase()}`}
+                  style={{ ...btn, padding: "3px 10px", fontSize: fs(12), marginLeft: "auto", flexShrink: 0 }}
+                >
+                  Change…
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -81,7 +81,14 @@ function SectionPage({ section, nav, compare, settings, plugins }) {
         />
       );
     default:
-      return <StorageSection onSettingsRestored={settings.loadServerConfig} />;
+      return (
+        <StorageSection
+          onSettingsRestored={settings.loadServerConfig}
+          plugins={plugins.plugins}
+          onOpenPluginPage={(id) => nav.goTo(pluginSection(id))}
+          onOpenPlugins={() => nav.goTo("plugins")}
+        />
+      );
   }
 }
 
