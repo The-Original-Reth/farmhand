@@ -110,8 +110,8 @@ The first things to do, in this order. Everything is done in the web page; there
    settings when you set the save location, Farmhand asks whether to load them or replace them.
 
    The card's own **Advanced** has the network share's settings: whether it's connected (and why not), **Reconnect**,
-   the domain or workgroup, and the SMB or NFS version. The page's **Advanced** (folded away below the card) has
-   each folder on its own, for a farm that keeps them in different places.
+   the domain or workgroup, and the SMB or NFS version. Under **Use this location** each folder is listed with its own
+   **Change…**, for a farm that keeps one of them somewhere else.
 3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
    - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
      key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.
@@ -926,8 +926,8 @@ inside it) and sets every folder.
 2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, farmhand-configs). With no
    project files folder chosen, project files go in a **Projects** folder beside the STL folder (a `projects` folder
    already there is used), so they're on the NAS too; only while the STL folder is Farmhand's own do they stay in
-   its storage. To keep one somewhere else, open the page's **Advanced**, press **Change…** on that folder, open the folder you want
-   (or make one with **New folder**) and press **Use this folder**.
+   its storage. To keep one somewhere else, press **Change…** beside that folder (in the list under **Use this location**),
+   open the folder you want (or make one with **New folder**) and press **Use this folder**.
 3. Files you already have stay where they are and keep working. The page shows
    how many are in a previous location and offers **Move them now** (copy → check
    the size → update → delete the original). Each file's preview moves with it.

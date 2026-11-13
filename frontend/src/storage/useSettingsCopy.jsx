@@ -5,7 +5,7 @@ import { cancelButton, primaryButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
-import { RestoreResult } from "./ConfigLocationCard.jsx";
+import { RestoreResult } from "./RestoreResult.jsx";
 import { FolderPicker } from "./FolderPicker.jsx";
 import { plural } from "../lib/format.js";
 
