@@ -70,8 +70,9 @@ const ON_THE_NETWORK = {
   },
   "http://192.168.10.217:8080": {
     id: "stream", name: "YouTube Stream", version: "1.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/stream's manifest
-    homepage: "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/stream",
+    homepage: "https://github.com/The-Original-Reth/farmhand-youtube-plugin",
     page: { menu: "YouTube", icon: "youtube", path: "/" }, permissions: ["cameras:read", "prints:read", "stream:migrate"], health: "/health",
+    settings_page: "/?view=settings",
   },
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
@@ -124,6 +125,17 @@ const HELLO_BODY = `<p>The printers it read through the plugin API:</p><ul id="p
 </script>`;
 const STREAM_BODY = `<p>The real YouTube Stream plugin sends the printers' cameras live to YouTube from a container of its own. Its page
 isn't part of the mockup: run <b>plugins/stream</b> (its README says how) to see it.</p>`;
+// The YouTube plugin's settings as Farmhand's Settings page shows them under its name (its settings_page): where it saves
+const settingsHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name} settings</title>
+<script src="/plugins/farmhand-plugin.js"></script><style>${PAGE_STYLE} body { padding: 0; } .box { max-width: none; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+dt { color: var(--farmhand-text-muted, #CBCED0); } dd { margin: 0; font-family: monospace; color: var(--farmhand-heading, #fff); }
+.ok { color: var(--farmhand-green, #6FBE7A); font-family: inherit; }</style></head><body><div class="box">
+<h1>Where it saves</h1><dl>
+<dt>Stream folder</dt><dd>&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;stream <span class="ok">· ready</span></dd>
+<dt>YouTube clips</dt><dd>&#92;&#92;nas&#92;3d_Printing_Elves&#92;Farmhand&#92;YouTube clips <span class="ok">· ready</span></dd>
+<dt>Clip length</dt><dd>3 s</dd></dl>
+<p>A pretend plugin's settings: the real YouTube plugin shows its own here.</p></div></body></html>`;
 const CLOCK_BODY = `<p>It's <b id="clock"></b> here.</p>
 <script>setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString(); }, 500);</script>`;
 const pageHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name}</title>
@@ -241,6 +253,7 @@ export function pluginsRoutes(ctx) {
     if (!p) return send(404, messagePage("There's no such plugin", `No plugin called "${m[1]}" is added to Farmhand.`));
     if (!p.enabled) return send(403, messagePage("This plugin is switched off", `${p.name} is switched off. Switch it on on the Plugins page to use it.`));
     if (!ON_THE_NETWORK[p.address]) return send(502, messagePage("This plugin isn't running", UNREACHABLE(p.address)));
+    if (m[2] === "/" && url.searchParams.get("view") === "settings" && p.id === "stream") return send(200, settingsHtml(p));
     if (m[2] === "/") return send(200, pageHtml(p));
     if (m[2] === "/api/printers") {
       const printers = farm.printers.filter((x) => !x.decommissioned).map((x) => ({ id: x.id, name: x.name, connection_type: x.prusalink ? "prusalink" : "moonraker" }));

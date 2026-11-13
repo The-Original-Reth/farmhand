@@ -401,8 +401,10 @@ Esoterical CANBus and USB guides, A better print_start macro, TMC Autotune, Shak
 energy usage monitoring, KIAUH, Moonraker Timelapse, and the Kalico, Klipper, KlipperScreen and Mainsail
 documentation); change them like any other.
 
-**Settings** — connecting a NAS (SMB or NFS) and choosing where STL, 3MF and project files go (see "Network storage"),
-and where a copy of Farmhand's settings and records is kept
+**Settings** — under the **Farmhand** heading: connecting a NAS (SMB or NFS) and choosing where STL, 3MF and project
+files go (see "Network storage"), and where a copy of Farmhand's settings and records is kept. Then a heading for each
+plugin, its name, with that plugin's own settings under it (such as where the YouTube plugin saves its stream pictures
+and clips), as the plugin shows them; one that has none, is switched off or isn't answering says so.
 
 ## Versions
 

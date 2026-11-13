@@ -10,6 +10,8 @@
 //   document "farmhand:theme"       the same, as an event (event.detail is the theme)
 //
 // Farmhand's page sends the theme with postMessage once this says it's ready, and again on every change.
+// A page shown as a plugin's settings on Farmhand's Settings page (the manifest's settings_page) is drawn as tall as it
+// is: this tells Farmhand its height whenever it changes ("farmhand:height"), so it never needs a scroll bar of its own.
 (function () {
   if (window.farmhand) return;
   var listeners = [];
@@ -39,5 +41,17 @@
     apply(e.data.theme);
   });
   window.farmhand = api;
-  if (api.inFarmhand) window.parent.postMessage({ type: "farmhand:ready" }, "*");
+  if (!api.inFarmhand) return;
+  window.parent.postMessage({ type: "farmhand:ready" }, "*");
+  var told = 0;
+  function tellHeight() {
+    var h = Math.ceil(document.body ? document.body.scrollHeight : document.documentElement.scrollHeight); // (the page's, not the frame's)
+    if (h !== told) { told = h; window.parent.postMessage({ type: "farmhand:height", height: h }, "*"); }
+  }
+  function watch() {
+    tellHeight();
+    if (window.ResizeObserver) new ResizeObserver(tellHeight).observe(document.body || document.documentElement);
+    else setInterval(tellHeight, 500);
+  }
+  if (document.body) watch(); else document.addEventListener("DOMContentLoaded", watch);
 })();

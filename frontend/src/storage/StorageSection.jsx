@@ -12,6 +12,7 @@ import { useSettingsCopy } from "./useSettingsCopy.jsx";
 import { SaveLocationCard } from "./SaveLocationCard.jsx";
 import { FarmCostFolderCard } from "./FarmCostFolderCard.jsx";
 import { ConfigLocationCard, locationProblem } from "./ConfigLocationCard.jsx";
+import { PluginSettings, SettingsHeading } from "../plugins/PluginSettings.jsx";
 
 function LocationCard({ title, blurb, location, onChange, onReset }) {
   const s = location.status;
@@ -112,7 +113,7 @@ function MoveResult({ result }) {
   );
 }
 
-export function StorageSection({ onSettingsRestored }) {
+export function StorageSection({ onSettingsRestored, plugins = [], onOpenPluginPage, onOpenPlugins }) {
   const [info, setInfo] = useState(null);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -164,6 +165,8 @@ export function StorageSection({ onSettingsRestored }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 820 }}>
+      {/* Farmhand's own settings first, under its name; then each plugin's, under the plugin's name (PluginSettings) */}
+      <SettingsHeading>Farmhand</SettingsHeading>
       {/* The save location: one place on the NAS for everything, then Save all and Load all settings */}
       <SaveLocationCard
         shares={sharesInfo.shares}
@@ -262,6 +265,8 @@ export function StorageSection({ onSettingsRestored }) {
           </div>
         </ConfirmDialog>
       )}
+
+      <PluginSettings plugins={plugins} onOpenPage={onOpenPluginPage} onOpenPlugins={onOpenPlugins} />
     </div>
   );
 }
