@@ -54,7 +54,8 @@ a permission per endpoint, optionally only from the plugin's address, rate-limit
 stops them: the Plugins page (`routers/plugins.py`, `src/plugins/`) adds one by its address (`remote.py` fetches its
 `/manifest`), and `health.py`'s worker asks each every 30 s. Where a plugin runs is the `plugin_connection` table. Its
 page is an iframe on `/plugins/<id>/`, which nginx sends to the API's `/plugins/<id>/page/` and `pages.py` passes on to
-the plugin. Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
+the plugin; its manifest's `settings_page` is shown the same way on the Settings page, under the plugin's name below
+Farmhand's own settings (`src/plugins/PluginSettings.jsx`), as tall as `farmhand-plugin.js` says it is. Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
 `services/camera_streams.py` (handed to plugins as data; Farmhand runs no ffmpeg itself).
 
 **Stream is only a plugin** (https://github.com/The-Original-Reth/farmhand-youtube-plugin, its own repository and container; the copy in `plugins/stream/` is kept for now
