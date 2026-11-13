@@ -357,6 +357,20 @@ The frame is as tall as your page: `farmhand-plugin.js` tells Farmhand your page
 it on that page too. Keep the page short and to the point: no page-wide background or padding of its own is needed,
 as it sits inside Farmhand's own page. A plugin that's switched off or not answering shows that instead.
 
+A settings page with things to save gets a **Save** button on its heading row, at the right of your plugin's name,
+the same for every plugin. In your page's script:
+
+```js
+window.farmhand.onSave(async () => {         // Farmhand's Save was pressed
+  // ...save what's typed on the page...
+  return { ok: true, text: "Saved." };          // or { ok: false, text: "why not" }: shown beside the button
+});
+window.farmhand.changed(true);                 // there's something to save: the button lights up (false: greyed)
+```
+
+A page opened on its own (not inside Farmhand) has no such button: give it a Save of its own for that
+(`window.farmhand.inFarmhand` says which).
+
 ## Across the network
 
 A plugin may run on another machine, so the plugin API is answered on Farmhand's API port (4545), which the farm's
