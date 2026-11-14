@@ -161,7 +161,15 @@ export function buildFarm() {
     ], { notes: "Mixed plate: both frogs together.\nTextured sheet, glue stick for the keychain loops.", notes_revision: 2, notes_updated_at: iso(NOW - 12 * DAY) }),
   ];
   bundles.push(bundle(4, 2, [6], "starfish-orca", 18, [{ name: "V2_BOG_-_Orca_Slicer_-_Flexi-Starfish.3mf", slicer: "OrcaSlicer 2.4.2", family: "orcaslicer" }]));
+  // the Core One's shark: the print history's G-code is PrusaSlicer's Core One name for it ("..._0.4n_0.2mm_PETG_COREONE_3h12m")
+  bundles.push(bundle(5, 5, [1], "shark-vt1190", 160, [{
+    name: "Core One - Prusa Slicer - MMMini_GreatWhiteShark.3mf",
+    changes: { printer_settings_id: "Original Prusa CORE One HF0.4 nozzle", filament_type: "PETG", filament_density: "1.27", filament_cost: "24.99" },
+  }]));
   bundles[2].starred_version_id = bundles[2].versions.find((v) => v.version === 2).id; // v2 is the keeper
+  // The slicer's "filament used [mm]" in a version's stored G-code (version id -> mm): what a PrusaLink print's filament
+  // is estimated from, since PrusaLink doesn't report it
+  const slicerFilament = { [bundles[4].versions[0].id]: 14250 };
 
   // Printer profiles: each printer's printer presets in PrusaSlicer, found from its 3MFs' printer_settings_id as the real
   // API does, plus one more on the VT 1190 (a 0.4 brass nozzle) that the Frog's v3 was sliced with
@@ -194,7 +202,7 @@ export function buildFarm() {
     1: ["VT_1190_-_prusa_slicer_-_MMMini_GreatWhiteShark_v01.gcode", "VT_1190_-_prusa_slicer_-_MMMini_Frog_v2.gcode", "calibration_cube.gcode", "VT_1190_benchy.gcode", "spool_holder_bracket.gcode"],
     2: ["V2_BOG_-_Prusa_Slicer_-_MMMini_GreatWhiteShark_v02.gcode", "V2 BOG - Prusa Slicer - MMMini_GreatWhiteShark_v02-V2_BOG_Rapido_Ace_0.5_WC-Inland_PLA.gcode","V2 BOG - Prusa Slicer - MMMini_LeoGecko v01.gcode", "V2_BOG_bed_mesh_test.gcode", "V2_BOG_voron_cube.gcode"],
     3: ["MK4_shelf_keychains_x12.gcode", "MK4_cable_clips.gcode"],
-    5: ["COREONE_MMMini_GreatWhiteShark_PETG.bgcode", "COREONE_Frog_keychain_x8.bgcode", "COREONE_spool_holder_bracket_ASA.bgcode"],
+    5: ["Core One - Prusa Slicer - MMMini_GreatWhiteShark_0.4n_0.2mm_PETG_COREONE_3h12m.bgcode", "COREONE_Frog_keychain_x8.bgcode", "COREONE_spool_holder_bracket_ASA.bgcode"],
   };
   // The filament settings Farmhand has read from the end of each G-code on the Klipper printers ({printer id: {file:
   // [price per kg, density, diameter]}}). The ones left out were gone from the printer, so their prints fall back to
@@ -240,7 +248,7 @@ export function buildFarm() {
     }
     // ...and on the Core One, recorded by Farmhand as it runs
     if (p.id === 5) {
-      list.push({ job_id: "41@20261025T090000", filename: "COREONE_MMMini_GreatWhiteShark_PETG.bgcode", status: "in_progress", start: NOW - 1.5 * HOUR, printS: 1.5 * HOUR, totalS: 1.5 * HOUR, filamentMm: 0, kwh: null, avgW: null, maxW: null, estimated: 4 * HOUR });
+      list.push({ job_id: "41@20261025T090000", filename: "Core One - Prusa Slicer - MMMini_GreatWhiteShark_0.4n_0.2mm_PETG_COREONE_3h12m.bgcode", status: "in_progress", start: NOW - 1.5 * HOUR, printS: 1.5 * HOUR, totalS: 1.5 * HOUR, filamentMm: 0, kwh: null, avgW: null, maxW: null, estimated: 4 * HOUR });
     }
     jobs[p.id] = list;
     // Farmhand has read the meter every day for the last ~4 months (whole printer: prints plus idle)
@@ -388,7 +396,7 @@ export function buildFarm() {
   ];
 
   return {
-    now: NOW, printers, models, bundles, versionSettings, subPrinters, jobs, meterReadings, maintenance, config, shares, gcodeFilament, projects,
+    now: NOW, printers, models, bundles, versionSettings, slicerFilament, subPrinters, jobs, meterReadings, maintenance, config, shares, gcodeFilament, projects,
     // printer id -> { last_sync_at, last_sync_error }: the two online printers synced recently, the MK4 is off
     connections: {
       1: { last_sync_at: iso(NOW - 40 * 60), last_sync_error: null },

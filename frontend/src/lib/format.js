@@ -21,6 +21,11 @@ export const fmtKwh = (v) => (v == null ? "—" : `${v.toLocaleString(undefined,
 export const fmtMoney = (v) => (v == null ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 // a cost in dollars: "$3.73"
 export const fmtCost = (v) => (v == null ? "—" : `$${fmtMoney(v)}`);
+// ---- filament figures that are the slicer's estimate rather than measured (a PrusaLink printer's prints) ----
+export const ESTIMATED_HINT =
+  "Estimated: PrusaLink doesn't report the filament a print uses, so this is the slicer's figure from the G-code of the 3MF it was sliced from";
+// "≈ 117.3 g" for an estimated figure; a missing one stays "—"
+export const approx = (text, estimated) => (estimated && text !== "—" ? `≈ ${text}` : text);
 // "1 file", "3 files" (many: when it isn't just an "s" more)
 export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 

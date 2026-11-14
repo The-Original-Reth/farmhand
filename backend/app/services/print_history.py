@@ -63,6 +63,9 @@ def job_out(j: PrintJob, cost: dict | None = None, kwh_price: float | None = Non
         "total_duration": j.total_duration,
         "filament_used": j.filament_used,
         "filament_grams": filament_cost.grams_used(j, cost),
+        # True: filament_used (and so its grams and cost) is the slicer's estimate, not measured by the printer (a
+        # PrusaLink printer, see prusalink/filament_estimate.py)
+        "filament_estimated": filament_cost.estimated(j),
         "slicer": meta.get("slicer"),
         "estimated_time": meta.get("estimated_time"),
         "layer_height": meta.get("layer_height"),

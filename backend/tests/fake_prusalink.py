@@ -29,13 +29,17 @@ class FakePrusaLink:
         self.down = False  # True: behaves like a printer that's switched off
         self.requests: list[tuple[str, str]] = []
 
-    def start_job(self, job_id: int, name: str, *, progress=0.0, time_printing=0, time_remaining=3600, state="PRINTING"):
+    def start_job(self, job_id: int, name: str, *, progress=0.0, time_printing=0, time_remaining=3600, state="PRINTING",
+                  meta=True):
+        """meta=False: the file comes without its meta, as the Core One's firmware gives it (only the name and size)."""
         self.state = state
+        file = {"name": name.lower()[:8] + "~1.BGC", "display_name": name, "path": "/usb", "size": 123456,
+                "m_timestamp": 1_700_000_000}
+        if meta:
+            file["meta"] = {"filament_type": "PETG", "layer_height": 0.2}
         self.job = {
             "id": job_id, "state": state, "progress": progress, "time_printing": time_printing,
-            "time_remaining": time_remaining, "inaccurate_estimates": False,
-            "file": {"name": name.lower()[:8] + "~1.BGC", "display_name": name, "path": "/usb", "size": 123456,
-                     "m_timestamp": 1_700_000_000, "meta": {"filament_type": "PETG", "layer_height": 0.2}},
+            "time_remaining": time_remaining, "inaccurate_estimates": False, "file": file,
         }
 
     def advance(self, *, progress: float, time_printing: int, state="PRINTING"):

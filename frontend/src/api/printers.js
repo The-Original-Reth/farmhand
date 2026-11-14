@@ -203,7 +203,9 @@ export const getEnergy = (printerId) =>
 // status: "" (all) | "completed" | "failed" | "cancelled" | "error" | ...; q: words that must all be in the file name.
 // Each job has filament_grams (the filament used in grams; null when no density or slicer estimate is known),
 // filament_cost (null when there's no price for it) and filament_cost_detail: { cost, grams, cost_per_kg,
-// density, diameter, source: "gcode" | "3mf", filename, bundle_id, version_id, version } | null; energy_cost: its
+// density, diameter, source: "gcode" | "3mf", filename, bundle_id, version_id, version, estimated } | null;
+// filament_estimated: true when filament_used (and so its grams and costs) is the slicer's estimate, not measured by
+// the printer (a PrusaLink printer's print; always a boolean here, false from a server that doesn't say); energy_cost: its
 // energy_kwh at the Power page's price per kWh (null without either); total_cost: filament_cost + energy_cost (the
 // filament cost alone without an energy cost; null or 0 when the filament cost is). The answer also has
 // energy_price_per_kwh.
@@ -212,7 +214,10 @@ export const getPrintJobs = (printerId, { limit = 25, offset = 0, status = "", q
   if (status) params.set("status", status);
   if (q.trim()) params.set("q", q.trim());
   if (timeZone) params.set("tz", timeZone); // which month a print's energy is priced in
-  return request(`/printers/${printerId}/print-jobs?${params}`);
+  return request(`/printers/${printerId}/print-jobs?${params}`).then((r) => ({
+    ...r,
+    jobs: (r.jobs || []).map((j) => ({ ...j, filament_estimated: !!j.filament_estimated })),
+  }));
 };
 
 // The 1500-hour service lives in Farmhand. Both resolve to the printer as it now stands.

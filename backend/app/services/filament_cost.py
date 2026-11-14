@@ -13,9 +13,16 @@ spaces versus underscores (a 3MF downloaded through a browser often has "_" wher
 G-code Farmhand sent is named after its version ("Frog ver 2.gcode" <- "Frog ver 2.3mf"), so that version is used.
 Otherwise the names are matched without the "ver N": "Frog.gcode", or PrusaSlicer's own G-code name, which adds the
 printer and filament presets ("Frog-V2_BOG_Rapido_0.5-Inland_PLA.gcode", from [input_filename_base]-[printer_settings_id]
--[filament_settings_id]); where several 3MF names fit that way, the longest one. Of those versions, the newest one
+-[filament_settings_id]), or the one PrusaSlicer uses for the Core One, which adds the nozzle, layer height and
+more after an underscore ("Sloth -PLA_0.4n_0.16mm_PLA_COREONE_8h59m.bgcode", from [input_filename_base]_0.4n_
+[layer_height]mm_[printing_filament_types]_[printer_model]_[print_time]); where several 3MF names fit that way, the
+longest one. Of those versions, the newest one
 uploaded before the print started is used, so a print keeps the price it was printed at; one uploaded later only when
 there's none before. A project with several filaments is costed with the first one's values.
+
+A PrusaLink print's filament isn't measured by the printer at all: Farmhand estimates it from the slicer's figure in
+the G-code of the 3MF version it matched (prusalink/filament_estimate.py), and that version is the one costed here.
+Its figures say "estimated": True.
 """
 from __future__ import annotations
 
@@ -52,8 +59,40 @@ def _match(job_stem: str, exact: dict[str, list[int]], by_base: dict[str, list[i
     base = _key(without_version(job_stem))
     if base in by_base:
         return by_base[base]
-    fits = [b for b in by_base if base.startswith(b + "-")]  # the slicer added -printer-filament
+    # the slicer added -printer-filament, or _0.4n_0.16mm_... (PrusaSlicer's Core One template)
+    fits = [b for b in by_base if base.startswith(b) and (base.startswith(b + "-") or _PRUSA_SUFFIX.match(base, len(b)))]
     return by_base[max(fits, key=len)] if fits else None
+
+
+# "_0.4n_0.16mm" (nozzle, layer height) right after the 3MF's name, then the end or "_..." (filament, printer, time)
+_PRUSA_SUFFIX = re.compile(r"_\d+(?:\.\d+)?n_\d+(?:\.\d+)?mm(?:_|$)")
+
+
+def name_index(rows) -> tuple[dict[int, dict[str, list[int]]], dict[int, dict[str, list[int]]]]:
+    """
+    From (version id, 3MF file name, printer id) rows: ({printer id: {name: version ids}}, the same without "ver N"),
+    the names as _match compares them.
+    """
+    exact: dict[int, dict[str, list[int]]] = {}
+    by_base: dict[int, dict[str, list[int]]] = {}
+    for vid, filename, pid in rows:
+        exact.setdefault(pid, {}).setdefault(_key(_stem(filename)), []).append(vid)
+        by_base.setdefault(pid, {}).setdefault(_key(without_version(_stem(filename))), []).append(vid)
+    return exact, by_base
+
+
+ESTIMATE = "filament_estimate"  # in a print's metadata: what prusalink/filament_estimate.py found for it
+
+
+def estimated(j: PrintJob) -> bool:
+    """Whether the print's filament is the slicer's estimate rather than what the printer measured."""
+    return bool((j.job_metadata or {}).get("filament_estimated"))
+
+
+def estimate_version(j: PrintJob) -> int | None:
+    """The 3MF version an estimated print's filament was read from (None: not estimated)."""
+    found = (j.job_metadata or {}).get(ESTIMATE)
+    return found.get("version_id") if estimated(j) and isinstance(found, dict) else None
 
 
 def _first_number(value) -> float | None:
@@ -130,8 +169,8 @@ def _priced(filament_mm: float, price: float, density: float, diameter: float | 
 
 def costs(db: Session, jobs: list[PrintJob]) -> dict[int, dict | None]:
     """
-    {job id: {cost, grams, cost_per_kg, density, diameter, source, filename, bundle_id, version_id, version} | None}
-    for each job. source "gcode": the values were read from the printed G-code itself (filename is the G-code's,
+    {job id: {cost, grams, cost_per_kg, density, diameter, source, filename, bundle_id, version_id, version, estimated}
+    | None} for each job (estimated: the filament is the slicer's estimate, see the top of this file). source "gcode": the values were read from the printed G-code itself (filename is the G-code's,
     bundle_id / version_id / version are null); "3mf": from the 3MF it matched (filename is the 3MF version's). None:
     neither has a price and density, or the printer reported no filament used.
     """
@@ -160,7 +199,7 @@ def costs(db: Session, jobs: list[PrintJob]) -> dict[int, dict | None]:
         mine = file_modified(j.job_metadata)
         f = ([c for c in copies if c.modified <= mine] or copies[:1])[-1]
         out[j.id] = _priced(j.filament_used, f.cost_per_kg, f.density, f.diameter, source="gcode", filename=j.filename,
-                            bundle_id=None, version_id=None, version=None)
+                            bundle_id=None, version_id=None, version=None, estimated=estimated(j))
     jobs = rest
     if not jobs:
         return out
@@ -168,16 +207,18 @@ def costs(db: Session, jobs: list[PrintJob]) -> dict[int, dict | None]:
     # Then the 3MF. Only the names are read for every 3MF on these printers; settings (often 30-60 KB) only for the
     # ones matched
     rows = db.execute(
-        select(BundleVersion.id, BundleVersion.filename, BundleVersion.uploaded_at, Bundle.printer_id)
+        select(BundleVersion.id, BundleVersion.filename, Bundle.printer_id)
         .join(Bundle, Bundle.id == BundleVersion.bundle_id)
         .where(Bundle.printer_id.in_({j.printer_id for j in jobs}))
     ).all()
-    exact: dict[int, dict[str, list[int]]] = {}  # printer id -> {name: version ids}
-    by_base: dict[int, dict[str, list[int]]] = {}  # ...the same without "ver N"
-    for vid, filename, _, pid in rows:
-        exact.setdefault(pid, {}).setdefault(_key(_stem(filename)), []).append(vid)
-        by_base.setdefault(pid, {}).setdefault(_key(without_version(_stem(filename))), []).append(vid)
-    matches = {j.id: _match(_stem(j.filename), exact.get(j.printer_id, {}), by_base.get(j.printer_id, {})) for j in jobs}
+    exact, by_base = name_index(rows)  # printer id -> {name: version ids}, and the same without "ver N"
+    known = {vid for vid, _, _ in rows}
+    # an estimated print is costed from the version its filament was read from (if it's still there)
+    matches = {
+        j.id: [estimate_version(j)] if estimate_version(j) in known
+        else _match(_stem(j.filename), exact.get(j.printer_id, {}), by_base.get(j.printer_id, {}))
+        for j in jobs
+    }
     ids = {vid for vids in matches.values() if vids for vid in vids}
     if not ids:
         return out
@@ -193,5 +234,6 @@ def costs(db: Session, jobs: list[PrintJob]) -> dict[int, dict | None]:
             if price is None or density is None:
                 continue
             out[j.id] = _priced(j.filament_used, price, density, _first_number(s.get("filament_diameter")), source="3mf",
-                                filename=v.filename, bundle_id=v.bundle_id, version_id=v.id, version=v.version)
+                                filename=v.filename, bundle_id=v.bundle_id, version_id=v.id, version=v.version,
+                                estimated=estimated(j))
     return out

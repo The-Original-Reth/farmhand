@@ -3,6 +3,20 @@ import { ChevronRight, Download, FileBox, Trash2 } from "lucide-react";
 import { c, fixed, fs, ui } from "../../theme.js";
 import { monoText, uiText } from "../../styles.js";
 
+// A filament figure (already formatted), with "≈" in front and "estimated" under it when it's the slicer's estimate
+// rather than what the printer measured (a PrusaLink printer's prints)
+export function MaybeEstimated({ estimated, label = "estimated", children }) {
+  if (!estimated || children === "—") return children;
+  return (
+    <>
+      ≈ {children}
+      <span data-testid="filament-estimated" style={uiText(10, c.textFaint, { display: "block" })}>
+        {label}
+      </span>
+    </>
+  );
+}
+
 export function Badge({ children, tone = "muted" }) {
   const tones = {
     muted: { bg: c.panelAlt, fg: c.textMuted, border: c.border },

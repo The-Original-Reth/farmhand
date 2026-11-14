@@ -571,6 +571,17 @@ browser only when **Show** asks for it; a Moonraker API key never is.
   background, and every few seconds while the page is open. A print that starts and ends between two looks is
   missed; one whose end wasn't seen is recorded as completed if it was last seen at 99 % or more, else as
   unknown. The printer's total print time is what Farmhand has recorded.
+- **Filament and filament cost, estimated:** PrusaLink doesn't say how much filament a print uses, so Farmhand
+  estimates it from the slicer. It finds the 3MF on this printer that the printed file was sliced from: the version
+  whose stored G-code has the printed file's name, or else one whose name matches (PrusaSlicer's Core One names such
+  as `Sloth_0.4n_0.16mm_PLA_COREONE_8h59m.bgcode` count). If more than one version matches, it uses the newest one
+  uploaded before the print started. It reads the slicer's **filament used** from that version's stored G-code
+  (once per print; nothing more is asked of the printer). A completed print gets all of it, and a print that
+  stopped part way gets the share it reached. For an older print that didn't record how far it got, the share is its
+  print time out of the time the printer expected. The print is then weighed and costed from that 3MF, as above.
+  These figures show as **≈ … estimated** in the print history and on the Farm cost page. A print has no filament
+  figure when no 3MF matches, when the matching 3MF has no G-code kept, or when the kept G-code is a different
+  slicing (e.g. `…_3h0m` printed but `…_8h59m` kept). A 3MF added later is picked up at the next look.
 - **Maintenance:** kept in Farmhand (PrusaLink has nowhere to keep it), counted against the recorded print
   time. No filament reminders: PrusaLink doesn't report filament use.
 
@@ -696,7 +707,9 @@ a month or year with the **‹ ›** arrows or the list):
   kWh and $, blank where the page shows "—".
 - Filament: every print in the printers' histories that used filament, in the month it started, weighed and costed
   as in its print history row. Prints with no known weight or price are left out of those figures (hover to see
-  how many).
+  how many). A PrusaLink printer's filament is the slicer's estimate (see "PrusaLink printers"), so figures that
+  include it show **≈** and **estimated**, or **partly estimated** when they also include measured prints. The CSV
+  has a **Prints with estimated filament** column.
 - Electricity: each printer's power meter, idle time included, at each month's price per kWh from the **Power**
   page. Retired printers aren't counted.
 - **Monthly records:** when a month ends, its table is saved on the server as a CSV (the same as **Download CSV**

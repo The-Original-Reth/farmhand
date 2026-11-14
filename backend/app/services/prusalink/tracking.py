@@ -6,6 +6,9 @@ current job as a PrintJob, updates it while it runs, and closes it once it has e
 entirely between two looks is missed, and one whose end wasn't seen is closed as "completed" if it was last seen at
 99 % or more, else as "unknown". The printer's total print time (what the 1500-hour service and maintenance count
 against) is the sum of the prints Farmhand has recorded.
+
+PrusaLink says nothing of the filament a print uses: each print's filament is estimated from the 3MF it was sliced
+from (filament_estimate.py), and says so.
 """
 from __future__ import annotations
 
@@ -17,7 +20,7 @@ from sqlalchemy.orm import Session
 from ...models import Printer, PrintJob
 from ...timeutil import as_utc
 from ..printer_service import record_sync_error, record_sync_ok
-from . import client
+from . import client, filament_estimate
 from .client import PrusaLinkError, job_file_name
 
 # PrusaLink's job states, as Farmhand's history says them
@@ -36,13 +39,16 @@ def poll(db: Session, printer: Printer) -> tuple[dict, dict | None]:
         record_sync_error(db, printer, e)
         raise
     now = dt.datetime.now(dt.timezone.utc)
-    _record(db, printer, current, now)
+    touched = _record(db, printer, current, now)
+    filament_estimate.update(db, printer, touched)
     record_sync_ok(printer, totals(db, printer.id), now)  # the totals of the prints Farmhand has recorded so far
     db.commit()
     return status, current
 
 
-def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetime) -> None:
+def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetime) -> list[PrintJob]:
+    """Bring the history up to date with what the printer shows now. Returns the prints that changed."""
+    touched: list[PrintJob] = []
     link = printer.prusalink_row
     job_id = current.get("id") if current else None
     status = JOB_STATUS.get(current.get("state"), "in_progress") if current else None
@@ -53,11 +59,12 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
         if row.end_time is None:
             row.status = "completed" if (link.last_progress or 0) >= 99 else "unknown"
             row.end_time = now
+            touched.append(row)
         link.current_job_id = link.current_print_id = link.last_progress = None
         row = None
     if current is None:
-        _close_left_open(db, printer.id, None, now)
-        return
+        touched += _close_left_open(db, printer.id, None, now)
+        return touched
 
     file = current.get("file") or {}
     if row is None:
@@ -71,9 +78,9 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
         db.add(row)
         db.flush()
     link.current_job_id, link.current_print_id = job_id, row.id
-    _close_left_open(db, printer.id, row.id, now)
+    touched += _close_left_open(db, printer.id, row.id, now)
     if row.end_time is not None:
-        return  # over, and the printer is still showing it until someone clears it
+        return touched  # over, and the printer is still showing it until someone clears it
 
     meta = file.get("meta") if isinstance(file.get("meta"), dict) else {}
     remaining = current.get("time_remaining")
@@ -81,15 +88,22 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
     row.status = status
     row.print_duration = float(current.get("time_printing") or 0)
     row.total_duration = max(0.0, (now - as_utc(row.start_time)).total_seconds())
+    kept = {k: v for k, v in (row.job_metadata or {}).items() if k in _KEPT}
     row.job_metadata = {
-        **meta,
+        **meta, **kept,
         "path": file.get("path"),
         "estimated_time": row.print_duration + float(remaining) if isinstance(remaining, (int, float)) else meta.get("estimated_time"),
+        "progress": current.get("progress"),  # the last seen: how much of its filament an unfinished print used
     }
     row.synced_at = now
     link.last_progress = current.get("progress")
     if status != "in_progress":
         row.end_time = now
+    return [*touched, row]
+
+
+# What a print's metadata keeps from one look to the next: its filament estimate (filament_estimate.py)
+_KEPT = (filament_estimate.KEY, "filament_estimated", "filament_total", "filament_weight_total")
 
 
 def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> PrintJob | None:
@@ -105,12 +119,15 @@ def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> 
     return next((r for r in rows if not filename or not r.filename or r.filename == filename), None)
 
 
-def _close_left_open(db: Session, printer_id: int, keep: int | None, now: dt.datetime) -> None:
+def _close_left_open(db: Session, printer_id: int, keep: int | None, now: dt.datetime) -> list[PrintJob]:
     """A PrusaLink printer runs one print at a time: any other print on record as still running (one brought in by
     Load all that ended before this Farmhand saw it) is over, and closed as "unknown"."""
+    closed = []
     for row in db.scalars(select(PrintJob).where(PrintJob.printer_id == printer_id, PrintJob.end_time.is_(None))):
         if row.id != keep:
             row.status, row.end_time = "unknown", now
+            closed.append(row)
+    return closed
 
 
 def totals(db: Session, printer_id: int) -> dict:
