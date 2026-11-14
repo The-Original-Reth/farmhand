@@ -104,8 +104,8 @@ def test_the_farm_cost_order_is_printer_ids(client):
 def test_the_tools_page_links_are_kept_in_order_and_only_web_addresses(client):
     c, _ = client
     first = c.get("/settings/config").json()["config"]["preferences"]["tool_links"]
-    assert [l["url"] for l in first][:2] == ["https://canbus.esoterical.online/", "https://usb.esoterical.online/"]
-    assert len(first) == 13  # the Klipper defaults, until a list is saved
+    assert [l["url"] for l in first][:2] == ["https://docs.kalico.gg/", "https://usb.esoterical.online/"]
+    assert len(first) == 16  # the defaults, until a list is saved
     sent = [
         {"name": " Klipper docs ", "url": " https://www.klipper3d.org/ "},
         {"name": "", "url": "http://192.168.10.50:7125"},

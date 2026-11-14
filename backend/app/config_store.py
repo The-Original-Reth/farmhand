@@ -37,21 +37,24 @@ DEFAULT_APPEARANCE = {"scheme": "farmhand", "contrast": 0, "font": "archivo", "s
 # farm_cost_order: the Farm cost page's printers in the order they were dragged into, as printer ids (printers not in
 # it come after, by name)
 # tool_links: the websites listed on the Tools page, in the order given, each {"name", "url"} (url http or https).
-# Until a list is saved, the Klipper ones below are shown; a list saved empty stays empty.
+# Until a list is saved, the ones below are shown (the live farm's list, 2026-11-14); a list saved empty stays empty.
 DEFAULT_TOOL_LINKS = [
-    {"name": "CANBus guide (Esoterical)", "url": "https://canbus.esoterical.online/"},
+    {"name": "Kalico documentation", "url": "https://docs.kalico.gg/"},
     {"name": "USB guide (Esoterical)", "url": "https://usb.esoterical.online/"},
-    {"name": "A better print_start macro", "url": "https://abetterprintstartmacro.com/"},
+    {"name": "CANBus guide (Esoterical)", "url": "https://canbus.esoterical.online/"},
     {"name": "Klipper TMC Autotune", "url": "https://github.com/andrewmcgr/klipper_tmc_autotune"},
     {"name": "Klippain Shake&Tune", "url": "https://github.com/Frix-x/klippain-shaketune"},
+    {"name": "A better print_start macro", "url": "https://abetterprintstartmacro.com/"},
     {"name": "Klippy Detective", "url": "https://klippydetective.com/"},
     {"name": "Energy usage monitoring (Voron mods)", "url": "https://mjonuschat.github.io/voron-mods/docs/guides/energy-usage-monitoring-tracking/"},
-    {"name": "Kalico documentation", "url": "https://docs.kalico.gg/"},
+    {"name": "Klipper go2rtc camera streaming", "url": "https://mjonuschat.github.io/voron-mods/docs/guides/go2rtc-camera-streaming/"},
     {"name": "KIAUH (Klipper Installation And Update Helper)", "url": "https://github.com/dw-0/kiauh"},
     {"name": "Klipper documentation", "url": "https://www.klipper3d.org/"},
     {"name": "KlipperScreen documentation", "url": "https://klipperscreen.readthedocs.io/en/latest/"},
     {"name": "Mainsail documentation", "url": "https://docs.mainsail.xyz/"},
     {"name": "Moonraker Timelapse", "url": "https://github.com/mainsail-crew/moonraker-timelapse"},
+    {"name": "Cartographer3D", "url": "https://docs.cartographer3d.com/"},
+    {"name": "Farmhand plugin", "url": "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/hello"},
 ]
 # The price of electricity, in $ per kWh, as set on the Power page:
 #   energy_price_per_kwh: the average cost as it is now; None = not set
