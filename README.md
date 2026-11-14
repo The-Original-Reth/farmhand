@@ -398,9 +398,9 @@ on the Plugins page, YouTube is in the menu after Monitor (see "Stream")
 (an address without `https://` gets it added); each line has **Edit** and **Delete** at its end, and its handle on
 the left drags it to another place. Each change is saved at once. The list is kept on the server
 with the other settings, so every browser sees the same one. It starts out with Klipper guides and tools (the
-Esoterical CANBus and USB guides, A better print_start macro, TMC Autotune, Shake&Tune, Klippy Detective,
-energy usage monitoring, KIAUH, Moonraker Timelapse, and the Kalico, Klipper, KlipperScreen and Mainsail
-documentation); change them like any other.
+Kalico documentation, the Esoterical USB and CANBus guides, TMC Autotune, Shake&Tune, A better print_start macro,
+Klippy Detective, energy usage monitoring, go2rtc camera streaming, KIAUH, the Klipper, KlipperScreen and Mainsail
+documentation, Moonraker Timelapse, Cartographer3D, and Farmhand's example plugin); change them like any other.
 
 **Settings** — under the **Farmhand** heading: connecting a NAS (SMB or NFS) and choosing where STL, 3MF and project
 files go (see "Network storage"), and where a copy of Farmhand's settings and records is kept. Then a heading for each
