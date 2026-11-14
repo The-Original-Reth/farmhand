@@ -21,6 +21,8 @@ const normalizePlugin = (p) => ({
   onlyFromAddress: p.only_from_address,
   needsToken: !!p.needs_token,
   page: p.page || null,
+  // files can be sent to it from Farmhand ("Send to <label>"): { label, path, kinds: ["stl", "obj", "3mf"] } | null
+  sendFiles: p.manifest?.send_files || null,
   health: {
     state: p.health?.state || "unknown",
     lastError: p.health?.last_error || null,

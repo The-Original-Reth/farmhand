@@ -4,6 +4,7 @@ Low-level .3mf (zip) access shared by every slicer-specific parser.
 A .3mf file is a standard zip archive. Different slicers put their config
 dump in different places inside it:
   - PrusaSlicer / PrusaSlicer BOSS: Metadata/Slic3r_PE.config ("; key = value" lines)
+  - PrusaSlicer 3.0 / BOSS 3.0:     Metadata/PrusaSlicer3_project.json (JSON, a project's printer groups)
   - OrcaSlicer / Bambu Studio:      Metadata/project_settings.config (JSON), and
                                      3D/3dmodel.model's <metadata> names the app
                                      ("Application", plus "OrcaSlicer" in Orca's)
@@ -26,7 +27,9 @@ THUMBNAIL_CANDIDATES = [
 CONFIG_CANDIDATES = [
     "Metadata/Slic3r_PE.config",
     "Metadata/project_settings.config",
+    "Metadata/PrusaSlicer3_project.json",
 ]
+PRUSASLICER3_CONFIG = "Metadata/PrusaSlicer3_project.json"
 ORCA_CONFIG = "Metadata/project_settings.config"
 MODEL_MEMBER = "3D/3dmodel.model"
 _MODEL_META_RE = re.compile(r'<metadata\s+name="([^"]+)"\s*>([^<]*)</metadata>')
@@ -94,6 +97,8 @@ def detect_slicer_family(raw: RawThreeMF) -> str:
     """
     if not raw.config_text:
         return "unknown"
+    if raw.config_member == PRUSASLICER3_CONFIG:
+        return "prusaslicer3"
     if raw.config_member == ORCA_CONFIG:
         meta = raw.model_metadata
         if "OrcaSlicer" in meta or meta.get("Application", "").lower().startswith("orcaslicer"):

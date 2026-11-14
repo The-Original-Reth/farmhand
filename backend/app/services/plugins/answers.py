@@ -39,6 +39,9 @@ def _active(db: Session) -> list[Printer]:
 def _printer(p: Printer) -> dict:
     return {
         "id": p.id, "name": p.name, "kind": p.kind, "connection_type": p.connection_type,
+        # its printer profiles (the slicer presets its 3MFs were sliced with), and the one the operator made its default
+        "printer_profiles": sorted(s.name for s in p.sub_printers),
+        "default_printer_profile": next((s.name for s in p.sub_printers if s.id == p.default_sub_printer_id), None),
         "addresses": {
             "wired_ip": p.wired_ip, "wireless_ip": p.wireless_ip,
             "moonraker_url": p.moonraker_url if p.connection_type == "moonraker" else None,

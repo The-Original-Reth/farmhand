@@ -25,6 +25,7 @@ import { MODEL_SORTS, sortModelRows } from "./modelSort.js";
 import { nameCollator } from "../lib/order.js";
 import { NotesSection } from "../notes/NotesSection.jsx";
 import { plural } from "../lib/format.js";
+import { modelCandidates, modelKind, SendButton, SendSeveralButton } from "../plugins/sendFiles.jsx";
 
 function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleLabel = "Upload 3MF" }) {
   return (
@@ -176,12 +177,15 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
               Redraw previews
             </button>
           </div>
-          <UploadBar
-            onUploadStl={() => setUploadModal("stl")}
-            onUploadBundle={() => setUploadModal("3mf")}
-            onUploadGcode={bundles.length ? () => setUploadModal("gcode") : null}
-            onScan={() => setUploadModal("scan")}
-          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <SendSeveralButton testId="models-send" size={13} candidates={modelCandidates(sourceModels)} />
+            <UploadBar
+              onUploadStl={() => setUploadModal("stl")}
+              onUploadBundle={() => setUploadModal("3mf")}
+              onUploadGcode={bundles.length ? () => setUploadModal("gcode") : null}
+              onScan={() => setUploadModal("scan")}
+            />
+          </div>
         </div>
 
         {sorted.length === 0 && searching ? (
@@ -284,6 +288,7 @@ export function ModelsSection({ path, setPath, compareSelection, toggleCompareSe
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <SectionLabel>Model file</SectionLabel>
           <div style={{ display: "flex", gap: 8 }}>
+            {hasFile && <SendButton testId="model-send" fileRef={`model:${model.id}`} kind={modelKind(model)} style={{ marginBottom: 10 }} />}
             {hasFile && (
               <button
                 data-testid="stl-new-version"

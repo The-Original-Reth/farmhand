@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { c, fixed, fs, ui } from "./theme.js";
 import { monoText } from "./styles.js";
 import { API_BASE, errorText } from "./api.js";
@@ -19,6 +19,7 @@ import { ToolsSection } from "./tools/ToolsSection.jsx";
 import { PluginsSection } from "./plugins/PluginsSection.jsx";
 import { PluginPage } from "./plugins/PluginPage.jsx";
 import { usePlugins } from "./plugins/usePlugins.js";
+import { SendFilesContext, sendPath } from "./plugins/sendFiles.jsx";
 import { AppearancePage, Crumb, FullPageMessage, LoadingPage } from "./shell/pages.jsx";
 import { Sidebar } from "./shell/Sidebar.jsx";
 import { useCompare } from "./shell/useCompare.js";
@@ -26,7 +27,7 @@ import { PLUGIN_SECTION, pluginSection, useNavigation } from "./shell/useNavigat
 import { useSavedSettings } from "./shell/useSavedSettings.js";
 
 // The page of the section open now
-function SectionPage({ section, nav, compare, settings, plugins }) {
+function SectionPage({ section, nav, compare, settings, plugins, pluginTarget }) {
   const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
   const pluginId = section.match(PLUGIN_SECTION)?.[1];
@@ -35,6 +36,8 @@ function SectionPage({ section, nav, compare, settings, plugins }) {
       <PluginPage
         pluginId={pluginId}
         plugin={plugins.withPages.find((p) => p.id === pluginId)}
+        // files sent to it ("Send to <plugin>"): its page opened at its send_files path, with them in the address
+        target={pluginTarget?.id === pluginId ? pluginTarget : null}
         loaded={plugins.loaded}
         onRetry={plugins.refresh}
         onOpenPlugins={() => nav.goTo("plugins")}
@@ -90,6 +93,7 @@ function FarmhandApp() {
   // Held HERE (not in a provider above) so that a change of look re-renders everything below
   const settings = useSavedSettings();
   const plugins = usePlugins(); // for the menu's plugin pages and the Plugins page
+  const [pluginTarget, setPluginTarget] = useState(null); // { id, path, at }: files just sent to a plugin's page
   // an unsaved look is undone when you leave the Appearance page
   const nav = useNavigation({
     printers,
@@ -98,8 +102,24 @@ function FarmhandApp() {
     projects,
     bundleTitle,
     pluginName: (id) => plugins.plugins.find((p) => p.id === id)?.page?.menu || id,
-    onLeave: (to) => to !== "appearance" && settings.appearance.discard(),
+    onLeave: (to) => {
+      setPluginTarget(null); // a plugin's page opened from the menu starts at its own page again
+      if (to !== "appearance") settings.appearance.discard();
+    },
   });
+  // the plugins files can be sent to, and sending them: the plugin's page, at its send_files path with the files' refs
+  const senders = plugins.withPages
+    .filter((p) => p.sendFiles)
+    .map((p) => ({ id: p.id, name: p.name, label: p.sendFiles.label, kinds: p.sendFiles.kinds, path: p.sendFiles.path }));
+  const sendFiles = {
+    senders,
+    send: (id, refs) => {
+      const sender = senders.find((s) => s.id === id);
+      if (!sender || !refs.length) return;
+      nav.goTo(pluginSection(id));
+      setPluginTarget({ id, path: sendPath(sender.path, refs), at: Date.now() });
+    },
+  };
   const compare = useCompare(versionIndex);
 
   if (loading) return <LoadingPage />;
@@ -114,6 +134,7 @@ function FarmhandApp() {
 
   return (
     <EnergyPricesContext.Provider value={settings.energy.prices}>
+    <SendFilesContext.Provider value={sendFiles}>
     <div
       style={{
         ...ui,
@@ -162,11 +183,11 @@ function FarmhandApp() {
         {PLUGIN_SECTION.test(nav.section) ? (
           // a plugin's page fills the space under the top bar, and scrolls itself
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />
+            <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} pluginTarget={pluginTarget} />
           </div>
         ) : (
           <div style={{ padding: 24, paddingBottom: compare.selection.length > 0 ? 80 : 24, overflow: "auto", flex: 1 }}>
-            <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />
+            <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} pluginTarget={pluginTarget} />
           </div>
         )}
       </div>
@@ -179,6 +200,7 @@ function FarmhandApp() {
         </Modal>
       )}
     </div>
+    </SendFilesContext.Provider>
     </EnergyPricesContext.Provider>
   );
 }

@@ -1015,7 +1015,9 @@ Plugins are programs other people write that add something to Farmhand (the live
 each running in its own Docker container with its own storage, on Farmhand's machine or another one on the farm's
 network, so a Farmhand update or crash doesn't touch them and they can't touch Farmhand's files. A plugin reads what
 it needs through Farmhand's **plugin API**, with a token of its own, and only what the operator allowed when adding it
-(its printers, their cameras, what they're printing, Farmhand's colours). Nothing can be changed through it yet.
+(its printers, their cameras, what they're printing, Farmhand's colours, the files sent to it). The only changes a
+plugin can make are the ones a slicer needs, each granted separately: filing a 3MF it sliced, and sending a G-code to a
+printer.
 Writing one: see [docs/plugins.md](docs/plugins.md), and start from [plugins/hello](plugins/hello/README.md), a small
 example plugin (each printer and its print's progress, live) made to be copied.
 
@@ -1042,6 +1044,22 @@ working), or remove it (its container stays where it runs).
 A plugin with a page of its own gets an entry in the menu, below Farmhand's own pages (Stream's goes after Monitor,
 where Farmhand's own Stream page was); its page shows inside Farmhand, in Farmhand's colours,
 passed on from wherever the plugin runs. When the plugin isn't running, the page says so, with why.
+
+**Sending files to a slicer plugin** ([Prusaslicer - Web Boss](https://github.com/The-Original-Reth/Prusaslicer-Web-Boss),
+PrusaSlicer BOSS in a web page, is one). Once one is added, **Send to Slicer** (the plugin names the button) is on a
+model's page, on each 3MF version that still has its file, and on a project's own STLs and 3MFs; **Send to Slicer…** on
+the Models list and on a project's page asks which ones (every model; or a project's own STLs and 3MFs and the models and
+3MFs it uses). STEP models aren't offered. Sending opens the plugin's page with those files, where you pick the printer
+(an STL needs one; a 3MF brings its own) and open the slicer. From there:
+- **Send to <printer>**: the plugin hands Farmhand the G-code, and Farmhand sends it and starts it as it does its own
+  (never while the printer is busy; a PrusaLink print is added to its history).
+- **Save to Farmhand**: the 3MF (with its G-code, when it's sliced and up to date) is filed next to what it was sliced
+  from, named the Farmhand way (`Frog ver 1.3mf`, its G-code `Frog ver 1.gcode`): re-sliced from a 3MF for the printer
+  it's on, it's that 3MF's next version; from one model (or a 3MF, for another printer), a new 3MF of that model; from
+  several models, one 3MF sliced from all of them plus a **new project** (named as you choose) with those models and
+  the 3MF; from a project's own files, a 3MF of that project's own (its next version when re-sliced from one for the
+  same printer). Files from two projects at once can't be saved: the plugin says so. The plugin shows where it will
+  go before it's saved.
 
 The plugin API is answered on the API's port 4545 (a plugin may be on another machine), never through the web page's
 port 3636. Every call needs a plugin's token, and by default a plugin's token is taken only from the plugin's own

@@ -39,6 +39,8 @@ class Caller:
     token_hash: str = ""
     # Its address, when the plugin API takes its token only from there ("only accept calls from its address")
     only_from: str | None = None
+    # Where Farmhand reaches it
+    address: str | None = None
 
 
 def hash_token(token: str) -> str:
@@ -166,7 +168,8 @@ def caller(db: Session, token: str | None) -> Caller | None:
         db.commit()
     link = row.plugin.connection
     only_from = link.address if link is not None and link.only_from_address else None
-    return Caller(row.plugin_id, frozenset(row.permissions or []), row.token_hash, only_from)
+    return Caller(row.plugin_id, frozenset(row.permissions or []), row.token_hash, only_from,
+                  link.address if link is not None else None)
 
 
 def still_taken(db: Session, token_hash: str, permission: str) -> bool:

@@ -49,8 +49,11 @@ previews worker) are `periodic.PeriodicWorker`s, started and stopped by `backgro
 the folders has is brought in only by Load all settings or Scan projects, never in the background.
 
 **Plugins** (`docs/plugins.md`): other people's containers, on this machine or another on the LAN, read Farmhand only
-through the read-only, versioned plugin API (`routers/plugin_api.py`, `/plugin-api/v1/` on the API port, Bearer token,
-a permission per endpoint, optionally only from the plugin's address, rate-limited per token). Farmhand never starts or
+through the versioned plugin API (`routers/plugin_api.py`, `/plugin-api/v1/` on the API port, Bearer token,
+a permission per endpoint, optionally only from the plugin's address, rate-limited per token). It only reads, except a
+slicer plugin's `library:write` (filing its 3MF) and `prints:send` (a G-code to a printer), in `services/plugins/library.py`;
+its manifest's `send_files` puts **Send to <label>** on models, 3MFs and project files (`src/plugins/sendFiles.jsx`), which
+opens its page with the files' refs. Farmhand never starts or
 stops them: the Plugins page (`routers/plugins.py`, `src/plugins/`) adds one by its address (`remote.py` fetches its
 `/manifest`), and `health.py`'s worker asks each every 30 s. Where a plugin runs is the `plugin_connection` table. Its
 page is an iframe on `/plugins/<id>/`, which nginx sends to the API's `/plugins/<id>/page/` and `pages.py` passes on to

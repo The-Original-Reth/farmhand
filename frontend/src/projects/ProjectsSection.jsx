@@ -17,6 +17,7 @@ import { ThreemfActions, ThreemfFiles } from "./ThreemfSection.jsx";
 import { AddPrinterButton, ProjectPrinters } from "./ProjectPrinters.jsx";
 import { BomActions, BomList } from "./BomSection.jsx";
 import { plural } from "../lib/format.js";
+import { projectCandidates, SendSeveralButton } from "../plugins/sendFiles.jsx";
 
 // The Projects page: the list of projects, or one project's own page
 // onOpenModel(modelId) / onOpenPrinter(printerId): that model's or printer's own page
@@ -118,7 +119,7 @@ const PROJECT_SECTIONS = [
 ];
 
 function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
-  const { projects, refresh } = useData();
+  const { projects, sourceModels, bundles, refresh } = useData();
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // null | "doc-upload" | "cad-upload" | "stl-add" | "stl-upload" | "threemf-add" | "threemf-upload" | "printer-add" | "part-add" | "bom-upload"
@@ -182,6 +183,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
           {project.name}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <SendSeveralButton testId="project-send" candidates={projectCandidates(project, sourceModels, bundles)} />
           <button data-testid="project-rename" onClick={() => setRenaming(true)} style={toolButton(12)}>
             <Pencil size={12} />
             Rename

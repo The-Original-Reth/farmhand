@@ -15,6 +15,13 @@ PERMISSIONS = {
     "cameras:read": "see your printers' cameras and the addresses to stream them from",
     "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
     "farm:read": "see Farmhand's colours and the farm's time zone",
+    # A slicer plugin (library.py): the files sent to it, the 3MF it slices from them, the G-code it makes
+    "library:read": "open the models, 3MFs and project files you send it from Farmhand (only those you send it)",
+    "library:write": "save the 3MFs it slices into Farmhand, next to the files they were sliced from: as a new 3MF or "
+    "its next version, in Models or in the project the files came from, and a new project for a 3MF sliced from "
+    "several models",
+    "prints:send": "send the G-code it makes to one of your printers and start printing it (never while the printer "
+    "is busy)",
     # Only for a Stream plugin taking over from the Stream page Farmhand used to have; handed over once (handover.py)
     "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: "
     "its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
@@ -63,6 +70,7 @@ def check(raw) -> dict:
         "page": _page(raw.get("page")),
         "settings_page": _path(raw, "settings_page"),
         "health": _path(raw, "health"),
+        "send_files": _send_files(raw.get("send_files"), permissions, raw.get("page")),
     }
 
 
@@ -109,3 +117,28 @@ def _page(raw) -> dict | None:
     named = {"page menu": raw.get("menu"), "page icon": raw.get("icon"), "page path": raw.get("path", "/")}
     return {"menu": _text(named, "page menu", 40, required=True), "icon": _text(named, "page icon", 40),
             "path": _path(named, "page path")}
+
+
+SEND_KINDS = ("stl", "obj", "3mf")  # what Farmhand's "Send to <plugin>" offers to send (docs/plugins.md)
+
+
+def _send_files(raw, permissions: list[str], page) -> dict | None:
+    """
+    {label, path, kinds}: a "Send to <label>" Farmhand puts on the models, 3MFs and project files of those kinds,
+    which opens the plugin's page at `path` with the files' refs (?file=model:12&file=3mf:40...). Needs library:read,
+    to open them.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("The plugin's send_files must be an object, like {\"label\": \"Slicer\", \"path\": \"/open\"}.")
+    if page is None:
+        raise ValueError("A plugin that files can be sent to (send_files) needs a page: that's where they open.")
+    if "library:read" not in permissions:
+        raise ValueError("A plugin that files can be sent to (send_files) must ask for library:read, to open them.")
+    named = {"send_files label": raw.get("label"), "send_files path": raw.get("path", "/")}
+    kinds = raw.get("kinds", list(SEND_KINDS))
+    if not isinstance(kinds, list) or not kinds or any(k not in SEND_KINDS for k in kinds):
+        raise ValueError(f"The plugin's send_files kinds must be a list of {', '.join(SEND_KINDS)}.")
+    return {"label": _text(named, "send_files label", 40, required=True), "path": _path(named, "send_files path"),
+            "kinds": list(dict.fromkeys(kinds))}

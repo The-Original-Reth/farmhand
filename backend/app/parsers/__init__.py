@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import orcaslicer, prusaslicer
+from . import orcaslicer, prusaslicer, prusaslicer3
 from .prusaslicer import ParsedBundle
 from .threemf import RawThreeMF, detect_slicer_family, read_3mf
 
@@ -8,6 +8,7 @@ __all__ = ["ParsedBundle", "RawThreeMF", "parse_3mf"]
 
 _PARSERS = {
     "prusaslicer": prusaslicer.parse,
+    "prusaslicer3": prusaslicer3.parse,
     "orcaslicer": orcaslicer.parse,
     "bambustudio": lambda raw: orcaslicer.parse(raw, "bambustudio"),
 }
@@ -24,7 +25,7 @@ def parse_3mf(path: str) -> ParsedBundle:
         raise ValueError(
             f"No slicer config found in {path!r} (checked: "
             f"{', '.join(prusaslicer_and_friends_paths())}) — is this a "
-            "valid PrusaSlicer, OrcaSlicer or Bambu Studio .3mf?"
+            "valid PrusaSlicer (2.x or 3.0), OrcaSlicer or Bambu Studio .3mf?"
         )
     family = detect_slicer_family(raw)
     parser = _PARSERS.get(family)

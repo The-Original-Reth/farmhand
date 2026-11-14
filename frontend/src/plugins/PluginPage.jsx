@@ -9,8 +9,9 @@ const theme = () => ({ mode: look.mode, colors: { ...c }, font: ui.fontFamily })
 
 // A plugin's own page, filling the space under Farmhand's top bar: an iframe on /plugins/<id>/, which the web server
 // passes on to the plugin wherever it runs. It's given Farmhand's colours once its farmhand-plugin.js says it's ready,
-// and again whenever they change. A plugin that isn't answering shows why instead.
-export function PluginPage({ pluginId, plugin, loaded, onRetry, onOpenPlugins }) {
+// and again whenever they change. A plugin that isn't answering shows why instead. `target` ({ path, at }): files were
+// just sent to it, so its page opens at that path (its send_files path, with their refs) instead of its own.
+export function PluginPage({ pluginId, plugin, loaded, onRetry, onOpenPlugins, target }) {
   const frame = useRef(null);
   const sent = useRef("");
   const send = (force = false) => {
@@ -59,9 +60,9 @@ export function PluginPage({ pluginId, plugin, loaded, onRetry, onOpenPlugins })
   return (
     <iframe
       ref={frame}
-      key={plugin.id}
+      key={`${plugin.id}:${target?.at || ""}`}
       title={plugin.name}
-      src={pluginPageUrl(plugin.id, plugin.page?.path || "/")}
+      src={pluginPageUrl(plugin.id, target?.path || plugin.page?.path || "/")}
       onLoad={() => send(true)}
       // no navigating Farmhand's own page away; everything else a page needs
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"

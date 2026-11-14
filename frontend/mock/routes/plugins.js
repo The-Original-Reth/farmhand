@@ -9,7 +9,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { paletteFor } from "../../src/appearance.js";
-import { HttpError, NO_MOONRAKER } from "../core.js";
+import { HttpError, NO_MOONRAKER, notInMockup } from "../core.js";
 
 const API_VERSION = "1";
 const PERMISSIONS = {
@@ -17,6 +17,9 @@ const PERMISSIONS = {
   "cameras:read": "see your printers' cameras and the addresses to stream them from",
   "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
   "farm:read": "see Farmhand's colours and the farm's time zone",
+  "library:read": "open the models, 3MFs and project files you send it from Farmhand (only those you send it)",
+  "library:write": "save the 3MFs it slices into Farmhand, next to the files they were sliced from: as a new 3MF or its next version, in Models or in the project the files came from, and a new project for a 3MF sliced from several models",
+  "prints:send": "send the G-code it makes to one of your printers and start printing it (never while the printer is busy)",
   "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
@@ -25,6 +28,8 @@ const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_net
 const RTSP = ["-rtsp_transport", "tcp", "-timeout", "10000000"];
 const NO_TOKEN = "This needs the plugin's token, sent as \"Authorization: Bearer <token>\" (the FARMHAND_TOKEN it was given).";
 const BAD_TOKEN = "That plugin token isn't valid: it was replaced by a new one, the plugin was removed or turned off, or it was never made here. The operator can give the plugin a new token on Farmhand's Plugins page.";
+
+const SEND_KINDS = ["stl", "obj", "3mf"]; // what "Send to <plugin>" offers to send
 
 // The manifest, checked as services/plugins/manifest.py does (the same messages)
 function checkManifest(m) {
@@ -55,10 +60,20 @@ function checkManifest(m) {
     if (typeof m.page !== "object" || Array.isArray(m.page)) bad("The plugin's page must be an object, like {\"menu\": \"Stream\", \"path\": \"/\"}.");
     page = { menu: text(m.page, "menu", 40, "page menu", true), icon: text(m.page, "icon", 40, "page icon"), path: path(m.page.path ?? "/", "page path") };
   }
+  let sendFiles = null;
+  if (m.send_files != null) {
+    const sf = m.send_files;
+    if (typeof sf !== "object" || Array.isArray(sf)) bad("The plugin's send_files must be an object, like {\"label\": \"Slicer\", \"path\": \"/open\"}.");
+    if (m.page == null) bad("A plugin that files can be sent to (send_files) needs a page: that's where they open.");
+    if (!perms.includes("library:read")) bad("A plugin that files can be sent to (send_files) must ask for library:read, to open them.");
+    const kinds = sf.kinds ?? SEND_KINDS;
+    if (!Array.isArray(kinds) || !kinds.length || kinds.some((k) => !SEND_KINDS.includes(k))) bad(`The plugin's send_files kinds must be a list of ${SEND_KINDS.join(", ")}.`);
+    sendFiles = { label: text(sf, "label", 40, "send_files label", true), path: path(sf.path ?? "/", "send_files path"), kinds: [...new Set(kinds)] };
+  }
   return {
     id: m.id, name, version: m.version, farmhand_api: m.farmhand_api, port: m.port,
     author: text(m, "author", 120), homepage: text(m, "homepage", 300), permissions: [...new Set(perms)],
-    page, settings_page: path(m.settings_page, "settings_page"), health: path(m.health, "health"),
+    page, settings_page: path(m.settings_page, "settings_page"), health: path(m.health, "health"), send_files: sendFiles,
   };
 }
 
@@ -76,6 +91,12 @@ const ON_THE_NETWORK = {
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
     homepage: "https://example.com/shelf-clock", page: { menu: "Shelf clock", path: "/" }, permissions: ["prints:read"], health: "/health",
+  },
+  "http://192.168.10.201:8960": {
+    id: "web-boss", name: "Prusaslicer - Web Boss", version: "0.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
+    homepage: "https://github.com/The-Original-Reth/Prusaslicer-Web-Boss", page: { menu: "Slicer", icon: "slicer", path: "/farmhand/" },
+    permissions: ["printers:read", "library:read", "library:write", "prints:send"], health: "/farmhand/health",
+    send_files: { label: "Slicer", path: "/farmhand/open", kinds: ["stl", "obj", "3mf"] },
   },
 };
 const UNREACHABLE = (address) => `Farmhand couldn't reach a plugin at ${address} (nothing answered there). Is it running, and is the address right?`;
@@ -270,12 +291,14 @@ export function pluginsRoutes(ctx) {
 
   on("GET", api("/me"), (_p, _b, _q, h) => {
     const p = caller(h);
-    return { plugin_id: p.id, permissions: [...p.permissions].sort(), api_version: API_VERSION };
+    return { plugin_id: p.id, permissions: [...p.permissions].sort(), api_version: API_VERSION, address: p.address ?? `http://${p.id}:${p.manifest.port}` };
   });
   on("GET", api("/printers"), (_p, _b, _q, h) => {
     needs(h, "printers:read");
     return { printers: active().map((p) => ({
       id: p.id, name: p.name, kind: p.kind ?? null, connection_type: kindOf(p),
+      printer_profiles: farm.subPrinters.filter((s) => s.printer_id === p.id).map((s) => s.name).sort(),
+      default_printer_profile: farm.subPrinters.find((s) => s.id === p.defaultSubPrinterId)?.name ?? null,
       addresses: {
         wired_ip: p.wired_ip ?? null, wireless_ip: p.wireless_ip ?? null,
         moonraker_url: p.prusalink ? null : moonrakerUrl(p), mainsail_url: p.prusalink ? null : mainsailUrl(p),
@@ -344,6 +367,86 @@ export function pluginsRoutes(ctx) {
       youtube: { client: null, refresh_token: null, channel: null, stream_id: null },
       stream_folder: null, handed_over_at: p.streamHandedOverAt,
     };
+  });
+  // A slicer plugin and the library (backend/app/services/plugins/library.py): the files sent to it, described by
+  // their refs, and where a 3MF sliced from them would be filed. The mockup keeps no files, so downloading one, filing
+  // a sliced 3MF and sending a G-code to a printer answer that they need the real backend.
+  const REF = /^(model|3mf):(\d+)$|^(project-stl|project-3mf):(\d+):(\d+)$/;
+  const refsOf = (q) => {
+    const texts = [].concat(q.ref ?? []).filter((t) => String(t).trim());
+    if (!texts.length) throw new HttpError(422, "No file was named: send at least one ref, like model:12.");
+    return [...new Set(texts)].map(found);
+  };
+  const stem = (name) => name.replace(/\.[^.]+$/, "").replace(/\s*ver\s*\d+$/i, "");
+  const found = (text) => {
+    const m = REF.exec(String(text).trim());
+    if (!m) throw new HttpError(422, `"${text}" doesn't name a file in Farmhand. A file is named like model:12, 3mf:40, project-stl:3:7 or project-3mf:3:9.`);
+    const gone = () => { throw new HttpError(404, `${text} isn't in Farmhand any more (it was deleted, or never there).`); };
+    const base = { ref: text, printer_id: null, model_ids: [], bundle_id: null, project_id: null, project_name: null };
+    if (m[1] === "model") {
+      const mdl = farm.models.find((x) => x.id === Number(m[2])) || gone();
+      const kind = mdl.file_type.toLowerCase();
+      return { ...base, kind, name: mdl.name, version: mdl.versions[0]?.version ?? 0, available: mdl.versions.length > 0, sliceable: kind !== "step", model_ids: [mdl.id] };
+    }
+    if (m[1] === "3mf") {
+      const b = farm.bundles.find((x) => x.versions.some((v) => v.id === Number(m[2]))) || gone();
+      const v = b.versions.find((x) => x.id === Number(m[2]));
+      return { ...base, kind: "3mf", name: v.filename, version: v.version, available: !!v.full_files_retained, sliceable: true, printer_id: b.printer_id, model_ids: [...b.source_model_ids], bundle_id: b.id };
+    }
+    const proj = farm.projects.find((x) => x.id === Number(m[4])) || gone();
+    const f = proj[m[3] === "project-stl" ? "stl_files" : "threemf_files"].find((x) => x.id === Number(m[5])) || gone();
+    const kind = m[3] === "project-3mf" ? "3mf" : (/\.obj$/i.test(f.versions[0].filename) ? "obj" : "stl");
+    return { ...base, kind, name: f.versions[0].filename, version: f.versions[0].version, available: true, sliceable: true, printer_id: f.printer_id ?? null, project_id: proj.id, project_name: proj.name };
+  };
+  on("GET", api("/library/files"), (_p, _b, q, h) => {
+    needs(h, "library:read");
+    return { files: refsOf(q) };
+  });
+  on("GET", api("/library/file"), (_p, _b, q, h) => {
+    needs(h, "library:read");
+    refsOf(q);
+    throw notInMockup("Downloading a file");
+  });
+  on("GET", api("/library/sliced/plan"), (_p, _b, q, h) => {
+    needs(h, "library:write");
+    const p = active().find((x) => x.id === Number(q.printer_id)) || (() => { throw new HttpError(404, "Printer not found"); })();
+    const files = refsOf(q);
+    const projects = [...new Map(files.filter((f) => f.project_id).map((f) => [f.project_id, f.project_name])).entries()];
+    if (projects.length > 1) throw new HttpError(422, `These files are from different projects (${projects.map(([, n]) => n).join(", ")}), and a 3MF can be filed in only one. Send files from one project at a time.`);
+    const modelIds = [...new Set(files.flatMap((f) => f.model_ids))];
+    const lone = files.length === 1 ? files[0] : null;
+    const out = (action, name, extra = {}) => {
+      const says = {
+        new_version: `the next version of ${name} on ${p.name}`, new_3mf: `a new 3MF, ${name}, on ${p.name}`,
+        new_3mf_and_project: `a new 3MF, ${name}, on ${p.name}, sliced from ${modelIds.length} models, and a new project, ${extra.project_name}, with those models and the 3MF`,
+        project_3mf: `a new 3MF, ${name}, in the project ${extra.project_name}`, project_3mf_version: `the next version of ${name} in the project ${extra.project_name}`,
+      }[action];
+      return { action, name, printer_id: p.id, printer_name: p.name, model_ids: modelIds, bundle_id: null, project_id: null, project_name: null, file_id: null, ...extra, says: `Saved as ${says}.` };
+    };
+    const typed = q.name ? stem(String(q.name)) : null;
+    if (projects.length) {
+      const [[pid, pname]] = projects;
+      if (lone && lone.ref.startsWith("project-3mf") && lone.printer_id === p.id) return out("project_3mf_version", typed || stem(lone.name), { project_id: pid, project_name: pname });
+      return out("project_3mf", typed || (lone ? stem(lone.name) : pname), { project_id: pid, project_name: pname });
+    }
+    if (lone && lone.bundle_id && lone.printer_id === p.id) return out("new_version", typed || stem(lone.name), { bundle_id: lone.bundle_id });
+    if (!modelIds.length) throw new HttpError(422, "None of these files is a model in Farmhand, so there's nothing to file the 3MF under.");
+    const models = modelIds.map((id) => farm.models.find((m) => m.id === id)).filter(Boolean);
+    if (models.length === 1) return out("new_3mf", typed || stem(lone?.bundle_id ? lone.name : models[0].name));
+    const stems = models.map((m) => stem(m.name));
+    const wanted = String(q.project_name || q.name || (stems.length <= 3 ? stems.join(" + ") : `${stems[0]} + ${stems.length - 1} more`)).split(/\s+/).filter(Boolean).join(" ");
+    const clash = farm.projects.find((x) => x.name.toLowerCase() === wanted.toLowerCase());
+    if (clash) throw new HttpError(422, `There's already a project called ${clash.name}. Choose another name for the new project.`);
+    return out("new_3mf_and_project", typed || wanted, { project_name: wanted });
+  });
+  on("POST", api("/library/sliced"), (_p, _b, _q, h) => {
+    needs(h, "library:write");
+    throw notInMockup("Saving a sliced 3MF");
+  });
+  on("POST", api("/printers/:id/print"), ({ id }, _b, _q, h) => {
+    needs(h, "prints:send");
+    printer(id);
+    throw notInMockup("Sending a G-code to a printer");
   });
   return { pluginPageRequest };
 }

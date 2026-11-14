@@ -12,6 +12,7 @@ import { SettingsViewer } from "../compare/SettingsBrowser.jsx";
 import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialogs.jsx";
 import { Badge, DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
 import { AddToProjectButton } from "../projects/AddToProject.jsx";
+import { SendButton } from "../plugins/sendFiles.jsx";
 
 export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compareSelection = [], onToggleCompare }) {
   const { refresh, printers } = useData();
@@ -66,6 +67,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         </div>
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6 }}>
+        {isBundleRow && ver.full && <SendButton testId="version-send" fileRef={`3mf:${ver.id}`} kind="3mf" size={11} style={{ padding: "4px 8px" }} />}
         {isBundleRow && (
           <button
             onClick={(e) => {

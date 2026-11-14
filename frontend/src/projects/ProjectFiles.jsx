@@ -14,6 +14,7 @@ import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
 import { fieldBox, monoText, toolButton, uiText } from "../styles.js";
 import { Card, CardTitle, HeadingButton, MoveButton, nameStyle, OlderToggle, ProjectOnlyTag } from "./pieces.jsx";
+import { SendButton, sendKind } from "../plugins/sendFiles.jsx";
 
 // How many: "have / need", changed right there (each saved when the box is left or Enter is pressed; one out of range
 // goes back). Amber while there are fewer than needed, green once there are enough. `onSave({ have })` or
@@ -212,6 +213,14 @@ export function FileCard({ project, kind, file, onNewVersion, onMove, grip }) {
             />
           )}
           {onMove && <MoveButton testId={`${kind.key}-move`} onClick={onMove} />}
+          {(kind.key === "stl" || kind.key === "threemf") && (
+            <SendButton
+              testId={`${kind.key}-send`}
+              fileRef={`project-${kind.key === "stl" ? "stl" : "3mf"}:${project.id}:${file.id}`}
+              kind={sendKind(latest.filename)}
+              style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+            />
+          )}
           <HeadingButton testId={`${kind.key}-new-version`} Icon={Upload} label="New version" onClick={onNewVersion} />
           <TrashButton onClick={() => setDeleting("file")} title={`Delete this ${kind.noun}, every version`} />
         </>

@@ -50,6 +50,13 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
         if parts[-1] == "print":
             return config_service.MirrorScope(printers=True)  # a print sent: its printer's history may have it
         return config_service.MirrorScope(models=True)
+    if parts[0] == "plugin-api":
+        # a plugin's writes (its 3MF's and project's own records are asked for by the route, which knows their ids)
+        if parts[-1] == "sliced":
+            return config_service.EVERYTHING  # a 3MF filed (and its printer may have a new printer profile)
+        if parts[-1] == "print":
+            return config_service.MirrorScope(printers=True)  # a print sent: its printer's history may have it
+        return None
     if parts[0] == "plugins":
         if parts[-1] == "preview" or (len(parts) > 2 and parts[2] == "page"):
             return None  # only looks at a plugin, or is its own page asking it something

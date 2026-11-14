@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video, Youtube } from "lucide-react";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Slice, Video, Youtube } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
@@ -102,7 +102,7 @@ function Thanks() {
 }
 
 // The icon a plugin's manifest names for its menu entry ("video"...), from the few Farmhand knows; a puzzle piece otherwise
-const PLUGIN_ICONS = { youtube: Youtube, video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard };
+const PLUGIN_ICONS = { youtube: Youtube, video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard, slicer: Slice };
 
 // Plugins that take a slot of their own in the main menu instead of the plugins group below it: plugin id -> the section
 // it comes after, and its icon. Stream was Farmhand's own page, after Monitor, until it became a plugin (YouTube Stream); it

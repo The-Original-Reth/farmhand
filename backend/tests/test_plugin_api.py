@@ -130,7 +130,7 @@ def test_a_new_token_ends_the_old_one(api):
     assert new != old and r.json()["plugin"]["permissions"] == ["printers:read"]  # the same permissions
     assert api.get("/plugin-api/v1/me", headers=bearer(old)).status_code == 401
     me = api.get("/plugin-api/v1/me", headers=bearer(new)).json()
-    assert me == {"plugin_id": "stream", "permissions": ["printers:read"], "api_version": "1"}
+    assert me == {"plugin_id": "stream", "permissions": ["printers:read"], "api_version": "1", "address": "http://stream:8080"}
     assert api.get("/plugins/stream").json()["token_last_used_at"] is not None
     assert api.post("/plugins/nothing/token").status_code == 404
 
@@ -204,10 +204,12 @@ def test_printers_have_addresses_and_never_secrets(api, moonraker):
     assert r.status_code == 200
     assert "moon-secret-key" not in r.text and "prusa-secret-pw" not in r.text
     assert r.json() == {"printers": [
-        {"id": 2, "name": "Core One", "kind": None, "connection_type": "prusalink", "addresses": {
+        {"id": 2, "name": "Core One", "kind": None, "connection_type": "prusalink",
+         "printer_profiles": [], "default_printer_profile": None, "addresses": {
             "wired_ip": "10.0.6.30", "wireless_ip": None, "moonraker_url": None, "mainsail_url": None,
             "prusalink_url": "http://10.0.6.30", "camera_address": "10.0.6.40"}},
-        {"id": 1, "name": "VT 1190", "kind": "Voron", "connection_type": "moonraker", "addresses": {
+        {"id": 1, "name": "VT 1190", "kind": "Voron", "connection_type": "moonraker",
+         "printer_profiles": [], "default_printer_profile": None, "addresses": {
             "wired_ip": "10.0.6.21", "wireless_ip": "10.0.7.21", "moonraker_url": "http://10.0.6.21:7125",
             "mainsail_url": "http://10.0.6.21/", "prusalink_url": None, "camera_address": None}},
     ]}

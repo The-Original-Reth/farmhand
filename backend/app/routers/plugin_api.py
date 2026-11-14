@@ -1,7 +1,8 @@
 """
 The plugin API, version 1: what a plugin's container may read of Farmhand (docs/plugins.md has every shape). Each call
 carries the plugin's token (Authorization: Bearer ...): none or a bad one is 401, and a call outside the permissions
-the operator granted it is 403 naming the one it needs. Read-only, and v1 only ever gains fields and endpoints.
+the operator granted it is 403 naming the one it needs. It only reads, except what a write permission allows
+(library:write, prints:send), and v1 only ever gains fields and endpoints.
 
 Reached over the farm's network on the API's port (a plugin may run on another machine), never through the web
 page's server (nginx doesn't pass /plugin-api/ on). Besides the token: a plugin set to "only accept calls from its
@@ -9,15 +10,18 @@ address" has its token refused from anywhere else (403), and each token may make
 """
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..services.plugins import answers, events, handover, limits, registry, remote
+from ..errors import answer_errors
+from ..services import library_records, project_records
+from ..services.plugins import answers, events, handover, library, limits, registry, remote
 from ..services.plugins.manifest import API_VERSION
 from .common import require_printer
 
@@ -82,7 +86,11 @@ def needs(permission: str) -> Callable[..., registry.Caller]:
 @router.get("/me")
 def me(caller: registry.Caller = Depends(plugin_caller)):
     """Which plugin this token is, and what it may read: a plugin's first call, to check its token works."""
-    return {"plugin_id": caller.plugin_id, "permissions": sorted(caller.permissions), "api_version": API_VERSION}
+    return {
+        "plugin_id": caller.plugin_id, "permissions": sorted(caller.permissions), "api_version": API_VERSION,
+        # where Farmhand reaches it (http://<id>:<port> for one added from its manifest alone, beside Farmhand)
+        "address": caller.address,
+    }
 
 
 @router.get("/printers", dependencies=[Depends(needs("printers:read"))])
@@ -140,3 +148,68 @@ def stream_migrate(db: Session = Depends(get_db), caller: registry.Caller = Depe
         return handover.stream_handover(db, caller.plugin_id)
     except handover.AlreadyHandedOver as e:
         raise HTTPException(status_code=410, detail=str(e)) from None
+
+
+# ------------------------------------------------------------------ a slicer plugin: library:read, library:write, prints:send
+
+
+@router.get("/library/files", dependencies=[Depends(needs("library:read"))])
+def library_files(ref: list[str] = Query(default=[]), db: Session = Depends(get_db)):
+    """What each file the refs name is: {files: [{ref, kind, name, version, available, sliceable, printer_id, ...}]}"""
+    with answer_errors():
+        return library.describe(db, ref)
+
+
+@router.get("/library/file", dependencies=[Depends(needs("library:read"))])
+def library_file(ref: str, db: Session = Depends(get_db)):
+    """The file itself"""
+    with answer_errors():
+        path, name = library.file_of(db, ref)
+    return FileResponse(path, filename=name, media_type="application/octet-stream")
+
+
+def _refs(raw: str) -> list[str]:
+    try:
+        refs = json.loads(raw)
+    except ValueError:
+        refs = None
+    if not isinstance(refs, list) or not all(isinstance(r, str) for r in refs):
+        raise HTTPException(status_code=422, detail="refs must be a JSON list of the files it was sliced from, like [\"model:12\"].")
+    return refs
+
+
+@router.get("/library/sliced/plan", dependencies=[Depends(needs("library:write"))])
+def sliced_plan(
+    printer_id: int, ref: list[str] = Query(default=[]), name: str | None = None, project_name: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Where a 3MF sliced from these files for this printer would go, and its name, before it's saved"""
+    with answer_errors():
+        return library.plan(db, ref, printer_id, name, project_name).out()
+
+
+@router.post("/library/sliced", status_code=201, dependencies=[Depends(needs("library:write"))])
+def sliced_save(
+    printer_id: int = Form(...), refs: str = Form(...), threemf: UploadFile = File(...),
+    gcode: UploadFile | None = File(default=None), name: str | None = Form(default=None),
+    project_name: str | None = Form(default=None), db: Session = Depends(get_db),
+):
+    """File a sliced 3MF (and its G-code) where the files it was sliced from are, as /library/sliced/plan says"""
+    with answer_errors():
+        out = library.save(
+            db, _refs(refs), printer_id, threemf.file, gcode.file if gcode else None, gcode.filename if gcode else None,
+            name, project_name,
+        )
+    # what the API's own pages would have written after the same change (change_hooks.py can't tell from the path)
+    if out.get("bundle_id"):
+        library_records.request_write("bundle", out["bundle_id"])
+    if out.get("project_id"):
+        project_records.request_write(out["project_id"])
+    return out
+
+
+@router.post("/printers/{printer_id}/print", dependencies=[Depends(needs("prints:send"))])
+def send_print(printer_id: int, gcode: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Send a G-code to the printer and start it: {sent, printer}. 409 while it's busy, 502 when it can't be reached."""
+    with answer_errors():
+        return library.send(db, printer_id, gcode.filename, gcode.file)

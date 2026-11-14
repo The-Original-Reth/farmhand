@@ -4,7 +4,8 @@ A plugin is a program of your own that adds something to a print farm's Farmhand
 notifier. Streaming to YouTube is itself a plugin, [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), in a repository of its own: Farmhand has no
 Stream page of its own any more. It runs in **its own Docker container**, with its own storage, written in any language. It never touches
 Farmhand's database, files or other containers. It reads what it needs from Farmhand through the **plugin API**
-described here, using a token the operator gave it, and only what the operator allowed.
+described here, using a token the operator gave it, and only what the operator allowed. A slicer plugin may also be
+allowed to file the 3MFs it slices and send its G-code to a printer, through Farmhand.
 
 **Start from the example:** [`plugins/hello`](../plugins/hello/README.md) is a small, working plugin (each printer and
 its print's progress, updated live, in Farmhand's colours) with its Dockerfile, tests and instructions for making it
@@ -12,7 +13,8 @@ your own. It shows everything below in use: the manifest, the token and its refu
 Farmhand, and settings kept in the plugin's own volume.
 
 What's here (plugin API version 1): the manifest, adding a plugin on Farmhand's Plugins page, the token and
-permissions, the read-only endpoints, the health check, and your plugin's page shown inside Farmhand. Farmhand doesn't
+permissions, the endpoints (and the few a slicer plugin may write through), the health check, and your plugin's page
+shown inside Farmhand, including files sent to it. Farmhand doesn't
 start or stop your container: the operator runs it (on Farmhand's machine or another one on the farm's network) the
 way your instructions say, and adds it to Farmhand by its address.
 
@@ -65,9 +67,10 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `farmhand_api` | yes | The plugin API version you wrote it for: `"1"` (a string). A Farmhand that doesn't speak it won't install the plugin |
 | `port` | yes | The port your container listens on. A plugin added from its manifest alone (beside Farmhand, in Docker) is taken to be at `http://<id>:<port>` |
 | `author`, `homepage` | no | Shown to the operator |
-| `page` | no | A page in Farmhand's menu: `menu` (its label, up to 40 characters), `icon` (optional: `youtube`, `video`, `camera`, `chart`, `bell` or `dashboard`; a puzzle piece otherwise), `path` on your plugin (default `/`). See "Your page inside Farmhand" |
+| `page` | no | A page in Farmhand's menu: `menu` (its label, up to 40 characters), `icon` (optional: `youtube`, `video`, `camera`, `chart`, `bell`, `dashboard` or `slicer`; a puzzle piece otherwise), `path` on your plugin (default `/`). See "Your page inside Farmhand" |
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
 | `settings_page` | no | A path on your plugin shown on Farmhand's Settings page |
+| `send_files` | no | Files can be sent to the plugin from Farmhand: `{"label": "Slicer", "path": "/open", "kinds": ["stl", "obj", "3mf"]}`. Farmhand puts **Send to &lt;label&gt;** (up to 40 characters) on the models, 3MF versions and project files of those `kinds` (all three when left out), and opens your `page` at `path` with them. Needs a `page` and `library:read`. See "Files sent to your plugin" |
 | `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is not taken (the operator adds the plugin again to grant it) |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
@@ -81,9 +84,13 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `prints:read` | see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends | `GET /printers/{id}/print`, `GET /events` |
 | `farm:read` | see Farmhand's colours and the farm's time zone | `GET /farm` |
 | `stream:migrate` | take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy) | `GET /stream/migrate`, `POST /stream/migrate` |
+| `library:read` | open the models, 3MFs and project files you send it from Farmhand (only those you send it) | `GET /library/files`, `GET /library/file` |
+| `library:write` | save the 3MFs it slices into Farmhand, next to the files they were sliced from: as a new 3MF or its next version, in Models or in the project the files came from, and a new project for a 3MF sliced from several models | `GET /library/sliced/plan`, `POST /library/sliced` |
+| `prints:send` | send the G-code it makes to one of your printers and start printing it (never while the printer is busy) | `POST /printers/{id}/print` |
 
-The operator grants some or all of the permissions the manifest asks for, never more. There are no write permissions
-yet; they'll be added one at a time, when a plugin needs one.
+The operator grants some or all of the permissions the manifest asks for, never more. `library:write` and
+`prints:send` are the only ones that change anything, and only in the ways their words say; others are added one at a
+time, when a plugin needs one.
 
 `stream:migrate` is only for a Stream plugin taking over from the Stream page older Farmhands had built in (like
 [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin)): ask for it only if that's what your plugin is. It hands over secrets
@@ -132,19 +139,27 @@ All under `/plugin-api/v1`. Every answer is a JSON object (so fields can be adde
 Which plugin the token is, and what it may read. A good first call, to check the token works.
 
 ```json
-{ "plugin_id": "stream", "permissions": ["cameras:read", "printers:read", "prints:read"], "api_version": "1" }
+{ "plugin_id": "stream", "permissions": ["cameras:read", "printers:read", "prints:read"], "api_version": "1",
+  "address": "http://192.168.10.215:8080" }
 ```
+
+`address` is where Farmhand reaches the plugin (`http://<id>:<port>` for one added from its manifest alone, beside
+Farmhand in Docker): a plugin that opens its own page in a tab of its own can use it.
 
 ### `GET /printers` (`printers:read`)
 
 Every printer in service (retired ones are left out), by name. `connection_type` is `moonraker` (Klipper) or
 `prusalink` (Prusa). Addresses that don't apply to the printer's kind are `null`. Never an API key or password.
+`printer_profiles` are the slicer printer presets its 3MFs were sliced with (Farmhand's printer profiles, by name), and
+`default_printer_profile` the one the operator made its default (or `null`): a slicer can pick its own printer preset
+by them.
 
 ```json
 {
   "printers": [
     {
       "id": 1, "name": "VT 1190", "kind": "Voron Trident", "connection_type": "moonraker",
+      "printer_profiles": ["VT 1190"], "default_printer_profile": null,
       "addresses": {
         "wired_ip": "10.0.6.21", "wireless_ip": "10.0.7.21",
         "moonraker_url": "http://10.0.6.21:7125", "mainsail_url": "http://10.0.6.21/",
@@ -153,6 +168,7 @@ Every printer in service (retired ones are left out), by name. `connection_type`
     },
     {
       "id": 2, "name": "Core One", "kind": null, "connection_type": "prusalink",
+      "printer_profiles": ["Prusa CORE One HF0.4 nozzle"], "default_printer_profile": "Prusa CORE One HF0.4 nozzle",
       "addresses": {
         "wired_ip": "10.0.6.30", "wireless_ip": null, "moonraker_url": null, "mainsail_url": null,
         "prusalink_url": "http://10.0.6.30", "camera_address": "10.0.6.40"
@@ -303,6 +319,73 @@ same folder), or `null` when it used the default. A Farmhand that never had the 
 ```
 
 Keep what you're handed as carefully as Farmhand did: never show it on your page or answer it from your API.
+
+### Files sent to your plugin: `library:read`, `library:write`, `prints:send`
+
+For a slicer: the operator sends it files from Farmhand, it slices them, files the 3MF back where they came from and
+sends the G-code to a printer, all through Farmhand.
+[Prusaslicer - Web Boss](https://github.com/The-Original-Reth/Prusaslicer-Web-Boss) is one.
+
+A **ref** names one file in Farmhand:
+
+| Ref | The file |
+|---|---|
+| `model:<id>` | a model in Models (its newest version) |
+| `3mf:<version id>` | one version of a 3MF in Models |
+| `project-stl:<project id>:<file id>` | a project's own STL (its newest version) |
+| `project-3mf:<project id>:<file id>` | a project's own 3MF (its newest version) |
+
+With `send_files` in your manifest, **Send to &lt;label&gt;** opens your page at its `path` with the files' refs, one
+`file=` each: `/plugins/<id>/open?file=model%3A12&file=3mf%3A40`. A ref Farmhand doesn't have is **404**, and text that
+isn't a ref **422**.
+
+`GET /library/files?ref=model:12&ref=3mf:40` (`library:read`): what each one is. `kind` is `stl`, `obj`, `step` or
+`3mf`; `available` is false when its file isn't kept any more (an old 3MF version pruned, or the storage folder away);
+`sliceable` is false for a STEP model; a 3MF's `printer_id` is the printer it's for; `model_ids` are the models it is (a
+model) or was sliced from (a 3MF in Models); a project's file says its project.
+
+```json
+{ "files": [
+  { "ref": "model:12", "kind": "stl", "name": "Frog.stl", "version": 2, "available": true, "sliceable": true,
+    "printer_id": null, "model_ids": [12], "bundle_id": null, "project_id": null, "project_name": null },
+  { "ref": "3mf:40", "kind": "3mf", "name": "Frog ver 3.3mf", "version": 3, "available": true, "sliceable": true,
+    "printer_id": 2, "model_ids": [12], "bundle_id": 9, "project_id": null, "project_name": null }
+] }
+```
+
+`GET /library/file?ref=model:12` (`library:read`): the file itself, named as Farmhand shows it.
+
+`GET /library/sliced/plan?ref=...&printer_id=2[&name=...][&project_name=...]` (`library:write`): where a 3MF sliced
+from those files for that printer would be filed and what it would be called, before it's saved; show `says` to the
+operator. `name` is the 3MF's name without "ver N" or `.3mf` (Farmhand adds those), `project_name` a new project's.
+
+| `action` | When | What Farmhand does |
+|---|---|---|
+| `new_version` | one 3MF in Models, re-sliced for the printer it's on | the next version of that 3MF |
+| `new_3mf` | one model (or a 3MF in Models, for another printer) | a new 3MF of that model, named after it |
+| `new_3mf_and_project` | several models | one 3MF sliced from all of them, and a new project (named after them, or `project_name`) with those models and the 3MF; **422** when a project has that name |
+| `project_3mf` | a project's own files (and models sent with them) | a 3MF of the project's own, for that printer; the models are put in the project |
+| `project_3mf_version` | one of a project's own 3MFs, re-sliced for its printer | that 3MF's next version |
+
+Files from two projects are **422** (a 3MF is filed in one); so is a set with no model or project in it.
+
+```json
+{ "action": "new_3mf", "name": "Frog", "printer_id": 2, "printer_name": "Core One", "model_ids": [12],
+  "bundle_id": null, "project_id": null, "project_name": null, "file_id": null,
+  "says": "Saved as a new 3MF, Frog, on Core One." }
+```
+
+`POST /library/sliced` (`library:write`), multipart: `threemf` (the 3MF), `gcode` (optional: its `.gcode` or
+`.bgcode`), `refs` (a JSON list of the refs it was sliced from), `printer_id`, and optionally `name` and
+`project_name`. Filed as the plan says; **201** with the plan's answer and what was made: `bundle_id`, `version_id`,
+`version` and `filename` (`Frog ver 1.3mf`; its G-code is shown as `Frog ver 1.gcode`), and `project_id` /
+`project_name` / `file_id` for a project. **503** while Farmhand's storage folder isn't there.
+
+`POST /printers/{id}/print` (`prints:send`), multipart `gcode` (a `.gcode` or `.bgcode`, named as the printer should
+show it): Farmhand sends it to the printer and starts it, as its own **Send to** does, and answers
+`{"sent": "<where it went>", "printer": "<its name>"}`. **409** while the printer is busy (printing, paused, or a Prusa
+not ready), **422** for a file that isn't G-code or a `.bgcode` for a Klipper printer, **502** when the printer can't be
+reached (its own answer, translated).
 
 ## Versions
 

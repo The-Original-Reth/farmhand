@@ -32,8 +32,8 @@ export function PluginsSection({ plugins, onChanged, onOpenPage }) {
         </div>
         <div style={uiText(13, c.textMuted, { lineHeight: 1.6 })}>
           A plugin is a program someone wrote that adds something to Farmhand, like a live stream or a dashboard. Each
-          one runs in a container of its own, on this machine or another one on the farm's network, and reads only
-          what you allow it to. Farmhand doesn't start or stop plugins: start the plugin's container the way its
+          one runs in a container of its own, on this machine or another one on the farm's network, and reads (or
+          changes) only what you allow it to. Farmhand doesn't start or stop plugins: start the plugin's container the way its
           instructions say, then add it here by its address.
         </div>
       </div>
@@ -143,7 +143,7 @@ function AddPlugin({ onAdded }) {
               ))}
               {preview.permissionsDescribed.length > 0 && (
                 <div style={uiText(12, c.textFaint, { marginBottom: 10, lineHeight: 1.5 })}>
-                  Untick anything you'd rather it didn't see: the plugin may then not work fully. It can never change anything in Farmhand.
+                  Untick anything you'd rather it didn't see or do: the plugin may then not work fully. It can change nothing in Farmhand beyond what's ticked here.
                 </div>
               )}
               <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 4, cursor: "pointer" }}>
