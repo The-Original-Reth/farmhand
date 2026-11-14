@@ -39,7 +39,7 @@ def test_each_printers_filament_is_added_up_by_month(farm):
     assert oct_["key"] == "2026-10" and oct_["prints"] == 2 and oct_["unweighed"] == 0 and oct_["uncosted"] == 0
     assert oct_["grams"] == pytest.approx(round(g10, 1) + round(g5, 1), abs=0.11)
     assert oct_["filament_cost"] == pytest.approx(round(g10 * 0.02, 2) + round(g5 * 0.02, 2), abs=0.011)
-    assert nov == {"key": "2026-11", "prints": 2, "grams": 6.0, "filament_cost": 0.0, "unweighed": 1, "uncosted": 2}
+    assert nov == {"key": "2026-11", "prints": 2, "grams": 6.0, "filament_cost": 0.0, "unweighed": 1, "uncosted": 2, "estimated": 0}
 
 
 def test_each_printers_filament_is_also_added_up_by_day(farm):

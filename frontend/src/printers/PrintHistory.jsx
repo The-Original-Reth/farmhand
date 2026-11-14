@@ -3,8 +3,8 @@ import { c, fs, ui } from "../theme.js";
 import { fieldBox, foldHeading, monoText, uiText } from "../styles.js";
 import { errorText, getPrintJobs } from "../api.js";
 
-import { Badge, SectionToggle } from "../components/common/ui.jsx";
-import { fmtCost, fmtDuration, fmtGrams, fmtKwh, fmtMetres, fmtMoney, fmtWhen } from "../lib/format.js";
+import { Badge, MaybeEstimated, SectionToggle } from "../components/common/ui.jsx";
+import { ESTIMATED_HINT, fmtCost, fmtDuration, fmtGrams, fmtKwh, fmtMetres, fmtMoney, fmtWhen } from "../lib/format.js";
 
 // ---- print history: Farmhand's copy ----
 const JOB_STATUS_TONE = { completed: "green", in_progress: "teal", cancelled: "muted" };
@@ -26,7 +26,21 @@ const costHint = (j) => {
   }
   const n = (v, digits) => v.toLocaleString(undefined, { maximumFractionDigits: digits });
   const from = d.source === "gcode" ? "the price in the printed G-code" : d.filename;
-  return `${n(d.grams, 1)} g at $${fmtMoney(d.cost_per_kg)} per kg (${n(d.diameter, 2)} mm, ${n(d.density, 3)} g/cm³), from ${from}`;
+  const how = `${n(d.grams, 1)} g at $${fmtMoney(d.cost_per_kg)} per kg (${n(d.diameter, 2)} mm, ${n(d.density, 3)} g/cm³), from ${from}`;
+  return j.filament_estimated ? `${ESTIMATED_HINT}. ${how}` : how;
+};
+
+// The hover hint on a print's filament
+const filamentHint = (j) => {
+  const known = j.filament_grams != null ? `${fmtMetres(j.filament_used)} of filament` : "Grams aren't known for this print: no filament density or slicer estimate";
+  return j.filament_estimated ? `${ESTIMATED_HINT}. ${known}` : known;
+};
+
+// The hover hint on a print's total cost
+const totalHint = (j) => {
+  if (j.total_cost == null) return "No filament cost for this print";
+  const parts = j.energy_cost == null ? "Filament cost only (no energy cost)" : `$${fmtMoney(j.filament_cost)} filament + $${fmtMoney(j.energy_cost)} energy`;
+  return j.filament_estimated ? `${parts}. The filament cost is estimated from the slicer` : parts;
 };
 
 // open / onToggle: whether the list is folded away (only its heading and count show then)
@@ -127,12 +141,13 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
             <div
               data-testid="print-job-filament"
               style={monoText(12, c.textMuted)}
-              title={j.filament_grams != null ? `${fmtMetres(j.filament_used)} of filament` : "Grams aren't known for this print: no filament density or slicer estimate"}
+              data-estimated={j.filament_estimated || undefined}
+              title={filamentHint(j)}
             >
-              {j.filament_grams != null ? fmtGrams(j.filament_grams) : fmtMetres(j.filament_used)}
+              <MaybeEstimated estimated={j.filament_estimated}>{j.filament_grams != null ? fmtGrams(j.filament_grams) : fmtMetres(j.filament_used)}</MaybeEstimated>
             </div>
             <div data-testid="print-job-cost" style={monoText(12, j.filament_cost == null ? c.textFaint : c.textMuted)} title={costHint(j)}>
-              {fmtCost(j.filament_cost)}
+              <MaybeEstimated estimated={j.filament_estimated}>{fmtCost(j.filament_cost)}</MaybeEstimated>
             </div>
             <div
               style={monoText(12, j.energy_kwh == null ? c.textFaint : c.textMuted)}
@@ -150,9 +165,9 @@ export function PrintHistory({ printer, syncTick, open = true, onToggle }) {
             <div
               data-testid="print-job-total-cost"
               style={monoText(12, j.total_cost == null ? c.textFaint : c.heading)}
-              title={j.total_cost == null ? "No filament cost for this print" : j.energy_cost == null ? "Filament cost only (no energy cost)" : `$${fmtMoney(j.filament_cost)} filament + $${fmtMoney(j.energy_cost)} energy`}
+              title={totalHint(j)}
             >
-              {fmtCost(j.total_cost)}
+              <MaybeEstimated estimated={j.filament_estimated}>{fmtCost(j.total_cost)}</MaybeEstimated>
             </div>
           </div>
         ))}

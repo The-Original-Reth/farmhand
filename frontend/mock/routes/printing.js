@@ -88,9 +88,10 @@ export function printingRoutes(ctx) {
   });
   // A print's filament cost, worked out as the real API does (services/filament_cost.py): the price read from its
   // G-code (farm.gcodeFilament), else its 3MF on the same printer
-  // by name (exactly, else without "ver N", else the slicer's "<3MF name>-printer-filament", the longest that fits;
-  // spaces and underscores alike), the newest version uploaded before it started, and that version's filament
-  // diameter, density and price per kg
+  // by name (exactly, else without "ver N", else the slicer's "<3MF name>-printer-filament" or PrusaSlicer's Core One
+  // "<3MF name>_0.4n_0.2mm_...", the longest that fits; spaces and underscores alike), the newest version uploaded
+  // before it started, and that version's filament diameter, density and price per kg. An estimated PrusaLink print
+  // (below) is costed from the version its filament was read from.
   const stemOf = (name) => (name || "").replace(/\\/g, "/").split("/").pop().replace(/\.[^.]*$/, "").trim().toLowerCase();
   const keyOf = (stem) => stem.replace(/[\s_]+/g, "_");
   const baseOf = (stem) => keyOf(stem.replace(/\s*\bver\s*\d+$/i, "").replace(/[ ._-]+$/, "") || stem);
@@ -102,29 +103,53 @@ export function printingRoutes(ctx) {
     const grams = (mm * Math.PI * (diameter / 2) ** 2 * density) / 1000;
     return { cost: Math.round((grams / 1000) * price * 100) / 100, grams: Math.round(grams * 10) / 10, cost_per_kg: price, density, diameter, ...source };
   };
-  const filamentCost = (printerId, j) => {
-    if (!(j.filamentMm > 0)) return null;
-    // the price read from the printed G-code first
-    const read = (farm.gcodeFilament[printerId] || {})[j.filename];
-    if (read) return priced(j.filamentMm, read[0], read[1], read[2], { source: "gcode", filename: j.filename, bundle_id: null, version_id: null, version: null });
-    const stem = stemOf(j.filename);
+  const PRUSA_SUFFIX = /^_\d+(\.\d+)?n_\d+(\.\d+)?mm(_|$)/; // "_0.4n_0.2mm" then the end or "_PETG_COREONE_..."
+  const pickVersion = (found, start) => {
+    if (!found.length) return null;
+    found.sort((x, y) => Date.parse(x.v.uploaded_at) - Date.parse(y.v.uploaded_at));
+    const before = found.filter(({ v }) => Date.parse(v.uploaded_at) <= start * 1000);
+    return before.length ? before[before.length - 1] : found[0];
+  };
+  // the 3MF version on the printer a printed file's name matches: { b, v } or null
+  const versionByName = (printerId, filename, start) => {
+    const stem = stemOf(filename);
     const all = farm.bundles.filter((b) => b.printer_id === printerId).flatMap((b) => b.versions.map((v) => ({ b, v })));
     let found = all.filter(({ v }) => keyOf(stemOf(v.filename)) === keyOf(stem));
     if (!found.length) found = all.filter(({ v }) => baseOf(stemOf(v.filename)) === baseOf(stem));
     if (!found.length) {
-      const fits = all.map(({ v }) => baseOf(stemOf(v.filename))).filter((b) => baseOf(stem).startsWith(`${b}-`));
+      const base = baseOf(stem);
+      const fits = all.map(({ v }) => baseOf(stemOf(v.filename)))
+        .filter((b) => base.startsWith(`${b}-`) || (base.startsWith(b) && PRUSA_SUFFIX.test(base.slice(b.length))));
       const longest = fits.sort((x, y) => y.length - x.length)[0];
       found = longest ? all.filter(({ v }) => baseOf(stemOf(v.filename)) === longest) : [];
     }
-    if (!found.length) return null;
-    found.sort((x, y) => Date.parse(x.v.uploaded_at) - Date.parse(y.v.uploaded_at));
-    const before = found.filter(({ v }) => Date.parse(v.uploaded_at) <= j.start * 1000);
-    const { b, v } = before.length ? before[before.length - 1] : found[0];
+    return pickVersion(found, start);
+  };
+  // A PrusaLink print's filament, as the server estimates it (prusalink/filament_estimate.py): the version whose stored
+  // G-code has the printed file's name, else the one its name matches; that G-code's slicer figure (farm.slicerFilament),
+  // all of it for a completed print, else as far as it got. { mm, b, v } or null
+  const estimate = (p, j) => {
+    if (!p.prusalink || j.filamentMm > 0) return null;
+    const all = farm.bundles.filter((b) => b.printer_id === p.id).flatMap((b) => b.versions.map((v) => ({ b, v })));
+    const byGcode = all.filter(({ v }) => v.gcode_name && keyOf(stemOf(v.gcode_name)) === keyOf(stemOf(j.filename)));
+    const found = pickVersion(byGcode, j.start) || versionByName(p.id, j.filename, j.start);
+    const total = found && farm.slicerFilament[found.v.id];
+    if (!total) return null;
+    return { ...found, mm: total * (j.status === "completed" ? 1 : Math.min(1, j.printS / j.estimated)) };
+  };
+  const filamentCost = (printerId, j, est = null) => {
+    if (!(j.filamentMm > 0)) return null;
+    // the price read from the printed G-code first
+    const read = (farm.gcodeFilament[printerId] || {})[j.filename];
+    if (read) return priced(j.filamentMm, read[0], read[1], read[2], { source: "gcode", filename: j.filename, bundle_id: null, version_id: null, version: null, estimated: !!est });
+    const found = est || versionByName(printerId, j.filename, j.start);
+    if (!found) return null;
+    const { b, v } = found;
     const s = farm.versionSettings[v.id] || {};
     const price = firstNumber(s.filament_cost), density = firstNumber(s.filament_density);
     if (price == null || density == null) return null;
     return priced(j.filamentMm, price, density, firstNumber(s.filament_diameter) ?? 1.75,
-      { source: "3mf", filename: v.filename, bundle_id: b.id, version_id: v.id, version: v.version });
+      { source: "3mf", filename: v.filename, bundle_id: b.id, version_id: v.id, version: v.version, estimated: !!est });
   };
   const kwhPrice = () => farm.config.preferences.energy_price_per_kwh ?? null; // the Power page's average cost now
   // the price per kWh for the month a print started in, as the server works it out
@@ -135,8 +160,10 @@ export function printingRoutes(ctx) {
     const d = new Date(unix * 1000);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   };
-  const jobOut = (p) => (j, i) => {
-    const cost = filamentCost(p.id, j);
+  const jobOut = (p) => (raw, i) => {
+    const est = estimate(p, raw);
+    const j = est ? { ...raw, filamentMm: Math.round(est.mm * 100) / 100 } : raw;
+    const cost = filamentCost(p.id, j, est);
     const energyPrice = priceForMonth(prices(), monthOf(j.start));
     const energyCost = j.kwh != null && energyPrice != null ? Math.round(j.kwh * energyPrice * 100) / 100 : null;
     return {
@@ -147,6 +174,7 @@ export function printingRoutes(ctx) {
       // as the server does: from the cost's grams, else the slicer's estimate (the mock's PLA at about 2.96 g a metre)
       filament_grams: cost ? cost.grams : j.filamentMm > 0 && !p.prusalink ? Math.round(j.filamentMm * 0.00296 * 10) / 10 : null,
       filament_cost: cost ? cost.cost : null, filament_cost_detail: cost,
+      filament_estimated: !!est, // the slicer's figure, not measured: a PrusaLink print
       energy_price: energyPrice, energy_cost: energyCost,
       // as the server does: filament + energy; no filament cost (none or 0) = that; no energy cost = the filament's
       total_cost: !cost?.cost ? (cost ? cost.cost : null) : Math.round((cost.cost + (energyCost ?? 0)) * 100) / 100,
@@ -169,8 +197,9 @@ export function printingRoutes(ctx) {
       const months = {};
       (farm.jobs[p.id] || []).map(jobOut(p)).filter((j) => j.filament_used > 0).forEach((j) => {
         const key = monthOf(Date.parse(j.start_time) / 1000);
-        const m = (months[key] ??= { key, prints: 0, grams: 0, filament_cost: 0, unweighed: 0, uncosted: 0 });
+        const m = (months[key] ??= { key, prints: 0, grams: 0, filament_cost: 0, unweighed: 0, uncosted: 0, estimated: 0 });
         m.prints += 1;
+        if (j.filament_estimated && (j.filament_grams != null || j.filament_cost != null)) m.estimated += 1;
         if (j.filament_grams == null) m.unweighed += 1;
         else m.grams += j.filament_grams;
         if (j.filament_cost == null) m.uncosted += 1;

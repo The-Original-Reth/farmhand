@@ -7,8 +7,8 @@ import { useData } from "../data.jsx";
 import { arranged, moved } from "../lib/order.js";
 import { downloadBlob } from "../lib/download.js";
 
-import { SectionLabel, StatTile } from "../components/common/ui.jsx";
-import { fmtCost as money, fmtGrams, fmtKwh, plural } from "../lib/format.js";
+import { MaybeEstimated, SectionLabel, StatTile } from "../components/common/ui.jsx";
+import { approx, fmtCost as money, fmtGrams, fmtKwh, plural } from "../lib/format.js";
 import { energyCost, priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
 import { PeriodButtons, periodKey, periodLabel, PeriodPicker, periodWord, tableHead } from "../lib/periods.jsx";
 
@@ -32,14 +32,14 @@ function downloadCsv(filename, period, rows, farm) {
   const line = (period_, name, r) =>
     [period_, name, r.prints, r.grams, r.filamentCost == null ? null : r.filamentCost.toFixed(2), r.kwh,
       r.energyCost == null ? null : r.energyCost.toFixed(2), r.total == null ? null : r.total.toFixed(2),
-      r.unweighed || null, r.uncosted || null].map(cell).join(",");
+      r.unweighed || null, r.uncosted || null, r.estimated || null].map(cell).join(",");
   const head = ["Period", "Printer", "Prints", "Filament (g)", "Filament cost ($)", "Electricity (kWh)", "Electricity cost ($)",
-    "Total cost ($)", "Prints without a weight", "Prints without a filament price"].join(",");
+    "Total cost ($)", "Prints without a weight", "Prints without a filament price", "Prints with estimated filament"].join(",");
   const text = [head, ...rows.map((r) => line(period, r.printer.name, r)), line(period, "Whole farm", farm)].join("\r\n");
   downloadBlob(filename, new Blob(["\ufeff" + text + "\r\n"], { type: "text/csv;charset=utf-8" }));
 }
 
-const BLANK = { prints: 0, grams: null, filamentCost: null, unweighed: 0, uncosted: 0, kwh: null, energyCost: null, unpriced: false };
+const BLANK = { prints: 0, grams: null, filamentCost: null, unweighed: 0, uncosted: 0, estimated: 0, kwh: null, energyCost: null, unpriced: false };
 
 // A printer's figures from its rows whose key passes `keep`: `prints` its filament by month or day (/farm-cost), `meter`
 // its electricity by month or day. A day's electricity is priced at its month's price.
@@ -49,6 +49,7 @@ function figuresOf({ prints, meter }, keep, prices) {
     f.prints += m.prints;
     f.unweighed += m.unweighed;
     f.uncosted += m.uncosted;
+    f.estimated += m.estimated || 0;
     if (m.prints > m.unweighed) f.grams = add(f.grams, m.grams);
     if (m.prints > m.uncosted) f.filamentCost = add(f.filamentCost, m.filament_cost);
   }
@@ -66,16 +67,26 @@ const addUp = (rows) =>
     (t, r) => ({
       grams: add(t.grams, r.grams), filamentCost: add(t.filamentCost, r.filamentCost), kwh: add(t.kwh, r.kwh),
       energyCost: add(t.energyCost, r.energyCost), total: add(t.total, r.total), prints: t.prints + r.prints,
-      unweighed: t.unweighed + r.unweighed, uncosted: t.uncosted + r.uncosted, unpriced: t.unpriced || r.unpriced,
+      unweighed: t.unweighed + r.unweighed, uncosted: t.uncosted + r.uncosted, estimated: t.estimated + r.estimated,
+      unpriced: t.unpriced || r.unpriced,
     }),
     { ...BLANK, total: null },
   );
 
-// What hovering filament figures says: how many prints were left out of them, and why
+// What hovering filament figures says: how many prints were left out of them, and why; and how many are estimates
 const gaps = (r) => [
   r.unweighed ? `${plural(r.unweighed, "print")} without a known weight` : null,
   r.uncosted ? `${plural(r.uncosted, "print")} without a filament price` : null,
+  estimates(r),
 ].filter(Boolean).join("; ");
+
+// Estimated filament (a PrusaLink printer's prints): "≈" and "estimated" (or "partly estimated", with prints whose
+// filament was measured in the same figure) next to the figure, and what hovering it says
+const estimateLabel = (r) => (r.estimated < r.prints - r.unweighed ? "partly estimated" : "estimated");
+const estimates = (r) =>
+  r.estimated
+    ? `${plural(r.estimated, "print")} with estimated filament: PrusaLink doesn't report the filament a print uses, so it's the slicer's figure from the G-code of the 3MF it was sliced from`
+    : null;
 
 const orDash = (v, format) => (v == null ? "—" : format(v));
 
@@ -106,15 +117,22 @@ function FigureTable({ testId, first, children }) {
 // kwhTitle / unpricedTitle: what hovering the electricity / its cost says (the latter only when a month has no price)
 function FigureCells({ f, whole = false, kwhTitle, unpricedTitle }) {
   const tone = (v, color) => (whole ? c.heading : v == null ? c.textFaint : color);
-  const left = whole ? undefined : gaps(f) || undefined;
+  const left = (whole ? estimates(f) : gaps(f)) || undefined;
+  const est = { estimated: f.estimated > 0, label: estimateLabel(f) };
   return (
     <>
       <div style={monoText(12, c.textMuted)}>{f.prints || ""}</div>
-      <div style={monoText(12, tone(f.grams, c.textPrimary))} title={left}>{orDash(f.grams, fmtGrams)}</div>
-      <div style={monoText(12, tone(f.filamentCost, c.textPrimary))} title={left}>{money(f.filamentCost)}</div>
+      <div style={monoText(12, tone(f.grams, c.textPrimary))} title={left}>
+        <MaybeEstimated {...est}>{orDash(f.grams, fmtGrams)}</MaybeEstimated>
+      </div>
+      <div data-testid="farm-cost-filament-cost" style={monoText(12, tone(f.filamentCost, c.textPrimary))} title={left}>
+        <MaybeEstimated {...est}>{money(f.filamentCost)}</MaybeEstimated>
+      </div>
       <div style={monoText(12, tone(f.kwh, c.teal))} title={kwhTitle}>{orDash(f.kwh, fmtKwh)}</div>
       <div style={monoText(12, tone(f.energyCost, c.teal))} title={!whole && f.unpriced ? unpricedTitle : undefined}>{money(f.energyCost)}</div>
-      <div style={monoText(12, tone(f.total, c.heading))}>{money(f.total)}</div>
+      <div style={monoText(12, tone(f.total, c.heading))} title={f.estimated && f.filamentCost != null ? "Its filament cost is partly or wholly estimated" : undefined}>
+        <MaybeEstimated {...est} estimated={est.estimated && f.filamentCost != null}>{money(f.total)}</MaybeEstimated>
+      </div>
     </>
   );
 }
@@ -235,6 +253,7 @@ export function FarmCostSection({ order = [], onOrder }) {
       : { prints: filament[id] || [], meter: energy[id]?.months || [] };
   const rows = active.map((p) => ({ printer: p, ...figuresOf(rowsOf(p.id, false), inPeriod, prices) }));
   const farm = addUp(rows);
+  const tileNote = farm.estimated ? ` (${estimateLabel(farm)})` : ""; // the tiles' filament figures, when any is an estimate
 
   // the printer clicked: the days or months of the period looked at with any figures, newest first
   const openedPrinter = active.find((p) => p.id === opened);
@@ -281,8 +300,8 @@ export function FarmCostSection({ order = [], onOrder }) {
       </div>
 
       <div data-testid="farm-cost-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-        <StatTile label={`${word}, filament used`} value={orDash(farm.grams, fmtGrams)} hint={gaps(farm) || `${farm.prints} prints`} />
-        <StatTile label={`${word}, filament cost`} value={money(farm.filamentCost)} hint={gaps(farm) || undefined} />
+        <StatTile label={`${word}, filament used${tileNote}`} value={approx(orDash(farm.grams, fmtGrams), farm.estimated > 0)} hint={gaps(farm) || `${farm.prints} prints`} />
+        <StatTile label={`${word}, filament cost${tileNote}`} value={approx(money(farm.filamentCost), farm.estimated > 0)} hint={gaps(farm) || undefined} />
         <StatTile label={`${word}, electricity used`} value={orDash(farm.kwh, fmtKwh)} hint="Every printer with a power meter, idle time included" />
         <StatTile
           label={`${word}, electricity cost`}
@@ -364,7 +383,9 @@ export function FarmCostSection({ order = [], onOrder }) {
       <div style={uiText(12, c.textFaint, { lineHeight: 1.6 })}>
         Filament: every print in the printers' histories that used filament, in the month it started, weighed and
         costed as in its print history (the G-code's own filament price, density and diameter, else its 3MF's). Prints
-        without a known weight or price are left out of those figures (hover to see how many). Electricity: each
+        without a known weight or price are left out of those figures (hover to see how many). A PrusaLink printer
+        doesn't report the filament it uses, so its prints' filament is estimated from the slicer (the G-code of the
+        3MF it was sliced from) and marked ≈ estimated. Electricity: each
         printer's power meter, idle time included, at each month's price per kWh from the Power page. Retired printers
         aren't counted.
       </div>
