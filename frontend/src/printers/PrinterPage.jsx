@@ -23,6 +23,7 @@ import { EditPrinterForm } from "./PrinterForms.jsx";
 import { PrusaLinkCard, usePrusaLink } from "./PrusaLink.jsx";
 import { SubPrinters, usesSubPrinter } from "./SubPrinters.jsx";
 import { plural } from "../lib/format.js";
+import { usePhone } from "../hooks/useMediaQuery.js";
 
 // Searching the 3MF files on one printer: like the Models search, every word has to be found, in any of the file's
 // names (every version), the printer profiles they were sliced with, the models it was sliced from, its slicer, or its notes.
@@ -123,6 +124,7 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
 export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, onDeleted }) {
   const { printers, bundlesForPrinter, modelsForPrinter, versionsByBundle, modelsForBundle, refreshPrinters, putBundle } = useData();
   const expansion = useBundleExpansion();
+  const phone = usePhone(); // the printer card stacks its buttons under the name
   const [editPrinterOpen, setEditPrinterOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [query, setQuery] = useState(""); // the search for this printer's 3MF files
@@ -201,10 +203,11 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
+            flexWrap: phone ? "wrap" : undefined,
             background: c.panel,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <div
               style={{
                 width: 64,
@@ -226,7 +229,7 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
                 {allBundles.length > 0 && <Lock size={13} color={c.textFaint} />}
               </div>
               <div style={uiText(13, c.textMuted, { marginTop: 3 })}>{printer.kind}</div>
-              <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+              <div style={{ display: "flex", gap: "4px 14px", marginTop: 8, flexWrap: "wrap" }}>
                 <div style={monoText(12, printer.wired ? c.textPrimary : c.textFaint, { display: "flex", alignItems: "center", gap: 5 })}>
                   <Cable size={12} color={printer.wired ? c.teal : c.textFaint} />
                   {printer.wired || "—"}
@@ -238,8 +241,9 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end", flexShrink: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+          {/* on a phone, a line of its own under the name, the buttons first */}
+          <div style={phone ? { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", width: "100%" } : { display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: phone ? 0 : 3 }}>
               <WebUiButton printer={printer} orDash={false} style={toolButton(12)} />
               <button onClick={() => setEditPrinterOpen(true)} style={toolButton(12)}>
                 <Pencil size={12} />

@@ -4,6 +4,7 @@ import { c, fs, mono, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { bundle3mfUrl, deleteBundleVersion, deleteSourceModelVersion, sourceModelDownloadUrl } from "../api.js";
 import { useData } from "../data.jsx";
+import { usePhone } from "../hooks/useMediaQuery.js";
 
 import { VersionStar } from "./VersionStar.jsx";
 import { subPrinterName } from "../printers/SubPrinters.jsx";
@@ -18,6 +19,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const subPrinter = showFileStatus && bundle ? subPrinterName(printers, bundle, ver) : null;
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const phone = usePhone();
 
   const isBundleRow = showFileStatus && !!bundle; // a 3MF version
   const isModelRow = !showFileStatus && !!model; // an STL/OBJ/STEP version
@@ -28,14 +30,19 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
       data-testid="version-row"
       data-version={ver.v}
       style={{
-        display: "grid",
-        gridTemplateColumns: showFileStatus
-          ? "36px 24px 60px 90px 1fr 110px 104px 240px"
-          : "24px 60px 90px 1fr auto", // a model's newest version also has Add to project
+        // on a phone, a wrapping line instead of columns: the picture, star, version and date, then the note, then the rest
+        ...(phone
+          ? { display: "flex", flexWrap: "wrap", columnGap: 10, rowGap: 6 }
+          : {
+              display: "grid",
+              gridTemplateColumns: showFileStatus
+                ? "36px 24px 60px 90px 1fr 110px 104px 240px"
+                : "24px 60px 90px 1fr auto", // a model's newest version also has Add to project
+              gap: 8,
+            }),
         alignItems: "center",
-        padding: "9px 16px",
+        padding: phone ? "9px 12px" : "9px 16px",
         borderTop: isLatest ? "none" : `1px solid ${c.border}`,
-        gap: 8,
       }}
     >
       {showFileStatus && <Thumb src={ver.thumb} size={36} plateGrid />}
@@ -44,7 +51,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         v{ver.v}
       </div>
       <div style={monoText(12, c.textMuted)}>{ver.date}</div>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, ...(phone && { flexBasis: "100%" }) }}>
         <div style={uiText(13, ver.note ? c.textMuted : c.textFaint)}>
           {ver.note || "—"}
         </div>
@@ -65,7 +72,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
           )}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, ...(phone && { marginLeft: "auto" }) }}>
         {isBundleRow && (
           <button
             onClick={(e) => {

@@ -9,6 +9,7 @@ import { usePrintProgress, usePrinterCameras } from "./cameras.js";
 import { CameraTile } from "./CameraTile.jsx";
 import { fit, GAP, useRoom } from "./wall.js";
 import { arranged, moved } from "../lib/order.js";
+import { useMediaQuery } from "../hooks/useMediaQuery.js";
 
 // Every printer's cameras, as set up in Mainsail and played the way Mainsail plays them, in one grid: the pictures
 // only, all the same size, each named in its corner. The tiles are as large as they can be while all of them fit in the
@@ -35,6 +36,9 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const [saving, setSaving] = useState({ phase: "idle" }); // idle | saving | saved | error
   const [wall, setWall] = useState(null); // the wall itself, once it's on the page
   const room = useRoom(wall);
+  // a touch screen (a phone, a tablet) can't drag a camera to move it or scroll over one to zoom: tapping one to see it
+  // on its own is what it has, and the layout is rearranged and saved from a computer
+  const touch = useMediaQuery("(hover: none) and (pointer: coarse)");
 
   useEffect(() => {
     if (!big) return;
@@ -107,7 +111,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
       ) : (
         !big && (
           <LayoutBar
-            changed={!!draft} saving={saving} onSave={save} onDiscard={discard} maxZoom={maxZoom} onMaxZoom={onMaxZoom}
+            changed={!!draft} saving={saving} onSave={save} onDiscard={discard} maxZoom={maxZoom} onMaxZoom={onMaxZoom} touch={touch}
             resyncing={resyncing} onResync={resync}
           />
         )
@@ -123,7 +127,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
               key={`${t.key}#${round}`} label={t.label} cam={t.cam} link={t.link} board={t.board} print={t.print} big={big === t.key} hidden={!!big && big !== t.key}
               place={place.get(t.key)} moving={dragging === t.key} target={over === t.key && dragging !== t.key} maxZoom={maxZoom}
               onClick={() => setBig(big ? null : t.key)}
-              drag={big ? null : {
+              drag={big || touch ? null : {
                 start: () => setDragging(t.key),
                 enter: () => dragging && setOver(t.key),
                 drop: () => drop(t.key),
@@ -150,17 +154,18 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
 
 // Above the grid: how to rearrange and zoom, the max zoom, Resync, and Save layout (with Discard) once something has been
 // moved
-function LayoutBar({ changed, saving, onSave, onDiscard, maxZoom, onMaxZoom, resyncing, onResync }) {
+function LayoutBar({ changed, saving, onSave, onDiscard, maxZoom, onMaxZoom, resyncing, onResync, touch = false }) {
   const busy = saving.phase === "saving";
   const said =
     saving.phase === "error" ? { text: `Not saved: ${saving.message}`, color: c.danger }
     : saving.phase === "saved" ? { text: "Layout saved", color: c.green }
     : changed ? { text: "Layout changed, not saved yet", color: c.amber }
+    : touch ? { text: "Tap a camera to see it on its own.", color: c.textFaint }
     : { text: "Drag a camera onto another to move it there. Scroll over one to zoom in.", color: c.textFaint };
   return (
     <div data-testid="monitor-layout" style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 32, flexWrap: "wrap" }}>
       <div data-testid="monitor-layout-status" style={uiText(12, said.color, { flex: 1, minWidth: 180 })}>{said.text}</div>
-      <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 6 })}>
+      {!touch && <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 6 })}>
         Max zoom
         <select
           data-testid="monitor-max-zoom" value={maxZoom} onChange={(e) => onMaxZoom?.(Number(e.target.value))}
@@ -170,7 +175,7 @@ function LayoutBar({ changed, saving, onSave, onDiscard, maxZoom, onMaxZoom, res
             <option key={z} value={z}>{z}×</option>
           ))}
         </select>
-      </label>
+      </label>}
       <button
         type="button" data-testid="monitor-resync" onClick={onResync} disabled={resyncing}
         title="Ask every printer for its cameras again and reconnect to each"
@@ -184,12 +189,14 @@ function LayoutBar({ changed, saving, onSave, onDiscard, maxZoom, onMaxZoom, res
           Discard
         </button>
       )}
-      <button
-        type="button" data-testid="monitor-save" onClick={onSave} disabled={!changed || busy}
-        style={{ ...primaryButton(!changed || busy), opacity: changed ? (busy ? 0.7 : 1) : 0.45 }}
-      >
-        {busy ? "Saving…" : "Save layout"}
-      </button>
+      {(!touch || changed) && (
+        <button
+          type="button" data-testid="monitor-save" onClick={onSave} disabled={!changed || busy}
+          style={{ ...primaryButton(!changed || busy), opacity: changed ? (busy ? 0.7 : 1) : 0.45 }}
+        >
+          {busy ? "Saving…" : "Save layout"}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import React from "react";
+import { Menu } from "lucide-react";
+import { usePhone } from "./hooks/useMediaQuery.js";
 import { c, fixed, fs, ui } from "./theme.js";
 import { monoText } from "./styles.js";
 import { API_BASE, errorText } from "./api.js";
@@ -108,6 +110,10 @@ function FarmhandApp() {
     onLeave: (to) => to !== "appearance" && settings.appearance.discard(),
   });
   const compare = useCompare(versionIndex);
+  // on a phone the menu is a drawer, opened from the button at the left of the top bar
+  const phone = usePhone();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const gap = phone ? 12 : 24; // the space around a page
 
   if (loading) return <LoadingPage />;
   if (error) {
@@ -125,7 +131,7 @@ function FarmhandApp() {
       style={{
         ...ui,
         display: "flex",
-        height: "100vh",
+        height: phone ? "100dvh" : "100vh", // a phone's own address bar comes and goes; dvh is what's left beside it
         background: c.bg,
         color: c.textPrimary,
       }}
@@ -140,27 +146,43 @@ function FarmhandApp() {
         counts={{ models: sourceModels.length, projects: projects.length, printers: printers.length }}
         plugins={plugins.withPages}
         onOpen={nav.goTo}
+        phone={phone}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
       />
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <div
           style={{
-            padding: "16px 24px",
+            padding: phone ? "10px 12px" : "16px 24px",
             borderBottom: `1px solid ${c.border}`,
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: phone ? "flex-start" : "space-between",
+            flexWrap: phone ? "wrap" : undefined,
+            gap: phone ? 10 : undefined,
             position: "relative",
           }}
         >
+          {phone && (
+            <button
+              type="button" data-testid="menu-open" onClick={() => setMenuOpen(true)} aria-label="Open the menu" aria-expanded={menuOpen}
+              style={{ background: "none", border: `1px solid ${c.border}`, borderRadius: 4, padding: 6, cursor: "pointer", display: "flex", flexShrink: 0 }}
+            >
+              <Menu size={20} color={c.textMuted} />
+            </button>
+          )}
           <Crumb items={nav.crumbs()} onJump={nav.jumpTo} />
-          {/* in the middle of the top bar on the Stream plugin's page: the cameras see what the printers' panels reflect */}
+          {/* in the middle of the top bar on the Stream plugin's page (below it on a phone): the cameras see what the
+              printers' panels reflect */}
           {nav.section === pluginSection("stream") && <div
             data-testid="panels-warning"
             style={{
-              position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", pointerEvents: "none",
-              ...ui, fontSize: fs(17), fontWeight: 700, color: fixed.voronRed, letterSpacing: 0.3,
+              ...(phone
+                ? { width: "100%", fontSize: fs(14) }
+                : { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", fontSize: fs(17) }),
+              pointerEvents: "none", ...ui, fontWeight: 700, color: fixed.voronRed, letterSpacing: 0.3,
             }}
           >
             WARNING Panels are reflective. Put on pants.
@@ -172,7 +194,7 @@ function FarmhandApp() {
             <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />
           </div>
         ) : (
-          <div style={{ padding: 24, paddingBottom: compare.selection.length > 0 ? 80 : 24, overflow: "auto", flex: 1 }}>
+          <div style={{ padding: gap, paddingBottom: compare.selection.length > 0 ? 80 : gap, overflow: "auto", flex: 1 }}>
             <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />
           </div>
         )}
