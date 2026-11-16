@@ -35,17 +35,19 @@ export function BundleCard({ bundle: b, versions: vlist, title, grow = false, ex
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap", // a narrow window (a phone) puts the buttons on a line under the name
+          gap: 10,
           padding: "10px 16px",
           background: c.panelAlt,
         }}
       >
         <div
           onClick={() => rest.length > 0 && expansion.set(b.id, !isExpanded)}
-          style={{ display: "flex", flexDirection: "column", gap: 4, cursor: rest.length > 0 ? "pointer" : "default", minWidth: 0, ...(grow ? { flex: 1 } : {}) }}
+          style={{ display: "flex", flexDirection: "column", gap: 4, cursor: rest.length > 0 ? "pointer" : "default", minWidth: "min(240px, 100%)", ...(grow ? { flex: 1 } : {}) }}
         >
           {title}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
           <span style={uiText(12, c.textFaint)}>
             {plural(vlist.length, "version")}
           </span>

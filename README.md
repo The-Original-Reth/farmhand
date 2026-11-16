@@ -5,7 +5,8 @@ version, per printer, plus the printers themselves (Klipper/Moonraker and Prusa/
 history, maintenance, energy use, their cameras on one screen, and sending them a G-code to print.
 
 Farmhand runs on one computer on your network (a Raspberry Pi, a mini PC, a NAS that runs Docker…) and is used
-from a web browser on any computer, tablet or phone on the same network.
+from a web browser on any computer, tablet or phone on the same network. On a phone the menu folds away behind
+the ☰ button at the top left, and the printer list, each printer's page and Monitor lay out in one column.
 
 ## Installing
 
@@ -623,6 +624,8 @@ for a printer.
   in Printers.
 - **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
   changing a camera in Mainsail.
+- **On a phone or tablet:** one camera per row; tap one to see it on its own, tap again to go back. Dragging and
+  scroll-to-zoom need a mouse, so the layout is arranged (and Max zoom chosen) from a computer.
 - **Board:** the top right corner names the computer a Klipper printer runs on, as the printer itself reports it:
   *Pi 4*, *CM4*, *Pi 5*... Point at it for the full model and its memory. A Prusa's camera says *Prusa*.
 - **What the camera sends:** in the top left corner, beside the picture-in-picture button, each camera says what it runs on and what it is sending right now, e.g.

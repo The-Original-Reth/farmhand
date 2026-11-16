@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Cable, ExternalLink, Lock, Printer, Sc
 import { c, fs, ui } from "../theme.js";
 import { headerButton, monoText, toolButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
+import { usePhone } from "../hooks/useMediaQuery.js";
 
 import { Modal } from "../components/common/dialogs.jsx";
 import { Badge, Row } from "../components/common/ui.jsx";
@@ -48,6 +49,7 @@ export function PrinterList({ setPath, sort: printerSort, onSortChange }) {
   const { printers, bundlesForPrinter } = useData();
   const [addPrinterOpen, setAddPrinterOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const phone = usePhone(); // a card per printer, rather than a row of columns
   // a column's arrow: the first click sorts by it A→Z (or low to high), the next reverses it
   const sortBy = (key) => onSortChange({ key, dir: printerSort.key === key && printerSort.dir === "asc" ? "desc" : "asc" });
 
@@ -77,70 +79,94 @@ export function PrinterList({ setPath, sort: printerSort, onSortChange }) {
         </Modal>
       )}
       <div style={{ border: `1px solid ${c.border}`, borderRadius: 4, overflow: "hidden" }}>
+        {/* the column headings; on a phone, just the ones that sort, in a line above the cards */}
         <div
+          data-testid="printer-list-heading"
           style={{
-            display: "grid",
-            gridTemplateColumns: COLUMNS,
-            padding: "8px 16px",
+            ...(phone
+              ? { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 14px" }
+              : { display: "grid", gridTemplateColumns: COLUMNS }),
+            padding: phone ? "8px 12px" : "8px 16px",
             fontSize: fs(12),
             color: c.textFaint,
             borderBottom: `1px solid ${c.border}`,
             background: c.panelAlt,
           }}
         >
+          {phone && <span>Sort by</span>}
           <SortHeading id="name" sort={printerSort} onSort={sortBy} />
           <SortHeading id="kind" sort={printerSort} onSort={sortBy} />
-          <div>Web UI</div>
+          {!phone && <div>Web UI</div>}
           <SortHeading id="wired" sort={printerSort} onSort={sortBy} />
           <SortHeading id="wireless" sort={printerSort} onSort={sortBy} />
-          <div>Status</div>
+          {!phone && <div>Status</div>}
         </div>
         {sorted(printers, printerSort).map((p) => {
           const bCount = bundlesForPrinter(p.id).length;
+          const name = (
+            <div style={uiText(14, c.heading, { display: "flex", alignItems: "center", gap: 8, flexWrap: phone ? "wrap" : undefined })}>
+              <Printer size={15} color={c.textFaint} />
+              {p.name}
+              {bCount > 0 && <Lock size={12} color={c.textFaint} />}
+              {p.notes && (
+                <span data-testid="printer-has-notes" title={notesHint(p.notes)} style={{ display: "flex" }}>
+                  <StickyNote size={13} color={c.textFaint} />
+                </span>
+              )}
+              {p.service.state === "due" && (
+                <span data-testid="printer-service-due" title={`${Math.floor(p.service.hours_since).toLocaleString()} print hours since the last service`}>
+                  <Badge tone="danger">
+                    <Wrench size={11} />
+                    {p.service.interval_hours.toLocaleString()} h service due
+                  </Badge>
+                </span>
+              )}
+            </div>
+          );
+          const kind = <div style={uiText(13, c.textMuted)}>{p.kind}</div>;
+          const wired = (
+            <div style={monoText(12, p.wired ? c.textPrimary : c.textFaint, { display: "flex", alignItems: "center", gap: 6 })}>
+              {p.wired && <Cable size={12} color={c.teal} />}
+              {p.wired || "—"}
+            </div>
+          );
+          const wireless = (
+            <div style={monoText(12, p.wireless ? c.heading : c.textFaint, { display: "flex", alignItems: "center", gap: 6 })}>
+              {p.wireless && <Wifi size={12} color={c.textFaint} />}
+              {p.wireless || "—"}
+            </div>
+          );
+          const status = p.decommissioned ? <Badge>decommissioned</Badge> : <Badge tone="green">active</Badge>;
           return (
             <Row key={p.id} onClick={() => setPath([{ label: "Printers" }, { printerId: p.id }])}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: COLUMNS,
-                  width: "100%",
-                  alignItems: "center",
-                }}
-              >
-                <div style={uiText(14, c.heading, { display: "flex", alignItems: "center", gap: 8 })}>
-                  <Printer size={15} color={c.textFaint} />
-                  {p.name}
-                  {bCount > 0 && <Lock size={12} color={c.textFaint} />}
-                  {p.notes && (
-                    <span data-testid="printer-has-notes" title={notesHint(p.notes)} style={{ display: "flex" }}>
-                      <StickyNote size={13} color={c.textFaint} />
-                    </span>
-                  )}
-                  {p.service.state === "due" && (
-                    <span data-testid="printer-service-due" title={`${Math.floor(p.service.hours_since).toLocaleString()} print hours since the last service`}>
-                      <Badge tone="danger">
-                        <Wrench size={11} />
-                        {p.service.interval_hours.toLocaleString()} h service due
-                      </Badge>
-                    </span>
-                  )}
+              {phone ? (
+                // a card: the name and status, the type, then the addresses with the web UI button
+                <div data-testid="printer-card" style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    {name}
+                    <div style={{ flexShrink: 0 }}>{status}</div>
+                  </div>
+                  {kind}
+                  <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 14px" }}>
+                    {p.wired && wired}
+                    {p.wireless && wireless}
+                    <div style={{ marginLeft: "auto" }}>
+                      <WebUiButton printer={p} orDash={false} style={{ ...headerButton(), height: 32 }} />
+                    </div>
+                  </div>
                 </div>
-                <div style={uiText(13, c.textMuted)}>{p.kind}</div>
-                <div>
-                  <WebUiButton printer={p} />
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: COLUMNS, width: "100%", alignItems: "center" }}>
+                  {name}
+                  {kind}
+                  <div>
+                    <WebUiButton printer={p} />
+                  </div>
+                  {wired}
+                  {wireless}
+                  <div>{status}</div>
                 </div>
-                <div style={monoText(12, p.wired ? c.textPrimary : c.textFaint, { display: "flex", alignItems: "center", gap: 6 })}>
-                  {p.wired && <Cable size={12} color={c.teal} />}
-                  {p.wired || "—"}
-                </div>
-                <div style={monoText(12, p.wireless ? c.heading : c.textFaint, { display: "flex", alignItems: "center", gap: 6 })}>
-                  {p.wireless && <Wifi size={12} color={c.textFaint} />}
-                  {p.wireless || "—"}
-                </div>
-                <div>
-                  {p.decommissioned ? <Badge>decommissioned</Badge> : <Badge tone="green">active</Badge>}
-                </div>
-              </div>
+              )}
             </Row>
           );
         })}

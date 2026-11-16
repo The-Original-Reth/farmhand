@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video, Youtube } from "lucide-react";
-import { c, fs, ui } from "../theme.js";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video, X, Youtube } from "lucide-react";
+import { c, fixed, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
 import { SECTIONS, pluginSection } from "./useNavigation.js";
@@ -114,14 +114,27 @@ const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon:
 // The menu down the left: Farmhand's name, a link per section (with how many models and printers there are), a link
 // per plugin page (`plugins`: the ones switched on with a page; those in MAIN_MENU_SLOTS among the sections, the rest
 // after them), and the thanks at the foot. `counts`: section key -> the number shown beside it.
-export function Sidebar({ current, counts, plugins = [], onOpen }) {
+// On a phone (`phone`) it's a drawer over the page instead: shown while `open`, and closed (onClose) by its ✕, a tap
+// on the page beside it, or opening a section.
+export function Sidebar({ current, counts, plugins = [], onOpen, phone = false, open = false, onClose }) {
   const slotted = plugins.filter((p) => MAIN_MENU_SLOTS[p.id]);
   const others = plugins.filter((p) => !MAIN_MENU_SLOTS[p.id]);
   const main = SECTIONS.flatMap((s) => [s, ...slotted.filter((p) => MAIN_MENU_SLOTS[p.id].after === s.key).map(pluginItem)]);
-  return (
+  const go = (key) => {
+    onOpen(key);
+    if (phone) onClose?.();
+  };
+  const menu = (
     <div
+      data-testid="sidebar"
+      aria-hidden={phone && !open ? true : undefined}
       style={{
-        width: 220,
+        width: phone ? 260 : 220,
+        maxWidth: "85vw",
+        ...(phone && {
+          position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 60, transition: "transform 0.2s ease, visibility 0.2s",
+          transform: open ? "none" : "translateX(-100%)", visibility: open ? "visible" : "hidden",
+        }),
         borderRight: `1px solid ${c.border}`,
         background: c.panel,
         padding: 16,
@@ -133,15 +146,23 @@ export function Sidebar({ current, counts, plugins = [], onOpen }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, padding: "0 4px" }}>
         <Archive size={18} color={c.amber} />
-        <span style={{ fontSize: fs(15), fontWeight: 600, letterSpacing: 0.2, color: c.heading }}>Farmhand</span>
+        <span style={{ fontSize: fs(15), fontWeight: 600, letterSpacing: 0.2, color: c.heading, flex: 1 }}>Farmhand</span>
+        {phone && (
+          <button
+            type="button" data-testid="menu-close" onClick={onClose} aria-label="Close the menu"
+            style={{ background: "none", border: "none", padding: 6, margin: -6, cursor: "pointer", display: "flex" }}
+          >
+            <X size={20} color={c.textMuted} />
+          </button>
+        )}
       </div>
       {main.map((s) => (
-        <NavItem key={s.key} section={s} current={current} count={counts[s.key]} onOpen={onOpen} />
+        <NavItem key={s.key} section={s} current={current} count={counts[s.key]} onOpen={go} />
       ))}
       {others.length > 0 && (
         <div data-testid="plugin-menu" style={{ borderTop: `1px solid ${c.border}`, marginTop: 10, paddingTop: 10 }}>
           {others.map((p) => (
-            <NavItem key={p.id} section={pluginItem(p)} current={current} onOpen={onOpen} />
+            <NavItem key={p.id} section={pluginItem(p)} current={current} onOpen={go} />
           ))}
         </div>
       )}
@@ -153,5 +174,12 @@ export function Sidebar({ current, counts, plugins = [], onOpen }) {
       {MOCKUP && <MockupBadge />}
       <Thanks />
     </div>
+  );
+  if (!phone) return menu;
+  return (
+    <>
+      {open && <div data-testid="menu-backdrop" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 59, background: fixed.backdrop }} />}
+      {menu}
+    </>
   );
 }
