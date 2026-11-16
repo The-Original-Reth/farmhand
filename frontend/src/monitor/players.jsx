@@ -204,19 +204,39 @@ function MseVideo({ cam, style, onState, onMeasure }) {
     let live = true;
     let retry;
     let stop = () => {};
+    // As go2rtc's own player does it: the media source goes on the video first, and once it's open the websocket asks
+    // go2rtc for the stream in the codecs this browser plays
     const start = () => {
-      const ws = socketTo(cam.stream_url);
+      const v = video.current;
+      if (!v) return;
       const { MS, managed } = mse();
       const ms = new MS();
+      let ws = null;
       let buffer = null;
       const waiting = []; // pieces that came while the buffer was busy (or not made yet)
       let over = false;
+      let blocked = null; // while the phone won't start a video by itself: the tap that starts it
       const fail = () => {
         if (!live || over) return;
         over = true;
         onState("failed");
         stop();
         retry = setTimeout(start, 5000);
+      };
+      // a muted video may start by itself, but an iPhone can still refuse (Low Power Mode, say): then the next tap
+      // anywhere on the page starts it
+      const play = () => {
+        if (!v.paused || blocked) return;
+        v.muted = true;
+        v.play().catch((err) => {
+          if (!live || over || err?.name !== "NotAllowedError" || blocked) return;
+          onState("tap");
+          blocked = () => {
+            blocked = null;
+            v.play().catch(() => {});
+          };
+          document.addEventListener("pointerup", blocked, { once: true, capture: true });
+        });
       };
       const feed = () => {
         if (!buffer || buffer.updating || !waiting.length) return;
@@ -229,21 +249,21 @@ function MseVideo({ cam, style, onState, onMeasure }) {
           fail();
         }
       };
-      ws.onopen = () => {
-        const ok = CODECS.filter((c) => MS.isTypeSupported(`video/mp4; codecs="${c}"`));
-        ws.send(JSON.stringify({ type: "mse", value: ok.join(",") }));
-      };
-      ws.onmessage = (e) => {
-        if (typeof e.data !== "string") {
-          waiting.push(e.data);
-          return feed();
-        }
-        const msg = JSON.parse(e.data);
-        if (msg.type === "error") return fail();
-        if (msg.type !== "mse") return;
-        const v = video.current;
-        if (!v) return;
-        ms.addEventListener("sourceopen", () => {
+      ms.addEventListener("sourceopen", () => {
+        if (!live || over) return;
+        ws = socketTo(cam.stream_url);
+        ws.onopen = () => {
+          const ok = CODECS.filter((c) => MS.isTypeSupported(`video/mp4; codecs="${c}"`));
+          ws.send(JSON.stringify({ type: "mse", value: ok.join(",") }));
+        };
+        ws.onmessage = (e) => {
+          if (typeof e.data !== "string") {
+            waiting.push(e.data);
+            return feed();
+          }
+          const msg = JSON.parse(e.data);
+          if (msg.type === "error") return fail();
+          if (msg.type !== "mse" || buffer) return;
           try {
             buffer = ms.addSourceBuffer(msg.value);
           } catch {
@@ -255,27 +275,30 @@ function MseVideo({ cam, style, onState, onMeasure }) {
             const r = buffer.buffered;
             if (r.length && v.currentTime < r.end(r.length - 1) - 3) v.currentTime = r.end(r.length - 1) - 0.5;
             feed();
+            play(); // stopped for want of pictures, or not started yet: go again now there are some
           });
           feed();
-        }, { once: true });
-        if (managed) {
-          // Safari plays a ManagedMediaSource only as the video's srcObject, and only with AirPlay off for it
-          v.disableRemotePlayback = true;
-          v.srcObject = ms;
-        } else {
-          v.src = URL.createObjectURL(ms);
-        }
-        v.play().catch(() => {});
-      };
-      ws.onerror = fail;
-      ws.onclose = fail;
+        };
+        ws.onerror = fail;
+        ws.onclose = fail;
+      }, { once: true });
+      if (managed) {
+        // Safari plays a ManagedMediaSource only as the video's srcObject, and only with AirPlay off for it
+        v.disableRemotePlayback = true;
+        v.srcObject = ms;
+      } else {
+        v.src = URL.createObjectURL(ms);
+      }
+      play();
       stop = () => {
-        ws.onclose = null;
-        ws.close();
-        if (video.current) {
-          video.current.srcObject = null;
-          video.current.removeAttribute("src");
+        if (blocked) document.removeEventListener("pointerup", blocked, { capture: true });
+        blocked = null;
+        if (ws) {
+          ws.onclose = null;
+          ws.close();
         }
+        v.srcObject = null;
+        v.removeAttribute("src");
       };
     };
     start();

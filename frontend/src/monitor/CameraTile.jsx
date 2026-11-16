@@ -59,7 +59,7 @@ function useFloating(label) {
 // under way ({ state: "printing" | "paused", progress, file }), its percentage shown left of the board. In the top left corner, beside the
 // picture-in-picture button, what the camera runs on and the size and frame rate it is sending, measured live (liveInfo.js).
 export function CameraTile({ label, cam, link, board, print, big, hidden, place, moving, target, drag, maxZoom = 4, onClick }) {
-  const [state, setState] = useState("waiting"); // waiting | showing | failed
+  const [state, setState] = useState("waiting"); // waiting | showing | failed | tap (the phone won't start it until tapped)
   const [el, setEl] = useState(null);
   const [zoom, setZoom] = useState(NO_ZOOM);
   const pan = useRef(null); // while dragging a zoomed picture: where it started, and whether it has moved
@@ -157,7 +157,7 @@ export function CameraTile({ label, cam, link, board, print, big, hidden, place,
       <div style={{ position: "absolute", inset: 0 }} />
       {(floating.win || floating.refused || state !== "showing") && (
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...ui, fontSize: fs(12), color: fixed.cameraMessage }}>
-          {floating.win ? "In a picture-in-picture window" : floating.refused ? "The browser wouldn't open a picture-in-picture window" : state === "failed" ? "The camera isn't answering" : "Waiting for the camera…"}
+          {floating.win ? "In a picture-in-picture window" : floating.refused ? "The browser wouldn't open a picture-in-picture window" : state === "failed" ? "The camera isn't answering" : state === "tap" ? "Tap to start the camera" : "Waiting for the camera…"}
         </div>
       )}
       <div style={{ ...corner({ x: "left", y: "top" }), display: "flex", gap: 6, alignItems: "center" }}>
