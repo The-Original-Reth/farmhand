@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { fixed, fs, ui } from "../theme.js";
 import { frameCounter, useMeasuredVideo } from "./liveInfo.js";
 
 // The camera played by the service Mainsail has it set to:
@@ -169,7 +170,34 @@ function cameraStreamer(pc, streamUrl, fail) {
 const CODECS = ["avc1.640029", "avc1.64002A", "avc1.640033", "hvc1.1.6.L153.B0", "mp4a.40.2", "mp4a.40.5", "opus"];
 const KEEP = 10; // seconds of video kept behind the newest
 
-function StreamedVideo({ cam, style, onState, onMeasure }) {
+// The browser's MSE: MediaSource, or on an iPhone (iOS 17.1 and later, which has no MediaSource) ManagedMediaSource. An
+// older iPhone has neither, and is told so: go2rtc could only send it JPEGs by re-encoding the camera with ffmpeg.
+const mse = () => (typeof window === "undefined" ? null : window.MediaSource ? { MS: window.MediaSource, managed: false }
+  : window.ManagedMediaSource ? { MS: window.ManagedMediaSource, managed: true } : null);
+
+function StreamedVideo(props) {
+  return mse() ? <MseVideo {...props} /> : <CantPlay onState={props.onState} />;
+}
+
+function CantPlay({ onState }) {
+  useEffect(() => onState("showing"), []); // the note below says what's wrong, rather than "Waiting for the camera…"
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 12, textAlign: "center", ...ui, fontSize: fs(12), color: fixed.cameraMessage }}>
+      This browser can't play this camera. On an iPhone or iPad it needs iOS 17.1 or later.
+    </div>
+  );
+}
+
+// The websocket to go2rtc for a camera's stream address (on the address the page came from)
+const socketTo = (streamUrl) => {
+  const page = new URL(streamUrl, window.location.href);
+  page.protocol = page.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(page);
+  ws.binaryType = "arraybuffer";
+  return ws;
+};
+
+function MseVideo({ cam, style, onState, onMeasure }) {
   const video = useRef(null);
 
   useEffect(() => {
@@ -177,11 +205,9 @@ function StreamedVideo({ cam, style, onState, onMeasure }) {
     let retry;
     let stop = () => {};
     const start = () => {
-      const page = new URL(cam.stream_url, window.location.href);
-      page.protocol = page.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(page);
-      ws.binaryType = "arraybuffer";
-      const ms = new MediaSource();
+      const ws = socketTo(cam.stream_url);
+      const { MS, managed } = mse();
+      const ms = new MS();
       let buffer = null;
       const waiting = []; // pieces that came while the buffer was busy (or not made yet)
       let over = false;
@@ -204,7 +230,7 @@ function StreamedVideo({ cam, style, onState, onMeasure }) {
         }
       };
       ws.onopen = () => {
-        const ok = CODECS.filter((c) => MediaSource.isTypeSupported(`video/mp4; codecs="${c}"`));
+        const ok = CODECS.filter((c) => MS.isTypeSupported(`video/mp4; codecs="${c}"`));
         ws.send(JSON.stringify({ type: "mse", value: ok.join(",") }));
       };
       ws.onmessage = (e) => {
@@ -232,7 +258,13 @@ function StreamedVideo({ cam, style, onState, onMeasure }) {
           });
           feed();
         }, { once: true });
-        v.src = URL.createObjectURL(ms);
+        if (managed) {
+          // Safari plays a ManagedMediaSource only as the video's srcObject, and only with AirPlay off for it
+          v.disableRemotePlayback = true;
+          v.srcObject = ms;
+        } else {
+          v.src = URL.createObjectURL(ms);
+        }
         v.play().catch(() => {});
       };
       ws.onerror = fail;
@@ -240,7 +272,10 @@ function StreamedVideo({ cam, style, onState, onMeasure }) {
       stop = () => {
         ws.onclose = null;
         ws.close();
-        if (video.current) video.current.removeAttribute("src");
+        if (video.current) {
+          video.current.srcObject = null;
+          video.current.removeAttribute("src");
+        }
       };
     };
     start();
