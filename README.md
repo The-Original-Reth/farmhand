@@ -592,6 +592,11 @@ Every printer has a service reminder kept in Farmhand: due once 1500 print hours
 count started (the first sync) or since it was last marked **Done**. It has its own notes, and can be turned off
 for a printer.
 
+While any printer's service is due, the middle of the top bar on every page says **Maintenance Required on Printer(s):** followed
+by their names, separated by commas (below the page's path on a phone). Click a name to open that printer; marking
+its service **Done** takes it off the list. Printers it's turned off for, and decommissioned ones, aren't listed. The
+list is checked again every five minutes while the page is open.
+
 ## Monitor
 
 **Monitor** (in the left-hand menu) shows every printer's camera on one screen.
