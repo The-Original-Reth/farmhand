@@ -578,7 +578,7 @@ browser only when **Show** asks for it; a Moonraker API key never is.
   shows mainsail-config as modified); without SSH they're left as they are.
   **Moonraker's database, over SSH:** Moonraker won't hand its database file out over the network, so Farmhand copies
   it over SSH. **Set up SSH** in the section shows Farmhand's own key and the one command to add it on the printer's Pi
-  (no password is ever stored), and **Test SSH** checks it. Then each backup also holds `moonraker-database/moonraker-sql.db`
+  (no password is ever stored), and **Test SSH** checks it (once it works, a green **Tested** shows beside the button, until a test or a backup can't log in). Then each backup also holds `moonraker-database/moonraker-sql.db`
   (Moonraker makes a safe copy, Farmhand fetches it and removes it from the Pi), and **Database** on a backup puts
   Moonraker's whole database back as it was (print history, Mainsail's settings, maintenance): Farmhand sends the copy
   and Moonraker restores it, then restarts itself. Without SSH, backups go ahead without that file. The database holds

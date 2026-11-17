@@ -389,5 +389,25 @@ def test_ssh_key_and_test_from_the_api(klipper, moonraker, printer_pi):
     assert key.startswith("ssh-ed25519 ") and key.endswith("farmhand")
     refused = api.post(f"/printers/{pid}/ssh/test").json()
     assert refused["ok"] is False and refused["kind"] == "no_key"
+    assert refused["tested_at"] is None
+    assert api.get(f"/printers/{pid}/config-backups").json()["ssh"] is None  # never tested: no "Tested"
     printer_pi.accepts_key = True
-    assert api.post(f"/printers/{pid}/ssh/test").json() == {"ok": True, "user": "pi", "host": "10.0.6.21", "error": None, "kind": None}
+    ok = api.post(f"/printers/{pid}/ssh/test").json()
+    assert {k: ok[k] for k in ("ok", "user", "host", "error", "kind")} == {"ok": True, "user": "pi", "host": "10.0.6.21", "error": None, "kind": None}
+    ssh = api.get(f"/printers/{pid}/config-backups").json()["ssh"]
+    assert ssh == {"tested_at": ok["tested_at"], "user": "pi", "host": "10.0.6.21"}  # remembered: shown as "Tested"
+    printer_pi.accepts_key = False
+    api.post(f"/printers/{pid}/ssh/test")
+    assert api.get(f"/printers/{pid}/config-backups").json()["ssh"] is None  # a failed test forgets it
+
+
+def test_backups_keep_the_ssh_status_current(db_session, moonraker, printer_pi, settings_folder):
+    _farm(moonraker)
+    _choose(db_session, settings_folder)
+    p = klipper_printer(db_session)
+    printer_pi.accepts_key = True
+    backups.take_backup(db_session, p)
+    assert backups.list_backups(db_session, p)["ssh"]["user"] == "pi"  # its database copy logged in: tested
+    printer_pi.accepts_key = False  # the key was removed from the Pi since
+    backups.take_backup(db_session, p)
+    assert backups.list_backups(db_session, p)["ssh"] is None

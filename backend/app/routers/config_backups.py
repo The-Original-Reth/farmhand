@@ -61,8 +61,9 @@ def ssh_key():
 
 @router.post("/{printer_id}/ssh/test")
 def ssh_test(printer_id: int, db: Session = Depends(get_db)):
-    """Can Farmhand log in to this printer over SSH with its key? {ok, user, host, error, kind}. Never fails."""
-    return printer_ssh.check(require_printer(db, printer_id))
+    """Can Farmhand log in to this printer over SSH with its key? {ok, user, host, error, kind, tested_at}, remembered
+    for its Backups section (`ssh` in its backups list). Never fails."""
+    return backups.test_ssh(db, require_printer(db, printer_id))
 
 
 @router.put("/config-backups/schedule")
