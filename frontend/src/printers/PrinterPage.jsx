@@ -39,9 +39,9 @@ function bundleMatches(bundle, models, words, subPrinters) {
   return words.every((w) => haystack.includes(w));
 }
 
-// Which parts of a printer page are folded away: { moonraker, threemf, history, and inside Moonraker/PrusaLink:
-// connection, energy, maintenance } (true = folded). The same on every printer, remembered in this browser. The page's
-// own sections start folded until opened; the ones inside Moonraker start open.
+// Which parts of a printer page are folded away: { connection (Moonraker or PrusaLink), energy, maintenance, threemf,
+// history } (true = folded). The same on every printer, remembered in this browser. Moonraker, Energy and Maintenance
+// start open; the 3MF files and the print history start folded until opened.
 // (The key changed when "folded" became the start, so sections left open under the old default start folded again.)
 const PRINTER_SECTIONS_KEY = "farmhand.printerSections.v2";
 const OPEN_AT_START = new Set(["connection", "energy", "maintenance"]);
@@ -58,12 +58,11 @@ function usePrinterSections() {
 }
 
 // The printer's Moonraker or PrusaLink (whichever it uses), looked at every few seconds while the page is open, with
-// everything that follows it: its status card, energy and maintenance, and the print history. Kept apart from the rest
+// everything that follows it: its Moonraker (or PrusaLink), Energy and Maintenance sections, and the print history. Kept apart from the rest
 // of the page so a look redraws only these: `children` (the 3MF files, which sit between them on the page) is made by
 // the page and doesn't change when a look comes in, so React leaves it alone. Starts over if the address or login
 // changes.
 function PrinterLive({ printer, sections, refreshPrinters, children }) {
-  const [maintenanceDue, setMaintenanceDue] = useState(0); // reported by the maintenance list, for when it's folded
   const isPrusaLink = printer.connectionType === "prusalink";
   const mr = useMoonraker(
     isPrusaLink ? null : printer.id,
@@ -76,42 +75,32 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
     refreshPrinters,
   );
   const link = isPrusaLink ? pl : mr; // for what both show: the connection dot, the history reloading
-  const fold = (name) => ({ open: sections.isOpen(name), onToggle: () => sections.toggle(name) }); // a section inside it
+  const fold = (name) => ({ open: sections.isOpen(name), onToggle: () => sections.toggle(name) }); 
 
+  // the connection's state, beside its heading while it's folded
+  const linkSummary = (
+    <span data-testid="connection-summary" style={{ display: "inline-flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textFaint }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: !link.status ? c.textFaint : link.status.reachable ? c.green : c.danger }} />
+      {!link.status ? "checking…" : !link.status.reachable ? "not reachable" : (link.status.job || link.status.print) ? `printing · ${Math.round((link.status.job || link.status.print).progress || 0)}%` : "connected"}
+    </span>
+  );
+
+  // Moonraker (or PrusaLink), Energy and Maintenance: each its own section of the page. Maintenance loads even
+  // while folded, so its heading can still say how many are due.
   return (
     <>
-      {/* Everything from the printer's Moonraker, foldable as one. Folded, it stays mounted (just hidden), so it
-          keeps what it loaded and can still say if maintenance is due. */}
-      <div data-testid="moonraker-group">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: sections.isOpen("moonraker") ? 14 : 0, flexWrap: "wrap" }}>
-          <SectionToggle open={sections.isOpen("moonraker")} onToggle={() => sections.toggle("moonraker")} controlsId="moonraker-body" testId="toggle-moonraker">
-            {isPrusaLink ? "PrusaLink: live status, printing and maintenance" : "Moonraker: connection, energy and maintenance"}
-          </SectionToggle>
-          {!sections.isOpen("moonraker") && (
-            <>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(12), color: c.textFaint }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: !link.status ? c.textFaint : link.status.reachable ? c.green : c.danger }} />
-                {!link.status ? "checking…" : !link.status.reachable ? "not reachable" : (link.status.job || link.status.print) ? `printing · ${Math.round((link.status.job || link.status.print).progress || 0)}%` : "connected"}
-              </span>
-              {maintenanceDue > 0 && <Badge tone="danger">{maintenanceDue} maintenance due</Badge>}
-            </>
-          )}
-        </div>
-        <div id="moonraker-body" style={{ display: sections.isOpen("moonraker") ? "flex" : "none", flexDirection: "column", gap: 28 }}>
-          {isPrusaLink ? (
-            <>
-              <PrusaLinkCard printer={printer} pl={pl} {...fold("connection")} />
-              <MaintenanceSection printer={printer} reachable onDueCount={setMaintenanceDue} {...fold("maintenance")} />
-            </>
-          ) : (
-            <>
-              <MoonrakerCard printer={printer} mr={mr} {...fold("connection")} />
-              <EnergyPanel printer={printer} syncTick={mr.syncTick} {...fold("energy")} />
-              <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} onDueCount={setMaintenanceDue} {...fold("maintenance")} />
-            </>
-          )}
-        </div>
-      </div>
+      {isPrusaLink ? (
+        <>
+          <PrusaLinkCard printer={printer} pl={pl} summary={linkSummary} {...fold("connection")} />
+          <MaintenanceSection printer={printer} reachable {...fold("maintenance")} />
+        </>
+      ) : (
+        <>
+          <MoonrakerCard printer={printer} mr={mr} summary={linkSummary} {...fold("connection")} />
+          <EnergyPanel printer={printer} syncTick={mr.syncTick} {...fold("energy")} />
+          <MaintenanceSection printer={printer} reachable={!!mr.status?.reachable} {...fold("maintenance")} />
+        </>
+      )}
 
       {children}
 

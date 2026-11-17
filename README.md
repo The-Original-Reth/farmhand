@@ -379,8 +379,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
   can be deleted (**Delete** on its page) once it has no 3MF files left; its print history, notes and maintenance go
   with it
 - A **Mainsail** or **PrusaLink** button on each, opening the printer's own page in a new tab
-- Each printer page: its details and notes, its 3MF files (with a search), its print history, and its
-  Moonraker or PrusaLink section — each folds away, and all start folded
+- Each printer page: its details and notes, then its **Moonraker** (or **PrusaLink**), **Energy** and **Maintenance**
+  sections, its 3MF files (with a search) and its print history — each folds away
 - **Moonraker (Klipper)**: connection, lifetime statistics, print history, energy, maintenance shared with
   Mainsail, and the 1500-hour service
 - **PrusaLink (Prusa Core One, MK4, XL…)**: live status, sending a print, a print history Farmhand records,
@@ -469,10 +469,10 @@ The **Printers** list sorts by **Name**, **Type**, **Wired IP** or **Wireless IP
 again to reverse it (IPs sort as numbers; printers without that IP go last). The choice is remembered in this
 browser. Its **Mainsail** or **PrusaLink** button opens the printer's own page in a new tab. A printer with notes
 has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
-and notes, then three sections that each fold away (all start folded): its **Moonraker** or **PrusaLink** section
-(whose own parts, **Connection and statistics**, **Energy** and **Maintenance**, fold away too: they start open, and a
-folded Maintenance still shows how many are due), its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
-notes, or a printer profile), and its **print history**.
+and notes, then sections that each fold away: **Moonraker** (or **PrusaLink** for a Prusa; folded, it still shows
+whether the printer is connected or printing), **Energy** (Moonraker printers only) and **Maintenance** (folded, it
+still shows how many are due), which start open; then its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
+notes, or a printer profile), and its **print history**, which start folded.
 
 **Printer profiles.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its
 printer presets under it, for example a 0.4 and a 0.6 nozzle. Farmhand calls those presets the printer's **sub
@@ -530,7 +530,7 @@ browser only when **Show** asks for it; a Moonraker API key never is.
 
 ### Moonraker (Klipper) printers
 
-- **Connection and statistics:** whether Klipper is ready, the printer's lifetime totals, and **Open
+- **Moonraker:** whether Klipper is ready, the printer's lifetime totals, and **Open
   Mainsail**. **Sync now** copies the latest print history; Farmhand also syncs every printer by itself every
   15 minutes, so nobody has to open its page.
 - **The print running now:** while the printer is printing or paused, its file, a progress bar, the time
@@ -591,6 +591,11 @@ browser only when **Show** asks for it; a Moonraker API key never is.
 Every printer has a service reminder kept in Farmhand: due once 1500 print hours have been added since the
 count started (the first sync) or since it was last marked **Done**. It has its own notes, and can be turned off
 for a printer.
+
+While any printer's service is due, the middle of the top bar on every page says **Maintenance Required on Printer(s):** followed
+by their names, separated by commas (below the page's path on a phone). Click a name to open that printer; marking
+its service **Done** takes it off the list. Printers it's turned off for, and decommissioned ones, aren't listed. The
+list is checked again every five minutes while the page is open.
 
 ## Monitor
 

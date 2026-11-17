@@ -75,7 +75,7 @@ export function usePrusaLink(printerId, key, onChanged) {
 const fmtTemp = (now, target) => (now == null ? "—" : `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ""}`);
 
 // Live status (state, temperatures, the print running), Farmhand's statistics for it, "Open PrusaLink" and "Send a print"
-export function PrusaLinkCard({ printer, pl, open = true, onToggle }) {
+export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
   const { status, stats } = pl;
   const [chosen, setChosen] = useState(null); // the file picked to send, waiting for the go-ahead
   const fileInput = useRef(null);
@@ -100,9 +100,12 @@ export function PrusaLinkCard({ printer, pl, open = true, onToggle }) {
   return (
     <div data-testid="prusalink-card">
       <div style={foldHeading(open)}>
-        <SectionToggle open={open} onToggle={onToggle} controlsId="prusalink-card-body" testId="toggle-connection" indent={20}>
-          Live status and statistics
-        </SectionToggle>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <SectionToggle open={open} onToggle={onToggle} controlsId="prusalink-card-body" testId="toggle-connection">
+            PrusaLink
+          </SectionToggle>
+          {!open && summary}
+        </div>
         {open && (
         <div style={{ display: "flex", gap: 8 }}>
           {printer.prusalinkUrl && (

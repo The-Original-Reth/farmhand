@@ -66,10 +66,9 @@ function MaintenanceRow({ entry, onDone, onEdit, onDelete }) {
   );
 }
 
-// onDueCount(n): told how many reminders are due (the 1500-hour service included), for the folded group's heading.
 // A PrusaLink printer's maintenance is kept in Farmhand, so it's always there.
 // Folds away (open/onToggle); folded, it still says how many are due.
-export function MaintenanceSection({ printer, reachable, onDueCount, open: unfolded = true, onToggle }) {
+export function MaintenanceSection({ printer, reachable, open: unfolded = true, onToggle }) {
   const inFarmhand = printer.connectionType === "prusalink";
   const [data, setData] = useState(null); // { entries, totals }
   const [error, setError] = useState(null);
@@ -103,15 +102,12 @@ export function MaintenanceSection({ printer, reachable, onDueCount, open: unfol
   const done = entries.filter((e) => e.state === "done");
   const dueCount = open.filter((e) => e.state === "due").length + (printer.service.state === "due" ? 1 : 0);
   const close = () => setDialog(null);
-  useEffect(() => {
-    onDueCount?.(dueCount);
-  }, [dueCount]);
 
   return (
     <div data-testid="maintenance-section">
       <div style={{ ...foldHeading(unfolded), flexWrap: "nowrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <SectionToggle open={unfolded} onToggle={onToggle} controlsId="maintenance-body" testId="toggle-maintenance" indent={20}>
+          <SectionToggle open={unfolded} onToggle={onToggle} controlsId="maintenance-body" testId="toggle-maintenance">
             Maintenance
           </SectionToggle>
           {dueCount > 0 && <Badge tone="danger">{dueCount} due</Badge>}

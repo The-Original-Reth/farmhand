@@ -12,6 +12,7 @@ import { Modal } from "./components/common/dialogs.jsx";
 import { ModelsSection } from "./models/ModelsSection.jsx";
 import { ProjectsSection } from "./projects/ProjectsSection.jsx";
 import { PrintersSection } from "./printers/PrintersSection.jsx";
+import { MaintenanceBanner } from "./printers/MaintenanceBanner.jsx";
 import { PowerSection } from "./power/PowerSection.jsx";
 import { FarmCostSection } from "./farmcost/FarmCostSection.jsx";
 import { EnergyPricesContext } from "./lib/energyPrice.js";
@@ -95,7 +96,7 @@ function SectionPage({ section, nav, compare, settings, plugins }) {
 }
 
 function FarmhandApp() {
-  const { printers, sourceModels, bundles, projects, bundleTitle, versionIndex, loading, error, refresh } = useData();
+  const { printers, sourceModels, bundles, projects, bundleTitle, versionIndex, loading, error, refresh, refreshPrinters } = useData();
   // Held HERE (not in a provider above) so that a change of look re-renders everything below
   const settings = useSavedSettings();
   const plugins = usePlugins(); // for the menu's plugin pages and the Plugins page
@@ -174,19 +175,30 @@ function FarmhandApp() {
             </button>
           )}
           <Crumb items={nav.crumbs()} onJump={nav.jumpTo} />
-          {/* in the middle of the top bar on the Stream plugin's page (below it on a phone): the cameras see what the
-              printers' panels reflect */}
-          {nav.section === pluginSection("stream") && <div
-            data-testid="panels-warning"
-            style={{
-              ...(phone
-                ? { width: "100%", fontSize: fs(14) }
-                : { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", whiteSpace: "nowrap", fontSize: fs(17) }),
-              pointerEvents: "none", ...ui, fontWeight: 700, color: fixed.voronRed, letterSpacing: 0.3,
-            }}
+          {/* the middle of the top bar (below the path on a phone): printers whose service is due, on every page, and on
+              the Stream plugin's page the warning that the cameras see what the printers' panels reflect */}
+          <div
+            style={phone
+              ? { width: "100%", display: "flex", flexDirection: "column", gap: 4 }
+              : { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", maxWidth: "50%",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 2, textAlign: "center" }}
           >
-            WARNING Panels are reflective. Put on pants.
-          </div>}
+            <MaintenanceBanner
+              printers={printers}
+              refreshPrinters={refreshPrinters}
+              onOpenPrinter={(printerId) => nav.open("printers", { printerId })}
+              phone={phone}
+            />
+            {nav.section === pluginSection("stream") && <div
+              data-testid="panels-warning"
+              style={{
+                ...(phone ? { fontSize: fs(14) } : { whiteSpace: "nowrap", fontSize: fs(17) }),
+                pointerEvents: "none", ...ui, fontWeight: 700, color: fixed.voronRed, letterSpacing: 0.3,
+              }}
+            >
+              WARNING Panels are reflective. Put on pants.
+            </div>}
+          </div>
         </div>
         {PLUGIN_SECTION.test(nav.section) ? (
           // a plugin's page fills the space under the top bar, and scrolls itself
