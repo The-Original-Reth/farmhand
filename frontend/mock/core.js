@@ -65,7 +65,7 @@ export function createCore() {
       state: !enabled ? "off" : p.serviceHoursSince >= 1500 ? "due" : "ok",
       enabled, interval_hours: 1500, hours_since: p.serviceHoursSince,
       started_at: iso(last ? farm.now - last.hoursAgoDays * DAY : farm.now - 120 * DAY),
-      last_done: last ? { done_at: iso(last.doneAt ?? farm.now - last.hoursAgoDays * DAY), printtime: 0, hours: last.hours, note: last.note } : null,
+      last_done: last ? { done_at: iso(last.doneAt ?? farm.now - last.hoursAgoDays * DAY), printtime: last.printtime ?? Math.max(0, totalsFor(p).total_print_time - p.serviceHoursSince * 3600), hours: last.hours, note: last.note } : null,
       ...notes,
     };
   };

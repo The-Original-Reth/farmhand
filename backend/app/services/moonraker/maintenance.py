@@ -131,6 +131,13 @@ def _status(entry: dict, totals: dict, now: float) -> dict:
     return {"state": "due" if any(c["due"] for c in checks) else "ok", "checks": checks}
 
 
+def _hours(seconds) -> float | None:
+    """Print seconds from the job totals as hours, to one decimal; None when not a number."""
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return None
+    return round(seconds / 3600, 1)
+
+
 def list_maintenance(printer: Printer) -> dict:
     """Every reminder on the printer, with whether it's due, worked out against the printer's current totals."""
     entries = _entries(printer)
@@ -145,6 +152,9 @@ def list_maintenance(printer: Printer) -> dict:
             "perform_note": e.get("perform_note"),
             "start_time": e.get("start_time"),
             "end_time": e.get("end_time"),
+            # the printer's total print hours when it was added and when it was done (null when not known)
+            "start_printtime_hours": _hours(e.get("start_printtime")),
+            "end_printtime_hours": _hours(e.get("end_printtime")),
             "last_entry": e.get("last_entry"),
             "reminder": e.get("reminder") or {"type": None},
             **_status(e, totals, now),
