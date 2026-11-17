@@ -391,6 +391,9 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 **YouTube** — the cameras you choose sent live to YouTube, no OBS needed, by the YouTube Stream plugin: once it's added
 on the Plugins page, YouTube is in the menu after Monitor (see "Stream")
 
+**Twitch** — the same for Twitch, by the Twitch Stream plugin, independent of YouTube (both can run at once): once
+it's added, Twitch is in the menu right after YouTube (see "Stream")
+
 **Power** — the whole farm's energy use (see "Power")
 
 **Farm cost** — what the farm costs to run: filament and electricity, in total and per printer (see "Farm cost")
@@ -703,6 +706,13 @@ A Farmhand that had its own Stream page keeps what that page had saved (its sett
 the YouTube sign-in) in its database, untouched. The first time the Stream plugin starts with the `stream:migrate`
 permission, it takes a copy of all that once, so nothing needs setting up again (see "Plugins"). The pictures,
 slideshows and music stay in the stream folder on the NAS: give the plugin's container that same folder.
+
+Streaming to **Twitch** is a separate plugin, **Twitch Stream**
+([farmhand-twitch-plugin](https://github.com/The-Original-Reth/farmhand-twitch-plugin), a repository of its own): the
+same grid of cameras, cards, slideshows and music, with its own layout, cameras, pictures, music and Twitch stream key,
+so the two never get in each other's way and can run on the same machine at once (Twitch on port 8081, YouTube on
+8080). Under **Run a plugin in its own container**, choose **Twitch Stream** for its steps (`/opt/farmhand-twitch`,
+`twitch.env`). Once it's added, **Twitch** is in the menu after Monitor, right after YouTube.
 
 ## Power
 
@@ -1080,12 +1090,14 @@ by itself after its own restart and carries on while Farmhand is down (the words
 printers' names). It reads only the cameras' addresses and what's printing. Once it's added, **Stream** is in the menu
 after Monitor, where Farmhand's own Stream page used to be. Given the `stream:migrate` permission, it takes a copy of
 the Stream page set-up an older Farmhand saved (settings, layouts, stream key and YouTube sign-in) once, the first time
-it starts.
+it starts. **The Twitch Stream plugin** ([farmhand-twitch-plugin](https://github.com/The-Original-Reth/farmhand-twitch-plugin),
+its own repository) does the same for Twitch, independently of the YouTube one; both can run on one machine. Once it's
+added, **Twitch** is in the menu right after YouTube.
 
 **The Plugins page** (in the menu, under Settings) lists the plugins added and how each is doing (Farmhand asks each one
 every 30 seconds: running, running with a problem the plugin names, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the
 way the plugin's instructions say (**Run a plugin in its own container**, on the same page, has the steps with docker
-compose, filled in for Stream and Hello), then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.
+compose, filled in for YouTube Stream, Twitch Stream and Hello), then type its address (e.g. `http://192.168.10.215:8080`) under **Add a plugin**.
 Farmhand asks the plugin what it is and shows what it wants to read in plain words; untick anything you'd rather it
 didn't see, and say yes. Farmhand then shows the plugin's `FARMHAND_URL` and `FARMHAND_TOKEN` once, as two lines to
 put in the env file beside its docker-compose.yml (`stream.env` for Stream), before starting it again. From the page

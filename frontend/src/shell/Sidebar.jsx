@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Video, X, Youtube } from "lucide-react";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Twitch, Video, X, Youtube } from "lucide-react";
 import { c, fixed, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
@@ -102,12 +102,14 @@ function Thanks() {
 }
 
 // The icon a plugin's manifest names for its menu entry ("video"...), from the few Farmhand knows; a puzzle piece otherwise
-const PLUGIN_ICONS = { youtube: Youtube, video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard };
+const PLUGIN_ICONS = { youtube: Youtube, video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard, twitch: Twitch };
 
 // Plugins that take a slot of their own in the main menu instead of the plugins group below it: plugin id -> the section
 // it comes after, and its icon. Stream was Farmhand's own page, after Monitor, until it became a plugin (YouTube Stream); it
-// keeps its place, under the menu name its manifest gives (YouTube).
-const MAIN_MENU_SLOTS = { stream: { after: "monitor", Icon: Youtube } };
+// keeps its place, under the menu name its manifest gives (YouTube). The Twitch Stream plugin (twitch) sits after Monitor
+// too, right after YouTube: plugins slotted after the same section come in this object's order.
+const MAIN_MENU_SLOTS = { stream: { after: "monitor", Icon: Youtube }, twitch: { after: "monitor", Icon: Twitch } };
+const SLOT_ORDER = Object.keys(MAIN_MENU_SLOTS);
 
 const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon: MAIN_MENU_SLOTS[p.id]?.Icon || PLUGIN_ICONS[p.page.icon] || Puzzle });
 
@@ -117,7 +119,7 @@ const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon:
 // On a phone (`phone`) it's a drawer over the page instead: shown while `open`, and closed (onClose) by its ✕, a tap
 // on the page beside it, or opening a section.
 export function Sidebar({ current, counts, plugins = [], onOpen, phone = false, open = false, onClose }) {
-  const slotted = plugins.filter((p) => MAIN_MENU_SLOTS[p.id]);
+  const slotted = plugins.filter((p) => MAIN_MENU_SLOTS[p.id]).sort((a, b) => SLOT_ORDER.indexOf(a.id) - SLOT_ORDER.indexOf(b.id));
   const others = plugins.filter((p) => !MAIN_MENU_SLOTS[p.id]);
   const main = SECTIONS.flatMap((s) => [s, ...slotted.filter((p) => MAIN_MENU_SLOTS[p.id].after === s.key).map(pluginItem)]);
   const go = (key) => {
