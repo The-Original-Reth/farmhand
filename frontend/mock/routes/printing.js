@@ -322,7 +322,7 @@ export function printingRoutes(ctx) {
   };
   on("POST", "/printers/:id/service/done", ({ id }, body) => {
     const p = servicedPrinter(id);
-    p.serviceHistory = [...(p.serviceHistory || []), { hoursAgoDays: 0, doneAt: nowUnix(), hours: Math.round(p.serviceHoursSince * 10) / 10, note: (body.note || "").trim() || null }];
+    p.serviceHistory = [...(p.serviceHistory || []), { hoursAgoDays: 0, doneAt: nowUnix(), printtime: totalsFor(p).total_print_time, hours: Math.round(p.serviceHoursSince * 10) / 10, note: (body.note || "").trim() || null }];
     p.serviceHoursSince = 0;
     return printerOut(p);
   });
@@ -341,6 +341,7 @@ export function printingRoutes(ctx) {
   const maintenanceList = (p) => {
     reach(p);
     const totals = totalsFor(p);
+    const hours = (sec) => (typeof sec === "number" ? Math.round((sec / HOUR) * 10) / 10 : null); // the print hours then
     const now = nowUnix();
     const entries = Object.entries(farm.maintenance[p.id] || {}).map(([key, e]) => {
       const r = e.reminder || { type: null };
@@ -352,7 +353,8 @@ export function printingRoutes(ctx) {
         if (r.date?.bool) { const used = (now - e.start_time) / DAY; checks.push({ kind: "date", used, limit: r.date.value, unit: "days", due: used >= r.date.value }); }
         if (checks.some((c) => c.due)) state = "due";
       }
-      return { id: key, name: e.name, note: e.note || "", perform_note: e.perform_note, start_time: e.start_time, end_time: e.end_time, last_entry: e.last_entry, reminder: r, state, checks };
+      return { id: key, name: e.name, note: e.note || "", perform_note: e.perform_note, start_time: e.start_time, end_time: e.end_time,
+        start_printtime_hours: hours(e.start_printtime), end_printtime_hours: hours(e.end_printtime), last_entry: e.last_entry, reminder: r, state, checks };
     });
     entries.sort((a, b) => (a.end_time != null) - (b.end_time != null) || (b.end_time || b.start_time) - (a.end_time || a.start_time));
     return { entries, totals };

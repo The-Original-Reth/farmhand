@@ -52,7 +52,9 @@ export function ServiceReminder({ printer }) {
         )}
         {s.last_done && (
           <div style={uiText(12, c.textFaint, { marginTop: 4 })}>
-            Last done {new Date(s.last_done.done_at).toLocaleDateString()}, after {n(s.last_done.hours)} hours{s.last_done.note ? ` — “${s.last_done.note}”` : ""}
+            Last done {new Date(s.last_done.done_at).toLocaleString()}
+            {typeof s.last_done.printtime === "number" && `, at ${(s.last_done.printtime / 3600).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} print hours`}
+            , after {n(s.last_done.hours)} hours{s.last_done.note ? ` — “${s.last_done.note}”` : ""}
           </div>
         )}
         {error && <div style={uiText(12, c.amber, { marginTop: 4 })}>{error}</div>}

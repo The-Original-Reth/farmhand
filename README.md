@@ -559,7 +559,8 @@ browser only when **Show** asks for it; a Moonraker API key never is.
   the **Power** page, a year being its months added up.
 - **Maintenance:** kept in Moonraker's own database in Mainsail's format, so Mainsail shows the same list.
   Reminders by print time, filament and/or days, once or repeating; **Done** closes one (a repeating one starts
-  its next round).
+  its next round). Each item says when it was added (date and time) and at how many of the printer's print
+  hours; a done one also says when it was done, at how many print hours, and how many it printed in between.
 
 ### PrusaLink printers (Prusa Core One…)
 
@@ -589,7 +590,8 @@ browser only when **Show** asks for it; a Moonraker API key never is.
 ### The 1500-hour service
 
 Every printer has a service reminder kept in Farmhand: due once 1500 print hours have been added since the
-count started (the first sync) or since it was last marked **Done**. It has its own notes, and can be turned off
+count started (the first sync) or since it was last marked **Done**; **Last done** gives the date and time, the
+printer's print hours then, and how many hours that service came after. It has its own notes, and can be turned off
 for a printer.
 
 While any printer's service is due, the middle of the top bar on every page says **Maintenance Required on Printer(s):** followed

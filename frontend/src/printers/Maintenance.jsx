@@ -24,6 +24,18 @@ const checkText = (ch) => {
   return `${n(Math.max(0, ch.used))} / ${n(ch.limit)} ${label}`;
 };
 
+const hoursText = (h) => h.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// " · at 1,234.5 print hours": the printer's total print hours then; "" when the printer didn't say
+const atHours = (h) => (h == null ? "" : ` · at ${hoursText(h)} print hours`);
+
+// " · at 1,234.5 print hours (48.0 since it was added)": the printer's total print hours when it was done, and how many
+// it printed in between; "" when the printer didn't say
+const doneAtHours = (e) => {
+  if (e.end_printtime_hours == null) return "";
+  const between = e.start_printtime_hours == null ? null : Math.max(0, e.end_printtime_hours - e.start_printtime_hours);
+  return `${atHours(e.end_printtime_hours)}${between == null ? "" : ` (${hoursText(between)} since it was added)`}`;
+};
+
 function MaintenanceRow({ entry, onDone, onEdit, onDelete }) {
   const done = entry.state === "done";
   return (
@@ -34,8 +46,16 @@ function MaintenanceRow({ entry, onDone, onEdit, onDelete }) {
           {entry.state === "due" && <Badge tone="danger">due</Badge>}
           {entry.state === "ok" && <Badge tone="green">ok</Badge>}
           {entry.reminder?.type === "repeat" && <Badge>repeats</Badge>}
-          {done && <Badge>done {fmtUnix(entry.end_time)}</Badge>}
+          {done && <Badge>done</Badge>}
         </div>
+        <div data-testid="maintenance-added-when" style={monoText(11, c.textFaint, { marginTop: 4 })}>
+          Added {fmtUnix(entry.start_time)}{atHours(entry.start_printtime_hours)}
+        </div>
+        {done && (
+          <div data-testid="maintenance-done-when" style={monoText(11, c.textFaint, { marginTop: 2 })}>
+            Done {fmtUnix(entry.end_time)}{doneAtHours(entry)}
+          </div>
+        )}
         {entry.note && <div style={uiText(12, c.textMuted, { marginTop: 3, whiteSpace: "pre-wrap" })}>{entry.note}</div>}
         {entry.checks?.length > 0 && (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>

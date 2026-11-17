@@ -62,6 +62,9 @@ def test_marking_done_closes_it_and_a_repeat_starts_again(db_session, moonraker)
     done = moonraker.db["maintenance"][once]
     assert done["end_time"] and done["end_printtime"] == 5400 and done["end_filament"] == 1500
     assert done["perform_note"] == "done with Capricorn"
+    # the list says the printer's print hours when it was added and when it was done
+    listed = {e["id"]: e for e in mr.list_maintenance(p)["entries"]}[once]
+    assert listed["start_printtime_hours"] == 1.0 and listed["end_printtime_hours"] == 1.5 and listed["state"] == "done"
 
     nxt = mr.perform_maintenance(p, rep, note="")
     assert moonraker.db["maintenance"][rep]["perform_note"] is None
