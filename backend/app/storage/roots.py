@@ -51,6 +51,7 @@ THREEMF_FOLDER = "3MF"  # the sliced 3MFs and their G-code, inside a save locati
 PROJECTS_FOLDER = "Projects"  # the project files' default when the STL folder is chosen: beside it
 FARM_COST_FOLDER = "farm-cost"  # the monthly Farm cost records' default
 CONFIG_FOLDER = "farmhand-configs"  # the settings copy's default (Save all / Load all)
+BACKUP_FOLDER = "backup"  # the printers' config backups' default
 
 # Folders Farmhand names itself, and what each was called before: one with its old name is renamed when it's next used
 # (named_folder), and a folder saved by its old name follows the rename (current_folder): also when another Farmhand

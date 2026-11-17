@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import unquote
 
 import httpx
 
@@ -41,6 +42,12 @@ class FakeMoonraker:
         self.services: dict[str, str] = {"klipper": "active", "moonraker": "active", "crowsnest": "active"}
         self.files: dict[str, bytes] = {}  # the gcodes folder: {path in it: contents}
         self.ranges: list[str | None] = []  # the Range header of each file request, in order
+        self.config: dict[str, bytes] = {}  # the config folder: {path in it ("macros/start.cfg"): contents}
+        self.forbidden_namespaces: set[str] = {"moonraker"}  # in the database's list, but not handed out
+        self.read_only: set[str] = set()  # config files Moonraker won't let be changed (links such as mainsail.cfg)
+        self.pi_files: dict[str, bytes] = {}  # the Pi's own files (tests/fake_ssh.py shares them): database copies
+        self.restored: list[str] = []  # database copies Moonraker was asked to restore, in order
+        self.can_back_up_database = True  # False: an older Moonraker, with no /server/database/backup
 
     def add_gcode(self, path: str, *, cost="16.99", density="1.23", diameter="1.75", moves=b"G1 X10 E1\n" * 50,
                   modified=1_699_000_000.0) -> dict:
@@ -124,6 +131,29 @@ class FakeMoonraker:
             return self._ok({"count": len(self.jobs), "jobs": page})
         if path == "/server/database/item":
             return self._database(request)
+        if path == "/server/files/roots":
+            return self._ok([{"name": "config", "path": "/home/pi/printer_data/config", "permissions": "rw"},
+                             {"name": "gcodes", "path": "/home/pi/printer_data/gcodes", "permissions": "rw"}])
+        if path in ("/server/database/backup", "/server/database/restore") and request.method == "POST":
+            if not self.can_back_up_database:
+                return self._error(404, "Not Found")
+            name = json.loads(request.content)["filename"]
+            where = f"/home/pi/printer_data/backup/database/{name}"
+            if path.endswith("backup"):
+                self.pi_files[where] = b"SQLite format 3\0" + json.dumps(self.db).encode()
+                return self._ok({"backup_path": where})
+            if where not in self.pi_files:
+                return self._error(400, f"Backup file {name} does not exist")
+            self.db = json.loads(self.pi_files[where][len(b"SQLite format 3\0"):])
+            self.restored.append(name)
+            return self._ok({"restored_tables": ["job_history"], "restored_namespaces": list(self.db)})
+        if path == "/server/database/list":
+            return self._ok({"namespaces": [*self.db, *sorted(self.forbidden_namespaces)], "backups": []})
+        if path == "/server/files/list" and q.get("root") == "config":
+            return self._ok([{"path": p, "modified": 1_700_000_000.0, "size": len(d), "permissions": "r" if p in self.read_only else "rw"} for p, d in self.config.items()])
+        if path.startswith("/server/files/config/") and request.method == "GET":
+            data = self.config.get(unquote(path.removeprefix("/server/files/config/")))
+            return httpx.Response(200, content=data) if data is not None else self._error(404, "File does not exist")
         if path == "/printer/objects/query":
             status = {"print_stats": {"state": self.print_state, "filename": self.live["filename"], "print_duration": self.live["print_duration"]}}
             if "virtual_sdcard" in q:
@@ -144,6 +174,8 @@ class FakeMoonraker:
         q = request.url.params
         if request.method == "GET":
             ns = q.get("namespace")
+            if ns in self.forbidden_namespaces:
+                return self._error(403, f"Read/Write access to namespace '{ns}' is forbidden")
             if ns not in self.db:
                 return self._error(404, f"Namespace '{ns}' not found")
             key = q.get("key")
@@ -168,9 +200,16 @@ class FakeMoonraker:
         # just enough multipart reading for a test: the file's name and size, and the root and print fields
         body = request.content
         name = re.search(rb'name="file"; filename="([^"]+)"', body).group(1).decode()
-        fields = dict(re.findall(rb'name="(root|print)"\r\n\r\n([^\r]*)', body))
+        fields = dict(re.findall(rb'name="(root|print|path)"\r\n\r\n([^\r]*)', body))
         part = body.split(b'filename="' + name.encode() + b'"', 1)[1].split(b"\r\n\r\n", 1)[1]
-        size = len(part[: part.index(b"\r\n--")])
+        content = part[: part.index(b"\r\n--")]
+        size = len(content)
+        if fields.get(b"root") == b"config":  # a config file put back: it replaces the one in the config folder
+            folder = fields.get(b"path", b"").decode().strip("/")
+            target = f"{folder}/{name}" if folder else name
+            if target in self.read_only:
+                return self._error(403, f"File {target} is read-only")
+            self.config[target] = content
         self.uploads.append({"filename": name, "size": size, "root": fields.get(b"root", b"").decode(), "print": fields.get(b"print", b"").decode()})
         if fields.get(b"print") == b"true":
             self.print_state = "printing"

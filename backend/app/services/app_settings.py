@@ -25,6 +25,7 @@ def put(db: Session, key: str, value: str | None) -> None:
 
 
 INSTANCE_KEY = "instance_id"
+PRINTER_BACKUPS_DIR_KEY = "printer_backups_dir"  # the printer config backups' folder chosen in Settings; none = the default
 FARM_COST_DIR_KEY = "farm_cost_dir"  # the Farm cost records folder chosen in Settings; none = the default
 
 

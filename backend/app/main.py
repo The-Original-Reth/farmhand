@@ -12,11 +12,12 @@ from . import background, change_hooks, storage
 from .database import SessionLocal, create_schema, engine
 from .notes import NotesConflict, conflict_response
 from .routers import (
-    bundles, config_settings, farm_cost, moonraker, plugin_api, plugins, printers, projects, prusalink, source_models,
+    bundles, config_backups, config_settings, farm_cost, moonraker, plugin_api, plugins, printers, projects, prusalink, source_models,
     storage_settings,
 )
 from .services import storage_settings_service
 from .services.moonraker import MoonrakerError
+from .services.printer_ssh import SshError
 from .services.prusalink import PrusaLinkError
 from .services.send_print import PrinterBusy
 
@@ -57,6 +58,7 @@ app.include_router(bundles.router)
 app.include_router(storage_settings.router)
 app.include_router(config_settings.router)
 app.include_router(moonraker.router)
+app.include_router(config_backups.router)
 app.include_router(prusalink.router)
 app.include_router(farm_cost.router)
 app.include_router(plugins.router)
@@ -73,6 +75,12 @@ async def notes_conflict_handler(request: Request, exc: NotesConflict):
 @app.exception_handler(PrusaLinkError)
 async def printer_error_handler(request: Request, exc: MoonrakerError | PrusaLinkError):
     # the printer couldn't be reached or refused: a clear 502 saying which, not a generic 500
+    return JSONResponse(status_code=502, content={"detail": str(exc), "kind": exc.kind})
+
+
+@app.exception_handler(SshError)
+async def ssh_error_handler(request: Request, exc: SshError):
+    # SSH to a printer didn't work (its key not added, can't reach it...): a 502 saying which, as for Moonraker
     return JSONResponse(status_code=502, content={"detail": str(exc), "kind": exc.kind})
 
 

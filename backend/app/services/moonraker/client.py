@@ -89,6 +89,125 @@ def gcode_tail(printer: Printer, filename: str, start: int | None = None, size: 
     return r.content[-GCODE_TAIL_MAX:]
 
 
+def config_files(printer: Printer) -> list[dict]:
+    """
+    Every file in the printer's config folder (subfolders too), as Moonraker lists them: [{path, size, modified,
+    writable}]. writable is False for one Moonraker won't let be changed (permissions "r": e.g. a link to mainsail.cfg).
+    """
+    listed = call(printer, "GET", "/server/files/list", params={"root": "config"})
+    out = []
+    for f in listed if isinstance(listed, list) else []:
+        path = f.get("path") or f.get("filename")
+        if isinstance(path, str) and path:
+            out.append({"path": path, "size": int(f.get("size") or 0), "modified": f.get("modified"),
+                        "writable": "w" in str(f.get("permissions", "rw"))})
+    return out
+
+
+def config_file(printer: Printer, path: str) -> bytes:
+    """One file from the printer's config folder, whole. One that isn't there any more raises MoonrakerError("not_found")."""
+    bases = printer.moonraker_urls
+    if not bases:
+        raise MoonrakerError("no_address", "This printer has no IP address or Moonraker address set.")
+    r, _ = printer_http.request_first_answering(
+        MoonrakerError, "Moonraker", "moonraker", printer.id, bases, "GET", f"/server/files/config/{quote(path)}",
+        transport=transport, headers=_headers(printer),
+    )
+    _check_allowed(r)
+    if r.status_code >= 400:
+        raise MoonrakerError("bad_response", f"Moonraker answered {r.status_code}: {_error_text(r)}")
+    return r.content
+
+
+HISTORY_PAGE = 200
+HISTORY_MAX_JOBS = 100_000  # a guard against a Moonraker that never stops paging
+
+
+def database_dump(printer: Printer) -> dict[str, dict]:
+    """
+    What the printer's Moonraker keeps in its database, for a backup: {"history": {count, jobs, totals,
+    auxiliary_totals}} with every job it remembers (oldest first), plus one entry per namespace it lets be read
+    (Mainsail's settings, maintenance, timelapse...). A namespace Moonraker won't hand out is left out.
+    """
+    jobs: list = []
+    while len(jobs) < HISTORY_MAX_JOBS:
+        page = call(printer, "GET", "/server/history/list", params={"limit": HISTORY_PAGE, "start": len(jobs), "order": "asc"})
+        got = page.get("jobs") or []
+        jobs.extend(got)
+        if len(got) < HISTORY_PAGE:
+            break
+    totals, aux = history_totals(printer)
+    out: dict[str, dict] = {"history": {"count": len(jobs), "jobs": jobs, "totals": totals, "auxiliary_totals": aux}}
+    try:
+        listed = call(printer, "GET", "/server/database/list")
+    except MoonrakerError as e:
+        if e.kind != "not_found":
+            raise
+        return out
+    names = listed.get("namespaces") if isinstance(listed, dict) else listed
+    for ns in names if isinstance(names, list) else []:
+        if not isinstance(ns, str) or ns == "history":
+            continue
+        try:
+            item = call(printer, "GET", "/server/database/item", params={"namespace": ns})
+        except MoonrakerError as e:
+            if e.kind in ("unreachable", "no_address"):
+                raise
+            continue  # a namespace kept to Moonraker itself (it answers 403, as it does to a missing API key)
+        out[ns] = {"namespace": ns, "value": item.get("value") if isinstance(item, dict) else item}
+    return out
+
+
+def config_root(printer: Printer) -> str:
+    """Where the printer's config folder is on its computer, as Moonraker says (/home/pi/printer_data/config)."""
+    for root in call(printer, "GET", "/server/files/roots") or []:
+        if isinstance(root, dict) and root.get("name") == "config" and root.get("path"):
+            return str(root["path"])
+    raise MoonrakerError("bad_response", "Moonraker didn't say where its config folder is.")
+
+
+def backup_database(printer: Printer, filename: str) -> str:
+    """Have Moonraker save a copy of its database (made safely while it runs) in its backup/database folder, as
+    `filename`. Returns the copy's path on the printer. not_found: a Moonraker too old to do it."""
+    answer = call(printer, "POST", "/server/database/backup", json={"filename": filename})
+    path = answer.get("backup_path") if isinstance(answer, dict) else None
+    if not path:
+        raise MoonrakerError("bad_response", "Moonraker didn't say where it saved the database copy.")
+    return str(path)
+
+
+def restore_database(printer: Printer, filename: str) -> dict:
+    """Have Moonraker replace its database with a copy in its backup/database folder. Moonraker restarts itself after."""
+    answer = call(printer, "POST", "/server/database/restore", json={"filename": filename}, timeout=UPLOAD_TIMEOUT)
+    return answer if isinstance(answer, dict) else {}
+
+
+def database_namespace(printer: Printer, namespace: str) -> dict:
+    """Everything a namespace of Moonraker's database holds now ({} when it has none yet)."""
+    try:
+        item = call(printer, "GET", "/server/database/item", params={"namespace": namespace})
+    except MoonrakerError as e:
+        if e.kind == "not_found":
+            return {}
+        raise
+    value = item.get("value") if isinstance(item, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def put_database_item(printer: Printer, namespace: str, key: str, value) -> None:
+    """Write one item of a namespace of Moonraker's database (Mainsail's settings, maintenance...), replacing it."""
+    call(printer, "POST", "/server/database/item", json={"namespace": namespace, "key": key, "value": value})
+
+
+def put_config_file(printer: Printer, path: str, data: bytes) -> None:
+    """Write a file into the printer's config folder (replacing the one there), at `path` ("macros/start.cfg")."""
+    folder, _, name = path.rpartition("/")
+    fields = {"root": "config"}
+    if folder:
+        fields["path"] = folder
+    call(printer, "POST", "/server/files/upload", files={"file": (name, data)}, data=fields, timeout=UPLOAD_TIMEOUT, unwrapped=True)
+
+
 def _error_text(r: httpx.Response) -> str:
     try:
         return str(r.json()["error"]["message"])

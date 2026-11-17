@@ -31,6 +31,7 @@ marker file, and writes to a chosen folder are refused when the marker is gone.
 from __future__ import annotations
 
 from .roots import (
+    BACKUP_FOLDER,
     CONFIG_FOLDER,
     FARM_COST_FOLDER,
     FOLDER_LABELS,

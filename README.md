@@ -2,7 +2,7 @@
 
 Cataloging and versioning for a 3D print farm: every STL model and every 3MF sliced from it, version by
 version, per printer, plus the printers themselves (Klipper/Moonraker and Prusa/PrusaLink): their print
-history, maintenance, energy use, their cameras on one screen, and sending them a G-code to print.
+history, maintenance, config backups, energy use, their cameras on one screen, and sending them a G-code to print.
 
 Farmhand runs on one computer on your network (a Raspberry Pi, a mini PC, a NAS that runs Docker…) and is used
 from a web browser on any computer, tablet or phone on the same network. On a phone the menu folds away behind
@@ -102,7 +102,7 @@ The first things to do, in this order. Everything is done in the web page; there
    share's own login.
    Farmhand connects to it and uses a folder inside it for each kind of file, making the ones that aren't there:
    **STL** (the Models library), **3MF** (sliced files and their G-code), **Projects**, **farm-cost** (the
-   monthly records) and **farmhand-configs** (the settings). Folders already there are used as they are, whatever
+   monthly records), **farmhand-configs** (the settings) and **backup** (the printers' config backups). Folders already there are used as they are, whatever
    their capitals. Out of the box, without a save location, everything stays in Farmhand's own storage on the
    computer it runs on.
 2. **Save all**, on the same card. Farmhand writes all its settings and every printer's and model's records to
@@ -380,7 +380,7 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
   with it
 - A **Mainsail** or **PrusaLink** button on each, opening the printer's own page in a new tab
 - Each printer page: its details and notes, then its **Moonraker** (or **PrusaLink**), **Energy** and **Maintenance**
-  sections, its 3MF files (with a search) and its print history — each folds away
+  sections, its 3MF files (with a search), its print history and its config **Backups** — each folds away
 - **Moonraker (Klipper)**: connection, lifetime statistics, print history, energy, maintenance shared with
   Mainsail, and the 1500-hour service
 - **PrusaLink (Prusa Core One, MK4, XL…)**: live status, sending a print, a print history Farmhand records,
@@ -472,7 +472,8 @@ has a note icon, and one whose 1500-hour service is due says so. Each printer pa
 and notes, then sections that each fold away: **Moonraker** (or **PrusaLink** for a Prusa; folded, it still shows
 whether the printer is connected or printing), **Energy** (Moonraker printers only) and **Maintenance** (folded, it
 still shows how many are due), which start open; then its **3MF files** (with a search box — every word must match a file name, a model, the slicer or the
-notes, or a printer profile), and its **print history**, which start folded.
+notes, or a printer profile), its **print history** and its **Backups** (Klipper printers' config, see below), which
+start folded.
 
 **Printer profiles.** In PrusaSlicer (and its BOSS edition) the Printers tab lists each physical printer with its
 printer presets under it, for example a 0.4 and a 0.6 nozzle. Farmhand calls those presets the printer's **sub
@@ -561,6 +562,32 @@ browser only when **Show** asks for it; a Moonraker API key never is.
   Reminders by print time, filament and/or days, once or repeating; **Done** closes one (a repeating one starts
   its next round). Each item says when it was added (date and time) and at how many of the printer's print
   hours; a done one also says when it was done, at how many print hours, and how many it printed in between.
+- **Backups:** below the print history. Each backup holds every file in the printer's config folder (printer.cfg,
+  moonraker.conf, macros, includes...) and what its Moonraker keeps in its database (the whole print history and
+  totals, Mainsail's settings, maintenance...), read from Moonraker with nothing installed on the printer. They're
+  kept in the printer backups folder, `<folder>/<printer>/<date_time>/`: by default **backup** in the Farmhand folder
+  (the one above the STL folder, beside farm-cost and farmhand-configs, so on the NAS once a save location is set);
+  to keep them somewhere else, press **Change…** beside it on the **Settings** page, like the other folders. The
+  newest **10** per printer are kept and the oldest is deleted when an 11th is taken. **Back up now** takes one; every printer is also backed up on its own every 30 days (change it in the
+  section; 0 = never), never while it's printing. Each backup says what changed since the one before; open it to
+  view any file, see its changes, download it, or download the whole backup as a zip. **Restore** puts the whole
+  backup back on the printer: it first shows what it would change (read from the printer, nothing written), then puts
+  back every config file that differs and every Moonraker setting that differs (Mainsail's settings, maintenance...).
+  Nothing is deleted: files added since stay. Read-only files (mainsail.cfg, a link into Mainsail's own
+  mainsail-config package) are written where they really are over SSH, the link staying (Mainsail's Update Manager then
+  shows mainsail-config as modified); without SSH they're left as they are.
+  **Moonraker's database, over SSH:** Moonraker won't hand its database file out over the network, so Farmhand copies
+  it over SSH. **Set up SSH** in the section shows Farmhand's own key and the one command to add it on the printer's Pi
+  (no password is ever stored), and **Test SSH** checks it. Then each backup also holds `moonraker-database/moonraker-sql.db`
+  (Moonraker makes a safe copy, Farmhand fetches it and removes it from the Pi), and **Database** on a backup puts
+  Moonraker's whole database back as it was (print history, Mainsail's settings, maintenance): Farmhand sends the copy
+  and Moonraker restores it, then restarts itself. Without SSH, backups go ahead without that file. The database holds
+  Moonraker's own logins and API keys, so keep the backup folder private. **Put back** beside a file does
+  the same for one config file. Neither runs while the printer is printing; each first takes a backup of how things
+  are, so it can be undone by restoring that one; and Klipper only reads its config after a restart, which is left to
+  you (Restart in Mainsail). Klipper's dated
+  `printer-*.cfg` copies, `.bak`/`.bkp`/temporary files, CSVs, zips and other archives, pictures, ShakeTune results and files over 5 MB are left
+  out. PrusaLink printers have no config folder to back up.
 
 ### PrusaLink printers (Prusa Core One…)
 
@@ -947,7 +974,7 @@ inside it) and sets every folder.
    connects straight away and **only saves the share if that works** — if not, it says why (can't reach it, wrong
    password, no share by that name, …). The domain or workgroup and the SMB / NFS version are under the card's
    **Advanced**; a change there is tried on a test connection first.
-2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, farmhand-configs). With no
+2. Each kind of file goes in its own folder inside it (STL, 3MF, Projects, farm-cost, farmhand-configs, backup). With no
    project files folder chosen, project files go in a **Projects** folder beside the STL folder (a `projects` folder
    already there is used), so they're on the NAS too; only while the STL folder is Farmhand's own do they stay in
    its storage. To keep one somewhere else, press **Change…** beside that folder (in the list under **Use this location**),

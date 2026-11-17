@@ -73,6 +73,11 @@ class Printer(HasNotes, Base):
         back_populates="printer", cascade="all, delete-orphan", uselist=False
     )
 
+    # Backups of its Klipper config folder (see PrinterConfigBackup): the rows go with it, the files on the NAS stay
+    config_backups: Mapped[list["PrinterConfigBackup"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan"
+    )
+
     # Its printer presets in the slicer (see SubPrinter), A to Z
     sub_printers: Mapped[list["SubPrinter"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan", order_by="SubPrinter.name"

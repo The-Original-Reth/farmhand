@@ -67,8 +67,11 @@ DEFAULT_PREFERENCES = {
     "tool_links": DEFAULT_TOOL_LINKS,
     "energy_price_per_kwh": None, "energy_price_history": [], "energy_price_months": {},
     "time_zone": None,
+    "config_backup_days": 30,
 }
 # printer_sort: the Printers page's list, by a column ("name", "kind", "wired", "wireless") and "asc" | "desc"
+# config_backup_days: how often each Klipper printer's config folder is backed up on its own (days); 0 = never
+MAX_CONFIG_BACKUP_DAYS = 365
 # time_zone: the farm's time zone ("America/New_York"), as its browser last said: when a month ends for the monthly
 # Farm cost record; None = not known yet (UTC is used)
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -128,6 +131,9 @@ def normalize_preferences(raw) -> dict:
         "energy_price_history": _price_history(p.get("energy_price_history")),
         "energy_price_months": _price_months(p.get("energy_price_months")),
         "time_zone": _time_zone(p.get("time_zone")),
+        "config_backup_days": p["config_backup_days"]
+        if type(p.get("config_backup_days")) is int and 0 <= p["config_backup_days"] <= MAX_CONFIG_BACKUP_DAYS
+        else DEFAULT_PREFERENCES["config_backup_days"],
     }
 
 
@@ -252,7 +258,7 @@ def _path_or_none(value) -> str | None:
 def build_document(
     config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
     farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None,
-    plugins: list[dict] | None = None,
+    plugins: list[dict] | None = None, printer_backups_path: str | None = None,
 ) -> dict:
     """What gets written. Share entries are cut down to the fields in SHARE_FIELDS — never a password. printer_names:
     each printer's number here and its name, so the orders kept by number (Farm cost, Monitor) come back in the right
@@ -266,6 +272,7 @@ def build_document(
         "storage": {"stl_path": stl_path, "threemf_path": threemf_path, "project_path": project_path},
         "shares": [{k: s.get(k) for k in SHARE_FIELDS} for s in shares],
         "farm_cost": {"records_path": farm_cost_path},  # the folder chosen for the monthly records (null: the default)
+        "printer_backups": {"path": printer_backups_path},  # the folder chosen for printer config backups (null: the default)
         "printer_names": {str(k): v for k, v in (printer_names or {}).items()},
         # the plugins installed and the permissions granted to each (registry.mirror_entries): never a token
         "plugins": plugins or [],
@@ -312,6 +319,7 @@ def read_document(folder: str | os.PathLike) -> dict | None:
 
     storage = raw.get("storage") if isinstance(raw.get("storage"), dict) else {}
     farm_cost = raw.get("farm_cost") if isinstance(raw.get("farm_cost"), dict) else {}  # files from before it have none
+    backups = raw.get("printer_backups") if isinstance(raw.get("printer_backups"), dict) else {}  # nor this
     # A file from when Farmhand had its own Stream page also has a "stream" section (and stream_layouts among its
     # preferences): left unread, since streaming is the Stream plugin's now.
     shares = []
@@ -328,6 +336,7 @@ def read_document(folder: str | os.PathLike) -> dict | None:
         },
         "shares": shares,
         "farm_cost": {"records_path": _path_or_none(farm_cost.get("records_path"))},
+        "printer_backups": {"path": _path_or_none(backups.get("path"))},
         # the plugins installed (registry.mirror_entries; files from before plugins have none). Checked when put back
         "plugins": [e for e in (raw.get("plugins") if isinstance(raw.get("plugins"), list) else [])[:100] if isinstance(e, dict)],
         # files from before it have none: their orders are taken as they are

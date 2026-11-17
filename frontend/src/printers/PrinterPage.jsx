@@ -18,6 +18,7 @@ import { EnergyPanel } from "./EnergyPanel.jsx";
 import { MaintenanceSection } from "./Maintenance.jsx";
 import { MoonrakerCard, useMoonraker } from "./Moonraker.jsx";
 import { PrintHistory } from "./PrintHistory.jsx";
+import { ConfigBackupsSection } from "./ConfigBackups.jsx";
 import { WebUiButton } from "./PrinterList.jsx";
 import { EditPrinterForm } from "./PrinterForms.jsx";
 import { PrusaLinkCard, usePrusaLink } from "./PrusaLink.jsx";
@@ -40,8 +41,8 @@ function bundleMatches(bundle, models, words, subPrinters) {
 }
 
 // Which parts of a printer page are folded away: { connection (Moonraker or PrusaLink), energy, maintenance, threemf,
-// history } (true = folded). The same on every printer, remembered in this browser. Moonraker, Energy and Maintenance
-// start open; the 3MF files and the print history start folded until opened.
+// history, backups } (true = folded). The same on every printer, remembered in this browser. Moonraker, Energy and Maintenance
+// start open; the 3MF files, the print history and the backups start folded until opened.
 // (The key changed when "folded" became the start, so sections left open under the old default start folded again.)
 const PRINTER_SECTIONS_KEY = "farmhand.printerSections.v2";
 const OPEN_AT_START = new Set(["connection", "energy", "maintenance"]);
@@ -58,7 +59,7 @@ function usePrinterSections() {
 }
 
 // The printer's Moonraker or PrusaLink (whichever it uses), looked at every few seconds while the page is open, with
-// everything that follows it: its Moonraker (or PrusaLink), Energy and Maintenance sections, and the print history. Kept apart from the rest
+// everything that follows it: its Moonraker (or PrusaLink), Energy and Maintenance sections, the print history and the config backups. Kept apart from the rest
 // of the page so a look redraws only these: `children` (the 3MF files, which sit between them on the page) is made by
 // the page and doesn't change when a look comes in, so React leaves it alone. Starts over if the address or login
 // changes.
@@ -105,6 +106,7 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
       {children}
 
       <PrintHistory printer={printer} syncTick={link.syncTick} open={sections.isOpen("history")} onToggle={() => sections.toggle("history")} />
+      <ConfigBackupsSection printer={printer} {...fold("backups")} />
     </>
   );
 }

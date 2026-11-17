@@ -24,6 +24,7 @@ log = logging.getLogger("farmhand.settings")
 
 KEY_LOCATION = "config_storage_dir"  # the network folder a copy is written to
 FARM_COST_LOCATION = app_settings.FARM_COST_DIR_KEY  # the farm cost records folder, saved with the rest
+BACKUPS_LOCATION = app_settings.PRINTER_BACKUPS_DIR_KEY  # the printer config backups' folder, saved with the rest
 
 # What happened the last time the copy was written, so the page can say so. In memory: it's about now.
 _last_mirror: dict = {"ok": None, "error": None, "at": None}
@@ -46,7 +47,7 @@ def build_document(db: Session) -> dict:
         get_config(db), storage.custom_path("stl"), storage.custom_path("threemf"), _share_entries(db),
         project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
         printer_names={p.id: p.name for p in db.scalars(select(Printer))},
-        plugins=plugin_registry.mirror_entries(db),
+        plugins=plugin_registry.mirror_entries(db), printer_backups_path=app_settings.get(db, BACKUPS_LOCATION),
     )
 
 
