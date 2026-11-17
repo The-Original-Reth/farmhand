@@ -26,6 +26,10 @@ export function backupsRoutes(ctx) {
   // SSH to the printer's Pi: set up on the even-numbered sample printers (their backups hold Moonraker's database file)
   const SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockMockMockMockMockMockMockMockMockMock farmhand";
   const hasSsh = (p) => p.id % 2 === 0;
+  // Its last good SSH login ({tested_at, user, host}) or null, as the real API remembers it: a Test SSH sets it; the
+  // sample printers with SSH start out tested (their backups logged in to copy Moonraker's database)
+  const sshTested = new Map();
+  const sshOf = (p) => (sshTested.has(p.id) ? sshTested.get(p.id) : hasSsh(p) ? { tested_at: iso(Date.now() / 1000 - 3 * DAY), user: "pi", host: p.wired_ip || p.wireless_ip } : null);
   const everyDays = () => farm.config.preferences.config_backup_days ?? 30;
   const BACKUP_DEFAULT = "/data/nas/farm-nas/backup";
   const folderOf = () => farm.backupsFolder || BACKUP_DEFAULT;
@@ -66,11 +70,11 @@ export function backupsRoutes(ctx) {
     };
   };
   const list = (p) => {
-    if (!isKlipper(p)) return { supported: false, keep: KEEP, every_days: everyDays(), next_due_at: null, folder: null, backups: [] };
+    if (!isKlipper(p)) return { supported: false, keep: KEEP, every_days: everyDays(), next_due_at: null, folder: null, ssh: null, backups: [] };
     const rows = backupsOf(p);
     const days = everyDays();
     const due = days > 0 ? (rows[0] ? Date.parse(rows[0].taken_at) / 1000 + days * DAY : nowUnix()) : null;
-    return { supported: true, keep: KEEP, every_days: days, next_due_at: due ? iso(due) : null, folder: folderOf(), backups: rows.map((b) => summary(p, b)) };
+    return { supported: true, keep: KEEP, every_days: days, next_due_at: due ? iso(due) : null, folder: folderOf(), ssh: sshOf(p), backups: rows.map((b) => summary(p, b)) };
   };
   const take = (p, trigger) => {
     if (!isKlipper(p)) throw new HttpError(422, "PrusaLink printers have no config folder Farmhand can back up.");
@@ -199,9 +203,11 @@ export function backupsRoutes(ctx) {
   on("POST", "/printers/:id/ssh/test", ({ id }) => {
     const p = printer(id);
     const host = p.wired_ip || p.wireless_ip;
-    return hasSsh(p)
-      ? { ok: true, user: "pi", host, error: null, kind: null }
-      : { ok: false, user: null, host: null, kind: "no_key", error: `The printer (pi@${host}) didn't let Farmhand in: add Farmhand's SSH key to its ~/.ssh/authorized_keys (Set up SSH, in the Backups section).` };
+    const answer = hasSsh(p)
+      ? { ok: true, user: "pi", host, error: null, kind: null, tested_at: iso(Date.now() / 1000) }
+      : { ok: false, user: null, host: null, kind: "no_key", tested_at: null, error: `The printer (pi@${host}) didn't let Farmhand in: add Farmhand's SSH key to its ~/.ssh/authorized_keys (Set up SSH, in the Backups section).` };
+    sshTested.set(p.id, answer.ok ? { tested_at: answer.tested_at, user: "pi", host } : null);
+    return answer;
   });
   on("POST", "/printers/:id/config-backups/:bid/restore-database", ({ id, bid }) => {
     const p = printer(id);

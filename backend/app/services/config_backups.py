@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..errors import NotFound
-from ..models import Printer, PrinterConfigBackup, PrinterConfigBackupFile
+from ..models import Printer, PrinterConfigBackup, PrinterConfigBackupFile, PrinterSshCheck
 from ..timeutil import as_utc, utc_iso, utc_now
 from . import app_settings, config_service, printer_ssh
 from .moonraker import client
@@ -201,7 +201,7 @@ def take_backup(db: Session, printer: Printer, trigger: str = "manual") -> Print
         PrinterConfigBackupFile(path=path, size=len(data), modified=modified, sha256=hashlib.sha256(data).hexdigest())
         for path, (data, modified) in files.items()
     ]
-    database = _copy_database(printer, folder, taken_at)
+    database = _copy_database(db, printer, folder, taken_at)
     if isinstance(database, PrinterConfigBackupFile):
         rows.append(database)
     else:
@@ -217,7 +217,7 @@ def take_backup(db: Session, printer: Printer, trigger: str = "manual") -> Print
     return backup
 
 
-def _copy_database(printer: Printer, folder: Path, taken_at: dt.datetime) -> "PrinterConfigBackupFile | str":
+def _copy_database(db: Session, printer: Printer, folder: Path, taken_at: dt.datetime) -> "PrinterConfigBackupFile | str":
     """
     Moonraker's database file, into the backup's folder: Moonraker makes a safe copy of it on the printer
     (POST /server/database/backup), Farmhand copies that over SSH and removes it from the printer. Its row, or why
@@ -227,7 +227,10 @@ def _copy_database(printer: Printer, folder: Path, taken_at: dt.datetime) -> "Pr
         t = printer_ssh.target(printer)
         printer_ssh.run(t, "true")  # SSH works, before Moonraker is asked to make anything
     except (printer_ssh.SshError, client.MoonrakerError) as e:
+        if isinstance(e, printer_ssh.SshError):
+            _record_ssh(db, printer, None)  # no longer "Tested"
         return f"not copied: {e}"
+    _record_ssh(db, printer, t)
     name = f"farmhand-{taken_at:%Y%m%d-%H%M%S}.db"
     try:
         remote = client.backup_database(printer, name)
@@ -357,15 +360,47 @@ def _summary(backup: PrinterConfigBackup, previous: PrinterConfigBackup | None) 
     }
 
 
+# ------------------------------------------------------------------ SSH: tested or not
+
+
+def _record_ssh(db: Session, printer: Printer, t: "printer_ssh.Target | None") -> None:
+    """Remember a good SSH login to the printer (`t`), or forget the last one (None). Committed by the caller."""
+    row = db.get(PrinterSshCheck, printer.id)
+    if t is None:
+        if row is not None:
+            db.delete(row)
+        return
+    if row is None:
+        row = PrinterSshCheck(printer_id=printer.id, user=t.user, host=t.host)
+        db.add(row)
+    row.tested_at, row.user, row.host = utc_now(), t.user, t.host
+
+
+def ssh_status(db: Session, printer: Printer) -> dict | None:
+    """The last good SSH login to the printer, {tested_at, user, host}, or None: never tested, or it failed since."""
+    row = db.get(PrinterSshCheck, printer.id)
+    return {"tested_at": utc_iso(row.tested_at), "user": row.user, "host": row.host} if row else None
+
+
+def test_ssh(db: Session, printer: Printer) -> dict:
+    """Test SSH (printer_ssh.check) and remember the answer: {ok, user, host, error, kind, tested_at}."""
+    result = printer_ssh.check(printer)
+    _record_ssh(db, printer, printer_ssh.Target(result["host"], result["user"], "") if result["ok"] else None)
+    db.commit()
+    status = ssh_status(db, printer)
+    return {**result, "tested_at": status["tested_at"] if status else None}
+
+
 def list_backups(db: Session, printer: Printer) -> dict:
     """A printer's backups, newest first, each with what changed since the one before it, and the schedule."""
     if printer.connection_type == "prusalink":
         return {"supported": False, "keep": KEEP, "every_days": every_days(db), "next_due_at": None,
-                "folder": None, "backups": []}
+                "folder": None, "ssh": None, "backups": []}
     rows = _backups(db, printer)
     return {
         "supported": True, "keep": KEEP, "every_days": every_days(db),
         "next_due_at": utc_iso(next_due_at(db, printer)), "folder": location_info(db)["path"],
+        "ssh": ssh_status(db, printer),
         "backups": [_summary(b, _previous(rows, b)) for b in rows],
     }
 

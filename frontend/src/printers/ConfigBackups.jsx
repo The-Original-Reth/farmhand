@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Database, Download, Eye, FileDiff, History, KeyRound, RotateCcw, Save } from "lucide-react";
+import { Check, ChevronRight, Database, Download, Eye, FileDiff, History, KeyRound, RotateCcw, Save } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import {
   configBackupFileUrl,
@@ -254,7 +254,7 @@ function RestoreDialog({ printer, backup, onClose, onDone }) {
 }
 
 // Set up SSH: Farmhand's key, how to add it on the printer's Pi, and a test
-function SshDialog({ printer, onClose }) {
+function SshDialog({ printer, onClose, onTested }) {
   const [key, setKey] = useState(null);
   const [error, setError] = useState(null);
   const [test, setTest] = useState(null);
@@ -266,6 +266,7 @@ function SshDialog({ printer, onClose }) {
     setTesting(true);
     try {
       setTest(await testSsh(printer.id));
+      onTested(); // the section's "Tested" follows the answer
     } catch (e) {
       setTest({ ok: false, error: errorText(e) });
     } finally {
@@ -347,11 +348,21 @@ function Schedule({ data, onSaved, onSsh }) {
         {data.every_days > 0 && data.next_due_at && <span style={{ color: c.textFaint }}>Next one for this printer: {new Date(data.next_due_at) <= new Date() ? "at the next sync" : fmtWhen(data.next_due_at)}</span>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", ...uiText(12, c.textFaint) }}>
-        <span>{data.backups[0]?.has_database ? "Moonraker's database file is copied into each backup over SSH." : "Moonraker's database file is only in backups when SSH to the printer is set up."}</span>
+        <span>{data.ssh ? "Moonraker's database file is copied into each backup over SSH." : "Moonraker's database file is only in backups when SSH to the printer is set up."}</span>
         <button data-testid="ssh-setup" onClick={onSsh} style={smallButton}>
           <KeyRound size={11} />
           Set up SSH
         </button>
+        {data.ssh && (
+          <span
+            data-testid="ssh-tested"
+            title={`Farmhand logged in as ${data.ssh.user}@${data.ssh.host} on ${fmtWhen(data.ssh.tested_at)}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, color: c.green, fontWeight: 600 }}
+          >
+            <Check size={12} />
+            Tested
+          </span>
+        )}
       </div>
       <div style={uiText(12, c.textFaint, { lineHeight: 1.5 })}>
         Each backup holds the printer's config folder and what its Moonraker keeps in its database (the whole print history,
@@ -530,7 +541,7 @@ export function ConfigBackupsSection({ printer, open = true, onToggle }) {
           }}
         />
       )}
-      {dialog?.kind === "ssh" && <SshDialog printer={printer} onClose={close} />}
+      {dialog?.kind === "ssh" && <SshDialog printer={printer} onClose={close} onTested={load} />}
       {dialog?.kind === "restoreDb" && (
         <ConfirmDialog
           title="Restore Moonraker's database"

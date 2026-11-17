@@ -48,3 +48,20 @@ class PrinterConfigBackupFile(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 
     backup: Mapped[PrinterConfigBackup] = relationship(back_populates="files")
+
+
+class PrinterSshCheck(Base):
+    """
+    Whether Farmhand could last log in to the printer's Pi over SSH (services/printer_ssh.py), so its Backups section
+    can say "Tested" without trying again on every visit. Set by Test SSH, and kept current by each backup's copy of
+    Moonraker's database: a failed login there removes the row.
+    """
+
+    __tablename__ = "printer_ssh_checks"
+
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), primary_key=True)
+    tested_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    user: Mapped[str] = mapped_column(String(100), nullable=False)
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    printer: Mapped["Printer"] = relationship(back_populates="ssh_check")  # noqa: F821

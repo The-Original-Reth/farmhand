@@ -77,6 +77,10 @@ class Printer(HasNotes, Base):
     config_backups: Mapped[list["PrinterConfigBackup"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
+    # Its last good SSH login (see PrinterSshCheck), or None: shown as "Tested" in its Backups section
+    ssh_check: Mapped["PrinterSshCheck | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
 
     # Its printer presets in the slicer (see SubPrinter), A to Z
     sub_printers: Mapped[list["SubPrinter"]] = relationship(  # noqa: F821
