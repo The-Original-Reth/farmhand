@@ -86,7 +86,7 @@ export function useMoonraker(printerId, key, onSynced) {
 }
 
 // Connection + the printer's own lifetime statistics, with "Open Mainsail" and "Sync now". Folds away (open/onToggle).
-export function MoonrakerCard({ printer, mr, open = true, onToggle }) {
+export function MoonrakerCard({ printer, mr, summary, open = true, onToggle }) {
   const { status, stats, syncing, syncError } = mr;
   const totals = stats?.totals;
   const archive = stats?.archive;
@@ -108,9 +108,12 @@ export function MoonrakerCard({ printer, mr, open = true, onToggle }) {
   return (
     <div data-testid="moonraker-card">
       <div style={foldHeading(open)}>
-        <SectionToggle open={open} onToggle={onToggle} controlsId="moonraker-card-body" testId="toggle-connection" indent={20}>
-          Connection and statistics
-        </SectionToggle>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <SectionToggle open={open} onToggle={onToggle} controlsId="moonraker-card-body" testId="toggle-connection">
+            Moonraker
+          </SectionToggle>
+          {!open && summary}
+        </div>
         {open && (
         <div style={{ display: "flex", gap: 8 }}>
           {printer.mainsailUrl && (

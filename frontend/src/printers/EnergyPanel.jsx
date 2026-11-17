@@ -45,7 +45,7 @@ export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
   return (
     <div data-testid="energy-panel">
       <div style={foldHeading(open)}>
-        <SectionToggle open={open} onToggle={onToggle} controlsId="energy-body" testId="toggle-energy" indent={20}>
+        <SectionToggle open={open} onToggle={onToggle} controlsId="energy-body" testId="toggle-energy">
           Energy
         </SectionToggle>
         {open && hasAny && (
