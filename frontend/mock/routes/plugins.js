@@ -74,6 +74,12 @@ const ON_THE_NETWORK = {
     page: { menu: "YouTube", icon: "youtube", path: "/" }, permissions: ["cameras:read", "prints:read", "stream:migrate"], health: "/health",
     settings_page: "/?view=settings",
   },
+  "http://192.168.10.217:8081": {
+    id: "twitch", name: "Twitch Stream", version: "0.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // the Twitch plugin's manifest
+    homepage: "https://github.com/The-Original-Reth/farmhand-twitch-plugin",
+    page: { menu: "Twitch", icon: "twitch", path: "/" }, permissions: ["cameras:read", "prints:read"], health: "/health",
+    settings_page: "/?view=settings",
+  },
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
     homepage: "https://example.com/shelf-clock", page: { menu: "Shelf clock", path: "/" }, permissions: ["prints:read"], health: "/health",
@@ -125,7 +131,9 @@ const HELLO_BODY = `<p>The printers it read through the plugin API:</p><ul id="p
 </script>`;
 const STREAM_BODY = `<p>The real YouTube Stream plugin sends the printers' cameras live to YouTube from a container of its own. Its page
 isn't part of the mockup: run <b>plugins/stream</b> (its README says how) to see it.</p>`;
-// The YouTube plugin's settings as Farmhand's Settings page shows them under its name (its settings_page): where it saves
+const TWITCH_BODY = `<p>The real Twitch Stream plugin sends the printers' cameras live to Twitch from a container of its own, beside
+the YouTube one. Its page isn't part of the mockup: run <b>farmhand-twitch-plugin</b> (its README says how) to see it.</p>`;
+// The YouTube (or Twitch) plugin's settings as Farmhand's Settings page shows them under its name (its settings_page): where it saves
 const settingsHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title>${p.name} settings</title>
 <script src="/plugins/farmhand-plugin.js"></script><style>${PAGE_STYLE} body { padding: 0; } .box { max-width: none; }
 .list { border: 1px solid var(--farmhand-border, #3D4042); border-radius: 4px; background: var(--farmhand-panel-alt, #2A2C2E); }
@@ -135,8 +143,8 @@ const settingsHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><t
 .ok { color: var(--farmhand-green, #6FBE7A); } small { color: var(--farmhand-text-faint, #A3A7AA); font-size: 12px; }</style></head><body><div class="box">
 <h1>Where it saves</h1><small>The folders given to the plugin's container where it runs: change them in its docker-compose.yml there.</small>
 <div class="list" style="margin-top: 12px">
-<div class="row"><span class="what">Stream folder</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;stream</span><span class="ok">ready</span></div>
-<div class="row"><span class="what">YouTube clips</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;YouTube clips</span><span class="ok">ready</span></div>
+<div class="row"><span class="what">Stream folder</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;${p.id === "twitch" ? "twitch" : "stream"}</span><span class="ok">ready</span></div>
+<div class="row"><span class="what">${p.id === "twitch" ? "Twitch" : "YouTube"} clips</span><span class="where">&#92;&#92;192.168.10.5&#92;farmhand&#92;${p.id === "twitch" ? "Twitch" : "YouTube"} clips</span><span class="ok">ready</span></div>
 </div>
 <p>Clips · Length <input id="len" value="3" size="4"> seconds. (A pretend plugin's settings: change the length and the Save on its
 heading row lights up.)</p></div>
@@ -152,7 +160,7 @@ const pageHtml = (p) => `<!doctype html><html><head><meta charset="utf-8"><title
 <script src="/plugins/farmhand-plugin.js"></script><style>${PAGE_STYLE}</style></head><body><div class="box">
 <h1>${p.name}, a pretend plugin</h1>
 <p>This page comes from the plugin (in the mockup, from the mock backend), shown inside Farmhand. Its colours follow Farmhand's: change them on the Appearance page and come back.</p>
-${{ hello: HELLO_BODY, stream: STREAM_BODY }[p.id] || CLOCK_BODY}
+${{ hello: HELLO_BODY, stream: STREAM_BODY, twitch: TWITCH_BODY }[p.id] || CLOCK_BODY}
 </div></body></html>`;
 // A small page where a plugin's page would be (as services/plugins/pages.py's message_page)
 const messagePage = (title, text) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PAGE_STYLE}</style></head>
@@ -169,10 +177,10 @@ export function pluginsRoutes(ctx) {
     id: manifest.id, name: manifest.name, version: manifest.version, image, farmhand_api: manifest.farmhand_api, enabled: true,
     permissions: [...new Set(permissions)], manifest, created_at: now(), address, onlyFromAddress: onlyFrom, health: answered(address),
   });
-  // Hello and Stream are added already: the sample farm's plugins (their tokens aren't given to anyone, they're pretend).
-  // Stream takes its place in the menu after Monitor (Sidebar.jsx MAIN_MENU_SLOTS).
+  // Hello, Stream and Twitch are added already: the sample farm's plugins (their tokens aren't given to anyone, they're
+  // pretend). Stream and Twitch take their places in the menu after Monitor (Sidebar.jsx MAIN_MENU_SLOTS).
   const added = (address) => record(checkManifest(ON_THE_NETWORK[address]), { permissions: ON_THE_NETWORK[address].permissions, address, onlyFrom: true });
-  const plugins = () => (farm.plugins ??= [added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080")]);
+  const plugins = () => (farm.plugins ??= [added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080"), added("http://192.168.10.217:8081")]);
   const find = (id) => plugins().find((p) => p.id === id) || (() => { throw new HttpError(404, "Plugin not found"); })();
   const out = (p) => ({
     id: p.id, name: p.name, version: p.version, image: p.image, farmhand_api: p.farmhand_api, enabled: p.enabled,
@@ -263,7 +271,7 @@ export function pluginsRoutes(ctx) {
     if (!p) return send(404, messagePage("There's no such plugin", `No plugin called "${m[1]}" is added to Farmhand.`));
     if (!p.enabled) return send(403, messagePage("This plugin is switched off", `${p.name} is switched off. Switch it on on the Plugins page to use it.`));
     if (!ON_THE_NETWORK[p.address]) return send(502, messagePage("This plugin isn't running", UNREACHABLE(p.address)));
-    if (m[2] === "/" && url.searchParams.get("view") === "settings" && p.id === "stream") return send(200, settingsHtml(p));
+    if (m[2] === "/" && url.searchParams.get("view") === "settings" && ["stream", "twitch"].includes(p.id)) return send(200, settingsHtml(p));
     if (m[2] === "/") return send(200, pageHtml(p));
     if (m[2] === "/api/printers") {
       const printers = farm.printers.filter((x) => !x.decommissioned).map((x) => ({ id: x.id, name: x.name, connection_type: x.prusalink ? "prusalink" : "moonraker" }));

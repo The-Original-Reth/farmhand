@@ -6,6 +6,8 @@ import { foldHeading, monoText, panelBox, toolButton, uiText } from "../styles.j
 // The plugins' own compose files, the same as plugins/<id>/docker-compose.yml (each plugin's tests check they match)
 import streamCompose from "./compose/stream.yml?raw";
 import helloCompose from "./compose/hello.yml?raw";
+// The Twitch Stream plugin's own repository's docker-compose.yml, copied by hand
+import twitchCompose from "./compose/twitch.yml?raw";
 
 // How to run a plugin in a Docker container of its own, on this machine or another one: the steps, for any plugin.
 // The plugins in Farmhand's own repository (plugins/<id>/) that have a compose file get theirs filled in: their folder,
@@ -16,7 +18,7 @@ const RAW = (id) => `https://raw.githubusercontent.com/The-Original-Reth/farmhan
 const kbd = (text) => <code style={monoText(12, c.heading)}>{text}</code>;
 
 // plugin id -> what the guide fills in for it. Its folder is /opt/farmhand-<id> and its env file <id>.env, as its
-// compose file says.
+// compose file says. `raw`: where its compose file is fetched from, when it isn't in Farmhand's own repository.
 export const GUIDED_PLUGINS = {
   stream: {
     name: "YouTube Stream",
@@ -38,6 +40,37 @@ export const GUIDED_PLUGINS = {
           Once it's added, <b>YouTube</b> appears in Farmhand's menu after Monitor. The first time, its page offers to bring
           over the Stream page set-up this Farmhand saved before Stream became a plugin (its settings, layouts, stream key
           and YouTube sign-in).
+        </div>
+        <div>
+          The Twitch Stream plugin can run beside it on the same machine (on port {kbd("8081")}): choose Twitch Stream above.
+        </div>
+      </>
+    ),
+  },
+  twitch: {
+    name: "Twitch Stream",
+    port: 8081,
+    compose: twitchCompose,
+    raw: "https://raw.githubusercontent.com/The-Original-Reth/farmhand-twitch-plugin/main/docker-compose.yml",
+    notes: (
+      <>
+        <div>
+          <b>Beside YouTube.</b> It's a plugin of its own, separate from YouTube Stream: its own layout, cameras, pictures
+          and music, and its own Twitch stream key. Both can run on the same machine at the same time, each in its own
+          folder: Twitch uses port {kbd("8081")} so YouTube keeps {kbd("8080")}.
+        </div>
+        <div>
+          <b>The stream folder.</b> Its pictures, slideshows and music: set a save location on the NAS in its settings
+          (on Farmhand's Settings page, under its name), or, in the compose file, change {kbd("./media")} to a folder
+          on that machine.
+        </div>
+        <div>
+          <b>An NVIDIA card.</b> To compress the stream on the card and leave the processor for the cameras, remove the #
+          signs in its NVIDIA part. The machine needs the NVIDIA driver's libraries (on a Proxmox container, at the host's
+          driver version).
+        </div>
+        <div>
+          Once it's added, <b>Twitch</b> appears in Farmhand's menu after Monitor, right after YouTube.
         </div>
       </>
     ),
@@ -156,7 +189,7 @@ export function RunPluginGuide() {
                 <>
                   Put {plugin.name}'s compose file (below) in that folder as {kbd("docker-compose.yml")}: Download it, or
                   fetch it there:
-                  <Command text={`sudo curl -fsSLo docker-compose.yml ${RAW(chosen)}`} />
+                  <Command text={`sudo curl -fsSLo docker-compose.yml ${plugin.raw || RAW(chosen)}`} />
                 </>
               ) : (
                 <>Put the plugin's {kbd("docker-compose.yml")} in that folder, from the plugin's own instructions.</>

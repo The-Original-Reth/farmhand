@@ -66,7 +66,9 @@ added, `Sidebar.jsx`'s `MAIN_MENU_SLOTS` puts it in the main menu after Monitor 
 gives it to the plugin once, and an older settings copy's stream keys are ignored on load. The Plugins page's
 `RunPluginGuide.jsx` shows how to run any plugin with docker compose; the compose files of the plugins in this
 repository are copied in `src/plugins/compose/<id>.yml` (each plugin's `tests/test_compose.py` checks they match;
-`stream.yml` is the YouTube plugin repository's own `docker-compose.yml`, copied by hand).
+`stream.yml` is the YouTube plugin repository's own `docker-compose.yml`, copied by hand, and `twitch.yml` the
+Twitch plugin's, https://github.com/The-Original-Reth/farmhand-twitch-plugin, likewise). The Twitch Stream plugin (id
+`twitch`, port 8081) is independent of YouTube; `MAIN_MENU_SLOTS` puts it right after YouTube.
 
 **Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
 and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores
