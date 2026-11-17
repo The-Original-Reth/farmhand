@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { c, fs, mono, ui } from "../theme.js";
-import { errorText, getConfig, getShares, getStorageSettings, migrateStorage, saveStorageSettings, setFarmCostLocation } from "../api.js";
+import { errorText, getConfig, getShares, getStorageSettings, migrateStorage, saveStorageSettings, setConfigBackupLocation, setFarmCostLocation } from "../api.js";
 import { uiText } from "../styles.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
@@ -138,12 +138,13 @@ export function StorageSection({ onSettingsRestored, plugins = [], onOpenPluginP
 
       {picker && (
         <FolderPicker
-          title={`Choose the folder for ${{ stl: "STL files", threemf: "3MF files", project: "project files", farmCost: "the farm cost records" }[picker]}`}
-          startPath={picker === "farmCost" ? null : info[picker].isDefault ? null : info[picker].path}
+          title={`Choose the folder for ${{ stl: "STL files", threemf: "3MF files", project: "project files", farmCost: "the farm cost records", backups: "printer config backups" }[picker]}`}
+          startPath={picker === "farmCost" || picker === "backups" ? null : info[picker].isDefault ? null : info[picker].path}
           shares={sharesInfo.shares}
           onSelect={async (path) => {
             // (a folder that can't be used: the picker says why)
             if (picker === "farmCost") await setFarmCostLocation(path);
+            else if (picker === "backups") await setConfigBackupLocation(path);
             else setInfo(await saveStorageSettings(body(picker, path)));
             setFolderChanges((n) => n + 1);
           }}

@@ -121,6 +121,8 @@ def test_which_changes_touch_which_files():
     assert _what_changed("/printers") == every and _what_changed("/printers/3") == every  # added / edited
     assert _what_changed("/printers/3/notes") == config_service.MirrorScope(printers={3})
     assert _what_changed("/printers/3/moonraker/sync") == config_service.MirrorScope(printers={3})
+    assert _what_changed("/printers/3/config-backups/5/restore") is None  # backups are on the NAS already
+    assert _what_changed("/printers/config-backups/schedule") == config_service.MirrorScope()  # a preference
     assert _what_changed("/source-models/4/notes") == config_service.MirrorScope(models=True)
     assert _what_changed("/bundles/7/star") == config_service.MirrorScope(models=True)
     assert _what_changed("/bundles/inspect") is None  # only reads the 3MF

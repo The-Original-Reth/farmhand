@@ -18,12 +18,23 @@ from app.database import Base, get_db
 from app.main import app
 from app import mounts, printer_links
 from app.services import printer_go2rtc as printer_go2rtc_module
+from app.services import printer_ssh
 from app.services.moonraker import client as mr_client
 from app.services.prusalink import client as pl_client
 
 from .fake_moonraker import FakeMoonraker, FakePrinterGo2rtc
 from .fake_nas import FakeNas
 from .fake_prusalink import FakePrusaLink
+from .fake_ssh import FakePi
+
+
+@pytest.fixture(autouse=True)
+def printer_pi(monkeypatch):
+    """Every printer's Pi as SSH reaches it (tests/fake_ssh.py): never the real ssh. It refuses Farmhand's key until a
+    test sets accepts_key."""
+    pi = FakePi()
+    monkeypatch.setattr(printer_ssh, "runner", pi)
+    return pi
 
 
 @pytest.fixture(autouse=True)
@@ -124,9 +135,11 @@ def sample_3mf_paths():
 
 
 @pytest.fixture()
-def moonraker(monkeypatch):
-    """A Klipper printer's Moonraker (tests/fake_moonraker.py), answering every address Farmhand asks."""
+def moonraker(monkeypatch, printer_pi):
+    """A Klipper printer's Moonraker (tests/fake_moonraker.py), answering every address Farmhand asks. Its Pi's files
+    are printer_pi's (what SSH sees)."""
     f = FakeMoonraker()
+    f.pi_files = printer_pi.files
     monkeypatch.setattr(mr_client, "transport", httpx.MockTransport(f.handle))
     return f
 

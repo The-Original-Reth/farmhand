@@ -15,7 +15,7 @@ from ...models import NetworkShare
 from ..plugins import registry as plugin_registry
 from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
 
-from .nas_copy import FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
+from .nas_copy import BACKUPS_LOCATION, FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
 from .settings import save_config
 
 log = logging.getLogger("farmhand.settings")
@@ -143,6 +143,16 @@ def restore(db: Session) -> dict:
             result["restored"].append("farm cost folder")
         except ValueError as e:
             result["warnings"].append(f"The farm cost folder ({farm_cost_path}) wasn't put back: {e}")
+
+    backups_path = _moved_onto(doc["printer_backups"]["path"], same)
+    if backups_path and backups_path != app_settings.get(db, BACKUPS_LOCATION):
+        from ..config_backups import set_location as set_backups_location  # (config_backups reads these settings itself)
+
+        try:
+            set_backups_location(db, backups_path)
+            result["restored"].append("printer backups folder")
+        except ValueError as e:
+            result["warnings"].append(f"The printer backups folder ({backups_path}) wasn't put back: {e}")
 
     for entry in doc["shares"]:
         label = entry.get("name") or "(unnamed)"

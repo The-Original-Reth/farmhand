@@ -1,6 +1,6 @@
 // Printers: adding and editing them, their printer profiles and parts, their Moonraker / PrusaLink (status, print
 // history, cameras, energy, the 1500-hour service, maintenance) and their notes.
-import { del, formBody, jsonBody, notesBody, post, request, timeZone, tzQuery } from "./client.js";
+import { API_BASE, del, formBody, jsonBody, normalizeFolderLocation, notesBody, post, request, timeZone, tzQuery } from "./client.js";
 
 export const normalizePrinter = (p) => ({
   id: p.id,
@@ -251,3 +251,60 @@ export const deleteMaintenance = (printerId, entryId) => del(`/printers/${printe
 // ---- notes about a printer (the same rules as a model's: a save names the revision it started from) ----
 export const savePrinterNotes = ({ printerId, notes, baseRevision }) =>
   request(`/printers/${printerId}/notes`, notesBody(notes, baseRevision));
+
+// ---- a Klipper printer's config backups: its config folder and Moonraker database, kept on the NAS in the settings
+// folder (printer-backups/), the newest 10 per printer. { supported, keep, every_days, next_due_at, folder, backups:
+// [{ id, taken_at, trigger: manual | automatic | before_restore, file_count, total_bytes, skipped, previous_id,
+// changes: { added, changed, removed } | null }] } ----
+const backupsPath = (printerId) => `/printers/${printerId}/config-backups`;
+const pathQuery = (path) => `?path=${encodeURIComponent(path)}`;
+
+export const getConfigBackups = (printerId) => request(backupsPath(printerId));
+
+export const takeConfigBackup = (printerId) => post(backupsPath(printerId));
+
+// One backup's files: [{ path, size, modified, database, change: added | changed | same | null }]
+export const getConfigBackup = (printerId, backupId) => request(`${backupsPath(printerId)}/${backupId}`);
+
+// { path, size, binary, text }
+export const getConfigBackupFile = (printerId, backupId, path) => request(`${backupsPath(printerId)}/${backupId}/file${pathQuery(path)}`);
+
+// { path, change, diff (unified), binary, previous_id, previous_taken_at }
+export const getConfigBackupDiff = (printerId, backupId, path) => request(`${backupsPath(printerId)}/${backupId}/diff${pathQuery(path)}`);
+
+export const configBackupZipUrl = (printerId, backupId) => `${API_BASE}${backupsPath(printerId)}/${backupId}/download`;
+
+export const configBackupFileUrl = (printerId, backupId, path) => `${API_BASE}${backupsPath(printerId)}/${backupId}/file/download${pathQuery(path)}`;
+
+// Puts one config file back on the printer (a backup of how things are is taken first): { message, ...the list }
+export const restoreConfigBackupFile = (printerId, backupId, path) =>
+  request(`${backupsPath(printerId)}/${backupId}/restore`, jsonBody("POST", { path }));
+
+// What Restore would change, without changing anything: { files: { put_back, same, read_only }, settings: [{ namespace,
+// keys }], left_alone } (left_alone: config files on the printer that aren't in the backup; never deleted)
+export const getConfigBackupRestorePreview = (printerId, backupId) => request(`${backupsPath(printerId)}/${backupId}/restore-preview`);
+
+// Restore: the whole backup back on the printer (config files and Moonraker settings that differ; a backup of how
+// things are is taken first): { message, restored, settings_written, failed: [{ path, error }], ...the list }
+export const restoreConfigBackup = (printerId, backupId) => post(`${backupsPath(printerId)}/${backupId}/restore-all`);
+
+export const deleteConfigBackup = (printerId, backupId) => del(`${backupsPath(printerId)}/${backupId}`);
+
+// Where new backups go: { path, isDefault, defaultPath, status } ("backup" in the Farmhand folder unless one is chosen).
+// setConfigBackupLocation(null) goes back to the default; a folder that can't be used is refused with the reason.
+export const getConfigBackupLocation = async () => normalizeFolderLocation(await request("/printers/config-backups/location"));
+export const setConfigBackupLocation = async (path) =>
+  normalizeFolderLocation(await request("/printers/config-backups/location", jsonBody("PUT", { path })));
+
+// How many days between automatic backups, for every Klipper printer (0 = never)
+export const setConfigBackupSchedule = (everyDays) => request("/printers/config-backups/schedule", jsonBody("PUT", { every_days: everyDays }));
+
+// ---- SSH to a printer's Pi: for Moonraker's database file in each backup, and writing mainsail.cfg where it really is ----
+// Farmhand's own public key, the line to add to each printer's ~/.ssh/authorized_keys
+export const getSshKey = async () => (await request("/printers/config-backups/ssh-key")).public_key;
+
+// { ok, user, host, error, kind: no_key | unreachable | no_ssh | failed | null }
+export const testSsh = (printerId) => post(`/printers/${printerId}/ssh/test`);
+
+// Moonraker's database back as it was in a backup (sent over SSH; Moonraker restores it and restarts itself)
+export const restoreConfigBackupDatabase = (printerId, backupId) => post(`/printers/${printerId}/config-backups/${backupId}/restore-database`);

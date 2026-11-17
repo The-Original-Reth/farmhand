@@ -15,6 +15,7 @@ const FOLDERS = [
   ["project", "Projects", "Project files"],
   ["farmCost", "farm-cost", "Farm cost records"],
   ["config", "farmhand-configs", "Settings (Save all)"],
+  ["backups", "backup", "Printer config backups"],
 ];
 
 // A folder picked on a connected share, as its NAS address and that share: /data/nas/truenas/Farmhand on //nas/share

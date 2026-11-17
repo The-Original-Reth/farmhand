@@ -8,7 +8,8 @@ Farmhand work out the whole printer's energy use per month and year (Moonraker o
 PrusaLink printers are looked at every minute instead: PrusaLink keeps no history, so Farmhand records each print
 by seeing it while it runs (see app/services/prusalink/tracking.py). While a plugin listens for events (GET
 /plugin-api/v1/events), Moonraker printers are asked for their print every minute too, so it hears of a print starting
-or ending. A printer that's off just records why on its connection; nothing here ever stops the thread.
+or ending. A printer that's off just records why on its connection; nothing here ever stops the thread. The Moonraker sync also
+takes each printer's automatic config backup when one is due (services/config_backups.py).
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from sqlalchemy import select
 from .database import SessionLocal
 from .models import Printer
 from .periodic import PeriodicWorker
-from .services import config_service, moonraker, print_progress, prusalink
+from .services import config_backups, config_service, moonraker, print_progress, prusalink
 from .services.plugins import events
 
 log = logging.getLogger("farmhand.printers")
@@ -59,10 +60,20 @@ class PrinterPoller(PeriodicWorker):
                             print_progress.progress(db, printer)
                         if sync_moonraker:
                             moonraker.sync_history(db, printer)
+                            _backup_if_due(db, printer)
                 except (moonraker.MoonrakerError, prusalink.PrusaLinkError) as e:
                     log.debug("Couldn't sync printer %s: %s", printer.name, e)
         if sync_moonraker:
             config_service.request_mirror(config_service.MirrorScope(printers=True))  # each printer's file picks up what came in
+
+
+def _backup_if_due(db, printer) -> None:
+    """The automatic config backup, when one is due (services/config_backups.py). Trouble is logged, never raised."""
+    try:
+        config_backups.backup_if_due(db, printer)
+    except Exception as e:  # noqa: BLE001 - a NAS that's down or a printer that dropped mid-backup: try again next sync
+        db.rollback()
+        log.warning("Couldn't back up %s's config: %s", printer.name, e)
 
 
 poller = PrinterPoller()

@@ -5,9 +5,11 @@ WORKDIR /app
 # Client tools so Farmhand can mount NAS shares itself (Storage page): mount.cifs for SMB, mount.nfs for NFS.
 # And the libraries gmsh needs to load (it draws a project's STEP / IGES previews; it never opens a window). On ARM
 # there's no gmsh to install (see requirements.txt), and these are just unused.
+# openssh-client: ssh / scp to a printer's Pi, for what Moonraker won't do over HTTP (copying its database file into
+# backups and back, writing mainsail.cfg where it really is): see app/services/printer_ssh.py.
 # No ffmpeg or fonts: sending the cameras to YouTube is the Stream plugin's job, in its own container (plugins/stream).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends cifs-utils nfs-common \
+ && apt-get install -y --no-install-recommends cifs-utils nfs-common openssh-client \
     libgomp1 libglu1-mesa libgl1 libxcursor1 libxft2 libxinerama1 libxrender1 \
  && rm -rf /var/lib/apt/lists/*
 
