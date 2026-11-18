@@ -271,7 +271,9 @@ def test_the_youtube_and_twitch_plugins_from_before_stream_control_start_and_sto
         old = {k: v for k, v in STREAM_MANIFEST.items() if k != "stream_control"}
         r = api.post("/plugins", json={"manifest": {**old, "id": plugin_id, "name": name, "permissions": ["cameras:read"]}, "permissions": ["cameras:read"]})
         assert r.status_code == 201
+    fake.asked.clear()
     listed = {s["id"]: s for s in api.get("/stream-control/streams").json()["streams"]}
+    assert fake.asked.count("GET stream/api/stream") == 1  # (its page answers both how it's doing and what it shows)
     assert {k: (s["site"], s["needs_update"], s["live"], s["following"]) for k, s in listed.items()} == {
         "stream": ("YouTube", True, False, False), "twitch": ("Twitch", True, False, False)}
 

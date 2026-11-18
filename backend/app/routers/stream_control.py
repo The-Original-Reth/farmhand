@@ -6,8 +6,8 @@ Changes answer the whole page (GET /stream-control) except where said.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from ..errors import answer_errors
 from ..services import stream_control
 from ..services.stream_control import copy_layout, design, fonts, layouts, media, music_sources, schedule, streams
 from ..services.stream_control.page import page
-from .common import require_confirm
+from .common import require_confirm, stream_picture_response, stream_track_response
 
 
 def switched_on(db: Session = Depends(get_db)) -> None:
@@ -118,17 +118,8 @@ def save_layouts(body: list = Body(...), db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------ the stream folder: pictures, slideshows, music
 
-# An SVG can carry scripts: opened on its own it would run them as this page. It's sent as a picture that can't
-SVG_HEADERS = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
-               "X-Content-Type-Options": "nosniff"}
-
-
-def picture_answer(path) -> Response:
-    kind = media.PICTURE_TYPES[path.suffix.lower()]
-    return FileResponse(path, media_type=kind, headers={"Cache-Control": "no-cache", **(SVG_HEADERS if kind == "image/svg+xml" else {})})
-
-
 def _media(call):
+    """A stream folder call, its NotFound and ValueError answered as 404 and 422 (and the folder away as 503)."""
     with answer_errors():
         return call()
 
@@ -142,7 +133,7 @@ def scan_folder(db: Session = Depends(get_db)):
 
 @router.get("/pictures/{name}")
 def get_picture(name: str, db: Session = Depends(get_db)):
-    return picture_answer(_media(lambda: media.picture_path(db, None, name)))
+    return _media(lambda: stream_picture_response(media.picture_path(db, None, name)))
 
 
 @router.post("/pictures", status_code=201)
@@ -200,7 +191,7 @@ def order_slideshow(name: str, body: SlideshowOrderIn, db: Session = Depends(get
 
 @router.get("/slideshows/{name}/pictures/{picture}")
 def get_slideshow_picture(name: str, picture: str, db: Session = Depends(get_db)):
-    return picture_answer(_media(lambda: media.picture_path(db, name, picture)))
+    return _media(lambda: stream_picture_response(media.picture_path(db, name, picture)))
 
 
 @router.post("/slideshows/{name}/pictures", status_code=201)
@@ -221,17 +212,7 @@ def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(Fals
 @router.get("/music/{name}")
 def get_track(name: str, db: Session = Depends(get_db)):
     """A track of the stream's music, from whichever chosen folder has it (a stream plugin's passed on, not copied)."""
-    return track_answer(_media(lambda: music_sources.find(db, name)))
-
-
-def track_answer(where) -> Response:
-    """A track found by music_sources.find: Stream control's own file, or a stream plugin's passed on as it comes."""
-    if isinstance(where, tuple):
-        address, path = where
-        with answer_errors():
-            body = music_sources.passed_on(address, path)
-        return StreamingResponse(body, media_type="audio/mpeg", headers={"Cache-Control": "no-cache"})
-    return FileResponse(where, media_type=media.TRACK_TYPES[where.suffix.lower()], headers={"Cache-Control": "no-cache"})
+    return _media(lambda: stream_track_response(music_sources.find(db, name)))
 
 
 @router.post("/music", status_code=201)

@@ -15,14 +15,15 @@ def page(db: Session, with_streams: bool = True) -> dict:
     so a change to the stream folder doesn't wait on the plugins)}.
     """
     found = media.media(db)
+    playing = music_sources.tracks(db)
     out = {
         "design": design.settings(db),
         "resolutions": design.resolutions(),
         "fonts": fonts.listed(),
         # the stream folder; music: the stream's tracks from the folders chosen, own_music: those in Stream control's own
         # (only those can be deleted here), music_sources: the folders there are to choose from
-        "media": {**found, "music": [t["name"] for t in music_sources.tracks(db)], "own_music": found["music"],
-                  "music_tracks": music_sources.tracks(db), "music_sources": music_sources.sources(db)},
+        "media": {**found, "music": [t["name"] for t in playing], "own_music": found["music"], "music_tracks": playing,
+                  "music_sources": music_sources.sources(db)},
         "layouts": layouts.layouts(db),
         "schedule": schedule.schedule(db),
         "happened": schedule.happened(),

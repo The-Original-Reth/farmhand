@@ -56,7 +56,7 @@ def folder(db: Session, make: bool = False) -> Path:
 
 def _slideshow_dir(db: Session, name: str, must_be_there: bool = False) -> Path:
     """A slideshow's folder; with `must_be_there`, NotFound when it isn't."""
-    d = folder(db) / SLIDESHOWS / _name(name, "slideshow")
+    d = folder(db) / SLIDESHOWS / checked_name(name, "slideshow")
     if must_be_there and not d.is_dir():
         raise NotFound("That slideshow isn't there.")
     return d
@@ -64,7 +64,7 @@ def _slideshow_dir(db: Session, name: str, must_be_there: bool = False) -> Path:
 
 def _pictures_dir(root: Path, slideshow: str | None) -> Path:
     """Where a picture is: the single pictures (`slideshow` None), or a slideshow's folder."""
-    return root / IMAGES if slideshow is None else root / SLIDESHOWS / _name(slideshow, "slideshow")
+    return root / IMAGES if slideshow is None else root / SLIDESHOWS / checked_name(slideshow, "slideshow")
 
 
 def _natural(name: str):
@@ -96,7 +96,7 @@ def is_blank(name) -> bool:
     return isinstance(name, str) and name.startswith(BLANK)
 
 
-def _write_order(d: Path, names: list[str]) -> None:
+def write_order(d: Path, names: list[str]) -> None:
     storage.write_text_atomically(d / ORDER_FILE, json.dumps(names, ensure_ascii=False))
 
 
@@ -123,7 +123,7 @@ def set_order(db: Session, name: str, order: list[str]) -> list[str]:
     if missing:
         raise ValueError(f"“{missing[0]}” isn't one of the slideshow's pictures (Scan folder, and try again).")
     keep = list(dict.fromkeys(order)) + [n for n in _slides_in(d) if n not in set(order)]
-    _write_order(d, keep)
+    write_order(d, keep)
     forget()
     return keep
 
@@ -134,7 +134,7 @@ def add_blank(db: Session, name: str) -> str:
     slides = _slides_in(d)
     numbers = [int(n[len(BLANK):]) for n in slides if is_blank(n) and n[len(BLANK):].isdigit()]
     blank = f"{BLANK}{max(numbers, default=0) + 1}"
-    _write_order(d, slides + [blank])
+    write_order(d, slides + [blank])
     forget()
     return blank
 
@@ -216,7 +216,8 @@ def _stamps(root: Path, files: list[str]) -> dict[str, str]:
     return out
 
 
-def _name(raw: str, what: str) -> str:
+def checked_name(raw: str, what: str) -> str:
+    """A file or folder name as typed, made sure of (no paths, no hidden files): ValueError for one that can't be."""
     name = (raw or "").strip()
     if not NAME.match(name) or name in (".", "..") or name.startswith("."):
         raise ValueError(f"That isn't a name a {what} can have.")
@@ -224,7 +225,7 @@ def _name(raw: str, what: str) -> str:
 
 
 def _picture_path(d: Path, name: str) -> Path:
-    name = _name(name, "picture")
+    name = checked_name(name, "picture")
     path = d / name
     if path.suffix.lower() not in PICTURE_TYPES or not path.is_file():
         raise NotFound("That picture isn't there.")
@@ -253,7 +254,7 @@ def _check_picture(filename: str, data: bytes) -> str:
         raise ValueError("A picture has to be a PNG, JPEG, WebP or SVG file.")
     if len(data) > PICTURE_MAX:
         raise ValueError("A picture uploaded here has to be under 10 MB. Save it smaller, or copy it into the stream folder yourself.")
-    return _name(name, "picture")
+    return checked_name(name, "picture")
 
 
 def _free_name(d: Path, name: str) -> str:
@@ -284,7 +285,7 @@ def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
         slides = _slides_in(d)
         if name not in slides:
             raise NotFound("That blank screen isn't there.")
-        _write_order(d, [n for n in slides if n != name])
+        write_order(d, [n for n in slides if n != name])
     else:
         picture_path(db, slideshow, name).unlink()
     forget()
@@ -292,7 +293,7 @@ def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
 
 def add_slideshow(db: Session, name: str) -> str:
     """A new, empty slideshow folder. ValueError for a name taken (any case) or one a folder can't have."""
-    name = _name(name, "slideshow")
+    name = checked_name(name, "slideshow")
     d = folder(db, make=True) / SLIDESHOWS
     if any(e.name.lower() == name.lower() for e in os.scandir(d) if e.is_dir()):
         raise ValueError(f"There's already a slideshow called “{name}”.")
@@ -304,7 +305,7 @@ def add_slideshow(db: Session, name: str) -> str:
 def rename_slideshow(db: Session, name: str, new: str) -> str:
     """Rename a slideshow's folder (its pictures and order go with it): the new name. NotFound when it isn't there;
     ValueError for a name another slideshow has (any case) or one a folder can't have. Only the case can change too."""
-    name, new = _name(name, "slideshow"), _name(new, "slideshow")
+    name, new = checked_name(name, "slideshow"), checked_name(new, "slideshow")
     d = folder(db) / SLIDESHOWS
     if not (d / name).is_dir():
         raise NotFound("That slideshow isn't there.")
@@ -338,7 +339,7 @@ def remove_slideshow(db: Session, name: str) -> None:
 
 def track_path(db: Session, name: str) -> Path:
     """One of the music's tracks. NotFound when it isn't there."""
-    path = folder(db) / MUSIC / _name(name, "track")
+    path = folder(db) / MUSIC / checked_name(name, "track")
     if path.suffix.lower() not in TRACK_TYPES or not path.is_file():
         raise NotFound("That track isn't there.")
     return path
@@ -360,7 +361,7 @@ def add_track(db: Session, filename: str, data: bytes) -> str:
         raise ValueError("The music has to be MP3 files.")
     if len(data) > TRACK_MAX:
         raise ValueError("A track uploaded here has to be under 50 MB. Copy bigger ones into the stream folder's music folder yourself.")
-    name = _name(name, "track")
+    name = checked_name(name, "track")
     d = folder(db, make=True) / MUSIC
     name = _free_name(d, name)
     storage.write_bytes_atomically(d / name, data)

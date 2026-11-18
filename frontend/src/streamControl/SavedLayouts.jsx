@@ -185,3 +185,32 @@ export function SaveChoice({ layouts, shown, suggested, onConfirm, onCancel, bus
     </div>
   );
 }
+
+// Save (as a layout too: a new one, or over one there is), and whether there's anything to save
+export function SaveRow({ changed, anyLive, busy, choosing, layouts, shown, saved, fromLayout, onDiscard, onChoose, onCancel, onConfirm }) {
+  if (choosing) {
+    return (
+      <SaveChoice
+        layouts={layouts} shown={shown} busy={busy === "save"} onConfirm={onConfirm} onCancel={onCancel}
+        suggested={fromLayout || layouts.find((l) => sameAs(l, saved))?.name}
+      />
+    );
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={uiText(12, changed ? c.amber : c.textFaint, { flex: 1 })}>
+        {changed
+          ? anyLive ? "Not saved yet. Saving changes the stream as it goes out, on every site." : "Not saved yet."
+          : "Saved. Save again to keep this as a layout."}
+      </div>
+      {changed && (
+        <button type="button" onClick={onDiscard} disabled={!!busy} style={cancelButton(!!busy)}>
+          Discard
+        </button>
+      )}
+      <button type="button" data-testid="stream-control-save" onClick={onChoose} disabled={!!busy} style={primaryButton(!!busy)}>
+        Save
+      </button>
+    </div>
+  );
+}

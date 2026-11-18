@@ -1,13 +1,13 @@
 """
 What several routers answer the same way: a printer, model, 3MF or version that isn't there, a delete that wasn't confirmed, a stored file
-that can't be read right now, a preview image, and how a printer's last sync went.
+that can't be read right now, a preview image, a picture or track of Stream control's stream, and how a printer's last sync went.
 """
 from __future__ import annotations
 
 import os
 
-from fastapi import HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import HTTPException, Request, Response
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import storage
@@ -16,6 +16,29 @@ from ..services import bundle_service, printer_service, source_model_service
 from ..timeutil import utc_iso
 
 CONFIRM_DELETE = "Deleting is permanent — pass confirm=true to proceed"
+
+# An SVG can carry scripts: opened on its own it would run them as this page. It's sent as a picture that can't.
+SVG_HEADERS = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+               "X-Content-Type-Options": "nosniff"}
+
+
+def stream_picture_response(path) -> Response:
+    """A picture of Stream control's stream folder (for its page, and the stream plugins through the plugin API)."""
+    from ..services.stream_control import media
+
+    kind = media.PICTURE_TYPES[path.suffix.lower()]
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "no-cache", **(SVG_HEADERS if kind == "image/svg+xml" else {})})
+
+
+def stream_track_response(where) -> Response:
+    """A track of the stream's music, as stream_control.music_sources.find found it: Stream control's own file, or a
+    stream plugin's passed on as it comes (NotFound when that plugin hasn't got it)."""
+    from ..services.stream_control import media, music_sources
+
+    if isinstance(where, tuple):
+        address, path = where
+        return StreamingResponse(music_sources.passed_on(address, path), media_type="audio/mpeg", headers={"Cache-Control": "no-cache"})
+    return FileResponse(where, media_type=media.TRACK_TYPES[where.suffix.lower()], headers={"Cache-Control": "no-cache"})
 
 
 def _found(thing, detail: str):

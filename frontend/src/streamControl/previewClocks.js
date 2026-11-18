@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-// The preview's clocks: its own count of seconds, for taking turns while it isn't in step with the server; the
-// server's time of day, while it is; and a slideshow played (or gone through by hand) in the square being edited.
+// The preview's clocks: its own count of seconds, for taking turns, and a slideshow played (or gone through by hand)
+// in the square being edited.
 
 // Seconds counted from 0 while `on`, starting again whenever one of `deps` changes
 export function useSecondsSince(on, deps) {
@@ -13,19 +13,6 @@ export function useSecondsSince(on, deps) {
     return () => clearInterval(timer);
   }, [on, ...deps]);
   return seconds;
-}
-
-// The server's time of day now, in seconds (its own, not this computer's: a clock that's a little out doesn't
-// matter), from `serverClock` { serverTime, heardAt } (the last status, and when it came); null without one. Slideshows
-// and taking turns count from it, as the stream does, so the preview shows what the stream shows (or will start on).
-export function useServerClock(serverClock) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!serverClock) return;
-    const timer = setInterval(() => setTick((t) => t + 1), 250);
-    return () => clearInterval(timer);
-  }, [!!serverClock]);
-  return serverClock ? serverClock.serverTime + (Date.now() - serverClock.heardAt) / 1000 : null;
 }
 
 // A slideshow of `slides` pictures, `seconds` each, in the square being edited (`square`: starts again on another):
