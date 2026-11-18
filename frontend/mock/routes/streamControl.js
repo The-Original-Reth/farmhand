@@ -118,6 +118,26 @@ export function streamControlRoutes(ctx) {
   });
 
   on("GET", "/stream-control/streams", () => (sc(), { streams: streamPlugins().map((p) => entry(p)), happened: state().happened }));
+  // Copy layout: the pretend plugins' own layouts (YouTube's a 2x2 of cameras and its logo, Twitch's a slideshow beside a camera)
+  const OWN_LAYOUTS = {
+    stream: { cols: 2, rows: 2, title: "Live from the print farm", cells: [{ camera: "1:Bed" }, { camera: "2:Bed" }, { background: "#B3261E", image: "youtube-logo.png", text: "" }, null] },
+    twitch: { cols: 2, rows: 1, title: "Printing all day", cells: [{ camera: "1:Bed" }, { slideshow: "Twitch prints", seconds: 8, text: "" }] },
+  };
+  on("POST", "/stream-control/streams/:id/copy-layout", ({ id }) => {
+    const s = sc();
+    const p = one(id);
+    const own = OWN_LAYOUTS[p.id] || { cols: 1, rows: 1, cells: [null] };
+    const cell = (c) => (c && !c.camera ? { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false,
+      picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 }, captions: {}, picture_boxes: {}, layers: [], slide_layers: {}, ...c } : c);
+    s.design = { ...s.design, ...own, cells: own.cells.map(cell), revision: s.design.revision + 1, saved_at: new Date().toISOString() };
+    const copied = [];
+    if (p.id === "stream" && !s.media.images.includes("youtube-logo.png")) (s.media.images = [...s.media.images, "youtube-logo.png"].sort()), copied.push("the picture “youtube-logo.png”");
+    if (p.id === "twitch" && !s.media.slideshows.some((x) => x.name === "Twitch prints")) {
+      s.media.slideshows.push({ name: "Twitch prints", images: ["frog.jpg", "shark.jpg"] });
+      copied.push("“Twitch prints”: “frog.jpg”", "“Twitch prints”: “shark.jpg”");
+    }
+    return { ...page(), copied, problems: [`${p.name}'s music tracks weren't copied: add them under Music on this page.`] };
+  });
   on("POST", "/stream-control/streams/:id/:action", ({ id, action }) => {
     sc();
     if (!["start", "stop"].includes(action)) throw new HttpError(404, "Not Found");

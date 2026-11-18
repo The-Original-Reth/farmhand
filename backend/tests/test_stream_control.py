@@ -51,12 +51,23 @@ class FakeStreams:
         self.refuse: dict[str, str] = {}  # host -> why it won't go live
         self.down: set[str] = set()
         self.asked: list[str] = []
+        # the YouTube plugin's own layout, as its own page's API gives it (Copy layout)
+        self.own_layout = {
+            "cols": 3, "rows": 1, "layout": "cycle", "seconds_each": 15, "title": "Our farm", "font": "roboto",
+            "border_color": "#112233", "music": True, "music_volume": 20, "key_set": True,
+            "cells": [{"camera": "2:Bed"}, {"image": "logo.png", "text": "Hi", "layers": [{"type": "picture", "image": "gone.png"}]},
+                      {"slideshow": "Prints", "seconds": 5}],
+            "holding": {"text": "Back soon", "image": "logo.png"},
+        }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         host, path = request.url.host, request.url.path
         self.asked.append(f"{request.method} {host}{path}")
         if host in self.down:
             raise httpx.ConnectError("Connection refused", request=request)
+        if path.startswith("/api/stream/pictures/") or path.startswith("/api/stream/slideshows/"):  # its own stream folder
+            name = path.rsplit("/", 1)[1]
+            return httpx.Response(200, content=b"picture:" + name.encode()) if name != "gone.png" else httpx.Response(404)
         if path.startswith("/api/stream") and not path.startswith("/api/stream-control"):  # a plugin from before Stream control
             if path == "/api/stream/start":
                 if host in self.refuse:
@@ -66,7 +77,8 @@ class FakeStreams:
                 self.live[host] = False
             live = self.live.get(host, False)
             return httpx.Response(200, json={
-                "settings": {"channel": "printfarm"} if host == "twitch" else {},
+                "settings": {"channel": "printfarm"} if host == "twitch" else self.own_layout,
+                "media": {"images": ["logo.png"], "slideshows": [{"name": "Prints", "images": ["a.png", "blank:1", "b.png"]}], "music": ["beat.mp3"]},
                 "status": {"live": live, "error": None, "youtube": {"watch_url": "https://youtu.be/x"} if live and host == "stream" else None},
             })
         if path == "/api/stream-control/start":
@@ -263,6 +275,36 @@ def test_the_youtube_and_twitch_plugins_from_before_stream_control_start_and_sto
     del fake.refuse["twitch"]
     assert api.post("/stream-control/streams/twitch/start").json()["watch_url"] == "https://www.twitch.tv/printfarm"
     assert all(not s["live"] for s in api.post("/stream-control/stop-all").json()["streams"])
+
+
+def test_copy_layout_makes_one_stream_s_own_layout_stream_control_s_with_its_pictures(api, tmp_path):
+    fake = FakeStreams()
+    remote.transport = httpx.MockTransport(fake.handle)
+    switch(api)
+    add_stream_plugin(api, "stream", "YouTube")
+    before = api.get("/stream-control").json()["design"]["revision"]
+
+    r = api.post("/stream-control/streams/stream/copy-layout")
+    assert r.status_code == 200, r.text
+    got = r.json()
+    d = got["design"]
+    assert (d["cols"], d["rows"], d["layout"], d["seconds_each"], d["title"], d["font"], d["border_color"]) == (3, 1, "cycle", 15, "Our farm", "roboto", "#112233")
+    assert d["cameras"] == ["2:Bed"] and d["cells"][2]["slideshow"] == "Prints" and d["holding"]["text"] == "Back soon"
+    assert d["revision"] == before + 1
+    # its pictures and slideshow, copied into Farmhand's stream folder (a picture it no longer has: said so)
+    assert got["media"]["images"] == ["logo.png"]
+    assert got["media"]["slideshows"] == [{"name": "Prints", "images": ["a.png", "blank:1", "b.png"]}]
+    assert api.get("/stream-control/pictures/logo.png").content == b"picture:logo.png"
+    assert any("gone.png" in p for p in got["problems"]) and any("music" in p for p in got["problems"])
+    assert "the picture “logo.png”" in got["copied"]
+    assert change_hooks._what_changed("/stream-control/streams/stream/copy-layout") is not None
+
+    # copied again: the pictures there already are kept
+    assert "the picture “logo.png”" not in api.post("/stream-control/streams/stream/copy-layout").json()["copied"]
+    fake.down.add("stream")
+    r = api.post("/stream-control/streams/stream/copy-layout")
+    assert r.status_code == 422 and "couldn't reach" in r.json()["detail"]
+    assert api.post("/stream-control/streams/nobody/copy-layout").status_code == 404
 
 
 def test_only_the_streams_brought_in_are_started_stopped_or_sent_the_design(api):

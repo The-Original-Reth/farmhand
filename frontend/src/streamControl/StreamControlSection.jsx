@@ -3,7 +3,7 @@ import { c } from "../theme.js";
 import { cancelButton, primaryButton, uiText } from "../styles.js";
 import {
   errorText, getStreamControl, getStreamPlugins, renameSlideshow, saveStreamDesign, saveStreamLayouts, scanStreamFolder,
-  chooseStreamPlugins, startAllStreams, startStreamPlugin, stopAllStreams, stopStreamPlugin,
+  chooseStreamPlugins, copyStreamLayout, startAllStreams, startStreamPlugin, stopAllStreams, stopStreamPlugin,
 } from "../api.js";
 import { useData } from "../data.jsx";
 import { usePhone } from "../hooks/useMediaQuery.js";
@@ -153,6 +153,24 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
     return true;
   };
 
+  // Copy layout: a stream's own layout made Stream control's (anything changed here and not saved yet is let go).
+  // { copied, problems } once done, or null when it couldn't.
+  const copyLayout = async (id) => {
+    setBusy("copy");
+    setProblem(null);
+    try {
+      const r = await copyStreamLayout(id);
+      take(r.page);
+      setDraft(null);
+      return { copied: r.copied, problems: r.problems };
+    } catch (e) {
+      setProblem(errorText(e));
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // Which stream plugins are brought in (saved straight away, on its own)
   const choose = async (ids) => {
     setBusy("choose");
@@ -215,6 +233,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
           onStop={(id) => act(`stop:${id}`, () => stopStreamPlugin(id), false)}
           onAll={(action) => act(`${action}-all`, action === "start" ? startAllStreams : stopAllStreams, action === "start")}
           onChoose={(ids) => choose(ids)}
+          onCopy={copyLayout}
         />
         {problem && (
           <div data-testid="stream-control-problem" style={uiText(13, c.danger, { lineHeight: 1.5 })}>

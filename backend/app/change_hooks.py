@@ -61,7 +61,7 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
     if parts[0] == "stream-control":
         # its design, saved layouts and schedule are in the settings file; starting or stopping a stream, and the
         # stream folder's pictures and music (files beside the STL folder already), aren't
-        if parts[1:2] in ([], ["layouts"], ["schedule"]) or parts[1:] == ["streams"] or (parts[1:2] == ["slideshows"] and len(parts) == 3):
+        if parts[1:2] in ([], ["layouts"], ["schedule"]) or parts[1:] == ["streams"] or parts[-1] == "copy-layout" or (parts[1:2] == ["slideshows"] and len(parts) == 3):
             return config_service.MirrorScope()
         return None
     return None

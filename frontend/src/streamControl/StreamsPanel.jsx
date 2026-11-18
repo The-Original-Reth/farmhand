@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Radio } from "lucide-react";
 import { c } from "../theme.js";
-import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js";
+import { cancelButton, fieldBox, headerButton, primaryButton, uiText } from "../styles.js";
 import { heading, help, panel } from "./streamStyles.js";
 
 // The stream plugins (YouTube, Twitch...) that send the stream designed here, each with how its stream is doing and
@@ -9,15 +10,24 @@ import { heading, help, panel } from "./streamStyles.js";
 // "stop-all"...); `onStart(id)`, `onStop(id)`, `onAll("start" | "stop")`; `onOpenPlugin(id)` opens its own page;
 // `onOpenPlugins` the Plugins page; `happened`: what the schedule did lately. Each has a tick box: which ones Stream
 // control brings in (`onChoose(ids)`). One left out keeps its own layout, and isn't started or stopped from here.
-export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, onOpenPlugin, onOpenPlugins, happened = [] }) {
+// `onCopy(id)`: Copy layout, that stream's own layout made Stream control's (resolving once done).
+export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, onCopy, onOpenPlugin, onOpenPlugins, happened = [] }) {
   const usable = streams.filter((s) => s.enabled && s.chosen);
   const toggle = (id) => onChoose(streams.filter((s) => (s.id === id ? !s.chosen : s.chosen)).map((s) => s.id));
+  const [copying, setCopying] = useState(false); // the Copy layout chooser open
   const anyLive = usable.some((s) => s.live);
   const allLive = usable.length > 0 && usable.every((s) => s.live);
   return (
     <div data-testid="stream-control-streams" style={panel()}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ ...heading, flex: 1 }}>Streams</div>
+        <button
+          type="button" data-testid="stream-control-copy-layout" onClick={() => setCopying(!copying)}
+          disabled={!!busy || !streams.some((s) => s.enabled)} style={{ ...cancelButton(!!busy), ...(copying && { color: c.amber, borderColor: c.amber }) }}
+          title="Take one stream's own layout and show it on all the streams"
+        >
+          Copy layout
+        </button>
         <button
           type="button" data-testid="stream-control-start-all" onClick={() => onAll("start")} disabled={!!busy || !usable.length || allLive}
           style={primaryButton(!!busy || !usable.length || allLive)}
@@ -40,6 +50,7 @@ export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, 
           , and it shows here to start and stop.
         </div>
       )}
+      {copying && <CopyLayout streams={streams.filter((s) => s.enabled)} busy={busy} onCopy={onCopy} onClose={() => setCopying(false)} />}
       {streams.length > 0 && (
         <div style={help}>Tick the streams Stream control brings in: they send this stream, and go live and stop from here.</div>
       )}
@@ -111,6 +122,51 @@ function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
             style={{ ...headerButton(), color: c.amber, borderColor: c.amber }}
           >
             {mine ? "Going live…" : "Go live"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Copy layout: choose a stream, and its own layout (as set on its own page) becomes Stream control's, shown on every
+// stream brought in. Asks first, since it replaces the layout here (save one under Saved layouts to keep it).
+function CopyLayout({ streams, busy, onCopy, onClose }) {
+  const [from, setFrom] = useState(streams[0]?.id || "");
+  const [said, setSaid] = useState(null); // { copied, problems } once done
+  const chosen = streams.find((s) => s.id === from);
+  const copy = async () => {
+    const done = await onCopy(from);
+    if (done) setSaid(done);
+  };
+  return (
+    <div data-testid="stream-control-copy" style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10, border: `1px solid ${c.amber}`, borderRadius: 4 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={uiText(13, c.textPrimary)}>Copy the layout of</span>
+        <select
+          data-testid="stream-control-copy-from" value={from} onChange={(e) => (setFrom(e.target.value), setSaid(null))}
+          style={{ ...fieldBox(), padding: "5px 8px" }}
+        >
+          {streams.map((s) => <option key={s.id} value={s.id}>{s.site}</option>)}
+        </select>
+        <span style={uiText(13, c.textPrimary)}>to all the streams</span>
+      </div>
+      <div style={help}>
+        {chosen?.site || "Its"}'s own layout (its grid and squares, words, colours, music choices, holding screen, title and description)
+        replaces Stream control's, and every stream brought in shows it. The pictures and slideshows it uses are copied into the stream
+        folder; its music tracks aren't. To keep Stream control's layout as it is now, save it under Saved layouts first.
+      </div>
+      {said && (
+        <div data-testid="stream-control-copied" style={uiText(12, said.problems.length ? c.amber : c.green, { lineHeight: 1.5 })}>
+          Copied {chosen?.site}'s layout{said.copied.length ? `, and ${said.copied.length} picture${said.copied.length === 1 ? "" : "s"}` : ""}.
+          {said.problems.map((p) => <div key={p}>{p}</div>)}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" onClick={onClose} style={cancelButton(false)}>{said ? "Close" : "Cancel"}</button>
+        {!said && (
+          <button type="button" data-testid="stream-control-copy-go" onClick={copy} disabled={!!busy || !from} style={primaryButton(!!busy || !from)}>
+            {busy === "copy" ? "Copying…" : "Copy layout"}
           </button>
         )}
       </div>
