@@ -25,12 +25,21 @@ import { SchedulePanel } from "./SchedulePanel.jsx";
 // the holding screen, the defaults, the music, saved layouts, Save, and the schedule. A camera is named as on Monitor
 // ("printer id:camera name"). Saving changes the stream as it goes out: each plugin following it picks it up.
 const STREAMS_EVERY_MS = 5000;
-const MUTE_KEY = "farmhand-stream-control-music-muted"; // Mute, kept in this browser
-const mutedAtFirst = () => {
+// Mute and Autoplay music, kept in this browser (a browser that keeps nothing: off, and kept for this visit only)
+const MUTE_KEY = "farmhand-stream-control-music-muted";
+const AUTOPLAY_KEY = "farmhand-stream-control-music-autoplay";
+const storedOn = (key) => {
   try {
-    return localStorage.getItem(MUTE_KEY) === "1";
+    return localStorage.getItem(key) === "1";
   } catch {
-    return false; // (a browser that keeps nothing: not muted)
+    return false;
+  }
+};
+const store = (key, on) => {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    // (kept for this visit only)
   }
 };
 
@@ -46,15 +55,12 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const [choosing, setChoosing] = useState(false); // Save asking: a new layout, or over one there is
   const [fromLayout, setFromLayout] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [muted, setMuted] = useState(mutedAtFirst); // Mute: the music silent on this page only (the streams keep it)
-  const mute = (on) => {
-    setMuted(on);
-    try {
-      localStorage.setItem(MUTE_KEY, on ? "1" : "0");
-    } catch {
-      // (kept for this visit only)
-    }
-  };
+  const [muted, setMuted] = useState(() => storedOn(MUTE_KEY)); // Mute: the music silent on this page only (the streams keep it)
+  const mute = (on) => (setMuted(on), store(MUTE_KEY, on));
+  // Autoplay music: this page plays the stream's music by itself while it's open, round and round (as the stream does)
+  const [autoplay, setAutoplay] = useState(() => storedOn(AUTOPLAY_KEY));
+  const turnAutoplay = (on) => (setAutoplay(on), store(AUTOPLAY_KEY, on));
+  const [musicWaits, setMusicWaits] = useState(false); // the browser holds the music back until the page is clicked
 
   const draftOrSaved = draft || page?.design;
   const inGrid = (draftOrSaved?.cells || []).filter((x) => x?.camera).map((x) => x.camera);
@@ -236,7 +242,20 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
     {/* at the top, as on the stream plugins' own pages: Mute, for the music on this page */}
-    <MuteSwitch muted={muted} onMute={mute} />
+    <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+      <MuteSwitch muted={muted} onMute={mute} />
+      <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" })}
+        title="Play the stream's music on this page by itself while it's open (Mute silences it)">
+        <input type="checkbox" data-testid="stream-control-autoplay" checked={autoplay} onChange={(e) => turnAutoplay(e.target.checked)} />
+        Autoplay music
+      </label>
+      {autoplay && musicWaits && (
+        <span data-testid="stream-control-music-waiting" style={uiText(12, c.amber)}
+          title="Browsers only play a page's sound once it has been clicked. To have it start straight away, allow sound or autoplay for this address in the browser's site settings.">
+          ♪ The music starts with your first click on the page
+        </span>
+      )}
+    </div>
     <div data-testid="stream-control" style={{ display: "grid", gridTemplateColumns: phone ? "minmax(0, 1fr)" : "minmax(0, 3fr) minmax(340px, 2fr)", gap: phone ? 16 : 20, alignItems: "start" }}>
       <div style={{ minWidth: 0, ...(!phone && { position: "sticky", top: 0 }) }}>
         <StreamPreview
@@ -265,7 +284,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
         <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} saved={saved.holding} onSave={saveHolding} busy={busy} />
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <MusicPanel
-          shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={false} enabled={false} savedVolume={saved.musicVolume} muted={muted}
+          shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={false} enabled={autoplay} onWaiting={setMusicWaits} savedVolume={saved.musicVolume} muted={muted}
           sourceOf={(name) => {
             const from = page.media.musicTracks.find((t) => t.name === name)?.source;
             return page.media.musicSources.find((s) => s.id === from)?.label.replace("'s music folder", "'s") || "";
