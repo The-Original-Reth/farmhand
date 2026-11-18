@@ -10,7 +10,7 @@ import { usePhone } from "../hooks/useMediaQuery.js";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
 import { cameraOf, followCameras, printerOf } from "./shapes.js";
-import { WordsPanel } from "./StreamPanels.jsx";
+import { MuteSwitch, WordsPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
 import { MusicFolders } from "./MusicFolders.jsx";
@@ -25,6 +25,14 @@ import { SchedulePanel } from "./SchedulePanel.jsx";
 // the holding screen, the defaults, the music, saved layouts, Save, and the schedule. A camera is named as on Monitor
 // ("printer id:camera name"). Saving changes the stream as it goes out: each plugin following it picks it up.
 const STREAMS_EVERY_MS = 5000;
+const MUTE_KEY = "farmhand-stream-control-music-muted"; // Mute, kept in this browser
+const mutedAtFirst = () => {
+  try {
+    return localStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false; // (a browser that keeps nothing: not muted)
+  }
+};
 
 export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const { printers } = useData();
@@ -38,6 +46,15 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const [choosing, setChoosing] = useState(false); // Save asking: a new layout, or over one there is
   const [fromLayout, setFromLayout] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [muted, setMuted] = useState(mutedAtFirst); // Mute: the music silent on this page only (the streams keep it)
+  const mute = (on) => {
+    setMuted(on);
+    try {
+      localStorage.setItem(MUTE_KEY, on ? "1" : "0");
+    } catch {
+      // (kept for this visit only)
+    }
+  };
 
   const draftOrSaved = draft || page?.design;
   const inGrid = (draftOrSaved?.cells || []).filter((x) => x?.camera).map((x) => x.camera);
@@ -217,6 +234,9 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const anyLive = page.streams.some((s) => s.live);
 
   return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    {/* at the top, as on the stream plugins' own pages: Mute, for the music on this page */}
+    <MuteSwitch muted={muted} onMute={mute} />
     <div data-testid="stream-control" style={{ display: "grid", gridTemplateColumns: phone ? "minmax(0, 1fr)" : "minmax(0, 3fr) minmax(340px, 2fr)", gap: phone ? 16 : 20, alignItems: "start" }}>
       <div style={{ minWidth: 0, ...(!phone && { position: "sticky", top: 0 }) }}>
         <StreamPreview
@@ -241,16 +261,11 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
             {problem}
           </div>
         )}
-        <SaveRow
-          changed={changed} anyLive={anyLive} busy={busy} choosing={choosing} layouts={page.layouts} shown={shown} saved={saved}
-          fromLayout={fromLayout} onDiscard={discard} onChoose={() => (setChoosing(true), setProblem(null))} onCancel={() => setChoosing(false)}
-          onConfirm={saveWithLayout}
-        />
         <WordsPanel shown={shown} change={change} />
         <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} saved={saved.holding} onSave={saveHolding} busy={busy} />
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <MusicPanel
-          shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={false} enabled={false} savedVolume={saved.musicVolume}
+          shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={false} enabled={false} savedVolume={saved.musicVolume} muted={muted}
           sourceOf={(name) => {
             const from = page.media.musicTracks.find((t) => t.name === name)?.source;
             return page.media.musicSources.find((s) => s.id === from)?.label.replace("'s music folder", "'s") || "";
@@ -258,8 +273,15 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
           extra={<MusicFolders sources={page.media.musicSources} chosen={saved.musicFrom} busy={busy} onChoose={(ids) => savePart("music", { musicFrom: ids })} />}
         />
         <SavedLayoutsPanel layouts={page.layouts} onSave={saveLayouts} saved={saved} label={label} switchTo={switchTo} />
+        {/* Save: under the saved layouts, as on the stream plugins' own pages */}
+        <SaveRow
+          changed={changed} anyLive={anyLive} busy={busy} choosing={choosing} layouts={page.layouts} shown={shown} saved={saved}
+          fromLayout={fromLayout} onDiscard={discard} onChoose={() => (setChoosing(true), setProblem(null))} onCancel={() => setChoosing(false)}
+          onConfirm={saveWithLayout}
+        />
         <SchedulePanel schedule={page.schedule} streams={page.streams.filter((s) => s.chosen)} timeZone={page.timeZone} onSaved={take} />
       </div>
+    </div>
     </div>
   );
 }
