@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from .. import config_service
-from . import design, fonts, layouts, media, schedule, streams
+from . import design, fonts, layouts, media, music_sources, schedule, streams
 
 
 def page(db: Session, with_streams: bool = True) -> dict:
@@ -14,11 +14,15 @@ def page(db: Session, with_streams: bool = True) -> dict:
     farm's, which the schedule's times are in), streams (each stream plugin and how it's doing; left out when not asked,
     so a change to the stream folder doesn't wait on the plugins)}.
     """
+    found = media.media(db)
     out = {
         "design": design.settings(db),
         "resolutions": design.resolutions(),
         "fonts": fonts.listed(),
-        "media": media.media(db),
+        # the stream folder; music: the stream's tracks from the folders chosen, own_music: those in Stream control's own
+        # (only those can be deleted here), music_sources: the folders there are to choose from
+        "media": {**found, "music": [t["name"] for t in music_sources.tracks(db)], "own_music": found["music"],
+                  "music_tracks": music_sources.tracks(db), "music_sources": music_sources.sources(db)},
         "layouts": layouts.layouts(db),
         "schedule": schedule.schedule(db),
         "happened": schedule.happened(),

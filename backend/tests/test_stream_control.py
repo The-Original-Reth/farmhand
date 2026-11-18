@@ -16,7 +16,7 @@ import pytest
 from app import change_hooks
 from app.services import config_service
 from app.services.plugins import cache, limits, remote
-from app.services.stream_control import schedule, settings_copy
+from app.services.stream_control import music_sources, schedule, settings_copy
 
 from .factories import api_db
 
@@ -33,6 +33,7 @@ STREAM_MANIFEST = {
 def _fresh():
     cache.clear()
     limits.reset()
+    music_sources.forget()
     yield
     remote.transport = None
 
@@ -65,7 +66,7 @@ class FakeStreams:
         self.asked.append(f"{request.method} {host}{path}")
         if host in self.down:
             raise httpx.ConnectError("Connection refused", request=request)
-        if path.startswith("/api/stream/pictures/") or path.startswith("/api/stream/slideshows/"):  # its own stream folder
+        if path.startswith(("/api/stream/pictures/", "/api/stream/slideshows/", "/api/stream/music/")):  # its own stream folder
             name = path.rsplit("/", 1)[1]
             return httpx.Response(200, content=b"picture:" + name.encode()) if name != "gone.png" else httpx.Response(404)
         if path.startswith("/api/stream") and not path.startswith("/api/stream-control"):  # a plugin from before Stream control
@@ -217,6 +218,7 @@ def test_pictures_slideshows_and_music_in_the_stream_folder(api, tmp_path):
 
     r = api.post("/stream-control/music", files=[("files", ("song.mp3", b"ID3...", "audio/mpeg"))])
     assert r.json()["media"]["music"] == ["song.mp3"]
+    assert r.json()["media"]["windows_path"] is None  # (Farmhand's own storage, not a network share)
     assert api.post("/stream-control/music", files=[("files", ("song.wav", b"RIFF", "audio/wav"))]).status_code == 422
 
 
@@ -323,6 +325,38 @@ def test_copy_layout_makes_one_stream_s_own_layout_stream_control_s_with_its_pic
     r = api.post("/stream-control/streams/stream/copy-layout")
     assert r.status_code == 422 and "couldn't reach" in r.json()["detail"]
     assert api.post("/stream-control/streams/nobody/copy-layout").status_code == 404
+
+
+def test_music_plays_from_the_folders_chosen_without_copying(api):
+    fake = FakeStreams()
+    remote.transport = httpx.MockTransport(fake.handle)
+    switch(api)
+    token = add_stream_plugin(api, "stream", "YouTube")
+    add_stream_plugin(api, "twitch", "Twitch")
+    api.post("/stream-control/music", files=[("files", ("own.mp3", b"ID3own", "audio/mpeg"))])
+    first = api.get("/stream-control").json()
+    assert first["design"]["music_from"] == ["stream-control"] and first["media"]["music"] == ["own.mp3"]
+    assert [(s["id"], s["chosen"], s["tracks"]) for s in first["media"]["music_sources"]] == [
+        ("stream-control", True, 1), ("twitch", False, 1), ("stream", False, 1)]
+
+    # YouTube's folder and Twitch's, both: their tracks (each name once), passed on from where they are
+    r = api.put("/stream-control", json={"music_from": ["stream", "twitch"]})
+    m = r.json()["media"]
+    assert m["music"] == ["beat.mp3"] and m["own_music"] == ["own.mp3"]
+    assert api.get("/stream-control/music/beat.mp3").content == b"picture:beat.mp3"
+    assert api.get("/stream-control/music/own.mp3").status_code == 404  # (its folder isn't chosen now)
+    headers = {"Authorization": f"Bearer {token}"}
+    got = api.get("/plugin-api/v1/stream/design", headers=headers).json()["media"]
+    assert got["music"] == ["beat.mp3"] and got["stamps"]["music/beat.mp3"] == "stream:beat.mp3"
+    assert "music/own.mp3" not in got["stamps"]
+    assert api.get("/plugin-api/v1/stream/music/beat.mp3", headers=headers).content == b"picture:beat.mp3"
+    # nothing was copied into Stream control's own music folder
+    assert api.get("/stream-control").json()["media"]["own_music"] == ["own.mp3"]
+
+    # both kinds at once
+    m = api.put("/stream-control", json={"music_from": ["stream-control", "stream"]}).json()["media"]
+    assert m["music"] == ["own.mp3", "beat.mp3"]
+    assert api.put("/stream-control", json={"music_from": []}).status_code == 422
 
 
 def test_only_the_streams_brought_in_are_started_stopped_or_sent_the_design(api):
@@ -462,6 +496,19 @@ def test_the_settings_copy_has_it_and_load_all_puts_it_back_only_where_there_is_
     assert settings_copy.restore(db, copy) is True
     d = api.get("/stream-control").json()
     assert d["design"]["title"] == "Farm" and d["design"]["cameras"] == [CAMERA] and d["schedule"]["on"] is True
+
+
+def test_the_stream_folder_as_windows_reaches_it_on_a_share(api, monkeypatch, tmp_path):
+    from app import mounts
+    from app.models import NetworkShare
+    from app.services.stream_control import media
+
+    db = api_db(api)
+    db.add(NetworkShare(name="TrueNas", protocol="smb", server="192.168.10.240", share="3d_Printing_Elves/Farmhand"))
+    db.commit()
+    monkeypatch.setattr(mounts, "mount_point_for", lambda name: tmp_path / "nas" / name.lower())
+    assert media.shown_as(db, tmp_path / "nas" / "truenas" / "stream") == "\\\\192.168.10.240\\3d_Printing_Elves\\Farmhand\\stream"
+    assert media.shown_as(db, tmp_path / "elsewhere" / "stream") is None
 
 
 def test_which_changes_rewrite_the_settings_copy():
