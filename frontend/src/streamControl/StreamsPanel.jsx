@@ -58,6 +58,7 @@ export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, 
       {streams.map((s) => (
         <StreamRow key={s.id} s={s} busy={busy} onStart={onStart} onStop={onStop} onToggle={() => toggle(s.id)} onOpenPlugin={onOpenPlugin} />
       ))}
+      <CameraStates cameras={camerasOf(streams)} />
       {happened.length > 0 && <LastScheduled h={happened[0]} />}
     </div>
   );
@@ -121,7 +122,6 @@ function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
           </button>
         )}
         <StreamLinks s={s} />
-        {s.live && s.cameras.length > 0 && <CameraStates cameras={s.cameras} />}
         {notes.map((n) => (
           <div key={n} style={uiText(12, c.amber, { lineHeight: 1.5 })}>{n}</div>
         ))}
@@ -171,11 +171,27 @@ const CAMERA_WORD = { live: "live", down: "down", starting: "starting" };
 
 // Each camera in the stream while it's live, as the plugin sends it: live, down (its square shows "Camera down"), or
 // starting
-// (as a list in two columns, each line the printer's name, then live, down or starting)
+// The cameras of the streams going out, once: every stream brought in sends the same design, so they're the same
+// cameras. Each in the order the first live stream gives them; one down (or starting) in any stream shows so.
+const WORST = { down: 2, starting: 1, live: 0 };
+const camerasOf = (streams) => {
+  const out = new Map();
+  for (const s of streams.filter((x) => x.live && x.chosen)) {
+    for (const cam of s.cameras) {
+      const key = cam.key || cam.label;
+      const had = out.get(key);
+      if (!had || WORST[cam.state] > WORST[had.state]) out.set(key, had ? { ...had, state: cam.state } : cam);
+    }
+  }
+  return [...out.values()];
+};
+
+// (as a list in two columns, each line the printer's name, then live, down or starting); nothing while none is live
 function CameraStates({ cameras }) {
+  if (!cameras.length) return null;
   const down = cameras.filter((x) => x.state === "down").length;
   return (
-    <div data-testid="stream-control-cameras" style={uiText(12, c.textMuted, { lineHeight: 1.6, marginTop: 2 })}>
+    <div data-testid="stream-control-cameras" style={uiText(12, c.textMuted, { lineHeight: 1.6, paddingTop: 8, borderTop: `1px solid ${c.border}` })}>
       <div style={{ color: down ? c.danger : c.textFaint }}>
         {down ? `${down} of ${cameras.length} camera${cameras.length === 1 ? "" : "s"} down` : `All ${cameras.length} camera${cameras.length === 1 ? "" : "s"} live`}
       </div>
