@@ -2,7 +2,7 @@ import { useState } from "react";
 import { c } from "../theme.js";
 import { uiText } from "../styles.js";
 import {
-  errorText, renameSlideshow, saveStreamDesign, saveStreamLayouts, scanStreamFolder,
+  errorText, reconnectNas, renameSlideshow, saveStreamDesign, saveStreamLayouts, scanStreamFolder,
   chooseStreamPlugins, copyStreamLayout, startAllStreams, startStreamPlugin, stopAllStreams, stopStreamPlugin,
 } from "../api.js";
 import { useData } from "../data.jsx";
@@ -211,7 +211,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
           shown={shown} change={change} squares={squares} showStatus={shown.showStatus} resolutions={page.resolutions}
           cameras={cameras} media={page.media} fonts={page.fonts} label={label}
           ask={ask} busy={busy} onSave={saveAll} dirty={changed} onRenameSlideshow={renameShow} onRevert={discard}
-          onResync={() => ask("resync", scanStreamFolder)}
+          onResync={() => ask("resync", scanStreamFolder)} onReconnect={() => ask("reconnect", reconnectNas)}
           cycle={shown.layout === "cycle" ? { all: Number(shown.secondsAll) || 0, each: Math.max(1, Number(shown.secondsEach) || 0) } : null}
         />
       </div>
@@ -223,6 +223,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
           onAll={(action) => act(`${action}-all`, action === "start" ? startAllStreams : stopAllStreams, action === "start")}
           onChoose={(ids) => choose(ids)}
           onCopy={copyLayout}
+          media={page.media} onReconnect={() => ask("reconnect", reconnectNas)}
         />
         {problem && (
           <div data-testid="stream-control-problem" style={uiText(13, c.danger, { lineHeight: 1.5 })}>

@@ -47,7 +47,7 @@ export function streamControlRoutes(ctx) {
   };
   const cameras = (cells) => cells.filter((c) => c?.camera).map((c) => c.camera);
   const design = () => ({ ...state().design, cameras: cameras(state().design.cells) });
-  const media = () => ({ path: "/data/nas/farmhand/stream", windows_path: String.raw`\\192.168.10.5\farmhand\stream`, ...state().media, error: null });
+  const media = () => ({ path: "/data/nas/farmhand/stream", windows_path: String.raw`\\192.168.10.5\farmhand\stream`, ...state().media, error: null, on_share: true });
   // the stream plugins: the added plugins whose manifest says they can be started from here
   // (YouTube and Twitch, as they are now, from before Stream control: started and stopped through their own page, sending their own layout)
   const BEFORE = { stream: "YouTube", twitch: "Twitch" };
@@ -211,6 +211,7 @@ export function streamControlRoutes(ctx) {
     return body.files;
   };
   on("POST", "/stream-control/scan", () => (sc(), page(false)));
+  on("POST", "/stream-control/reconnect", () => (sc(), page(false))); // (the pretend NAS is always there)
   on("POST", "/stream-control/pictures", (_p, body) => {
     m().images = [...new Set([...m().images, ...pictures(body)])].sort();
     return [201, page(false)];

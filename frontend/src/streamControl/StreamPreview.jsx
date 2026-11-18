@@ -23,8 +23,9 @@ import { SquareEditor } from "./SquareEditor.jsx";
 // `cameras`, `media` (the stream folder's pictures and slideshows), `label`: what a square can hold, for its editor
 // (SquareEditor.jsx), which also uploads and deletes pictures (`ask`, `busy`: the page's own way of asking the server)
 // and saves the page (`onSave`; `dirty`: something isn't saved yet). Slideshows and taking turns run on this page's own
-// clock: each stream plugin keeps its own time. `onResync`: Scan folder.
-export function StreamPreview({ shown, change, squares, showStatus, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, onRevert, onResync = null }) {
+// clock: each stream plugin keeps its own time. `onResync`: Scan folder; `onReconnect`: Reconnect NAS (shown when the
+// stream folder is on a NAS share, media.on_share).
+export function StreamPreview({ shown, change, squares, showStatus, cycle = null, resolutions = [], cameras = [], media = { images: [], slideshows: [] }, fonts = [], label, ask, busy, onSave, dirty, onRenameSlideshow, onRevert, onResync = null, onReconnect = null }) {
   const { cols, rows, cells, borderColor } = shown;
   const back = shown.background || "#000000"; // the stream's own colour (the person's choice, so not from the palette)
   const words = { font: shown.font, color: shown.color }; // the stream's words, every square's unless it has its own
@@ -77,6 +78,14 @@ export function StreamPreview({ shown, change, squares, showStatus, cycle = null
             title="Look in the stream folder again, for pictures, slideshows and tracks copied in or taken out by hand (what's changed here stays)"
           >
             {busy === "resync" ? "Scanning…" : "Scan folder"}
+          </button>
+        )}
+        {onReconnect && media.on_share && (
+          <button
+            type="button" data-testid="stream-reconnect" onClick={onReconnect} disabled={!!busy} style={headerButton()}
+            title="Connect the NAS share the stream folder is on again (after the NAS was off or restarted), then look in the folder again"
+          >
+            {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
           </button>
         )}
         <div style={{ flex: 1 }} />

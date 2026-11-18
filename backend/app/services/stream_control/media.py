@@ -170,7 +170,8 @@ def _read(db: Session) -> dict:
         except OSError:
             root = folder(db)
     except storage.StorageUnavailableError as e:
-        return {"path": str(_root()), "windows_path": None, "images": [], "slideshows": [], "music": [], "error": str(e), "stamps": {}}
+        return {"path": str(_root()), "windows_path": None, "images": [], "slideshows": [], "music": [], "error": str(e), "stamps": {},
+                "on_share": _on_share(db)}
     shows = []
     try:
         for e in sorted(os.scandir(root / SLIDESHOWS), key=lambda e: _natural(e.name)):
@@ -182,7 +183,17 @@ def _read(db: Session) -> dict:
     files = [f"{IMAGES}/{n}" for n in images] + [f"{MUSIC}/{n}" for n in music] + [
         f"{SLIDESHOWS}/{s['name']}/{n}" for s in shows for n in s["images"] if not is_blank(n)]
     return {"path": str(root), "windows_path": shown_as(db, root), "images": images, "slideshows": shows, "music": music,
-            "error": None, "stamps": _stamps(root, files)}
+            "error": None, "stamps": _stamps(root, files), "on_share": _on_share(db)}
+
+
+def _on_share(db: Session) -> bool:
+    """The stream folder is on a NAS share Farmhand connects itself (so the page offers Reconnect NAS)."""
+    from ..network_shares_service import shares_holding  # (not at the top: it reads the storage roots this module does)
+
+    try:
+        return bool(shares_holding(db, _root()))
+    except Exception:  # noqa: BLE001 - only decides whether a button is shown
+        return False
 
 
 def shown_as(db: Session, root: Path) -> str | None:

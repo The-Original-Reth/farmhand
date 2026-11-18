@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { c, fixed, ui } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
-import { addSlideshowBlank, orderSlideshow, scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
+import { addSlideshowBlank, orderSlideshow, reconnectNas, scanStreamFolder, createSlideshow, removeSlideshow, removeSlideshowPicture, removeStreamPicture, slideshowPictureUrl, uploadSlideshowPictures, uploadStreamPictures } from "../api.js";
 import { box, help, label12 } from "./streamStyles.js";
 import { isBlank, slideLabel } from "./shapes.js";
 
@@ -318,15 +318,26 @@ export function OpenFolder({ media, rest, what = "Pictures", testid = "stream-sl
   );
 }
 
-// Scan folder: the stream folder read again, for pictures copied in or taken out by hand (Farmhand doesn't keep looking)
+// Scan folder: the stream folder read again, for pictures copied in or taken out by hand (Farmhand doesn't keep looking);
+// and, when the folder is on a NAS share, Reconnect NAS: the share connected again (after the NAS was off), then read again
 function ScanFolder({ ask, busy, media }) {
   return (
-    <button
-      type="button" data-testid="stream-scan-folder" onClick={() => ask("picture", scanStreamFolder)} disabled={!!busy} style={headerButton()}
-      title="Look in the stream folder again, for pictures copied in or taken out by hand"
-    >
-      {busy === "picture" ? "Working…" : media.error ? "Try the folder again" : "Scan folder"}
-    </button>
+    <>
+      <button
+        type="button" data-testid="stream-scan-folder" onClick={() => ask("picture", scanStreamFolder)} disabled={!!busy} style={headerButton()}
+        title="Look in the stream folder again, for pictures copied in or taken out by hand"
+      >
+        {busy === "picture" ? "Working…" : media.error ? "Try the folder again" : "Scan folder"}
+      </button>
+      {media.on_share && (
+        <button
+          type="button" data-testid="stream-reconnect-nas" onClick={() => ask("reconnect", reconnectNas)} disabled={!!busy} style={headerButton()}
+          title="Connect the NAS share the stream folder is on again (after the NAS was off or restarted), then look in the folder again"
+        >
+          {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
+        </button>
+      )}
+    </>
   );
 }
 

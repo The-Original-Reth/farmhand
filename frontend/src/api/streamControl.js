@@ -133,6 +133,9 @@ export const streamPictureUrl = (name) => `${API_BASE}/stream-control/pictures/$
 export const slideshowPictureUrl = (show, name) => `${API_BASE}/stream-control/slideshows/${enc(show)}/pictures/${enc(name)}`;
 export const streamTrackUrl = (name) => `${API_BASE}/stream-control/music/${enc(name)}`;
 export const scanStreamFolder = async () => normalizePage(await post("/stream-control/scan"));
+// Reconnect NAS: the network share the stream folder is on (beside the STL folder) connected again, after the NAS was
+// off, and the folder read again (media.on_share: it's on one). Throws the reason when the NAS still can't be reached.
+export const reconnectNas = async () => normalizePage(await post("/stream-control/reconnect"));
 export const uploadStreamPictures = async (files) => normalizePage(await request("/stream-control/pictures", filesBody(files)));
 export const removeStreamPicture = async (name) => normalizePage(await del(`/stream-control/pictures/${enc(name)}`));
 export const createSlideshow = async (name) => normalizePage(await request("/stream-control/slideshows", jsonBody("POST", { name })));

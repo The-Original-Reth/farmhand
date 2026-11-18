@@ -224,3 +224,35 @@ def test_a_nas_folder_is_found_in_the_share_that_reaches_it():
     nfs = NetworkShare(name="Exports", protocol="nfs", server="nas", share="/mnt/tank/prints")
     assert folder_inside(nfs, "nfs", "NAS", "/mnt/tank/prints") == ""
     assert folder_inside(nfs, "nfs", "nas", "/mnt/tank/Prints") is None  # an NFS export is a path: case counts
+
+
+# ------------------------------------------------------------------ Stream control's Reconnect NAS
+
+
+def test_reconnect_nas_connects_the_share_a_folder_is_on_again(db_session, nas, monkeypatch):
+    out = shares.create_share(db_session, SMB)
+    inside = Path(out["mount_point"]) / "STL"
+    assert [r.name for r in shares.shares_holding(db_session, inside)] == ["Lab NAS"]
+    assert shares.shares_holding(db_session, Path(out["mount_point"]).parent / "elsewhere") == []
+
+    # mounted and answering: left as it is
+    unmounted = []
+    real_unmount = mounts.unmount
+    monkeypatch.setattr(mounts, "unmount", lambda mp, lazy=False: (unmounted.append(lazy), real_unmount(mp, lazy)))
+    assert shares.reconnect_holding(db_session, inside) == ["Lab NAS"] and unmounted == []
+
+    # the NAS went off and came back: still mounted, but only errors from it: disconnected (lazily), connected again
+    monkeypatch.setattr(shares, "_answers", lambda folder: False)
+    calls = len(nas.mount_calls)
+    assert shares.reconnect_holding(db_session, inside) == ["Lab NAS"]
+    assert unmounted == [True] and len(nas.mount_calls) == calls + 1 and nas.is_mounted(out["mount_point"])
+
+    # the NAS still off: why is said (and shown with the share on the Storage page)
+    nas.unmount(out["mount_point"])
+    nas.fail_with = MountError("Timed out waiting for 10.0.0.5. Check the address and that the NAS is on and reachable.", "unreachable")
+    with pytest.raises(MountError, match="Timed out"):
+        shares.reconnect_holding(db_session, inside)
+    assert "Timed out" in shares.list_shares(db_session)["shares"][0]["error"]
+
+    # a folder on no share: nothing to connect
+    assert shares.reconnect_holding(db_session, Path(out["mount_point"]).parent / "elsewhere") == []

@@ -11,9 +11,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .. import storage
 from ..database import get_db
 from ..errors import answer_errors
-from ..services import stream_control
+from ..services import network_shares_service, stream_control
 from ..services.stream_control import copy_layout, design, fonts, layouts, media, music_sources, schedule, streams
 from ..services.stream_control.page import page
 from .common import require_confirm, stream_picture_response, stream_track_response
@@ -129,6 +130,17 @@ def _media(call):
 @router.post("/scan")
 def scan_folder(db: Session = Depends(get_db)):
     """Read the stream folder again (pictures or music copied in, or taken out, by hand)."""
+    media.media(db, scan=True)
+    return page(db, with_streams=False)
+
+
+@router.post("/reconnect")
+def reconnect_nas(db: Session = Depends(get_db)):
+    """Reconnect NAS: connect the network share the stream folder (beside the STL folder) is on again, after the NAS
+    was off, then read the folder again. A share still mounted but not answering is disconnected first. 422 says why
+    it couldn't be connected."""
+    with answer_errors():
+        network_shares_service.reconnect_holding(db, storage.effective_root("stl"))
     media.media(db, scan=True)
     return page(db, with_streams=False)
 
