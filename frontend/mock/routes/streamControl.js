@@ -66,6 +66,8 @@ export function streamControlRoutes(ctx) {
       links: links.map(([label, url]) => ({ label, url, title: "" })),
       cameras: live ? [{ key: "1:Bed", label: "Voron 2.4", state: "live", since: 0 }, { key: "2:Bed", label: "Prusa MK4", state: "down", since: 0 }] : [],
       viewers: live && p.id === "stream" ? 12 : null,
+      // (Twitch's still filling, behind its holding screen, so both looks show)
+      buffer: live ? (p.id === "twitch" ? { seconds: 60, held: 23.5, filling: true, holding: true } : { seconds: 60, held: 59.2, filling: false, holding: false }) : null,
     };
   };
   const entry = (p, answer = null) => ({

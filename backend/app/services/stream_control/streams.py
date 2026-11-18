@@ -28,7 +28,7 @@ CHOSEN_KEY = "stream_control_streams"
 # music folders read it too.
 PAGE_PATH = "/api/stream"
 CAMERA_STATES = ("live", "down", "starting")
-NOTHING_SHOWN = {"links": [], "cameras": [], "viewers": None}
+NOTHING_SHOWN = {"links": [], "cameras": [], "viewers": None, "buffer": None}
 
 
 # The YouTube (id "stream") and Twitch (id "twitch") plugins from before Stream control: no `stream_control` in their
@@ -149,16 +149,29 @@ def _links(status: dict, settings: dict) -> list[dict]:
     return out
 
 
+def _buffer(status: dict) -> dict | None:
+    """The stream's delay as its plugin holds it, while live: {seconds (how long it's set to), held (how much of it is
+    held now), filling (it's being collected again: after going live or a stall), holding (the holding screen is on the
+    site meanwhile)}; None when not live, or a plugin that doesn't say (no delay set: seconds 0)."""
+    delay = _dict(status.get("delay"))
+    seconds, held = delay.get("seconds"), delay.get("held")
+    if status.get("live") is not True or not isinstance(seconds, (int, float)) or not isinstance(held, (int, float)):
+        return None
+    return {"seconds": round(float(seconds), 1), "held": round(max(0.0, min(float(held), float(seconds))), 1),
+            "filling": delay.get("filling") is True, "holding": status.get("holding") is True}
+
+
 def _shown(page: dict) -> dict:
     """From the plugin's own page answer: {links, cameras: [{key, label, state: live | down | starting, since}] (while
-    live), viewers (YouTube's, while live)}."""
+    live), viewers (YouTube's, while live), buffer (its delay, while live: _buffer)}."""
     status, settings = _dict(page.get("status")), _dict(page.get("settings"))
     cameras = [
         {"key": c.get("key"), "label": c.get("label") or c.get("key"), "state": c["state"], "since": c.get("since")}
         for c in status.get("camera_states") or [] if isinstance(c, dict) and c.get("state") in CAMERA_STATES
     ]
     viewers = _dict(status.get("youtube")).get("viewers")
-    return {"links": _links(status, settings), "cameras": cameras, "viewers": viewers if type(viewers) is int else None}
+    return {"links": _links(status, settings), "cameras": cameras, "viewers": viewers if type(viewers) is int else None,
+            "buffer": _buffer(status)}
 
 
 def _status(address: str, path: str, method: str = "GET", legacy: bool = False) -> dict:
@@ -206,7 +219,7 @@ def _each(db: Session, ask, only_chosen: bool = False) -> list[dict]:
 
 def listed(db: Session) -> list[dict]:
     """Every stream plugin and how its stream is doing: [{id, name, site, enabled, chosen (brought in), live, links,
-    cameras (each one's state while live), viewers,
+    cameras (each one's state while live), viewers, buffer (its delay while live: {seconds, held, filling, holding}),
     following, error, watch_url, reachable (None: switched off, not asked), can_read_design (granted stream:read)}]."""
     return _each(db, _status)
 

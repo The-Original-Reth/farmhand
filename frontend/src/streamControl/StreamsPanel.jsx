@@ -80,6 +80,28 @@ const shortened = (text) => {
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 };
 
+// A live stream's delay, as its plugin holds it: how much of it is held, as words and a bar. While it's being collected
+// again (after going live, or a stall used it up) the site is shown the holding screen meanwhile.
+function StreamBuffer({ s }) {
+  const b = s.buffer;
+  if (!b) return null;
+  if (!b.seconds) return <div data-testid="stream-control-buffer" style={uiText(12, c.textMuted)}>No delay: the stream goes to {s.site} as it's made</div>;
+  const held = Math.round(b.held);
+  const full = !b.filling && b.held >= b.seconds - 1;
+  const words = b.filling
+    ? `Delay filling: ${held} of ${Math.round(b.seconds)} s held${b.holding ? `, the holding screen on ${s.site} meanwhile` : ""}`
+    : `Delay: ${held} of ${Math.round(b.seconds)} s held`;
+  const tone = full ? c.green : c.amber;
+  return (
+    <div data-testid="stream-control-buffer" title={`How much of the stream is held back before ${s.site} gets it: a hiccup shorter than that never reaches viewers`} style={{ margin: "2px 0 4px" }}>
+      <div style={uiText(12, full ? c.textMuted : c.amber, { lineHeight: 1.5 })}>{words}</div>
+      <div style={{ height: 4, maxWidth: 220, background: c.border, borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(100, (b.held / b.seconds) * 100)}%`, height: "100%", background: tone }} />
+      </div>
+    </div>
+  );
+}
+
 function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
   const mine = busy === `start:${s.id}` || busy === `stop:${s.id}`;
   let state;
@@ -112,6 +134,7 @@ function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
           {shortened(state)}
           {s.live && s.viewers !== null ? ` · ${s.viewers} watching` : ""}
         </div>
+        {s.chosen && s.live && <StreamBuffer s={s} />}
         {s.settingsPage && s.enabled && (
           <button
             type="button" data-testid="stream-control-site-settings" onClick={() => openSiteSettings(s)}
