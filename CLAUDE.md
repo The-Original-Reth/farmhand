@@ -58,14 +58,14 @@ the plugin; its manifest's `settings_page` is shown the same way on the Settings
 Farmhand's own settings (`src/plugins/PluginSettings.jsx`), as tall as `farmhand-plugin.js` says it is. Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
 `services/camera_streams.py` (handed to plugins as data; Farmhand runs no ffmpeg itself).
 
-**Stream is only a plugin** (https://github.com/The-Original-Reth/farmhand-youtube-plugin, its own repository and container; the copy in `plugins/stream/` is kept for now
-but no longer worked on): Farmhand has no stream code of its own. Once it's
+**Stream is only a plugin** (https://github.com/The-Original-Reth/farmhand-youtube-plugin, its own repository and container): Farmhand has no stream
+code of its own. Once it's
 added, `Sidebar.jsx`'s `STREAM_PLUGINS` puts it in the plugins group of the menu, after Stream control, and
 `/stream` opens `plugin/stream`. What the old built-in page saved stays in the database unused (never deleted): the
 `stream:migrate` hand-over (`services/plugins/handover.py`, self-contained, reading those `app_settings` rows by key)
 gives it to the plugin once, and an older settings copy's stream keys are ignored on load. The Plugins page's
-`RunPluginGuide.jsx` shows how to run any plugin with docker compose; the compose files of the plugins in this
-repository are copied in `src/plugins/compose/<id>.yml` (each plugin's `tests/test_compose.py` checks they match;
+`RunPluginGuide.jsx` shows how to run any plugin with docker compose; the compose files of the plugins are copied in
+`src/plugins/compose/<id>.yml` (`plugins/hello/tests/test_compose.py` checks `hello.yml` matches;
 `stream.yml` is the YouTube plugin repository's own `docker-compose.yml`, copied by hand, and `twitch.yml` the
 Twitch plugin's, https://github.com/The-Original-Reth/farmhand-twitch-plugin, likewise). The Twitch Stream plugin (id
 `twitch`, port 8081) is independent of YouTube; `STREAM_PLUGINS` puts it right after YouTube.
@@ -81,7 +81,7 @@ and Stream control starts and stops each through its manifest's `stream_control`
 a `PeriodicWorker` (`schedule.py`). Still no ffmpeg in Farmhand: each stream plugin encodes the stream itself.
 
 **Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
-and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores
+and can sit on NAS shares that Farmhand mounts itself (`mounts/`, needs `SYS_ADMIN` in Docker). The DB stores
 absolute paths. Chosen roots must contain a `.farmhand-storage` marker or writes get 503 (that's how an
 unmounted share is detected). Writes go to a temp name and are then renamed; deletes only remove recorded files,
 never a recursive delete.

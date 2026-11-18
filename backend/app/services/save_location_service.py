@@ -10,7 +10,7 @@ reusing one already there whatever its capitals, and making the rest:
     Projects          each project's own files
     farm-cost         the monthly farm cost records ("farm cost" before: renamed)
     farmhand-configs  the settings copy (Save all / Load all settings) ("Farmhand Configs" before: renamed)
-    backup            the printers' config backups (services/config_backups.py)
+    backup            the printers' config backups (services/config_backups/)
 
 Files already saved elsewhere stay where they are (Settings offers to move them); only new ones go to the new folders.
 A settings folder that already holds saved settings is never written over without asking.

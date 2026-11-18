@@ -14,7 +14,7 @@ class PrinterConfigBackup(Base):
     One backup of a Klipper printer's config folder (printer.cfg, moonraker.conf, macros, includes...), as read from
     its Moonraker. The files themselves are in the printer backups folder, by default backup/ in the Farmhand folder (`folder`, absolute,
     like every path Farmhand stores); these rows only say what's there. The newest 10 per printer are kept (see
-    services/config_backups.py).
+    services/config_backups/).
     """
 
     __tablename__ = "printer_config_backups"

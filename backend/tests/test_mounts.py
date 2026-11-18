@@ -7,7 +7,7 @@ import subprocess
 import pytest
 
 from app import config, mounts, storage
-from app.mounts import MountError, ShareSpec
+from app.mounts import MountError, ShareSpec, running
 
 from .conftest import posix_only
 
@@ -19,7 +19,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config.settings, "storage_root", str(data / "storage"))
     monkeypatch.setattr(config.settings, "storage_browse_root", str(data))
     # these tests are about the commands, not about whether this machine can really mount
-    monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: {"ok": True, "smb": True, "nfs": True, "message": None, "smb_message": None, "nfs_message": None})
+    monkeypatch.setattr(running, "mount_capability", lambda *a, **k: {"ok": True, "smb": True, "nfs": True, "message": None, "smb_message": None, "nfs_message": None})
     storage.reset()
     yield data
     storage.reset()
@@ -199,8 +199,8 @@ def test_credentials_file_is_private_holds_the_login_and_is_removed(isolated, mo
         seen["argv"] = " ".join(argv)
 
     fake = FakeMount(during=during)
-    monkeypatch.setattr(mounts, "_run", fake)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", fake)
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
 
     mounts.mount(mounts.validate_fields(**SMB), isolated / "nas" / "lab")
 
@@ -216,8 +216,8 @@ def test_a_password_with_commas_survives_and_is_not_in_the_option_string(isolate
     fake = FakeMount(during=lambda argv: seen.update(
         content=open(next(o.split("=", 1)[1] for o in argv[argv.index("-o") + 1].split(",") if o.startswith("credentials="))).read(),
         argv=" ".join(argv)))
-    monkeypatch.setattr(mounts, "_run", fake)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", fake)
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     spec = mounts.validate_fields("smb", "nas", "x", username="bob", password="pa,ss=wo,rd")
     mounts.mount(spec, isolated / "nas" / "x")
     assert "password=pa,ss=wo,rd\n" in seen["content"]
@@ -228,8 +228,8 @@ def test_the_credentials_file_is_removed_even_when_mounting_fails(isolated, monk
     paths = []
     fake = FakeMount(returncode=32, stderr="mount error(13): Permission denied",
                      during=lambda argv: paths.append(next(o.split("=", 1)[1] for o in argv[argv.index("-o") + 1].split(",") if o.startswith("credentials="))))
-    monkeypatch.setattr(mounts, "_run", fake)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", fake)
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     with pytest.raises(MountError) as e:
         mounts.mount(mounts.validate_fields(**SMB), isolated / "nas" / "x")
     assert e.value.kind == "auth"
@@ -238,25 +238,25 @@ def test_the_credentials_file_is_removed_even_when_mounting_fails(isolated, monk
 
 def test_already_mounted_is_a_no_op(isolated, monkeypatch):
     fake = FakeMount()
-    monkeypatch.setattr(mounts, "_run", fake)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: True)
+    monkeypatch.setattr(running, "_run", fake)
+    monkeypatch.setattr(running, "is_mounted", lambda p: True)
     mounts.mount(mounts.validate_fields(**SMB), isolated / "nas" / "x")
     assert fake.calls == []
 
 
 def test_a_timeout_becomes_a_clear_message(isolated, monkeypatch):
-    monkeypatch.setattr(mounts, "_run", FakeMount(raises=subprocess.TimeoutExpired("mount", 30)))
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", FakeMount(raises=subprocess.TimeoutExpired("mount", 30)))
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     with pytest.raises(MountError, match="Timed out") as e:
         mounts.mount(mounts.validate_fields("nfs", "10.0.0.5", "/vol"), isolated / "nas" / "x")
     assert e.value.kind == "unreachable"
 
 
 def test_mounting_is_refused_with_instructions_when_the_container_lacks_permission(isolated, monkeypatch):
-    monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: {"ok": False, "smb": False, "nfs": False, "message": "add SYS_ADMIN please", "smb_message": "add SYS_ADMIN please", "nfs_message": "add SYS_ADMIN please"})
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "mount_capability", lambda *a, **k: {"ok": False, "smb": False, "nfs": False, "message": "add SYS_ADMIN please", "smb_message": "add SYS_ADMIN please", "nfs_message": "add SYS_ADMIN please"})
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     fake = FakeMount()
-    monkeypatch.setattr(mounts, "_run", fake)
+    monkeypatch.setattr(running, "_run", fake)
     with pytest.raises(MountError, match="SYS_ADMIN") as e:
         mounts.mount(mounts.validate_fields(**SMB), isolated / "nas" / "x")
     assert e.value.kind == "privilege" and fake.calls == []
@@ -303,8 +303,8 @@ def test_operation_not_permitted_is_the_nas_saying_no_when_the_container_may_mou
 
 def test_a_refused_mount_says_what_the_nas_did(isolated, monkeypatch):
     fake = FakeMount(returncode=32, stderr="mount error(1): Operation not permitted")
-    monkeypatch.setattr(mounts, "_run", fake)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", fake)
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     spec = mounts.validate_fields("smb", "10.0.0.5", "farmhand", "elves", "pw123456")
     with pytest.raises(mounts.MountError) as e:
         mounts.mount(spec, isolated / "x")
@@ -322,12 +322,12 @@ def test_error_text_never_leaks_the_password():
 
 def test_unmount(isolated, monkeypatch):
     fake = FakeMount()
-    monkeypatch.setattr(mounts, "_run", fake)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", fake)
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     mounts.unmount(isolated / "nas" / "x")
     assert fake.calls == []  # nothing mounted, nothing to do
 
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: True)
+    monkeypatch.setattr(running, "is_mounted", lambda p: True)
     mounts.unmount(isolated / "nas" / "x")
     assert fake.calls[-1][0] == "umount" and "-l" not in fake.calls[-1]
     mounts.unmount(isolated / "nas" / "x", lazy=True)
@@ -335,8 +335,8 @@ def test_unmount(isolated, monkeypatch):
 
 
 def test_unmounting_a_busy_share_says_so(isolated, monkeypatch):
-    monkeypatch.setattr(mounts, "_run", FakeMount(returncode=32, stderr="umount: /data/nas/x: target is busy."))
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: True)
+    monkeypatch.setattr(running, "_run", FakeMount(returncode=32, stderr="umount: /data/nas/x: target is busy."))
+    monkeypatch.setattr(running, "is_mounted", lambda p: True)
     with pytest.raises(MountError, match="busy") as e:
         mounts.unmount(isolated / "nas" / "x")
     assert e.value.kind == "busy"
@@ -382,7 +382,7 @@ def _status(tmp_path, capeff):
 
 
 def _tools_present(monkeypatch):
-    monkeypatch.setattr(mounts.shutil, "which", lambda name: f"/sbin/{name}")
+    monkeypatch.setattr(running.shutil, "which", lambda name: f"/sbin/{name}")
 
 
 def test_smb_needs_dac_read_search_as_well_as_sys_admin(tmp_path, monkeypatch):
@@ -404,11 +404,11 @@ def test_smb_is_refused_up_front_with_the_reason_but_nfs_still_mounts(isolated, 
     status = _status(tmp_path, SYS_ADMIN_ONLY)
     monkeypatch.undo()  # drop the always-OK stand-in so the REAL permission check runs
     real_capability = mounts.mount_capability
-    monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: real_capability(status))
+    monkeypatch.setattr(running, "mount_capability", lambda *a, **k: real_capability(status))
     _tools_present(monkeypatch)
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
     fake = FakeMount()
-    monkeypatch.setattr(mounts, "_run", fake)
+    monkeypatch.setattr(running, "_run", fake)
 
     with pytest.raises(MountError, match="DAC_READ_SEARCH") as e:
         mounts.mount(mounts.validate_fields(**SMB), isolated / "nas" / "smb")
@@ -422,10 +422,10 @@ def test_a_missing_tool_is_reported_as_missing_not_as_a_permission_problem(isola
     status = _status(tmp_path, BOTH)
     monkeypatch.undo()  # drop the always-OK stand-in so the REAL permission check runs
     real_capability = mounts.mount_capability
-    monkeypatch.setattr(mounts, "mount_capability", lambda *a, **k: real_capability(status))
-    monkeypatch.setattr(mounts.shutil, "which", lambda name: None if name == "mount.cifs" else f"/sbin/{name}")
-    monkeypatch.setattr(mounts, "is_mounted", lambda p: False)
-    monkeypatch.setattr(mounts, "_run", FakeMount())  # never run a real mount from a test
+    monkeypatch.setattr(running, "mount_capability", lambda *a, **k: real_capability(status))
+    monkeypatch.setattr(running.shutil, "which", lambda name: None if name == "mount.cifs" else f"/sbin/{name}")
+    monkeypatch.setattr(running, "is_mounted", lambda p: False)
+    monkeypatch.setattr(running, "_run", FakeMount())  # never run a real mount from a test
     with pytest.raises(MountError, match="cifs-utils") as e:
         mounts.mount(mounts.validate_fields(**SMB), isolated / "nas" / "x")
     assert e.value.kind == "unsupported"

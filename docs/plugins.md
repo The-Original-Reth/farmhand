@@ -322,17 +322,21 @@ switched off, or while the operator has left your plugin out of it (send your ow
     "cells": [{ "camera": "3:Nozzle" }, { "background": "#1F3A5F", "image": "logo.png", "slideshow": null, "text": "Live", "...": "..." }],
     "cameras": ["3:Nozzle"], "show_status": true, "layout": "grid", "seconds_all": 30, "seconds_each": 20,
     "resolution": "720p", "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF",
-    "music": true, "music_volume": 50, "music_shuffle": true, "delay": 60,
+    "music": true, "music_volume": 50, "music_shuffle": true, "music_from": ["stream-control"], "delay": 60,
     "holding": { "text": "Back in a minute", "image": null, "background": null, "color": null, "font": null },
     "title": "The print farm, live", "description": "", "revision": 7, "saved_at": "2026-11-17T18:00:00Z"
   },
-  "media": { "images": ["logo.png"], "slideshows": [{ "name": "Finished prints", "images": ["frog.jpg", "blank:1"] }], "music": ["beat.mp3"], "error": null }
+  "media": { "images": ["logo.png"], "slideshows": [{ "name": "Finished prints", "images": ["frog.jpg", "blank:1"] }], "music": ["beat.mp3"], "error": null,
+             "stamps": { "images/logo.png": "4113-1794970738232660700" } }
 }
 ```
 
 The design is in the same shape as the YouTube and Twitch plugins' own stream settings (their `live_stream`
 settings and squares), so one of them can use it in place of its own. Cameras are `"printer id:camera name"`, as
-`GET /cameras` names them. A slideshow's `"blank:N"` is a blank screen, not a file. `revision` goes up by one each time
+`GET /cameras` names them. Besides `camera`, a square has `background`, `image`, `slideshow`, `seconds`, `text`,
+`color`, `font`, `band`, `picture_box`, `text_box`, `captions`, `picture_boxes`, `layers` and `slide_layers`, as the
+plugins' own squares do. `music_from` is where the music comes from: `"stream-control"` (Stream control's own music
+folder) and/or stream plugins' ids (their tracks, passed on). A slideshow's `"blank:N"` is a blank screen, not a file. `revision` goes up by one each time
 the operator saves: ask every few seconds, and change the stream when it has. `media.stamps` gives each file's stamp (`{"images/logo.png": "<size>-<modified>", ...}`): fetch only the files that
 are new or whose stamp changed, not all of them each time. Fetch the files it names from
 `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}` and `GET /stream/music/{name}` (404

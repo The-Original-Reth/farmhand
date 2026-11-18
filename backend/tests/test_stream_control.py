@@ -527,3 +527,23 @@ def test_which_changes_rewrite_the_settings_copy():
     assert change_hooks._what_changed("/stream-control/start-all") is None
     assert change_hooks._what_changed("/stream-control/streams/stream/start") is None
     assert change_hooks._what_changed("/stream-control/pictures") is None
+
+
+def test_stream_designs_v1_shape_is_pinned(api):
+    """What a stream plugin reads (GET /plugin-api/v1/stream/design): v1 only ever gains fields, so every one it has
+    today stays. A failure here means a plugin in use would lose something it reads."""
+    token = add_stream_plugin(api)
+    headers = {"Authorization": f"Bearer {token}"}
+    switch(api)
+    api.post("/stream-control/pictures", files=[("files", ("logo.png", PNG, "image/png"))])
+    api.put("/stream-control", json={"cols": 1, "rows": 1, "cells": [{"image": "logo.png", "text": "Live"}]})
+    got = api.get("/plugin-api/v1/stream/design", headers=headers).json()
+    assert set(got) == {"enabled", "design", "media"}
+    assert set(got["design"]) >= {
+        "background", "border_color", "cameras", "cells", "color", "cols", "delay", "description", "font", "holding",
+        "layout", "music", "music_from", "music_shuffle", "music_volume", "resolution", "revision", "rows", "saved_at",
+        "seconds_all", "seconds_each", "show_status", "title"}
+    assert set(got["design"]["cells"][0]) >= {
+        "background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box",
+        "captions", "picture_boxes", "layers", "slide_layers"}
+    assert set(got["media"]) >= {"images", "slideshows", "music", "error", "stamps"}

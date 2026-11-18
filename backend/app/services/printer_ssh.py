@@ -1,7 +1,7 @@
 """
 SSH to a Klipper printer's computer (its Raspberry Pi), for the two things Moonraker won't do over HTTP: hand out its
 database file, and write a file it holds read-only (mainsail.cfg, a link into Mainsail's own mainsail-config package).
-Used by services/config_backups.py only.
+Used by services/config_backups/ only.
 
 Farmhand has one SSH key of its own, made the first time it's needed and kept in its storage (ssh/id_ed25519). Each
 printer lets it in once its public key is added to that Pi's ~/.ssh/authorized_keys (the Backups section shows how). No
