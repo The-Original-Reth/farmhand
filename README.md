@@ -747,7 +747,10 @@ Its page is the stream plugins' own editor, moved into Farmhand:
   granted `stream:read` says so. **Copy layout** takes one stream's own layout (as set on its own page) and makes it
   Stream control's, so every stream brought in shows it: the pictures and slideshows it uses are copied into the stream
   folder (not its music tracks). It changes only Stream control's layout: YouTube's and Twitch's own layouts are never
-  overwritten.
+  overwritten. Under each stream's name: its **<site> settings** button (its stream key, sign-in and the rest, in its
+  own settings window), the links its own page has (YouTube: Watch, and Chat and analytics in YouTube Studio; Twitch:
+  Watch, Chat, Stream Manager, Analytics), how many are watching (YouTube), and while it's live which cameras are live
+  or down.
 - **Schedule**: times on the days chosen when all the streams, or only some, go live and stop by themselves, in the
   farm's time zone (a stop earlier than its start is the next morning's). Farmhand has to be running then: a time it
   misses isn't done late.

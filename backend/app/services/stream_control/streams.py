@@ -30,15 +30,18 @@ CHOSEN_KEY = "stream_control_streams"
 # (GET /api/stream: {settings, status: {live, error, youtube: {watch_url}}, ...}). Stream control starts and stops them
 # that way; they send their own layout until they're updated to read Stream control's design.
 BEFORE_STREAM_CONTROL = {"stream": "YouTube", "twitch": "Twitch"}
+# Their site's settings window (the stream key, sign-in, privacy or category), when their manifest doesn't name one
+SETTINGS_PAGES = {"stream": "/?view=youtube-settings", "twitch": "/?view=twitch-settings"}
 
 
 def control_of(plugin) -> dict | None:
     """How Stream control reaches a stream plugin: {path, site, legacy}, or None for a plugin that isn't one."""
     sc = (plugin.manifest or {}).get("stream_control")
+    settings = (sc or {}).get("settings") or SETTINGS_PAGES.get(plugin.id)
     if sc:
-        return {"path": sc["path"], "site": sc.get("site"), "legacy": False}
+        return {"path": sc["path"], "site": sc.get("site"), "legacy": False, "settings": settings}
     if plugin.id in BEFORE_STREAM_CONTROL:
-        return {"path": "/api/stream", "site": BEFORE_STREAM_CONTROL[plugin.id], "legacy": True}
+        return {"path": "/api/stream", "site": BEFORE_STREAM_CONTROL[plugin.id], "legacy": True, "settings": settings}
     return None
 
 
@@ -111,6 +114,57 @@ def _ask(address: str, path: str, method: str = "GET", legacy: bool = False) -> 
     }
 
 
+PAGE_PATH = "/api/stream"  # the YouTube and Twitch plugins' own page API: {settings, status, ...}
+CAMERA_STATES = ("live", "down", "starting")
+
+
+def _links(status: dict, settings: dict) -> list[dict]:
+    """The links each plugin's own page shows, as [{label, url, title}]: YouTube's broadcast (Watch, and YouTube Studio
+    for its chat and analytics, while there's a broadcast), Twitch's channel (Watch, Chat, Stream Manager, Analytics)."""
+    out = []
+    youtube = status.get("youtube") if isinstance(status.get("youtube"), dict) else {}
+    if isinstance(youtube.get("watch_url"), str) and youtube["watch_url"].startswith("https://"):
+        out.append({"label": "Watch", "url": youtube["watch_url"], "title": "The broadcast as viewers see it"})
+    if isinstance(youtube.get("studio_url"), str) and youtube["studio_url"].startswith("https://"):
+        out.append({"label": "Chat and analytics", "url": youtube["studio_url"], "title": "The broadcast in YouTube Studio"})
+    channel = settings.get("channel")
+    if isinstance(channel, str) and channel and all(ch.isalnum() or ch == "_" for ch in channel):
+        out += [
+            {"label": "Watch", "url": f"https://www.twitch.tv/{channel}", "title": "The channel as viewers see it"},
+            {"label": "Chat", "url": f"https://www.twitch.tv/popout/{channel}/chat?popout=", "title": "The channel's chat in a window of its own"},
+            {"label": "Stream Manager", "url": f"https://dashboard.twitch.tv/u/{channel}/stream-manager", "title": "Twitch's dashboard: chat, activity, title and category"},
+            {"label": "Analytics", "url": f"https://dashboard.twitch.tv/u/{channel}/analytics/channel-analytics", "title": "Viewers, followers and watch time"},
+        ]
+    return out
+
+
+def _page_extras(address: str) -> dict:
+    """From the plugin's own page API: {links, cameras: [{key, label, state: live | down | starting, since}] (while
+    live), viewers (YouTube's, while live)}. Empty when it doesn't answer one (a plugin of someone else's making)."""
+    try:
+        with httpx.Client(transport=remote.transport, timeout=TIMEOUT, follow_redirects=False) as client:
+            r = client.get(f"{address}{PAGE_PATH}", headers={"Accept": "application/json"})
+        body = r.json() if r.status_code == 200 else {}
+    except (httpx.HTTPError, ValueError):
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    status = body.get("status") if isinstance(body.get("status"), dict) else {}
+    settings = body.get("settings") if isinstance(body.get("settings"), dict) else {}
+    cameras = []
+    for c in status.get("camera_states") or []:
+        if isinstance(c, dict) and c.get("state") in CAMERA_STATES:
+            cameras.append({"key": c.get("key"), "label": c.get("label") or c.get("key"), "state": c["state"], "since": c.get("since")})
+    youtube = status.get("youtube") if isinstance(status.get("youtube"), dict) else {}
+    viewers = youtube.get("viewers") if type(youtube.get("viewers")) is int else None
+    return {"links": _links(status, settings), "cameras": cameras, "viewers": viewers}
+
+
+def _status(address: str, path: str, method: str = "GET", legacy: bool = False) -> dict:
+    """_ask, with what the plugin's own page shows: its links and its cameras' states."""
+    answer = _ask(address, path, method, legacy)
+    return {**answer, **(_page_extras(address) if answer.get("reachable") else {"links": [], "cameras": [], "viewers": None})}
+
+
 def _entry(plugin, answer: dict | None, picked: list[str] | None) -> dict:
     sc = control_of(plugin)
     return {
@@ -119,7 +173,10 @@ def _entry(plugin, answer: dict | None, picked: list[str] | None) -> dict:
         # from before Stream control: it starts and stops from here, but sends its own layout until it's updated
         "needs_update": sc["legacy"],
         "has_page": bool((plugin.manifest or {}).get("page")),
+        # its site's settings window, a page of its own (shown inside Farmhand at /plugins/<id><settings_page>)
+        "settings_page": sc.get("settings"),
         "can_read_design": "stream:read" in registry.granted(plugin),
+        "links": [], "cameras": [], "viewers": None,
         **(answer or {"live": False, "following": None, "error": None, "watch_url": None, "reachable": None}),
     }
 
@@ -139,9 +196,10 @@ def _each(db: Session, ask, only_chosen: bool = False) -> list[dict]:
 
 
 def listed(db: Session) -> list[dict]:
-    """Every stream plugin and how its stream is doing: [{id, name, site, enabled, chosen (brought in), live,
+    """Every stream plugin and how its stream is doing: [{id, name, site, enabled, chosen (brought in), live, links,
+    cameras (each one's state while live), viewers,
     following, error, watch_url, reachable (None: switched off, not asked), can_read_design (granted stream:read)}]."""
-    return _each(db, _ask)
+    return _each(db, _status)
 
 
 def _one(db: Session, plugin_id: str):
@@ -157,7 +215,7 @@ def _one(db: Session, plugin_id: str):
 
 def _act(db: Session, plugin, action: str) -> dict:
     sc = control_of(plugin)
-    answer = _ask(registry.connection_of(plugin).address, f"{sc['path']}/{action}", "POST", sc["legacy"])
+    answer = _status(registry.connection_of(plugin).address, f"{sc['path']}/{action}", "POST", sc["legacy"])
     return _entry(plugin, answer, chosen(db))
 
 
@@ -172,5 +230,5 @@ def stop(db: Session, plugin_id: str) -> dict:
 
 def all_of(db: Session, action: str) -> list[dict]:
     """Start or stop every switched-on stream plugin brought in, at once: those ones' entries, as they answered."""
-    told = _each(db, lambda address, base, legacy=False: _ask(address, f"{base}/{action}", "POST", legacy), only_chosen=True)
+    told = _each(db, lambda address, base, legacy=False: _status(address, f"{base}/{action}", "POST", legacy), only_chosen=True)
     return [e for e in told if e["enabled"] and e["chosen"]]

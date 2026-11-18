@@ -106,16 +106,19 @@ def _path(raw: dict, key: str) -> str | None:
 
 def _stream_control(raw) -> dict | None:
     """A stream plugin Stream control starts and stops: {"path": "/api/stream-control"} (GET it for how the stream is
-    doing, POST <path>/start and <path>/stop), and "site", where it streams to ("YouTube"), shown beside it."""
+    doing, POST <path>/start and <path>/stop), "site", where it streams to ("YouTube"), shown beside it, and
+    "settings", a page of its own for that site's settings ("/?view=youtube-settings"), opened from Stream control."""
     if raw is None:
         return None
     if not isinstance(raw, dict):
         raise ValueError("The plugin's stream_control must be an object, like {\"path\": \"/api/stream-control\", \"site\": \"YouTube\"}.")
-    named = {"stream_control path": raw.get("path"), "stream_control site": raw.get("site")}
+    named = {"stream_control path": raw.get("path"), "stream_control site": raw.get("site"),
+             "stream_control settings": raw.get("settings")}
     path = _path(named, "stream_control path")
     if path is None:
         raise ValueError("The plugin's stream_control needs a path, like \"/api/stream-control\".")
-    return {"path": path, "site": _text(named, "stream_control site", 40)}
+    # settings: a page of the plugin's own for its site's settings (stream key, sign-in...), opened from Stream control
+    return {"path": path, "site": _text(named, "stream_control site", 40), "settings": _path(named, "stream_control settings")}
 
 
 def _page(raw) -> dict | None:

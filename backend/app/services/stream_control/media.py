@@ -178,8 +178,24 @@ def _read(db: Session) -> dict:
                 shows.append({"name": e.name, "images": _slides_in(Path(e.path))})
     except OSError:
         pass
-    return {"path": str(root), "images": _pictures_in(root / IMAGES), "slideshows": shows,
-            "music": _files_in(root / MUSIC, TRACK_TYPES), "error": None}
+    images, music = _pictures_in(root / IMAGES), _files_in(root / MUSIC, TRACK_TYPES)
+    files = [f"{IMAGES}/{n}" for n in images] + [f"{MUSIC}/{n}" for n in music] + [
+        f"{SLIDESHOWS}/{s['name']}/{n}" for s in shows for n in s["images"] if not is_blank(n)]
+    return {"path": str(root), "images": images, "slideshows": shows, "music": music, "error": None,
+            "stamps": _stamps(root, files)}
+
+
+def _stamps(root: Path, files: list[str]) -> dict[str, str]:
+    """Each file's stamp, "<size>-<modified, ns>", by its place in the folder ("images/logo.png",
+    "slideshows/Prints/a.png", "music/beat.mp3"): a stream plugin copying them fetches only those whose stamp changed."""
+    out = {}
+    for rel in files:
+        try:
+            st = (root / rel).stat()
+        except OSError:
+            continue
+        out[rel] = f"{st.st_size}-{st.st_mtime_ns}"
+    return out
 
 
 def _name(raw: str, what: str) -> str:

@@ -55,9 +55,23 @@ export function streamControlRoutes(ctx) {
   const streamPlugins = () => [...(farm.plugins || [])].filter(controlOf).sort((a, b) => a.name.localeCompare(b.name));
   // the ones brought in (state().chosen: their ids; none chosen yet = all of them)
   const isChosen = (id) => !state().chosen || state().chosen.includes(id);
+  // what each pretend plugin's own page shows: its links, and (while live) its cameras, one of them down
+  const extras = (p) => {
+    const live = p.enabled && !!state().live[p.id];
+    const links = p.id === "twitch"
+      ? [["Watch", "https://www.twitch.tv/printfarm"], ["Chat", "https://www.twitch.tv/popout/printfarm/chat?popout="],
+        ["Stream Manager", "https://dashboard.twitch.tv/u/printfarm/stream-manager"], ["Analytics", "https://dashboard.twitch.tv/u/printfarm/analytics/channel-analytics"]]
+      : live ? [["Watch", "https://www.youtube.com/watch?v=mockup"], ["Chat and analytics", "https://studio.youtube.com/video/mockup/livestreaming"]] : [];
+    return {
+      links: links.map(([label, url]) => ({ label, url, title: "" })),
+      cameras: live ? [{ key: "1:Bed", label: "Voron 2.4", state: "live", since: 0 }, { key: "2:Bed", label: "Prusa MK4", state: "down", since: 0 }] : [],
+      viewers: live && p.id === "stream" ? 12 : null,
+    };
+  };
   const entry = (p, answer = null) => ({
     id: p.id, name: p.name, site: controlOf(p).site || p.name, enabled: p.enabled, needs_update: controlOf(p).legacy, has_page: !!p.manifest.page,
-    can_read_design: p.permissions.includes("stream:read"), chosen: isChosen(p.id),
+    can_read_design: p.permissions.includes("stream:read"), chosen: isChosen(p.id), ...extras(p),
+    settings_page: { stream: "/?view=youtube-settings", twitch: "/?view=twitch-settings" }[p.id] || null,
     ...(answer || (p.enabled
       ? { live: !!state().live[p.id], following: !controlOf(p).legacy, error: null, watch_url: state().live[p.id] ? `https://example.com/${p.id}/live` : null, reachable: true }
       : { live: false, following: null, error: null, watch_url: null, reachable: null })),
