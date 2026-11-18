@@ -484,3 +484,41 @@ def test_stream_migrate_needs_its_own_permission(api):
         r = call("/plugin-api/v1/stream/migrate", headers=bearer(token))
         assert r.status_code == 403 and "stream:migrate" in r.json()["detail"]
     assert "stream:migrate" in manifest.PERMISSIONS
+
+
+# ------------------------------------------------------------------ v1's shapes, pinned (v1 only ever gains fields)
+
+
+def test_farms_v1_shape_is_pinned(api):
+    token = install(api)
+    r = api.get("/plugin-api/v1/farm", headers=bearer(token)).json()
+    assert set(r) >= {"scheme", "mode", "colors", "time_zone"}
+    assert set(r["colors"]) >= {
+        "amber", "amberBorder", "amberDim", "bg", "border", "borderStrong", "danger", "dangerDim", "fileName", "green",
+        "greenBorder", "greenDim", "heading", "onAccent", "onDanger", "onTeal", "panel", "panelAlt", "panelHover",
+        "projectOnly", "teal", "tealBorder", "tealDim", "textFaint", "textMuted", "textPrimary"}
+
+
+def test_cameras_and_events_v1_shapes_are_pinned(api, moonraker, monkeypatch):
+    monkeypatch.setattr(go2rtc, "register", lambda name, source: None)
+    token = install(api)
+    api.post("/printers", json={"name": "VT 1190", "wired_ip": "10.0.6.21"})
+    moonraker.webcams = [{"name": "Bed", "enabled": True, "service": "mjpegstreamer", "stream_url": "/webcam/?action=stream"}]
+    printer = api.get("/plugin-api/v1/cameras", headers=bearer(token)).json()["printers"][0]
+    assert set(printer) >= {"printer_id", "printer_name", "cameras", "error"}
+    assert set(printer["cameras"][0]) >= {
+        "name", "kind", "url", "ffmpeg_input", "rotation", "flip_horizontal", "flip_vertical", "ffmpeg_filters",
+        "aspect_ratio", "target_fps", "snapshot_url", "error"}
+
+    events.reset()
+
+    async def one_event():
+        stream = events.stream(keepalive=5)
+        await stream.__anext__()
+        events.observe(1, "VT 1190", {"state": None, "file": None, "progress": None, "error": None})
+        events.observe(1, "VT 1190", {"state": "printing", "file": "Frog.gcode", "progress": 1.0, "error": None})
+        line = await stream.__anext__()
+        await stream.aclose()
+        return json.loads(line.split("data: ")[1])
+
+    assert set(asyncio.run(one_event())) >= {"id", "type", "at", "printer_id", "printer_name", "file", "progress"}

@@ -72,7 +72,7 @@ const ON_THE_NETWORK = {
     page: { menu: "Hello", icon: "dashboard", path: "/" }, permissions: ["printers:read", "prints:read", "farm:read"], health: "/health",
   },
   "http://192.168.10.217:8080": {
-    id: "stream", name: "YouTube Stream", version: "1.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/stream's manifest
+    id: "stream", name: "YouTube Stream", version: "1.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // the YouTube plugin's manifest
     homepage: "https://github.com/The-Original-Reth/farmhand-youtube-plugin",
     page: { menu: "YouTube", icon: "youtube", path: "/" }, permissions: ["cameras:read", "prints:read", "stream:migrate"], health: "/health",
     settings_page: "/?view=settings",
@@ -133,7 +133,7 @@ const HELLO_BODY = `<p>The printers it read through the plugin API:</p><ul id="p
   }).catch((e) => { document.getElementById("printers").textContent = String(e); });
 </script>`;
 const STREAM_BODY = `<p>The real YouTube Stream plugin sends the printers' cameras live to YouTube from a container of its own. Its page
-isn't part of the mockup: run <b>plugins/stream</b> (its README says how) to see it.</p>`;
+isn't part of the mockup: run <b>farmhand-youtube-plugin</b> (its README says how) to see it.</p>`;
 const TWITCH_BODY = `<p>The real Twitch Stream plugin sends the printers' cameras live to Twitch from a container of its own, beside
 the YouTube one. Its page isn't part of the mockup: run <b>farmhand-twitch-plugin</b> (its README says how) to see it.</p>`;
 // The YouTube (or Twitch) plugin's settings as Farmhand's Settings page shows them under its name (its settings_page): where it saves

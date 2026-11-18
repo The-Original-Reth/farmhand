@@ -9,7 +9,7 @@ PrusaLink printers are looked at every minute instead: PrusaLink keeps no histor
 by seeing it while it runs (see app/services/prusalink/tracking.py). While a plugin listens for events (GET
 /plugin-api/v1/events), Moonraker printers are asked for their print every minute too, so it hears of a print starting
 or ending. A printer that's off just records why on its connection; nothing here ever stops the thread. The Moonraker sync also
-takes each printer's automatic config backup when one is due (services/config_backups.py).
+takes each printer's automatic config backup when one is due (services/config_backups/).
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ class PrinterPoller(PeriodicWorker):
 
 
 def _backup_if_due(db, printer) -> None:
-    """The automatic config backup, when one is due (services/config_backups.py). Trouble is logged, never raised."""
+    """The automatic config backup, when one is due (services/config_backups/). Trouble is logged, never raised."""
     try:
         config_backups.backup_if_due(db, printer)
     except Exception as e:  # noqa: BLE001 - a NAS that's down or a printer that dropped mid-backup: try again next sync
