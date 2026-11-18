@@ -13,10 +13,11 @@ import { settingsRoutes } from "./routes/settings.js";
 import { filesRoutes } from "./routes/files.js";
 import { pluginsRoutes } from "./routes/plugins.js";
 import { backupsRoutes } from "./routes/backups.js";
+import { streamControlRoutes } from "./routes/streamControl.js";
 
 export function mockApi() {
   const ctx = createCore();
-  for (const add of [projectsRoutes, printersRoutes, libraryRoutes, printingRoutes, settingsRoutes, filesRoutes, pluginsRoutes, backupsRoutes]) Object.assign(ctx, add(ctx));
+  for (const add of [projectsRoutes, printersRoutes, libraryRoutes, printingRoutes, settingsRoutes, filesRoutes, pluginsRoutes, streamControlRoutes, backupsRoutes]) Object.assign(ctx, add(ctx));
   const { routes, resetFarm, fileRoutes, downloadRoutes, fileVersion, pluginPageRequest } = ctx;
 
   // ------------------------------------------------------------------ the Vite plugin

@@ -33,9 +33,19 @@ const normalizePlugin = (p) => ({
   tokenLastUsedAt: p.token_last_used_at,
 });
 
-// { plugins, apiVersion, permissions: [{ permission, means }] (every one there is) }
+// A plugin built into Farmhand (Stream control): { id, name, builtin: true, enabled, description, page: { menu, icon, path } }.
+// It's switched on or off with changePlugin(id, { enabled }) (answering this shape); never added, removed or given a token.
+export const normalizeBuiltinPlugin = (p) => ({ id: p.id, name: p.name, builtin: true, enabled: !!p.enabled, description: p.description, page: p.page });
+
+// { plugins, builtin (the plugins built into Farmhand), apiVersion, permissions: [{ permission, means }] (every one there is) }
 export const getPlugins = () =>
-  request("/plugins").then((r) => ({ plugins: r.plugins.map(normalizePlugin), apiVersion: r.api_version, permissions: r.permissions }));
+  request("/plugins").then((r) => ({
+    plugins: r.plugins.map(normalizePlugin), builtin: (r.builtin || []).map(normalizeBuiltinPlugin), apiVersion: r.api_version, permissions: r.permissions,
+  }));
+
+// Switch a plugin built into Farmhand on or off: its new state
+export const switchBuiltinPlugin = (id, enabled) =>
+  request(`/plugins/${encodeURIComponent(id)}`, jsonBody("PATCH", { enabled })).then(normalizeBuiltinPlugin);
 
 // The plugin at an address, before it's added: { address (tidied), manifest, permissionsDescribed, installed }
 export const previewPlugin = (address) =>

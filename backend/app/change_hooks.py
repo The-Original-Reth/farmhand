@@ -58,4 +58,10 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
         if parts[-1] == "preview" or (len(parts) > 2 and parts[2] == "page"):
             return None  # only looks at a plugin, or is its own page asking it something
         return config_service.MirrorScope()  # the settings file's list of plugins and what they were granted (never a token)
+    if parts[0] == "stream-control":
+        # its design, saved layouts and schedule are in the settings file; starting or stopping a stream, and the
+        # stream folder's pictures and music (files beside the STL folder already), aren't
+        if parts[1:2] in ([], ["layouts"], ["schedule"]) or parts[1:] == ["streams"] or (parts[1:2] == ["slideshows"] and len(parts) == 3):
+            return config_service.MirrorScope()
+        return None
     return None

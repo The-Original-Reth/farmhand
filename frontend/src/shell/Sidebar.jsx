@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Twitch, Video, X, Youtube } from "lucide-react";
+import { Archive, Bell, Camera, LineChart, LayoutDashboard, Puzzle, Radio, Twitch, Video, X, Youtube } from "lucide-react";
 import { c, fixed, fs, ui } from "../theme.js";
 import { monoText, uiText } from "../styles.js";
 import { API_BASE } from "../api.js";
@@ -104,24 +104,21 @@ function Thanks() {
 // The icon a plugin's manifest names for its menu entry ("video"...), from the few Farmhand knows; a puzzle piece otherwise
 const PLUGIN_ICONS = { youtube: Youtube, video: Video, camera: Camera, chart: LineChart, bell: Bell, dashboard: LayoutDashboard, twitch: Twitch };
 
-// Plugins that take a slot of their own in the main menu instead of the plugins group below it: plugin id -> the section
-// it comes after, and its icon. Stream was Farmhand's own page, after Monitor, until it became a plugin (YouTube Stream); it
-// keeps its place, under the menu name its manifest gives (YouTube). The Twitch Stream plugin (twitch) sits after Monitor
-// too, right after YouTube: plugins slotted after the same section come in this object's order.
-const MAIN_MENU_SLOTS = { stream: { after: "monitor", Icon: Youtube }, twitch: { after: "monitor", Icon: Twitch } };
-const SLOT_ORDER = Object.keys(MAIN_MENU_SLOTS);
+// The streaming plugins, first in the plugins group in this order, each with its own icon: Stream control (built into
+// Farmhand, there while it's switched on), YouTube Stream (stream) and Twitch Stream (twitch). Other plugins follow by name.
+const STREAM_PLUGINS = { "stream-control": Radio, stream: Youtube, twitch: Twitch };
+const STREAM_ORDER = Object.keys(STREAM_PLUGINS);
+const rank = (p) => (p.id in STREAM_PLUGINS ? STREAM_ORDER.indexOf(p.id) : STREAM_ORDER.length);
 
-const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon: MAIN_MENU_SLOTS[p.id]?.Icon || PLUGIN_ICONS[p.page.icon] || Puzzle });
+const pluginItem = (p) => ({ key: pluginSection(p.id), label: p.page.menu, Icon: STREAM_PLUGINS[p.id] || PLUGIN_ICONS[p.page.icon] || Puzzle });
 
 // The menu down the left: Farmhand's name, a link per section (with how many models and printers there are), a link
-// per plugin page (`plugins`: the ones switched on with a page; those in MAIN_MENU_SLOTS among the sections, the rest
-// after them), and the thanks at the foot. `counts`: section key -> the number shown beside it.
+// per plugin page in the plugins group below them (`plugins`: the ones switched on with a page; the streaming ones
+// first), and the thanks at the foot. `counts`: section key -> the number shown beside it.
 // On a phone (`phone`) it's a drawer over the page instead: shown while `open`, and closed (onClose) by its ✕, a tap
 // on the page beside it, or opening a section.
 export function Sidebar({ current, counts, plugins = [], onOpen, phone = false, open = false, onClose }) {
-  const slotted = plugins.filter((p) => MAIN_MENU_SLOTS[p.id]).sort((a, b) => SLOT_ORDER.indexOf(a.id) - SLOT_ORDER.indexOf(b.id));
-  const others = plugins.filter((p) => !MAIN_MENU_SLOTS[p.id]);
-  const main = SECTIONS.flatMap((s) => [s, ...slotted.filter((p) => MAIN_MENU_SLOTS[p.id].after === s.key).map(pluginItem)]);
+  const others = [...plugins].sort((a, b) => rank(a) - rank(b) || a.page.menu.localeCompare(b.page.menu));
   const go = (key) => {
     onOpen(key);
     if (phone) onClose?.();
@@ -158,7 +155,7 @@ export function Sidebar({ current, counts, plugins = [], onOpen, phone = false, 
           </button>
         )}
       </div>
-      {main.map((s) => (
+      {SECTIONS.map((s) => (
         <NavItem key={s.key} section={s} current={current} count={counts[s.key]} onOpen={go} />
       ))}
       {others.length > 0 && (

@@ -12,12 +12,14 @@ import { paletteFor } from "../../src/appearance.js";
 import { HttpError, NO_MOONRAKER } from "../core.js";
 
 const API_VERSION = "1";
+const BUILT_IN = "stream-control"; // Stream control, built into Farmhand: no added plugin may take its id
 const PERMISSIONS = {
   "printers:read": "see your printers: their names, how Farmhand reaches them and their addresses (never passwords or API keys)",
   "cameras:read": "see your printers' cameras and the addresses to stream them from",
   "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
   "farm:read": "see Farmhand's colours and the farm's time zone",
   "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
+  "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
 const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
@@ -59,6 +61,7 @@ function checkManifest(m) {
     id: m.id, name, version: m.version, farmhand_api: m.farmhand_api, port: m.port,
     author: text(m, "author", 120), homepage: text(m, "homepage", 300), permissions: [...new Set(perms)],
     page, settings_page: path(m.settings_page, "settings_page"), health: path(m.health, "health"),
+    stream_control: m.stream_control == null ? null : { path: path(m.stream_control.path, "stream_control path"), site: text(m.stream_control, "site", 40, "stream_control site") },
   };
 }
 
@@ -178,7 +181,7 @@ export function pluginsRoutes(ctx) {
     permissions: [...new Set(permissions)], manifest, created_at: now(), address, onlyFromAddress: onlyFrom, health: answered(address),
   });
   // Hello, Stream and Twitch are added already: the sample farm's plugins (their tokens aren't given to anyone, they're
-  // pretend). Stream and Twitch take their places in the menu after Monitor (Sidebar.jsx MAIN_MENU_SLOTS).
+  // pretend). Stream and Twitch come first in the menu's plugins group, after Stream control (Sidebar.jsx STREAM_PLUGINS).
   const added = (address) => record(checkManifest(ON_THE_NETWORK[address]), { permissions: ON_THE_NETWORK[address].permissions, address, onlyFrom: true });
   const plugins = () => (farm.plugins ??= [added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080"), added("http://192.168.10.217:8081")]);
   const find = (id) => plugins().find((p) => p.id === id) || (() => { throw new HttpError(404, "Plugin not found"); })();
@@ -195,11 +198,25 @@ export function pluginsRoutes(ctx) {
     if (extra.length) throw new HttpError(422, `The plugin didn't ask for ${extra.map((p) => `'${p}'`).join(", ")}: only what it asks for can be granted.`);
   };
   const notTwice = (id) => {
+    if (id === BUILT_IN) throw new HttpError(422, `"${BUILT_IN}" is Stream control's own id, built into Farmhand: a plugin added to it needs another id.`);
     if (plugins().some((p) => p.id === id)) throw new HttpError(409, `A plugin called "${id}" is already installed. Remove it first to install it again.`);
   };
 
   // ------------------------------------------------------------------ the Plugins page
-  on("GET", "/plugins", () => ({ plugins: [...plugins()].sort((a, b) => a.name.localeCompare(b.name)).map(out), api_version: API_VERSION, permissions: describe(Object.keys(PERMISSIONS)) }));
+  // Stream control, built into Farmhand (routes/streamControl.js): listed beside the plugins, and only switched on or off
+  const builtin = () => ({
+    id: BUILT_IN, name: "Stream control", builtin: true, enabled: !!farm.streamControl?.enabled, page: { menu: "Stream control", icon: "video", path: "/" },
+    description: "Design one stream here (cameras, pictures, words and music) and have the YouTube and Twitch stream plugins each send it to their site. Start and stop them, one at a time or all at once, or at set times.",
+  });
+  on("GET", "/plugins", () => ({
+    plugins: [...plugins()].sort((a, b) => a.name.localeCompare(b.name)).map(out), builtin: [builtin()],
+    api_version: API_VERSION, permissions: describe(Object.keys(PERMISSIONS)),
+  }));
+  on("GET", `/plugins/${BUILT_IN}`, () => builtin());
+  on("PATCH", `/plugins/${BUILT_IN}`, (_, body) => {
+    if (body.enabled != null) (farm.streamControl ??= {}).enabled = !!body.enabled; // (the rest is made on first use, there)
+    return builtin();
+  });
   on("POST", "/plugins/preview", (_, body) => {
     const address = tidyAddress(body.address);
     const manifest = checkManifest(fetchManifest(address));
@@ -376,5 +393,5 @@ export function pluginsRoutes(ctx) {
       stream_folder: null, handed_over_at: p.streamHandedOverAt,
     };
   });
-  return { pluginPageRequest };
+  return { pluginPageRequest, pluginNeeds: needs };
 }

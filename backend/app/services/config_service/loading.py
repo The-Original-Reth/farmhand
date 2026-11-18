@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ... import config_store, mounts, storage
 from ...models import NetworkShare
 from ..plugins import registry as plugin_registry
+from ..stream_control import settings_copy as stream_control_copy
 from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
 
 from .nas_copy import BACKUPS_LOCATION, FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
@@ -190,6 +191,9 @@ def restore(db: Session) -> dict:
     result["plugins"] = plugins
     if plugins["added"]:
         result["restored"].append("plugins")
+    # Stream control's design, layouts and schedule, on a Farmhand that has none of its own yet
+    if stream_control_copy.restore(db, doc.get("stream_control")):
+        result["restored"].append("Stream control")
     return result
 
 

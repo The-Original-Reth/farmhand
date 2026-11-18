@@ -18,6 +18,8 @@ PERMISSIONS = {
     # Only for a Stream plugin taking over from the Stream page Farmhand used to have; handed over once (handover.py)
     "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: "
     "its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
+    # A stream plugin sending the stream designed in Stream control (services/stream_control): the design and its files
+    "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
 }
 
 ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
@@ -63,6 +65,7 @@ def check(raw) -> dict:
         "page": _page(raw.get("page")),
         "settings_page": _path(raw, "settings_page"),
         "health": _path(raw, "health"),
+        "stream_control": _stream_control(raw.get("stream_control")),
     }
 
 
@@ -99,6 +102,20 @@ def _path(raw: dict, key: str) -> str | None:
     if not isinstance(value, str) or not value.startswith("/") or len(value) > 200:
         raise ValueError(f"The plugin's {key} must be a path on the plugin starting with \"/\", like \"/health\".")
     return value
+
+
+def _stream_control(raw) -> dict | None:
+    """A stream plugin Stream control starts and stops: {"path": "/api/stream-control"} (GET it for how the stream is
+    doing, POST <path>/start and <path>/stop), and "site", where it streams to ("YouTube"), shown beside it."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("The plugin's stream_control must be an object, like {\"path\": \"/api/stream-control\", \"site\": \"YouTube\"}.")
+    named = {"stream_control path": raw.get("path"), "stream_control site": raw.get("site")}
+    path = _path(named, "stream_control path")
+    if path is None:
+        raise ValueError("The plugin's stream_control needs a path, like \"/api/stream-control\".")
+    return {"path": path, "site": _text(named, "stream_control site", 40)}
 
 
 def _page(raw) -> dict | None:

@@ -60,7 +60,7 @@ Farmhand's own settings (`src/plugins/PluginSettings.jsx`), as tall as `farmhand
 
 **Stream is only a plugin** (https://github.com/The-Original-Reth/farmhand-youtube-plugin, its own repository and container; the copy in `plugins/stream/` is kept for now
 but no longer worked on): Farmhand has no stream code of its own. Once it's
-added, `Sidebar.jsx`'s `MAIN_MENU_SLOTS` puts it in the main menu after Monitor (where the built-in Stream page was), and
+added, `Sidebar.jsx`'s `STREAM_PLUGINS` puts it in the plugins group of the menu, after Stream control, and
 `/stream` opens `plugin/stream`. What the old built-in page saved stays in the database unused (never deleted): the
 `stream:migrate` hand-over (`services/plugins/handover.py`, self-contained, reading those `app_settings` rows by key)
 gives it to the plugin once, and an older settings copy's stream keys are ignored on load. The Plugins page's
@@ -68,7 +68,16 @@ gives it to the plugin once, and an older settings copy's stream keys are ignore
 repository are copied in `src/plugins/compose/<id>.yml` (each plugin's `tests/test_compose.py` checks they match;
 `stream.yml` is the YouTube plugin repository's own `docker-compose.yml`, copied by hand, and `twitch.yml` the
 Twitch plugin's, https://github.com/The-Original-Reth/farmhand-twitch-plugin, likewise). The Twitch Stream plugin (id
-`twitch`, port 8081) is independent of YouTube; `MAIN_MENU_SLOTS` puts it right after YouTube.
+`twitch`, port 8081) is independent of YouTube; `STREAM_PLUGINS` puts it right after YouTube.
+
+**Stream control is a plugin built into Farmhand** (`services/stream_control/`, `routers/stream_control.py`,
+`src/streamControl/`): not a container, so it has no address or token, only an on/off switch (an `app_settings` row,
+off by default; `GET /plugins`' `builtin`, `PATCH /plugins/stream-control`). Off, every `/stream-control` route is 404
+and its menu entry is hidden; on, `STREAM_PLUGINS` puts it first in the plugins group, level with YouTube, Twitch and the rest. It holds one stream design in the stream plugins' own shape (`squares.py`, `layouts.py`,
+`media.py` and the editor in `src/streamControl/` are copied from the YouTube plugin: keep them alike), with its files
+in a `stream` folder beside the STL folder. Stream plugins read it with `stream:read` (`/plugin-api/v1/stream/...`),
+and Stream control starts and stops each through its manifest's `stream_control` path (`streams.py`); its schedule is
+a `PeriodicWorker` (`schedule.py`). Still no ffmpeg in Farmhand: each stream plugin encodes the stream itself.
 
 **Storage** (`app/storage/`: roots, writing, deleting, locations): STL and 3MF roots are chosen independently (Storage page, `app_settings` table)
 and can sit on NAS shares that Farmhand mounts itself (`mounts.py`, needs `SYS_ADMIN` in Docker). The DB stores

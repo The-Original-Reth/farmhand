@@ -69,6 +69,7 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
 | `settings_page` | no | Your plugin's settings, shown on Farmhand's Settings page under your plugin's name (below Farmhand's own): a path on your plugin, like `/settings` or `/?view=settings`. See "Your settings on Farmhand's Settings page" |
 | `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is not taken (the operator adds the plugin again to grant it) |
+| `stream_control` | no | A stream plugin that Stream control starts and stops: `{"path": "/api/stream-control", "site": "YouTube"}` (`site`, up to 40 characters, is shown beside it). See "Stream control" |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
 
@@ -81,6 +82,7 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `prints:read` | see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends | `GET /printers/{id}/print`, `GET /events` |
 | `farm:read` | see Farmhand's colours and the farm's time zone | `GET /farm` |
 | `stream:migrate` | take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy) | `GET /stream/migrate`, `POST /stream/migrate` |
+| `stream:read` | see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site | `GET /stream/design`, `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}`, `GET /stream/music/{name}` |
 
 The operator grants some or all of the permissions the manifest asks for, never more. There are no write permissions
 yet; they'll be added one at a time, when a plugin needs one.
@@ -303,6 +305,59 @@ same folder), or `null` when it used the default. A Farmhand that never had the 
 ```
 
 Keep what you're handed as carefully as Farmhand did: never show it on your page or answer it from your API.
+
+## Stream control
+
+**Stream control** is a plugin built into Farmhand (switched on or off on its Plugins page): the operator designs one
+stream there, and every stream plugin sends that one stream to its own site. A stream plugin takes part in two ways.
+
+**It reads the design** (`stream:read`). `GET /stream/design` answers `{"enabled": false}` while Stream control is
+switched off, or while the operator has left your plugin out of it (send your own layout, as before), or:
+
+```json
+{
+  "enabled": true,
+  "design": {
+    "cols": 2, "rows": 1,
+    "cells": [{ "camera": "3:Nozzle" }, { "background": "#1F3A5F", "image": "logo.png", "slideshow": null, "text": "Live", "...": "..." }],
+    "cameras": ["3:Nozzle"], "show_status": true, "layout": "grid", "seconds_all": 30, "seconds_each": 20,
+    "resolution": "720p", "border_color": "#000000", "background": "#000000", "font": "play", "color": "#FFFFFF",
+    "music": true, "music_volume": 50, "music_shuffle": true, "delay": 60,
+    "holding": { "text": "Back in a minute", "image": null, "background": null, "color": null, "font": null },
+    "title": "The print farm, live", "description": "", "revision": 7, "saved_at": "2026-11-17T18:00:00Z"
+  },
+  "media": { "images": ["logo.png"], "slideshows": [{ "name": "Finished prints", "images": ["frog.jpg", "blank:1"] }], "music": ["beat.mp3"], "error": null }
+}
+```
+
+The design is in the same shape as the YouTube and Twitch plugins' own stream settings (their `live_stream`
+settings and squares), so one of them can use it in place of its own. Cameras are `"printer id:camera name"`, as
+`GET /cameras` names them. A slideshow's `"blank:N"` is a blank screen, not a file. `revision` goes up by one each time
+the operator saves: ask every few seconds, and change the stream when it has. Fetch the files it names from
+`GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}` and `GET /stream/music/{name}` (404
+while Stream control is off or when the file has gone). What only your site has (its stream key, sign-in, privacy or
+category) stays in your plugin.
+
+**Stream control's layout takes over.** While `GET /stream/design` answers `enabled: true` (Stream control is on and
+the operator has ticked your plugin under its Streams), send that design, not your own layout: keep your own saved
+(don't change or delete it), and go back to it as soon as the answer is `{"enabled": false}` (switched off, or your
+plugin unticked). While it's taken over, your page shows **"Controlled by Stream control"** where your layout editor
+is, in place of the editor (with a link or a word that the layout is changed in Farmhand's Stream control), and your
+`stream_control` status answers `"following": true`. What only your site has (stream key, sign-in, privacy,
+category) stays editable on your page.
+
+**Farmhand starts and stops it.** Put `stream_control` in your manifest with the path Farmhand calls, where your plugin
+runs:
+
+- `GET <path>`: how your stream is doing, `{"live": true, "following": true, "error": null, "watch_url": "https://..."}`.
+  `following`: you send Stream control's design (false: your own layout). `error`: why it isn't live when it should be,
+  in plain words.
+- `POST <path>/start` and `POST <path>/stop`: go live (with Stream control's design when it's on) or stop, answering the
+  same. A start that can't happen answers 4xx with `{"detail": "why, in plain words"}` (no stream key yet, say): the
+  operator sees it as it is.
+
+Stream control lists every added plugin with `stream_control`, asks each switched-on one every few seconds, and calls
+start and stop from its **Go live** and **Stop** buttons, **Go live everywhere**, **Stop all** and its schedule.
 
 ## Versions
 

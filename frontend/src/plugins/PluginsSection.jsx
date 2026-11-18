@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, ExternalLink, KeyRound, Puzzle } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { addPlugin, changePlugin, errorText, newPluginToken, pluginApiUrl, previewPlugin, removePlugin } from "../api.js";
+import { addPlugin, changePlugin, errorText, newPluginToken, pluginApiUrl, previewPlugin, removePlugin, switchBuiltinPlugin } from "../api.js";
 import { cancelButton, fieldBox, monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
@@ -20,8 +20,9 @@ const STATES = {
 
 // The Plugins page: the plugins added to Farmhand, how each is doing, and adding one by its address. Farmhand doesn't
 // start or stop a plugin's container: that's done where it runs, by its own instructions. `plugins` comes from
-// usePlugins (shared with the menu); onChanged asks for it again. onOpenPage(id) opens a plugin's page.
-export function PluginsSection({ plugins, onChanged, onOpenPage }) {
+// usePlugins (shared with the menu), and `builtin` the plugins built into Farmhand (Stream control), which are only
+// switched on or off; onChanged asks for them again. onOpenPage(id) opens a plugin's page.
+export function PluginsSection({ plugins, builtin = [], onChanged, onOpenPage }) {
   const [token, setToken] = useState(null); // { plugin, token }: shown once
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 900 }}>
@@ -37,6 +38,10 @@ export function PluginsSection({ plugins, onChanged, onOpenPage }) {
           instructions say, then add it here by its address.
         </div>
       </div>
+
+      {builtin.map((p) => (
+        <BuiltinPluginCard key={p.id} plugin={p} onChanged={onChanged} onOpenPage={() => onOpenPage(p.id)} />
+      ))}
 
       <AddPlugin onAdded={(r) => { setToken(r); onChanged(); }} />
       <RunPluginGuide />
@@ -170,6 +175,50 @@ function AddPlugin({ onAdded }) {
 }
 
 // One plugin: how it's doing, where it runs, what it may read, and its buttons
+// A plugin built into Farmhand: part of Farmhand itself, so nothing to add, run, give a token or remove. Switched on,
+// its page is in the menu; switched off, its page and menu entry are hidden (what it saved is kept).
+function BuiltinPluginCard({ plugin: p, onChanged, onOpenPage }) {
+  const change = useAction();
+  const turn = () => change.run(async () => { await switchBuiltinPlugin(p.id, !p.enabled); onChanged(); });
+  return (
+    <div data-testid={`plugin-${p.id}`} style={panelBox({ padding: 16 })}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        <div style={uiText(15, c.heading, { fontWeight: 600 })}>{p.name}</div>
+        <Badge tone="muted">built into Farmhand</Badge>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          {p.enabled && (
+            <button onClick={onOpenPage} style={toolButton(12)}>
+              <ExternalLink size={13} /> Open its page
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 12 })}>{p.description}</div>
+      {change.error && <div style={uiText(12, c.amber, { marginBottom: 10 })}>{change.error}</div>}
+      <Slider on={p.enabled} busy={change.busy} onTurn={turn} testid={`plugin-${p.id}-switch`} label={p.name} />
+    </div>
+  );
+}
+
+// An on/off slider (on: green, knob to the right), turned by a click or the space bar
+function Slider({ on, busy, onTurn, testid, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <button
+        type="button" role="switch" aria-checked={on} aria-label={`${label} on or off`} data-testid={testid} disabled={busy} onClick={onTurn}
+        title={on ? `Switch ${label} off: its page leaves the menu` : `Switch ${label} on: its page joins the menu`}
+        style={{
+          position: "relative", width: 40, height: 22, borderRadius: 11, border: `1px solid ${on ? c.green : c.borderStrong}`, padding: 0,
+          background: on ? c.green : c.panelAlt, cursor: busy ? "default" : "pointer", flexShrink: 0, opacity: busy ? 0.7 : 1,
+        }}
+      >
+        <span style={{ position: "absolute", top: 2, left: on ? 20 : 2, width: 16, height: 16, borderRadius: 8, background: on ? c.bg : c.textMuted, transition: "left 0.15s" }} />
+      </button>
+      <span style={uiText(13, on ? c.textPrimary : c.textFaint)}>{on ? "On: in the menu" : "Off"}</span>
+    </div>
+  );
+}
+
 function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
   const [asking, setAsking] = useState(null); // "token" | "remove"
   const change = useAction();

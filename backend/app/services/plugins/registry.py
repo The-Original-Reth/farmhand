@@ -23,6 +23,7 @@ from ...timeutil import as_utc, utc_iso, utc_now
 from . import manifest as manifests
 from . import remote
 
+BUILT_IN = "stream-control"  # Stream control's id (services/stream_control): built in, so no added plugin may have it
 LAST_USED_EVERY = dt.timedelta(minutes=1)  # how often a token's last use is written down (not on every call)
 
 
@@ -91,6 +92,8 @@ def register(
     taken only from its address unless asked otherwise, except for one beside Farmhand: those are off by default.
     """
     checked = manifests.check(raw_manifest)
+    if checked["id"] == BUILT_IN:
+        raise ValueError(f"\"{BUILT_IN}\" is Stream control's own id, built into Farmhand: a plugin added to it needs another id.")
     if db.get(Plugin, checked["id"]) is not None:
         raise AlreadyInstalled(f"A plugin called \"{checked['id']}\" is already installed. Remove it first to install it again.")
     permissions = manifests.check_granted(checked, granted)

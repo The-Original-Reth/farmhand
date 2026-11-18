@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import NotFound, answer_errors
+from ..services import stream_control
 from ..services.plugins import answers, pages, registry
 from ..services.plugins import manifest as manifests
 from .common import require_confirm
@@ -45,6 +46,8 @@ def _already(e: registry.AlreadyInstalled):
 def list_plugins(db: Session = Depends(get_db)):
     return {
         "plugins": [registry.out(p) for p in registry.all_plugins(db)],
+        # the plugins built into Farmhand (switched on or off here, never added or removed): Stream control
+        "builtin": [stream_control.entry(db)],
         "api_version": manifests.API_VERSION,
         "permissions": manifests.describe(list(manifests.PERMISSIONS)),
     }
@@ -84,12 +87,18 @@ def plugin_script():
 
 @router.get("/{plugin_id}")
 def get_plugin(plugin_id: str, db: Session = Depends(get_db)):
+    if plugin_id == stream_control.ID:
+        return stream_control.entry(db)
     with answer_errors():
         return registry.out(registry.get(db, plugin_id))
 
 
 @router.patch("/{plugin_id}")
 def change_plugin(plugin_id: str, body: PluginChange, db: Session = Depends(get_db)):
+    if plugin_id == stream_control.ID:  # built in: only switched on or off
+        if body.enabled is not None:
+            stream_control.set_enabled(db, body.enabled)
+        return stream_control.entry(db)
     with answer_errors():
         return registry.out(registry.update(db, plugin_id, body.enabled, body.only_from_address, body.address))
 
