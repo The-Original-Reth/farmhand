@@ -94,6 +94,12 @@ export const chooseStreamPlugins = async (ids) => {
   const r = await request("/stream-control/streams", jsonBody("PUT", { chosen: ids }));
   return { streams: r.streams.map(normalizeStreamPlugin), happened: normalizeHappened(r.happened) };
 };
+// Copy layout: this stream plugin's own layout made Stream control's (every stream brought in then shows it), its
+// pictures and slideshows copied into the stream folder: { page, copied: [what was copied], problems: [what wasn't] }
+export const copyStreamLayout = async (id) => {
+  const r = await post(`/stream-control/streams/${enc(id)}/copy-layout`);
+  return { page: normalizePage(r), copied: r.copied || [], problems: r.problems || [] };
+};
 // Start or stop one: its entry as it answered (error: why it didn't)
 export const startStreamPlugin = async (id) => normalizeStreamPlugin(await post(`/stream-control/streams/${enc(id)}/start`));
 export const stopStreamPlugin = async (id) => normalizeStreamPlugin(await post(`/stream-control/streams/${enc(id)}/stop`));

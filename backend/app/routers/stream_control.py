@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import answer_errors
 from ..services import stream_control
-from ..services.stream_control import design, fonts, layouts, media, schedule, streams
+from ..services.stream_control import copy_layout, design, fonts, layouts, media, schedule, streams
 from ..services.stream_control.page import page
 from .common import require_confirm
 
@@ -68,6 +68,16 @@ def choose_streams(body: ChosenIn, db: Session = Depends(get_db)):
     started or stopped from here. In the settings copy."""
     with answer_errors():
         return {"streams": streams.choose(db, body.chosen), "happened": schedule.happened()}
+
+
+@router.post("/streams/{plugin_id}/copy-layout")
+def copy_layout_of(plugin_id: str, db: Session = Depends(get_db)):
+    """Copy layout: this stream plugin's own layout made Stream control's (every stream brought in then shows it), with
+    the pictures and slideshows it shows copied into the stream folder. The page, with `copied` (what was copied) and
+    `problems` (what wasn't, in plain words). **422** when it can't be asked or has no layout; **404** no such plugin."""
+    with answer_errors():
+        done = copy_layout.copy_from(db, plugin_id)
+    return {**page(db), "copied": done["copied"], "problems": done["problems"]}
 
 
 @router.post("/streams/{plugin_id}/{action}")
