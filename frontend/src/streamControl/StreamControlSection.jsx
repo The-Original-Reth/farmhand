@@ -242,20 +242,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
     {/* at the top, as on the stream plugins' own pages: Mute, for the music on this page */}
-    <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-      <MuteSwitch muted={muted} onMute={mute} />
-      <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" })}
-        title="Play the stream's music on this page by itself while it's open (Mute silences it)">
-        <input type="checkbox" data-testid="stream-control-autoplay" checked={autoplay} onChange={(e) => turnAutoplay(e.target.checked)} />
-        Autoplay music
-      </label>
-      {autoplay && musicWaits && (
-        <span data-testid="stream-control-music-waiting" style={uiText(12, c.amber)}
-          title="Browsers only play a page's sound once it has been clicked. To have it start straight away, allow sound or autoplay for this address in the browser's site settings.">
-          ♪ The music starts with your first click on the page
-        </span>
-      )}
-    </div>
+    <MuteSwitch muted={muted} onMute={mute} />
     <div data-testid="stream-control" style={{ display: "grid", gridTemplateColumns: phone ? "minmax(0, 1fr)" : "minmax(0, 3fr) minmax(340px, 2fr)", gap: phone ? 16 : 20, alignItems: "start" }}>
       <div style={{ minWidth: 0, ...(!phone && { position: "sticky", top: 0 }) }}>
         <StreamPreview
@@ -289,7 +276,25 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
             const from = page.media.musicTracks.find((t) => t.name === name)?.source;
             return page.media.musicSources.find((s) => s.id === from)?.label.replace("'s music folder", "'s") || "";
           }}
-          extra={<MusicFolders sources={page.media.musicSources} chosen={saved.musicFrom} busy={busy} onChoose={(ids) => savePart("music", { musicFrom: ids })} />}
+          extra={
+            <>
+              {/* Autoplay music: this page plays the music by itself while it's open (kept in this browser) */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <label style={uiText(12, c.textMuted, { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" })}
+                  title="Play the stream's music on this page by itself while it's open (Mute, at the top of the page, silences it)">
+                  <input type="checkbox" data-testid="stream-control-autoplay" checked={autoplay} onChange={(e) => turnAutoplay(e.target.checked)} />
+                  Autoplay music on this page
+                </label>
+                {autoplay && musicWaits && (
+                  <span data-testid="stream-control-music-waiting" style={uiText(12, c.amber)}
+                    title="Browsers only play a page's sound once it has been clicked. To have it start straight away, allow sound or autoplay for this address in the browser's site settings.">
+                    ♪ The music starts with your first click on the page
+                  </span>
+                )}
+              </div>
+              <MusicFolders sources={page.media.musicSources} chosen={saved.musicFrom} busy={busy} onChoose={(ids) => savePart("music", { musicFrom: ids })} />
+            </>
+          }
         />
         <SavedLayoutsPanel layouts={page.layouts} onSave={saveLayouts} saved={saved} label={label} switchTo={switchTo} />
         {/* Save: under the saved layouts, as on the stream plugins' own pages */}
