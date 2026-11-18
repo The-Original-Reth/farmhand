@@ -338,7 +338,7 @@ settings and squares), so one of them can use it in place of its own. Cameras ar
 plugins' own squares do. `music_from` is where the music comes from: `"stream-control"` (Stream control's own music
 folder) and/or stream plugins' ids (their tracks, passed on). A slideshow's `"blank:N"` is a blank screen, not a file. `revision` goes up by one each time
 the operator saves: ask every few seconds, and change the stream when it has. `media.stamps` gives each file's stamp (`{"images/logo.png": "<size>-<modified>", ...}`): fetch only the files that
-are new or whose stamp changed, not all of them each time. Fetch the files it names from
+are new or whose stamp changed, not all of them each time. (Farmhand reads the folder again when the design is saved, a file is added or taken out through it, or Scan folder is pressed: a file replaced there by hand gets its new stamp then.) Fetch the files it names from
 `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}` and `GET /stream/music/{name}` (404
 while Stream control is off or when the file has gone). What only your site has (its stream key, sign-in, privacy or
 category) stays in your plugin.

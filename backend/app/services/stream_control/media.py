@@ -140,8 +140,8 @@ def add_blank(db: Session, name: str) -> str:
 
 
 # What was last found in the stream folder, and which folder that was. It's read again only when asked (Scan folder),
-# after a change made through Farmhand, or when the folder is another one; never just because the page looked again,
-# so a folder on the NAS isn't read every few seconds.
+# after a change made through Farmhand (the design saved included), or when the folder is another one; never just
+# because the page looked again, so a folder on the NAS isn't read every few seconds.
 _found: tuple[str, dict] | None = None
 
 
