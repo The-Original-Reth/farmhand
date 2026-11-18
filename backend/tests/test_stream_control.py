@@ -557,3 +557,24 @@ def test_stream_designs_v1_shape_is_pinned(api):
         "background", "image", "slideshow", "seconds", "text", "color", "font", "band", "picture_box", "text_box",
         "captions", "picture_boxes", "layers", "slide_layers"}
     assert set(got["media"]) >= {"images", "slideshows", "music", "error", "stamps"}
+
+
+def test_reconnect_nas_reads_the_stream_folder_again(api, monkeypatch):
+    """Stream control's Reconnect NAS: the share the stream folder is on connected again (network_shares_service), then
+    the folder read again, so one found missing while the NAS was off is seen once it's back."""
+    from app.services import network_shares_service
+
+    switch(api)
+    asked = []
+    monkeypatch.setattr(network_shares_service, "reconnect_holding", lambda db, path: asked.append(path) or [])
+    api.post("/stream-control/pictures", files=[("files", ("logo.png", PNG, "image/png"))])
+    first = api.get("/stream-control").json()["media"]
+    assert first["on_share"] is False  # (the test's STL folder is on no share: the page offers no Reconnect NAS)
+    r = api.post("/stream-control/reconnect")
+    assert r.status_code == 200 and r.json()["media"]["images"] == ["logo.png"] and len(asked) == 1
+
+    def refused(db, path):
+        raise network_shares_service.MountError("Timed out waiting for 10.0.0.5.", "unreachable")
+    monkeypatch.setattr(network_shares_service, "reconnect_holding", refused)
+    r = api.post("/stream-control/reconnect")
+    assert r.status_code == 422 and "Timed out" in r.json()["detail"]

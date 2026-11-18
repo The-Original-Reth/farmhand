@@ -12,7 +12,8 @@ import { heading, help, panel } from "./streamStyles.js";
 // `onOpenPlugins` the Plugins page; `happened`: what the schedule did lately. Each has a tick box: which ones Stream
 // control brings in (`onChoose(ids)`). One left out keeps its own layout, and isn't started or stopped from here.
 // `onCopy(id)`: Copy layout, that stream's own layout made Stream control's (resolving once done).
-export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, onCopy, onOpenPlugin, onOpenPlugins, happened = [] }) {
+// `media`: the stream folder as last found ({ error, on_share }); `onReconnect`: Reconnect NAS (its share connected again)
+export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, onCopy, onOpenPlugin, onOpenPlugins, happened = [], media = null, onReconnect }) {
   const usable = streams.filter((s) => s.enabled && s.chosen);
   const toggle = (id) => onChoose(streams.filter((s) => (s.id === id ? !s.chosen : s.chosen)).map((s) => s.id));
   const [copying, setCopying] = useState(false); // the Copy layout chooser open
@@ -42,6 +43,18 @@ export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, 
           {busy === "stop-all" ? "Stopping…" : "Stop all"}
         </button>
       </div>
+      {media?.error && (
+        <div data-testid="stream-control-folder-away" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={uiText(12, c.amber, { flex: 1, minWidth: 200, lineHeight: 1.5 })}>
+            The stream folder isn't available, so the streams can't get its pictures and music: {media.error}
+          </span>
+          {media.on_share && onReconnect && (
+            <button type="button" data-testid="stream-control-reconnect-nas" onClick={onReconnect} disabled={!!busy} style={headerButton()}>
+              {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
+            </button>
+          )}
+        </div>
+      )}
       {!streams.length && (
         <div style={help}>
           No stream plugin is added yet. Add the YouTube or Twitch stream plugin on the{" "}

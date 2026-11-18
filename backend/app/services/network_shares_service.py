@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from sqlalchemy import select
@@ -200,6 +201,37 @@ def reconnect_share(db: Session, share_id: int) -> dict:
     row = _get(db, share_id)
     _mount_noting_errors(row, _spec(row), mounts.mount_point_for(row.name))
     return share_out(db, row)
+
+
+def shares_holding(db: Session, path: str | os.PathLike) -> list[NetworkShare]:
+    """The saved shares `path` is on (its folder is inside their mount point)."""
+    return [row for row in db.scalars(select(NetworkShare))
+            if storage.is_inside(path, mounts.mount_point_for(row.name))]
+
+
+def _answers(folder: Path) -> bool:
+    """A mounted share still answers: its folder can be listed (after the NAS went off, a mount can stay in place but
+    give only errors)."""
+    try:
+        os.listdir(folder)
+        return True
+    except OSError:
+        return False
+
+
+def reconnect_holding(db: Session, path: str | os.PathLike) -> list[str]:
+    """Connect the shares `path` is on again (Stream control's Reconnect NAS, after the NAS was off): one still mounted
+    but not answering is disconnected first (lazily, so whatever was using it lets go), then each is connected (a no-op
+    for one mounted and answering). The names of the shares; MountError says why one couldn't be connected."""
+    names = []
+    for row in shares_holding(db, path):
+        mount_point = mounts.mount_point_for(row.name)
+        if mounts.is_mounted(mount_point) and not _answers(mount_point):
+            _unmount_quietly(mount_point, lazy=True)
+            log.info("Network share %r stopped answering: disconnected to connect it again", row.name)
+        _mount_noting_errors(row, _spec(row), mount_point)
+        names.append(row.name)
+    return names
 
 
 def _mount_noting_errors(row: NetworkShare, spec: ShareSpec, mount_point: Path) -> None:
