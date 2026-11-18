@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -419,6 +420,15 @@ def test_a_stream_plugin_reads_the_design_and_its_files(api):
     r = api.get("/plugin-api/v1/stream/pictures/logo.png", headers=headers)
     assert r.status_code == 200 and r.content == PNG and r.headers["content-type"] == "image/png"
     assert api.get("/plugin-api/v1/stream/pictures/gone.png", headers=headers).status_code == 404
+
+    # a picture replaced by hand in the stream folder, under its own name: its stamp is the one last found until the
+    # folder is read again, which saving the design does (so the plugins copy the new picture)
+    folder = Path(api.get("/stream-control").json()["media"]["path"])
+    (folder / "images" / "logo.png").write_bytes(PNG + b"new")
+    assert api.get("/plugin-api/v1/stream/design", headers=headers).json()["media"]["stamps"]["images/logo.png"] == stamp
+    api.put("/stream-control", json={"cells": [{"image": "logo.png", "text": "Live now"}]})
+    got = api.get("/plugin-api/v1/stream/design", headers=headers).json()
+    assert got["design"]["revision"] == 2 and got["media"]["stamps"]["images/logo.png"].startswith(f"{len(PNG) + 3}-")
 
     # every picture copied at once (a stream with dozens of sponsors' logos): never told to slow down, though other calls are
     assert all(api.get("/plugin-api/v1/stream/pictures/logo.png", headers=headers).status_code == 200 for _ in range(100))

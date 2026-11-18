@@ -43,9 +43,11 @@ def stream_control_page(db: Session = Depends(get_db)):
 @router.put("")
 def save_design(body: dict = Body(...), db: Session = Depends(get_db)):
     """Save the stream's design: what's sent changes, the rest stays (see design.save). The stream plugins following
-    it pick the change up themselves (its revision goes up by one)."""
+    it pick the change up themselves (its revision goes up by one). The stream folder is read again too, so a picture
+    or track replaced there by hand under its own name gets a new stamp, and the plugins copy it again."""
     with answer_errors():
         design.save(db, body)
+    media.forget()
     return page(db)
 
 
