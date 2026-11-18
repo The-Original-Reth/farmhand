@@ -13,6 +13,7 @@ import { cameraOf, followCameras, printerOf } from "./shapes.js";
 import { WordsPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
+import { MusicFolders } from "./MusicFolders.jsx";
 import { HoldingScreenPanel } from "./HoldingScreen.jsx";
 import { SaveChoice, SavedLayoutsPanel, sameAs, shownOf } from "./SavedLayouts.jsx";
 import { StreamsPanel } from "./StreamsPanel.jsx";
@@ -108,7 +109,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
       cols: shown.cols, rows: shown.rows, cells: shown.cells, showStatus: shown.showStatus, layout: shown.layout, resolution: shown.resolution,
       secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
       borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color,
-      music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle, delay: shown.delay === "" ? -1 : shown.delay,
+      music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle, musicFrom: shown.musicFrom, delay: shown.delay === "" ? -1 : shown.delay,
       holding: shown.holding, title: shown.title, description: shown.description,
     });
   const saveAll = async () => {
@@ -248,7 +249,14 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
         <WordsPanel shown={shown} change={change} />
         <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} saved={saved.holding} onSave={saveHolding} busy={busy} />
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
-        <MusicPanel shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={false} enabled={false} savedVolume={saved.musicVolume} />
+        <MusicPanel
+          shown={shown} change={change} media={page.media} ask={ask} busy={busy} live={false} enabled={false} savedVolume={saved.musicVolume}
+          sourceOf={(name) => {
+            const from = page.media.musicTracks.find((t) => t.name === name)?.source;
+            return page.media.musicSources.find((s) => s.id === from)?.label.replace("'s music folder", "'s") || "";
+          }}
+          extra={<MusicFolders sources={page.media.musicSources} chosen={saved.musicFrom} busy={busy} onChoose={(ids) => savePart("music", { musicFrom: ids })} />}
+        />
         <SavedLayoutsPanel layouts={page.layouts} onSave={saveLayouts} saved={saved} label={label} switchTo={switchTo} />
         <SchedulePanel schedule={page.schedule} streams={page.streams.filter((s) => s.chosen)} timeZone={page.timeZone} onSaved={take} />
       </div>

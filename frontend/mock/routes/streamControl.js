@@ -12,7 +12,7 @@ const FONTS = [
 ].map(([key, label, generic]) => ({ key, label, generic }));
 const RESOLUTIONS = [{ key: "720p", label: "720p (1280×720)" }, { key: "1080p", label: "1080p (1920×1080)" }, { key: "1440p", label: "2K (2560×1440)" }];
 const SAVED = ["cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color", "background", "font",
-  "color", "music", "music_volume", "music_shuffle", "delay", "holding", "title", "description"];
+  "color", "music", "music_volume", "music_shuffle", "music_from", "delay", "holding", "title", "description"];
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 // a stand-in for a picture of the stream folder: its name on a coloured card
@@ -47,7 +47,7 @@ export function streamControlRoutes(ctx) {
   };
   const cameras = (cells) => cells.filter((c) => c?.camera).map((c) => c.camera);
   const design = () => ({ ...state().design, cameras: cameras(state().design.cells) });
-  const media = () => ({ path: "/data/storage/stream", ...state().media, error: null });
+  const media = () => ({ path: "/data/nas/farmhand/stream", windows_path: String.raw`\\192.168.10.5\farmhand\stream`, ...state().media, error: null });
   // the stream plugins: the added plugins whose manifest says they can be started from here
   // (YouTube and Twitch, as they are now, from before Stream control: started and stopped through their own page, sending their own layout)
   const BEFORE = { stream: "YouTube", twitch: "Twitch" };
@@ -76,8 +76,29 @@ export function streamControlRoutes(ctx) {
       ? { live: !!state().live[p.id], following: !controlOf(p).legacy, error: null, watch_url: state().live[p.id] ? `https://example.com/${p.id}/live` : null, reachable: true }
       : { live: false, following: null, error: null, watch_url: null, reachable: null })),
   });
+  // The music folders: Stream control's own and the pretend plugins' own (played from where they are, never copied)
+  const THEIR_MUSIC = { stream: ["Lo-fi beat.mp3", "Synthwave drive.mp3"], twitch: ["Chill loop.mp3"] };
+  const musicFrom = () => state().design.music_from || ["stream-control"];
+  const musicTracks = () => {
+    const out = [];
+    for (const src of musicFrom()) {
+      for (const name of src === "stream-control" ? state().media.music : THEIR_MUSIC[src] || []) {
+        if (!out.some((t) => t.name === name)) out.push({ name, source: src });
+      }
+    }
+    return out;
+  };
+  const pageMedia = () => {
+    const own = media();
+    const sources = [{ id: "stream-control", label: "Stream control's music folder", tracks: own.music.length, problem: null },
+      ...streamPlugins().filter((p) => p.enabled).map((p) => ({ id: p.id, label: `${controlOf(p).site}'s music folder`, tracks: (THEIR_MUSIC[p.id] || []).length, problem: null }))];
+    return {
+      ...own, music: musicTracks().map((t) => t.name), own_music: own.music, music_tracks: musicTracks(),
+      music_sources: sources.map((s) => ({ ...s, chosen: musicFrom().includes(s.id) })),
+    };
+  };
   const page = (withStreams = true) => ({
-    design: design(), resolutions: RESOLUTIONS, fonts: FONTS, media: media(), layouts: state().layouts, schedule: state().schedule,
+    design: design(), resolutions: RESOLUTIONS, fonts: FONTS, media: pageMedia(), layouts: state().layouts, schedule: state().schedule,
     happened: state().happened, time_zone: farm.config.preferences?.time_zone ?? null,
     ...(withStreams && { streams: streamPlugins().map((p) => entry(p)) }),
   });

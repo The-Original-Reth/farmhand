@@ -62,7 +62,9 @@ function useVolumeHeardLive(live, volume, saved) {
   }, []);
 }
 
-export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true, control = null, onWaiting = null, muted = false, savedVolume = null }) {
+// (Stream control: `extra`, drawn under the heading, is its choice of music folders; `sourceOf(name)` names the folder a
+// track not in its own comes from)
+export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null, heardAt = 0, enabled = true, control = null, onWaiting = null, muted = false, savedVolume = null, extra = null, sourceOf = null }) {
   const input = useRef(null);
   const player = useRef(null);
   const paused = useRef(false); // paused here by hand: it stays so until played again (or the switch turned on again)
@@ -240,6 +242,7 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
       <div style={{ ...heading, display: "flex", alignItems: "center", gap: 6 }}>
         <Music size={15} /> Music
       </div>
+      {extra}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <label style={label12}>
           <input type="checkbox" data-testid="stream-music-on" checked={shown.music} onChange={(e) => change({ music: e.target.checked })} />
@@ -307,7 +310,10 @@ export function MusicPanel({ shown, change, media, ask, busy, live, onAir = null
             <span style={uiText(12, on ? c.heading : c.textMuted, { fontWeight: on ? 600 : 400, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })} title={name}>
               {name}
             </span>
-            {removing === name ? (
+            {media.musicTracks && media.musicTracks.find((t) => t.name === name)?.source !== "stream-control" ? (
+              // (a stream plugin's track, played from its own folder: deleted there, not here)
+              <span style={uiText(11, c.textFaint, { flexShrink: 0 })}>{sourceOf?.(name)}</span>
+            ) : removing === name ? (
               <>
                 <button type="button" onClick={() => remove(name)} disabled={!!busy} style={{ ...headerButton(), color: c.danger, borderColor: c.danger }}>
                   Delete

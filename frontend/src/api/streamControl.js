@@ -29,6 +29,7 @@ export const normalizeDesign = (d) => ({
   music: !!d.music,
   musicVolume: d.music_volume ?? 50,
   musicShuffle: d.music_shuffle !== false,
+  musicFrom: d.music_from || ["stream-control"], // the music folders played: "stream-control" (its own) and/or stream plugins' ids
   delay: d.delay ?? 60,
   holding: { text: "Back in a minute", image: null, background: null, color: null, font: null, ...(d.holding || {}) },
   title: d.title || "",
@@ -63,7 +64,9 @@ const normalizePage = (p) => ({
   design: normalizeDesign(p.design),
   resolutions: p.resolutions,
   fonts: p.fonts || [],
-  media: { ...p.media, music: p.media.music || [] },
+  // music: the stream's tracks from the folders chosen; ownMusic: those in Stream control's own folder (only those can be
+  // deleted here); musicSources: [{ id, label, chosen, tracks, problem }], the folders there are to choose from
+  media: { ...p.media, music: p.media.music || [], ownMusic: p.media.own_music || [], musicSources: p.media.music_sources || [], musicTracks: p.media.music_tracks || [] },
   layouts: p.layouts || [],
   schedule: p.schedule,
   happened: normalizeHappened(p.happened),
@@ -82,7 +85,7 @@ export const saveStreamDesign = async (s = {}) =>
         cols: s.cols, rows: s.rows, cells: s.cells, cameras: s.cameras, show_status: s.showStatus, layout: s.layout,
         resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor,
         background: s.background, font: s.font, color: s.color, music: s.music, music_volume: s.musicVolume,
-        music_shuffle: s.musicShuffle, delay: s.delay, holding: s.holding, title: s.title, description: s.description,
+        music_shuffle: s.musicShuffle, music_from: s.musicFrom, delay: s.delay, holding: s.holding, title: s.title, description: s.description,
       }),
     ),
   );

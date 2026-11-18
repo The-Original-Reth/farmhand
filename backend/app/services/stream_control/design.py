@@ -23,7 +23,12 @@ from .squares import MAX_LAYERS, SLIDE_SECONDS, TEXT_MAX, _cell, _color, _named
 
 DESIGN_KEY = "stream_control_design"
 SAVED = ("cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color",
-         "background", "font", "color", "music", "music_volume", "music_shuffle", "delay", "holding", "title", "description")
+         "background", "font", "color", "music", "music_volume", "music_shuffle", "music_from", "delay", "holding", "title",
+         "description")
+# Where the music comes from (music_from): Stream control's own music folder, and/or stream plugins' own (their ids):
+# their tracks are listed and passed on from where they are, never copied (music_sources.py)
+OWN_MUSIC = "stream-control"
+MUSIC_FROM_MAX = 10
 # the stream's own colours, as a refusal names them
 COLOURS = {"border_color": "the border's colour", "color": "the colour of the stream's words", "background": "the stream's background colour"}
 
@@ -94,6 +99,14 @@ def _check_holding(sent, now: dict) -> dict:
     return out
 
 
+def _music_from(raw) -> list[str]:
+    """The music folders chosen, as kept: OWN_MUSIC and/or plugin ids, each once ([] for anything unusable)."""
+    if not isinstance(raw, list):
+        return []
+    out = [x for x in dict.fromkeys(raw) if isinstance(x, str) and 0 < len(x) <= 40]
+    return out[:MUSIC_FROM_MAX]
+
+
 def _text(value, most: int, what: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"The stream's {what} has to be text.")
@@ -137,6 +150,7 @@ def settings(db: Session) -> dict:
         "music": raw.get("music") is not False,
         "music_volume": raw["music_volume"] if _volume(raw.get("music_volume")) else DEFAULT_MUSIC_VOLUME,
         "music_shuffle": raw.get("music_shuffle", True) is not False,
+        "music_from": _music_from(raw.get("music_from")) or [OWN_MUSIC],
         "delay": raw["delay"] if type(raw.get("delay")) is int and DELAY[0] <= raw["delay"] <= DELAY[1] else DELAY[2],
         "holding": _holding(raw.get("holding")),
         "title": text("title"),
@@ -233,6 +247,11 @@ def save(db: Session, sent: dict) -> dict:
     for name in ("show_status", "music", "music_shuffle"):
         if get(name) is not None:
             now[name] = bool(get(name))
+    if get("music_from") is not None:
+        picked = _music_from(get("music_from"))
+        if not picked:
+            raise ValueError("Choose at least one music folder: Stream control's, or a stream's own.")
+        now["music_from"] = picked
     if get("holding") is not None:
         now["holding"] = _check_holding(get("holding"), now["holding"])
     delay = get("delay")

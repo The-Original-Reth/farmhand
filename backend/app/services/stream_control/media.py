@@ -170,7 +170,7 @@ def _read(db: Session) -> dict:
         except OSError:
             root = folder(db)
     except storage.StorageUnavailableError as e:
-        return {"path": str(_root()), "images": [], "slideshows": [], "music": [], "error": str(e)}
+        return {"path": str(_root()), "windows_path": None, "images": [], "slideshows": [], "music": [], "error": str(e), "stamps": {}}
     shows = []
     try:
         for e in sorted(os.scandir(root / SLIDESHOWS), key=lambda e: _natural(e.name)):
@@ -181,8 +181,26 @@ def _read(db: Session) -> dict:
     images, music = _pictures_in(root / IMAGES), _files_in(root / MUSIC, TRACK_TYPES)
     files = [f"{IMAGES}/{n}" for n in images] + [f"{MUSIC}/{n}" for n in music] + [
         f"{SLIDESHOWS}/{s['name']}/{n}" for s in shows for n in s["images"] if not is_blank(n)]
-    return {"path": str(root), "images": images, "slideshows": shows, "music": music, "error": None,
-            "stamps": _stamps(root, files)}
+    return {"path": str(root), "windows_path": shown_as(db, root), "images": images, "slideshows": shows, "music": music,
+            "error": None, "stamps": _stamps(root, files)}
+
+
+def shown_as(db: Session, root: Path) -> str | None:
+    """The stream folder as Windows reaches it over the network (\\\\server\\share\\...\\stream), when it's on an SMB
+    share Farmhand mounts itself (Settings' network shares); None otherwise, or for an NFS share."""
+    from ... import mounts
+    from ...models import NetworkShare
+
+    for share in db.query(NetworkShare).all():
+        if share.protocol != "smb":
+            continue
+        try:
+            rel = Path(root).relative_to(mounts.mount_point_for(share.name))
+        except ValueError:
+            continue
+        parts = [share.server, *[p for p in share.share.replace("\\", "/").split("/") if p], *rel.parts]
+        return "\\\\" + "\\".join(parts)
+    return None
 
 
 def _stamps(root: Path, files: list[str]) -> dict[str, str]:

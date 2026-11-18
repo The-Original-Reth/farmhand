@@ -731,7 +731,8 @@ Its page is the stream plugins' own editor, moved into Farmhand:
 - **The stream**: the grid of squares (1×1 to 5×5), each a camera, a card (its colour, a picture or a slideshow, and
   words, with more pictures and pieces of text placed on it) or nothing; the whole grid or taking turns; the size
   (720p, 1080p or 2K), border, background, the words' font and colour, each printer's name and print on its camera;
-  the music (MP3s, its volume and shuffling); the holding screen; and saved layouts to switch between. The preview
+  the music (its volume and shuffling, and which music folders play: Stream control's own, YouTube's own, Twitch's own,
+  any or all at once, a stream's tracks played from its own folder, never copied); the holding screen; and saved layouts to switch between. The preview
   plays it in the browser; **Save** saves it, and each stream plugin following it picks the change up itself.
 - **Title, description and delay**: what each site shows with the stream, and how long each plugin holds the stream
   before its site gets it. What only one site has (its stream key, sign-in, YouTube privacy or Twitch category) stays on
@@ -757,7 +758,8 @@ Its page is the stream plugins' own editor, moved into Farmhand:
 
 Its pictures, slideshows and music are files in Farmhand's **stream folder**: `stream` beside the STL folder (beside
 `farm-cost`), so on the NAS when the STL folder is. Uploaded on the page, or copied in by hand and found with **Scan
-folder**, laid out as a stream plugin's own stream folder (`images/`, `slideshows/<name>/`, `music/`). The design,
+folder**, laid out as a stream plugin's own stream folder (`images/`, `slideshows/<name>/`, `music/`). **Open folder** shows it
+as Windows reaches it (`\\server\share\...\stream`) when it's on a share Farmhand mounts, to paste into File Explorer. The design,
 saved layouts and schedule are in the settings copy, and Load all puts them back on a Farmhand that has none of its own.
 
 A stream plugin sends this stream only once it supports Stream control (it reads the design through the plugin API's

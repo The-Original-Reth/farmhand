@@ -23,6 +23,7 @@ from ..services.plugins import answers, events, handover, limits, registry, remo
 from ..services.plugins.manifest import API_VERSION
 from ..services.stream_control import design as stream_design
 from ..services.stream_control import media as stream_media
+from ..services.stream_control import music_sources
 from ..services.stream_control import streams as stream_streams
 from .common import require_printer
 
@@ -175,8 +176,13 @@ def stream_control_design(db: Session = Depends(get_db), caller: registry.Caller
     if not stream_control.enabled(db) or not stream_streams.is_chosen(db, caller.plugin_id):
         return {"enabled": False}
     found = stream_media.media(db)
-    return {"enabled": True, "design": stream_design.settings(db),
-            "media": {k: found[k] for k in ("images", "slideshows", "music", "error", "stamps")}}
+    files = {k: found[k] for k in ("images", "slideshows", "error")}
+    # the music from the folders chosen (Stream control's own, and stream plugins' own, passed on from where they are)
+    files["music"] = [t["name"] for t in music_sources.tracks(db)]
+    files["stamps"] = {**{k: v for k, v in found["stamps"].items() if not k.startswith("music/")},
+                       **{k: v for k, v in found["stamps"].items() if k.startswith("music/") and k[6:] in files["music"]},
+                       **music_sources.stamps(db)}
+    return {"enabled": True, "design": stream_design.settings(db), "media": files}
 
 
 def _stream_file(db: Session, find):
@@ -205,4 +211,16 @@ def stream_slideshow_picture(show: str, name: str, db: Session = Depends(get_db)
 
 @router.get("/stream/music/{name}", dependencies=[Depends(needs("stream:read", limited=False))])
 def stream_track(name: str, db: Session = Depends(get_db)):
-    return _stream_file(db, lambda: stream_media.track_path(db, name))
+    """A track of the stream's music, from whichever chosen folder has it (another stream plugin's, passed on)."""
+    if not stream_control.enabled(db):
+        raise HTTPException(status_code=404, detail="Stream control is switched off.")
+    try:
+        where = music_sources.find(db, name)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    from .stream_control import track_answer
+
+    try:
+        return track_answer(where)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None

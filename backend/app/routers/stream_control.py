@@ -7,14 +7,14 @@ Changes answer the whole page (GET /stream-control) except where said.
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import answer_errors
 from ..services import stream_control
-from ..services.stream_control import copy_layout, design, fonts, layouts, media, schedule, streams
+from ..services.stream_control import copy_layout, design, fonts, layouts, media, music_sources, schedule, streams
 from ..services.stream_control.page import page
 from .common import require_confirm
 
@@ -220,8 +220,18 @@ def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(Fals
 
 @router.get("/music/{name}")
 def get_track(name: str, db: Session = Depends(get_db)):
-    path = _media(lambda: media.track_path(db, name))
-    return FileResponse(path, media_type=media.TRACK_TYPES[path.suffix.lower()], headers={"Cache-Control": "no-cache"})
+    """A track of the stream's music, from whichever chosen folder has it (a stream plugin's passed on, not copied)."""
+    return track_answer(_media(lambda: music_sources.find(db, name)))
+
+
+def track_answer(where) -> Response:
+    """A track found by music_sources.find: Stream control's own file, or a stream plugin's passed on as it comes."""
+    if isinstance(where, tuple):
+        address, path = where
+        with answer_errors():
+            body = music_sources.passed_on(address, path)
+        return StreamingResponse(body, media_type="audio/mpeg", headers={"Cache-Control": "no-cache"})
+    return FileResponse(where, media_type=media.TRACK_TYPES[where.suffix.lower()], headers={"Cache-Control": "no-cache"})
 
 
 @router.post("/music", status_code=201)
