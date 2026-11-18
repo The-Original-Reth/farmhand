@@ -21,7 +21,7 @@ from ...errors import NotFound
 from ..plugins import registry, remote
 from . import design, media, streams
 
-PAGE_PATH = "/api/stream"
+PAGE_PATH = streams.PAGE_PATH
 LIST_FOR = 10.0  # seconds a plugin's list of tracks is kept (the page and the stream plugins ask every few seconds)
 LIST_TIMEOUT = 6.0
 TRACK_TIMEOUT = 60.0
@@ -94,9 +94,17 @@ def sources(db: Session) -> list[dict]:
     return out
 
 
-def stamps(db: Session) -> dict[str, str]:
-    """music/<name> -> a stamp for each track from a plugin's folder (its source and name: it's fetched once)."""
-    return {f"{media.MUSIC}/{t['name']}": f"{t['source']}:{t['name']}" for t in tracks(db) if t["source"] != design.OWN_MUSIC}
+def for_stream_plugins(db: Session) -> dict:
+    """What a stream plugin following Stream control copies (GET /plugin-api/v1/stream/design's media): {images,
+    slideshows, error} of the stream folder, music: the tracks of the folders chosen, and stamps: each file's, so it
+    fetches only what changed (a plugin's track: its source and name, so it's fetched once)."""
+    found = media.media(db)
+    playing = tracks(db)
+    own = {f"{media.MUSIC}/{t['name']}" for t in playing if t["source"] == design.OWN_MUSIC}
+    stamps = {k: v for k, v in found["stamps"].items() if not k.startswith(f"{media.MUSIC}/") or k in own}
+    stamps.update({f"{media.MUSIC}/{t['name']}": f"{t['source']}:{t['name']}" for t in playing if t["source"] != design.OWN_MUSIC})
+    return {"images": found["images"], "slideshows": found["slideshows"], "error": found["error"],
+            "music": [t["name"] for t in playing], "stamps": stamps}
 
 
 def find(db: Session, name: str) -> Path | tuple[str, str]:

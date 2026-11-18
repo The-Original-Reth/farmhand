@@ -74,7 +74,8 @@ Twitch plugin's, https://github.com/The-Original-Reth/farmhand-twitch-plugin, li
 `src/streamControl/`): not a container, so it has no address or token, only an on/off switch (an `app_settings` row,
 off by default; `GET /plugins`' `builtin`, `PATCH /plugins/stream-control`). Off, every `/stream-control` route is 404
 and its menu entry is hidden; on, `STREAM_PLUGINS` puts it first in the plugins group, level with YouTube, Twitch and the rest. It holds one stream design in the stream plugins' own shape (`squares.py`, `layouts.py`,
-`media.py` and the editor in `src/streamControl/` are copied from the YouTube plugin: keep them alike), with its files
+`media.py` and the editor in `src/streamControl/` are copied from the YouTube plugin: keep them alike, except that
+`MusicPanel.jsx` and `StreamPreview.jsx` here leave out what only a stream going out from the page needs), with its files
 in a `stream` folder beside the STL folder. Stream plugins read it with `stream:read` (`/plugin-api/v1/stream/...`),
 and Stream control starts and stops each through its manifest's `stream_control` path (`streams.py`); its schedule is
 a `PeriodicWorker` (`schedule.py`). Still no ffmpeg in Farmhand: each stream plugin encodes the stream itself.

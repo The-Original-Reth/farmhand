@@ -10,7 +10,6 @@ A picture already in Farmhand's stream folder under the same name is kept as it 
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from urllib.parse import quote
 
@@ -22,8 +21,13 @@ from ..plugins import registry, remote
 from . import design, media, streams
 from .fonts import FONTS
 
-enc = lambda s: quote(s, safe="")  # noqa: E731 (a name in a URL path)
-PAGE_PATH = "/api/stream"  # the stream plugins' own page API (YouTube and Twitch alike)
+
+def enc(name: str) -> str:
+    """A file name as it goes in a URL path."""
+    return quote(name, safe="")
+
+
+PAGE_PATH = streams.PAGE_PATH
 TIMEOUT = 15.0
 # What of a plugin's own settings is the layout (design.SAVED): the rest (its stream key, site settings) stays its own
 LAYOUT_KEYS = design.SAVED
@@ -109,7 +113,7 @@ def copy_from(db: Session, plugin_id: str) -> dict:
         images, shows = _pictures_shown(settings)
         for name in sorted(images):
             try:
-                target = folder / media.IMAGES / media._name(name, "picture")
+                target = folder / media.IMAGES / media.checked_name(name, "picture")
             except ValueError:
                 continue
             _copy_file(client, f"{address}{PAGE_PATH}/pictures/{enc(name)}", target, copied, problems, f"the picture “{name}”")
@@ -119,7 +123,7 @@ def copy_from(db: Session, plugin_id: str) -> dict:
                 problems.append(f"The slideshow “{show}” isn't in {plugin.name}'s stream folder, so it wasn't copied.")
                 continue
             try:
-                show_dir = folder / media.SLIDESHOWS / media._name(show, "slideshow")
+                show_dir = folder / media.SLIDESHOWS / media.checked_name(show, "slideshow")
             except ValueError:
                 continue
             order = [n for n in their_shows[show] if isinstance(n, str)]
@@ -127,10 +131,10 @@ def copy_from(db: Session, plugin_id: str) -> dict:
                 if media.is_blank(name):
                     continue
                 _copy_file(client, f"{address}{PAGE_PATH}/slideshows/{enc(show)}/pictures/{enc(name)}",
-                           show_dir / media._name(name, "picture"), copied, problems, f"“{show}”: “{name}”")
+                           show_dir / media.checked_name(name, "picture"), copied, problems, f"“{show}”: “{name}”")
             show_dir.mkdir(parents=True, exist_ok=True)
             if not (show_dir / media.ORDER_FILE).exists():
-                storage.write_text_atomically(show_dir / media.ORDER_FILE, json.dumps(order, ensure_ascii=False))
+                media.write_order(show_dir, order)
     media.forget()
     if settings.get("music") is not False and (theirs.get("music") or []):
         problems.append(f"{plugin.name}'s music tracks weren't copied: add them under Music on this page.")
