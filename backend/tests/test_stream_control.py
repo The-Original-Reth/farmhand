@@ -86,6 +86,9 @@ class FakeStreams:
                     if live and host == "stream" else None,
                     "camera_states": [{"key": "1:Nozzle", "label": "Voron", "state": "live", "since": 1},
                                       {"key": "2:Bed", "label": "Prusa", "state": "down", "since": 2}] if live else [],
+                    "delay": ({"seconds": 60.0, "held": 23.46, "filling": True} if host == "twitch"
+                              else {"seconds": 60.0, "held": 61.0, "filling": False}) if live else {"seconds": 60.0, "held": 0.0, "filling": False},
+                    "holding": live and host == "twitch",
                 },
             })
         if path == "/api/stream-control/start":
@@ -294,9 +297,13 @@ def test_the_youtube_and_twitch_plugins_from_before_stream_control_start_and_sto
     assert [link["label"] for link in listed["twitch"]["links"]] == ["Watch", "Chat", "Stream Manager", "Analytics"]
     assert listed["twitch"]["links"][1]["url"] == "https://www.twitch.tv/popout/printfarm/chat?popout="
     assert [(c["label"], c["state"]) for c in listed["stream"]["cameras"]] == [("Voron", "live"), ("Prusa", "down")]
+    # each one's delay as it holds it (never more than it's set to), the holding screen on while it fills again
+    assert listed["stream"]["buffer"] == {"seconds": 60.0, "held": 60.0, "filling": False, "holding": False}
+    assert listed["twitch"]["buffer"] == {"seconds": 60.0, "held": 23.5, "filling": True, "holding": True}
 
     stopped = api.post("/stream-control/stop-all").json()["streams"]
     assert all(not s["live"] for s in stopped) and all(s["cameras"] == [] for s in stopped)
+    assert all(s["buffer"] is None for s in stopped)  # (not live: no delay shown)
 
 
 def test_copy_layout_makes_one_stream_s_own_layout_stream_control_s_with_its_pictures(api, tmp_path):

@@ -49,6 +49,9 @@ export const normalizeStreamPlugin = (s) => ({
   // as its own page shows them: [{ label, url, title }] (Watch, Chat, Stream Manager...), each camera's state while live
   // [{ key, label, state: "live" | "down" | "starting", since }], and YouTube's viewers (null: not known)
   links: s.links || [], cameras: s.cameras || [], viewers: s.viewers ?? null,
+  // its delay while live: { seconds (as set), held (how much of it is held now), filling (being collected again, after
+  // going live or a stall), holding (the holding screen is on the site meanwhile) }, or null
+  buffer: s.buffer ? { seconds: s.buffer.seconds, held: s.buffer.held, filling: !!s.buffer.filling, holding: !!s.buffer.holding } : null,
   settingsPage: s.settings_page || null, // its site's settings window, a page of its own ("/?view=youtube-settings")
 });
 
