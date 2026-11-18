@@ -64,6 +64,27 @@ export function LayoutPanel({ shown, count, change, bare = false }) {
   );
 }
 
+// Mute: the music silent on this page only (the streams keep playing it), as the stream plugins' own pages had it.
+// Kept in this browser.
+export function MuteSwitch({ muted, onMute }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={uiText(14, c.heading, { fontWeight: 600 })}>Mute</span>
+      <button
+        type="button" role="switch" aria-checked={muted} data-testid="stream-control-mute" onClick={() => onMute(!muted)}
+        title={muted ? "Unmute the music on this page" : "Mute the music on this page only: the streams keep playing it"}
+        style={{
+          position: "relative", width: 40, height: 22, borderRadius: 11, border: `1px solid ${muted ? c.amber : c.borderStrong}`, padding: 0,
+          background: muted ? c.amber : c.panelAlt, cursor: "pointer", flexShrink: 0,
+        }}
+      >
+        <span style={{ position: "absolute", top: 2, left: muted ? 20 : 2, width: 16, height: 16, borderRadius: 8, background: muted ? c.bg : c.textMuted, transition: "left 0.15s" }} />
+      </button>
+      <span style={uiText(12, muted ? c.amber : c.textFaint)}>{muted ? "Music muted here" : "Music heard here"}</span>
+    </div>
+  );
+}
+
 // What each site shows with the stream, and the delay: the title and description (YouTube's broadcast and Twitch's
 // channel take them when a stream plugin goes live), and how long each plugin holds the stream before its site gets it.
 export function WordsPanel({ shown, change }) {
