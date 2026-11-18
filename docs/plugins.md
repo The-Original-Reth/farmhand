@@ -69,7 +69,7 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
 | `settings_page` | no | Your plugin's settings, shown on Farmhand's Settings page under your plugin's name (below Farmhand's own): a path on your plugin, like `/settings` or `/?view=settings`. See "Your settings on Farmhand's Settings page" |
 | `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is not taken (the operator adds the plugin again to grant it) |
-| `stream_control` | no | A stream plugin that Stream control starts and stops: `{"path": "/api/stream-control", "site": "YouTube"}` (`site`, up to 40 characters, is shown beside it). See "Stream control" |
+| `stream_control` | no | A stream plugin that Stream control starts and stops: `{"path": "/api/stream-control", "site": "YouTube"}` (`site`, up to 40 characters, is shown beside it), and optionally `"settings": "/?view=youtube-settings"`, a page of yours for that site's own settings, which Stream control opens in a window of its own from a "<site> settings" button. See "Stream control" |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
 
@@ -333,7 +333,8 @@ switched off, or while the operator has left your plugin out of it (send your ow
 The design is in the same shape as the YouTube and Twitch plugins' own stream settings (their `live_stream`
 settings and squares), so one of them can use it in place of its own. Cameras are `"printer id:camera name"`, as
 `GET /cameras` names them. A slideshow's `"blank:N"` is a blank screen, not a file. `revision` goes up by one each time
-the operator saves: ask every few seconds, and change the stream when it has. Fetch the files it names from
+the operator saves: ask every few seconds, and change the stream when it has. `media.stamps` gives each file's stamp (`{"images/logo.png": "<size>-<modified>", ...}`): fetch only the files that
+are new or whose stamp changed, not all of them each time. Fetch the files it names from
 `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}` and `GET /stream/music/{name}` (404
 while Stream control is off or when the file has gone). What only your site has (its stream key, sign-in, privacy or
 category) stays in your plugin.

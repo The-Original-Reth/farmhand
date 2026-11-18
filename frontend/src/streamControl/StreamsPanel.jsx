@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Radio } from "lucide-react";
+import { Radio, Settings } from "lucide-react";
+import { pluginPageUrl } from "../api.js";
 import { c } from "../theme.js";
 import { cancelButton, fieldBox, headerButton, primaryButton, uiText } from "../styles.js";
 import { heading, help, panel } from "./streamStyles.js";
@@ -62,6 +63,22 @@ export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, 
   );
 }
 
+// A stream plugin's own settings window (YouTube settings, Twitch settings), as its own page opens it: its page shown
+// from Farmhand at /plugins/<id>/, in a window of its own (brought forward when it's open already)
+const openSiteSettings = (s) => {
+  const w = window.open(pluginPageUrl(s.id, s.settingsPage), `farmhand-${s.id}-settings`, "popup,width=720,height=900");
+  w?.focus();
+};
+
+// A plugin's problem kept short: a list of them ("a; b; c...", one per picture it couldn't copy, say) shows its first
+// two and how many more; anything else past 300 characters is cut. The whole of it is in the row's tooltip.
+const shortened = (text) => {
+  if (!text) return text;
+  const parts = text.split("; ");
+  if (parts.length > 2) return `${parts.slice(0, 2).join("; ")}; and ${parts.length - 2} more like it`;
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+};
+
 function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
   const mine = busy === `start:${s.id}` || busy === `stop:${s.id}`;
   let state;
@@ -90,15 +107,21 @@ function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
           {s.site}
           <span style={uiText(12, c.textFaint, { fontWeight: 400 })}> · {s.name}</span>
         </div>
-        <div data-testid="stream-control-stream-state" style={uiText(12, tone, { lineHeight: 1.5 })}>
-          {state}
-          {s.live && s.watchUrl && (
-            <>
-              {" · "}
-              <a href={s.watchUrl} target="_blank" rel="noreferrer" style={{ color: c.amber }}>Watch</a>
-            </>
-          )}
+        <div data-testid="stream-control-stream-state" title={state !== shortened(state) ? state : undefined} style={uiText(12, tone, { lineHeight: 1.5, overflowWrap: "anywhere" })}>
+          {shortened(state)}
+          {s.live && s.viewers !== null ? ` · ${s.viewers} watching` : ""}
         </div>
+        {s.settingsPage && s.enabled && (
+          <button
+            type="button" data-testid="stream-control-site-settings" onClick={() => openSiteSettings(s)}
+            title={`${s.site}'s own settings (its stream key, sign-in and the rest), in a window of its own`}
+            style={{ ...headerButton(), marginTop: 4, marginBottom: 2 }}
+          >
+            <Settings size={13} /> {s.site} settings
+          </button>
+        )}
+        <StreamLinks s={s} />
+        {s.live && s.cameras.length > 0 && <CameraStates cameras={s.cameras} />}
         {notes.map((n) => (
           <div key={n} style={uiText(12, c.amber, { lineHeight: 1.5 })}>{n}</div>
         ))}
@@ -125,6 +148,42 @@ function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// The links the stream's own page shows (YouTube: Watch, and Chat and analytics in YouTube Studio, while there's a
+// broadcast; Twitch: Watch, Chat, Stream Manager, Analytics), each opening in a new tab. Just Watch when that's all it says.
+function StreamLinks({ s }) {
+  const links = s.links.length ? s.links : s.live && s.watchUrl ? [{ label: "Watch", url: s.watchUrl, title: "" }] : [];
+  if (!links.length) return null;
+  return (
+    <div data-testid="stream-control-links" style={uiText(12, c.textMuted, { lineHeight: 1.6, display: "flex", flexWrap: "wrap", gap: "0 10px" })}>
+      {links.map((l) => (
+        <a key={l.label + l.url} href={l.url} target="_blank" rel="noreferrer" title={l.title || undefined} style={{ color: c.amber }}>{l.label}</a>
+      ))}
+    </div>
+  );
+}
+
+const CAMERA_TONE = { live: "green", down: "danger", starting: "amber" };
+const CAMERA_WORD = { live: "live", down: "down", starting: "starting" };
+
+// Each camera in the stream while it's live, as the plugin sends it: live, down (its square shows "Camera down"), or
+// starting
+function CameraStates({ cameras }) {
+  const down = cameras.filter((x) => x.state === "down").length;
+  return (
+    <div data-testid="stream-control-cameras" style={uiText(12, c.textMuted, { lineHeight: 1.6, marginTop: 2 })}>
+      <span style={{ color: down ? c.danger : c.textFaint }}>
+        {down ? `${down} of ${cameras.length} camera${cameras.length === 1 ? "" : "s"} down: ` : `All ${cameras.length} camera${cameras.length === 1 ? "" : "s"} live: `}
+      </span>
+      {cameras.map((x, i) => (
+        <span key={x.key || i}>
+          {i > 0 && " · "}
+          {x.label} <span style={{ color: c[CAMERA_TONE[x.state]], fontWeight: 600 }}>{CAMERA_WORD[x.state]}</span>
+        </span>
+      ))}
     </div>
   );
 }

@@ -79,7 +79,13 @@ class FakeStreams:
             return httpx.Response(200, json={
                 "settings": {"channel": "printfarm"} if host == "twitch" else self.own_layout,
                 "media": {"images": ["logo.png"], "slideshows": [{"name": "Prints", "images": ["a.png", "blank:1", "b.png"]}], "music": ["beat.mp3"]},
-                "status": {"live": live, "error": None, "youtube": {"watch_url": "https://youtu.be/x"} if live and host == "stream" else None},
+                "status": {
+                    "live": live, "error": None,
+                    "youtube": {"watch_url": "https://youtu.be/x", "studio_url": "https://studio.youtube.com/video/x/livestreaming", "viewers": 7}
+                    if live and host == "stream" else None,
+                    "camera_states": [{"key": "1:Nozzle", "label": "Voron", "state": "live", "since": 1},
+                                      {"key": "2:Bed", "label": "Prusa", "state": "down", "since": 2}] if live else [],
+                },
             })
         if path == "/api/stream-control/start":
             if host in self.refuse:
@@ -128,7 +134,8 @@ def test_no_added_plugin_can_take_its_id(api):
 def test_the_manifest_s_stream_control_entry_is_checked():
     from app.services.plugins import manifest
 
-    assert manifest.check(STREAM_MANIFEST)["stream_control"] == {"path": "/api/stream-control", "site": "YouTube"}
+    assert manifest.check(STREAM_MANIFEST)["stream_control"] == {"path": "/api/stream-control", "site": "YouTube", "settings": None}
+    assert manifest.check({**STREAM_MANIFEST, "stream_control": {"path": "/s", "settings": "/?view=x"}})["stream_control"]["settings"] == "/?view=x"
     assert manifest.check({**STREAM_MANIFEST, "stream_control": None})["stream_control"] is None
     for bad in ({"path": "api"}, {"site": "YouTube"}, "yes"):
         with pytest.raises(ValueError):
@@ -274,7 +281,18 @@ def test_the_youtube_and_twitch_plugins_from_before_stream_control_start_and_sto
     assert both["twitch"]["error"] == "There's no stream key yet." and both["stream"]["live"] is True
     del fake.refuse["twitch"]
     assert api.post("/stream-control/streams/twitch/start").json()["watch_url"] == "https://www.twitch.tv/printfarm"
-    assert all(not s["live"] for s in api.post("/stream-control/stop-all").json()["streams"])
+
+    # each stream's own links and cameras, as its own page shows them
+    listed = {s["id"]: s for s in api.get("/stream-control/streams").json()["streams"]}
+    assert [link["label"] for link in listed["stream"]["links"]] == ["Watch", "Chat and analytics"]
+    assert (listed["stream"]["settings_page"], listed["twitch"]["settings_page"]) == ("/?view=youtube-settings", "/?view=twitch-settings")
+    assert listed["stream"]["viewers"] == 7
+    assert [link["label"] for link in listed["twitch"]["links"]] == ["Watch", "Chat", "Stream Manager", "Analytics"]
+    assert listed["twitch"]["links"][1]["url"] == "https://www.twitch.tv/popout/printfarm/chat?popout="
+    assert [(c["label"], c["state"]) for c in listed["stream"]["cameras"]] == [("Voron", "live"), ("Prusa", "down")]
+
+    stopped = api.post("/stream-control/stop-all").json()["streams"]
+    assert all(not s["live"] for s in stopped) and all(s["cameras"] == [] for s in stopped)
 
 
 def test_copy_layout_makes_one_stream_s_own_layout_stream_control_s_with_its_pictures(api, tmp_path):
@@ -353,9 +371,16 @@ def test_a_stream_plugin_reads_the_design_and_its_files(api):
     got = api.get("/plugin-api/v1/stream/design", headers=headers).json()
     assert got["enabled"] is True and got["design"]["revision"] == 1 and got["design"]["cells"][0]["image"] == "logo.png"
     assert got["media"]["images"] == ["logo.png"]
+    stamp = got["media"]["stamps"]["images/logo.png"]
+    assert stamp.startswith(f"{len(PNG)}-")  # size and modified time: a plugin fetches a file only when it changed
     r = api.get("/plugin-api/v1/stream/pictures/logo.png", headers=headers)
     assert r.status_code == 200 and r.content == PNG and r.headers["content-type"] == "image/png"
     assert api.get("/plugin-api/v1/stream/pictures/gone.png", headers=headers).status_code == 404
+
+    # every picture copied at once (a stream with dozens of sponsors' logos): never told to slow down, though other calls are
+    assert all(api.get("/plugin-api/v1/stream/pictures/logo.png", headers=headers).status_code == 200 for _ in range(100))
+    assert any(api.get("/plugin-api/v1/stream/design", headers=headers).status_code == 429 for _ in range(100))
+    limits.reset()
 
     other = add_stream_plugin(api, "twitch", "Twitch", permissions=("cameras:read",))
     r = api.get("/plugin-api/v1/stream/design", headers={"Authorization": f"Bearer {other}"})

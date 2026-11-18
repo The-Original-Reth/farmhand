@@ -45,6 +45,10 @@ export const normalizeStreamPlugin = (s) => ({
   id: s.id, name: s.name, site: s.site, enabled: s.enabled, chosen: s.chosen !== false, live: s.live, following: s.following, error: s.error || null,
   watchUrl: s.watch_url || null, reachable: s.reachable, canReadDesign: !!s.can_read_design, hasPage: !!s.has_page,
   needsUpdate: !!s.needs_update, // a version from before Stream control: it starts and stops from here, but sends its own layout
+  // as its own page shows them: [{ label, url, title }] (Watch, Chat, Stream Manager...), each camera's state while live
+  // [{ key, label, state: "live" | "down" | "starting", since }], and YouTube's viewers (null: not known)
+  links: s.links || [], cameras: s.cameras || [], viewers: s.viewers ?? null,
+  settingsPage: s.settings_page || null, // its site's settings window, a page of its own ("/?view=youtube-settings")
 });
 
 // What the schedule did lately: [{ at, action: "start" | "stop", streams: "all" | [ids], results: [{ name, live, error }] }]

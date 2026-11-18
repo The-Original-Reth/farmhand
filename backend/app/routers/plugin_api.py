@@ -42,11 +42,24 @@ def plugin_caller(
     The plugin making the call, known by its token: 401 without one Farmhand knows, 429 when it asks too often, 403
     from somewhere other than its address when it's set to be taken only from there.
     """
+    return _caller(request, authorization, db, limited=True)
+
+
+def file_caller(
+    request: Request, authorization: str | None = Header(default=None), db: Session = Depends(get_db),
+) -> registry.Caller:
+    """plugin_caller for Stream control's files: not counted against how often a plugin may ask. A stream plugin
+    copies every picture the stream shows (dozens, sponsors' logos say) when it starts following, and they're only ever
+    the files in Stream control's stream folder."""
+    return _caller(request, authorization, db, limited=False)
+
+
+def _caller(request: Request, authorization: str | None, db: Session, limited: bool) -> registry.Caller:
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise HTTPException(status_code=401, detail=NO_TOKEN, headers={"WWW-Authenticate": "Bearer"})
     token = token.strip()
-    wait = limits.allow(registry.hash_token(token))
+    wait = limits.allow(registry.hash_token(token)) if limited else 0
     if wait:
         raise HTTPException(
             status_code=429, headers={"Retry-After": str(max(1, math.ceil(wait)))},
@@ -69,10 +82,11 @@ def plugin_caller(
     return caller
 
 
-def needs(permission: str) -> Callable[..., registry.Caller]:
-    """A dependency: the calling plugin, which must have been granted this permission (403 naming it otherwise)."""
+def needs(permission: str, limited: bool = True) -> Callable[..., registry.Caller]:
+    """A dependency: the calling plugin, which must have been granted this permission (403 naming it otherwise).
+    `limited`: counted against how often it may ask (all but Stream control's files)."""
 
-    def check(caller: registry.Caller = Depends(plugin_caller)) -> registry.Caller:
+    def check(caller: registry.Caller = Depends(plugin_caller if limited else file_caller)) -> registry.Caller:
         if permission not in caller.permissions:
             raise HTTPException(
                 status_code=403,
@@ -162,7 +176,7 @@ def stream_control_design(db: Session = Depends(get_db), caller: registry.Caller
         return {"enabled": False}
     found = stream_media.media(db)
     return {"enabled": True, "design": stream_design.settings(db),
-            "media": {k: found[k] for k in ("images", "slideshows", "music", "error")}}
+            "media": {k: found[k] for k in ("images", "slideshows", "music", "error", "stamps")}}
 
 
 def _stream_file(db: Session, find):
@@ -179,16 +193,16 @@ def _stream_file(db: Session, find):
     return FileResponse(path, media_type=kind, headers={"Cache-Control": "no-cache"})
 
 
-@router.get("/stream/pictures/{name}", dependencies=[Depends(needs("stream:read"))])
+@router.get("/stream/pictures/{name}", dependencies=[Depends(needs("stream:read", limited=False))])
 def stream_picture(name: str, db: Session = Depends(get_db)):
     return _stream_file(db, lambda: stream_media.picture_path(db, None, name))
 
 
-@router.get("/stream/slideshows/{show}/pictures/{name}", dependencies=[Depends(needs("stream:read"))])
+@router.get("/stream/slideshows/{show}/pictures/{name}", dependencies=[Depends(needs("stream:read", limited=False))])
 def stream_slideshow_picture(show: str, name: str, db: Session = Depends(get_db)):
     return _stream_file(db, lambda: stream_media.picture_path(db, show, name))
 
 
-@router.get("/stream/music/{name}", dependencies=[Depends(needs("stream:read"))])
+@router.get("/stream/music/{name}", dependencies=[Depends(needs("stream:read", limited=False))])
 def stream_track(name: str, db: Session = Depends(get_db)):
     return _stream_file(db, lambda: stream_media.track_path(db, name))
