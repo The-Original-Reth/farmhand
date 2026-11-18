@@ -171,19 +171,22 @@ const CAMERA_WORD = { live: "live", down: "down", starting: "starting" };
 
 // Each camera in the stream while it's live, as the plugin sends it: live, down (its square shows "Camera down"), or
 // starting
+// (as a list in two columns, each line the printer's name, then live, down or starting)
 function CameraStates({ cameras }) {
   const down = cameras.filter((x) => x.state === "down").length;
   return (
     <div data-testid="stream-control-cameras" style={uiText(12, c.textMuted, { lineHeight: 1.6, marginTop: 2 })}>
-      <span style={{ color: down ? c.danger : c.textFaint }}>
-        {down ? `${down} of ${cameras.length} camera${cameras.length === 1 ? "" : "s"} down: ` : `All ${cameras.length} camera${cameras.length === 1 ? "" : "s"} live: `}
-      </span>
-      {cameras.map((x, i) => (
-        <span key={x.key || i}>
-          {i > 0 && " · "}
-          {x.label} <span style={{ color: c[CAMERA_TONE[x.state]], fontWeight: 600 }}>{CAMERA_WORD[x.state]}</span>
-        </span>
-      ))}
+      <div style={{ color: down ? c.danger : c.textFaint }}>
+        {down ? `${down} of ${cameras.length} camera${cameras.length === 1 ? "" : "s"} down` : `All ${cameras.length} camera${cameras.length === 1 ? "" : "s"} live`}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: 14 }}>
+        {cameras.map((x, i) => (
+          <div key={x.key || i} data-testid="stream-control-camera" style={{ display: "flex", gap: 6, minWidth: 0 }}>
+            <span style={{ color: c.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={x.label}>{x.label}</span>
+            <span style={{ color: c[CAMERA_TONE[x.state]], fontWeight: 600, flexShrink: 0 }}>{CAMERA_WORD[x.state]}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
