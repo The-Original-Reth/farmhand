@@ -1,0 +1,241 @@
+"""
+Stream control, Farmhand's built-in plugin (services/stream_control): the one stream designed here, its pictures and
+music in the stream folder, its saved layouts, the stream plugins started and stopped from here, and the schedule.
+Every route answers 404 while Stream control is switched off (the Plugins page switches it: PATCH /plugins/stream-control).
+Changes answer the whole page (GET /stream-control) except where said.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from ..database import get_db
+from ..errors import answer_errors
+from ..services import stream_control
+from ..services.stream_control import design, fonts, layouts, media, schedule, streams
+from ..services.stream_control.page import page
+from .common import require_confirm
+
+
+def switched_on(db: Session = Depends(get_db)) -> None:
+    with answer_errors():
+        stream_control.require_on(db)
+
+
+router = APIRouter(prefix="/stream-control", tags=["stream control"], dependencies=[Depends(switched_on)])
+
+
+class SlideshowIn(BaseModel):
+    name: str = Field(..., max_length=200)  # a slideshow's (new) name: its folder's in the stream folder's slideshows
+
+
+class SlideshowOrderIn(BaseModel):
+    order: list[str] = Field(..., max_length=2000)  # its pictures' file names (and blank screens) in the order chosen
+
+
+@router.get("")
+def stream_control_page(db: Session = Depends(get_db)):
+    return page(db)
+
+
+@router.put("")
+def save_design(body: dict = Body(...), db: Session = Depends(get_db)):
+    """Save the stream's design: what's sent changes, the rest stays (see design.save). The stream plugins following
+    it pick the change up themselves (its revision goes up by one)."""
+    with answer_errors():
+        design.save(db, body)
+    return page(db)
+
+
+# ------------------------------------------------------------------ the stream plugins
+
+
+@router.get("/streams")
+def stream_plugins(db: Session = Depends(get_db)):
+    """Each stream plugin and how its stream is doing (the page asks every few seconds)."""
+    return {"streams": streams.listed(db), "happened": schedule.happened()}
+
+
+class ChosenIn(BaseModel):
+    chosen: list[str] = Field(..., max_length=100)  # the stream plugins' ids to bring in; the others are left out
+
+
+@router.put("/streams")
+def choose_streams(body: ChosenIn, db: Session = Depends(get_db)):
+    """Which stream plugins Stream control brings in: {streams, happened}. One left out keeps its own layout and isn't
+    started or stopped from here. In the settings copy."""
+    with answer_errors():
+        return {"streams": streams.choose(db, body.chosen), "happened": schedule.happened()}
+
+
+@router.post("/streams/{plugin_id}/{action}")
+def start_or_stop(plugin_id: str, action: str, db: Session = Depends(get_db)):
+    """Start or stop one stream plugin's stream: its entry as it answered (`error` says why it didn't)."""
+    if action not in ("start", "stop"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    with answer_errors():
+        return (streams.start if action == "start" else streams.stop)(db, plugin_id)
+
+
+@router.post("/start-all")
+def start_all(db: Session = Depends(get_db)):
+    """Every switched-on stream plugin told to go live: {streams: [each one's entry as it answered]}."""
+    return {"streams": streams.all_of(db, "start")}
+
+
+@router.post("/stop-all")
+def stop_all(db: Session = Depends(get_db)):
+    return {"streams": streams.all_of(db, "stop")}
+
+
+@router.put("/schedule")
+def save_schedule(body: dict = Body(...), db: Session = Depends(get_db)):
+    """{on, entries: [{days: [0 (Monday) to 6], start: "HH:MM" | null, stop: "HH:MM" | null, streams: "all" | [ids]}]}."""
+    with answer_errors():
+        schedule.save(db, body)
+    return page(db, with_streams=False)
+
+
+@router.put("/layouts")
+def save_layouts(body: list = Body(...), db: Session = Depends(get_db)):
+    """The saved layouts, all of them (each named; anything that can't be one is left out)."""
+    with answer_errors():
+        layouts.save(db, body)
+    return page(db, with_streams=False)
+
+
+# ------------------------------------------------------------------ the stream folder: pictures, slideshows, music
+
+# An SVG can carry scripts: opened on its own it would run them as this page. It's sent as a picture that can't
+SVG_HEADERS = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+               "X-Content-Type-Options": "nosniff"}
+
+
+def picture_answer(path) -> Response:
+    kind = media.PICTURE_TYPES[path.suffix.lower()]
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "no-cache", **(SVG_HEADERS if kind == "image/svg+xml" else {})})
+
+
+def _media(call):
+    with answer_errors():
+        return call()
+
+
+@router.post("/scan")
+def scan_folder(db: Session = Depends(get_db)):
+    """Read the stream folder again (pictures or music copied in, or taken out, by hand)."""
+    media.media(db, scan=True)
+    return page(db, with_streams=False)
+
+
+@router.get("/pictures/{name}")
+def get_picture(name: str, db: Session = Depends(get_db)):
+    return picture_answer(_media(lambda: media.picture_path(db, None, name)))
+
+
+@router.post("/pictures", status_code=201)
+async def add_pictures(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """Pictures (PNG, JPEG, WebP or SVG, under 10 MB each) into the stream folder's images."""
+    for file in files:
+        data = await file.read(media.PICTURE_MAX + 1)
+        _media(lambda: media.add_picture(db, None, file.filename or "", data))
+    return page(db, with_streams=False)
+
+
+@router.delete("/pictures/{name}")
+def delete_picture(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    """Delete a picture from the stream folder. Squares showing it keep their colour and words."""
+    require_confirm(confirm)
+    _media(lambda: media.remove_picture(db, None, name))
+    return page(db, with_streams=False)
+
+
+@router.post("/slideshows", status_code=201)
+def add_slideshow(body: SlideshowIn, db: Session = Depends(get_db)):
+    _media(lambda: media.add_slideshow(db, body.name))
+    return page(db, with_streams=False)
+
+
+@router.put("/slideshows/{name}")
+def rename_slideshow(name: str, body: SlideshowIn, db: Session = Depends(get_db)):
+    """Rename a slideshow: its folder, and every square showing it (in the design and saved layouts) follows."""
+    new = _media(lambda: media.rename_slideshow(db, name, body.name))
+    if new != name:
+        design.rename_slideshow(db, name, new)
+    return page(db, with_streams=False)
+
+
+@router.delete("/slideshows/{name}")
+def delete_slideshow(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    """Delete a slideshow: its pictures, then its folder (left when it holds anything else)."""
+    require_confirm(confirm)
+    _media(lambda: media.remove_slideshow(db, name))
+    return page(db, with_streams=False)
+
+
+@router.post("/slideshows/{name}/blanks", status_code=201)
+def add_blank(name: str, db: Session = Depends(get_db)):
+    """A blank screen at the end of a slideshow (its colour and the words written on it)."""
+    _media(lambda: media.add_blank(db, name))
+    return page(db, with_streams=False)
+
+
+@router.put("/slideshows/{name}/order")
+def order_slideshow(name: str, body: SlideshowOrderIn, db: Session = Depends(get_db)):
+    _media(lambda: media.set_order(db, name, body.order))
+    return page(db, with_streams=False)
+
+
+@router.get("/slideshows/{name}/pictures/{picture}")
+def get_slideshow_picture(name: str, picture: str, db: Session = Depends(get_db)):
+    return picture_answer(_media(lambda: media.picture_path(db, name, picture)))
+
+
+@router.post("/slideshows/{name}/pictures", status_code=201)
+async def add_slideshow_pictures(name: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    for file in files:
+        data = await file.read(media.PICTURE_MAX + 1)
+        _media(lambda: media.add_picture(db, name, file.filename or "", data))
+    return page(db, with_streams=False)
+
+
+@router.delete("/slideshows/{name}/pictures/{picture}")
+def delete_slideshow_picture(name: str, picture: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    require_confirm(confirm)
+    _media(lambda: media.remove_picture(db, name, picture))
+    return page(db, with_streams=False)
+
+
+@router.get("/music/{name}")
+def get_track(name: str, db: Session = Depends(get_db)):
+    path = _media(lambda: media.track_path(db, name))
+    return FileResponse(path, media_type=media.TRACK_TYPES[path.suffix.lower()], headers={"Cache-Control": "no-cache"})
+
+
+@router.post("/music", status_code=201)
+async def add_tracks(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """MP3s into the stream folder's music (under 50 MB each; bigger ones can be copied in by hand)."""
+    for file in files:
+        data = await file.read(media.TRACK_MAX + 1)
+        _media(lambda: media.add_track(db, file.filename or "", data))
+    return page(db, with_streams=False)
+
+
+@router.delete("/music/{name}")
+def delete_track(name: str, confirm: bool = Query(False), db: Session = Depends(get_db)):
+    require_confirm(confirm)
+    _media(lambda: media.remove_track(db, name))
+    return page(db, with_streams=False)
+
+
+@router.get("/fonts/{key}")
+def get_font(key: str):
+    """A font the stream's words can be written in, for the page to show them as the stream will (404 when this
+    Farmhand doesn't have it: the page uses its kind of font)."""
+    path = fonts.font_file(key)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(path, media_type="font/otf" if path.endswith(".otf") else "font/ttf",
+                        headers={"Cache-Control": "max-age=86400"})

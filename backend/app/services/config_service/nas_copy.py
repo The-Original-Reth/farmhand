@@ -17,6 +17,7 @@ from ... import config_store, record_files, storage
 from ...models import NetworkShare, Printer
 from .. import app_settings, records_service
 from ..plugins import registry as plugin_registry
+from ..stream_control import settings_copy as stream_control_copy
 
 from .settings import get_config
 
@@ -48,6 +49,7 @@ def build_document(db: Session) -> dict:
         project_path=storage.custom_path("project"), farm_cost_path=app_settings.get(db, FARM_COST_LOCATION),
         printer_names={p.id: p.name for p in db.scalars(select(Printer))},
         plugins=plugin_registry.mirror_entries(db), printer_backups_path=app_settings.get(db, BACKUPS_LOCATION),
+        stream_control=stream_control_copy.entry(db),
     )
 
 

@@ -7,11 +7,12 @@ const EVERY_MS = 30000; // as often as Farmhand asks each plugin whether it's we
 // 30 seconds, and again with refresh() after a change. `loaded` once the first answer came (or failed).
 export function usePlugins() {
   const [plugins, setPlugins] = useState([]);
+  const [builtin, setBuiltin] = useState([]); // the plugins built into Farmhand (Stream control): switched on or off only
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(
     () =>
       getPlugins()
-        .then((r) => setPlugins(r.plugins))
+        .then((r) => (setPlugins(r.plugins), setBuiltin(r.builtin)))
         .catch(() => {}) // an API from before plugins, or one that's away: no plugin pages, nothing else changes
         .finally(() => setLoaded(true)),
     []
@@ -21,7 +22,7 @@ export function usePlugins() {
     const timer = setInterval(refresh, EVERY_MS);
     return () => clearInterval(timer);
   }, [refresh]);
-  // the plugins with a page in the menu: switched on, with a page in their manifest
-  const withPages = plugins.filter((p) => p.enabled && p.page);
-  return { plugins, withPages, loaded, refresh };
+  // the plugins with a page in the menu: switched on, with a page in their manifest (the built-in ones first)
+  const withPages = [...builtin, ...plugins].filter((p) => p.enabled && p.page);
+  return { plugins, builtin, withPages, loaded, refresh };
 }

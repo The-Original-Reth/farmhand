@@ -22,6 +22,9 @@ import { ToolsSection } from "./tools/ToolsSection.jsx";
 import { PluginsSection } from "./plugins/PluginsSection.jsx";
 import { PluginPage } from "./plugins/PluginPage.jsx";
 import { usePlugins } from "./plugins/usePlugins.js";
+import { StreamControlSection } from "./streamControl/StreamControlSection.jsx";
+
+const STREAM_CONTROL = "stream-control"; // the plugin built into Farmhand: its page is Farmhand's own, not a plugin's iframe
 import { AppearancePage, Crumb, FullPageMessage, LoadingPage } from "./shell/pages.jsx";
 import { Sidebar } from "./shell/Sidebar.jsx";
 import { useCompare } from "./shell/useCompare.js";
@@ -33,6 +36,26 @@ function SectionPage({ section, nav, compare, settings, plugins }) {
   const { appearance, energy, farmCost, monitor, modelSort, printerSort, saveState, tools } = settings;
   const comparing = { compareSelection: compare.selection, toggleCompareSelect: compare.toggle };
   const pluginId = section.match(PLUGIN_SECTION)?.[1];
+  if (pluginId === STREAM_CONTROL) {
+    // built into Farmhand: its own page, while it's switched on
+    const on = plugins.builtin.find((p) => p.id === STREAM_CONTROL)?.enabled;
+    if (!on) {
+      return (
+        <div data-testid="stream-control-off" style={{ ...ui, fontSize: fs(13), color: c.textMuted }}>
+          {plugins.loaded ? (
+            <>
+              Stream control is switched off.{" "}
+              <button type="button" onClick={() => nav.goTo("plugins")} style={{ ...ui, fontSize: fs(13), background: "none", border: "none", padding: 0, color: c.amber, textDecoration: "underline", cursor: "pointer" }}>
+                Switch it on on the Plugins page
+              </button>{" "}
+              to use it.
+            </>
+          ) : "Loading…"}
+        </div>
+      );
+    }
+    return <StreamControlSection onOpenPlugin={(id) => nav.goTo(pluginSection(id))} onOpenPlugins={() => nav.goTo("plugins")} />;
+  }
   if (pluginId) {
     return (
       <PluginPage
@@ -71,7 +94,7 @@ function SectionPage({ section, nav, compare, settings, plugins }) {
     case "tools":
       return <ToolsSection links={tools.links} onSave={tools.save} />;
     case "plugins":
-      return <PluginsSection plugins={plugins.plugins} onChanged={plugins.refresh} onOpenPage={(id) => nav.goTo(pluginSection(id))} />;
+      return <PluginsSection plugins={plugins.plugins} builtin={plugins.builtin} onChanged={plugins.refresh} onOpenPage={(id) => nav.goTo(pluginSection(id))} />;
     case "appearance":
       return (
         <AppearancePage
@@ -107,7 +130,7 @@ function FarmhandApp() {
     bundles,
     projects,
     bundleTitle,
-    pluginName: (id) => plugins.plugins.find((p) => p.id === id)?.page?.menu || id,
+    pluginName: (id) => [...plugins.builtin, ...plugins.plugins].find((p) => p.id === id)?.page?.menu || id,
     onLeave: (to) => to !== "appearance" && settings.appearance.discard(),
   });
   const compare = useCompare(versionIndex);
@@ -200,7 +223,7 @@ function FarmhandApp() {
             </div>}
           </div>
         </div>
-        {PLUGIN_SECTION.test(nav.section) ? (
+        {PLUGIN_SECTION.test(nav.section) && nav.section !== pluginSection(STREAM_CONTROL) ? (
           // a plugin's page fills the space under the top bar, and scrolls itself
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
             <SectionPage section={nav.section} nav={nav} compare={compare} settings={settings} plugins={plugins} />

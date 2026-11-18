@@ -13,12 +13,17 @@ import math
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..errors import NotFound
+from ..services import stream_control
 from ..services.plugins import answers, events, handover, limits, registry, remote
 from ..services.plugins.manifest import API_VERSION
+from ..services.stream_control import design as stream_design
+from ..services.stream_control import media as stream_media
+from ..services.stream_control import streams as stream_streams
 from .common import require_printer
 
 router = APIRouter(prefix=f"/plugin-api/v{API_VERSION}", tags=["plugin API"])
@@ -140,3 +145,50 @@ def stream_migrate(db: Session = Depends(get_db), caller: registry.Caller = Depe
         return handover.stream_handover(db, caller.plugin_id)
     except handover.AlreadyHandedOver as e:
         raise HTTPException(status_code=410, detail=str(e)) from None
+
+
+# ------------------------------------------------------------------ stream:read (a stream plugin sending Stream control's stream)
+
+
+@router.get("/stream/design")
+def stream_control_design(db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:read"))):
+    """
+    The stream designed in Stream control: {enabled, design (its grid, words, colours, music...: see docs/plugins.md),
+    media: {images, slideshows: [{name, images}], music, error}}. Switched off, or this plugin not brought into it:
+    {enabled: false} alone, and the plugin sends its own layout. design.revision goes up by one each time it's saved:
+    ask again every few seconds, and change the stream when it has.
+    """
+    if not stream_control.enabled(db) or not stream_streams.is_chosen(db, caller.plugin_id):
+        return {"enabled": False}
+    found = stream_media.media(db)
+    return {"enabled": True, "design": stream_design.settings(db),
+            "media": {k: found[k] for k in ("images", "slideshows", "music", "error")}}
+
+
+def _stream_file(db: Session, find):
+    """A file of Stream control's stream folder (404 while it's switched off, or when the file isn't there)."""
+    if not stream_control.enabled(db):
+        raise HTTPException(status_code=404, detail="Stream control is switched off.")
+    try:
+        path = find()
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    kind = stream_media.PICTURE_TYPES.get(path.suffix.lower()) or stream_media.TRACK_TYPES.get(path.suffix.lower())
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/stream/pictures/{name}", dependencies=[Depends(needs("stream:read"))])
+def stream_picture(name: str, db: Session = Depends(get_db)):
+    return _stream_file(db, lambda: stream_media.picture_path(db, None, name))
+
+
+@router.get("/stream/slideshows/{show}/pictures/{name}", dependencies=[Depends(needs("stream:read"))])
+def stream_slideshow_picture(show: str, name: str, db: Session = Depends(get_db)):
+    return _stream_file(db, lambda: stream_media.picture_path(db, show, name))
+
+
+@router.get("/stream/music/{name}", dependencies=[Depends(needs("stream:read"))])
+def stream_track(name: str, db: Session = Depends(get_db)):
+    return _stream_file(db, lambda: stream_media.track_path(db, name))

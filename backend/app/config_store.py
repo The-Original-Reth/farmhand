@@ -258,7 +258,7 @@ def _path_or_none(value) -> str | None:
 def build_document(
     config: dict, stl_path: str | None, threemf_path: str | None, shares: list[dict], project_path: str | None = None,
     farm_cost_path: str | None = None, printer_names: dict[int, str] | None = None,
-    plugins: list[dict] | None = None, printer_backups_path: str | None = None,
+    plugins: list[dict] | None = None, printer_backups_path: str | None = None, stream_control: dict | None = None,
 ) -> dict:
     """What gets written. Share entries are cut down to the fields in SHARE_FIELDS — never a password. printer_names:
     each printer's number here and its name, so the orders kept by number (Farm cost, Monitor) come back in the right
@@ -276,6 +276,8 @@ def build_document(
         "printer_names": {str(k): v for k, v in (printer_names or {}).items()},
         # the plugins installed and the permissions granted to each (registry.mirror_entries): never a token
         "plugins": plugins or [],
+        # the built-in Stream control: on or off, its stream's design, saved layouts and schedule (stream_control/settings_copy.py)
+        "stream_control": stream_control or {},
     }
 
 
@@ -339,6 +341,8 @@ def read_document(folder: str | os.PathLike) -> dict | None:
         "printer_backups": {"path": _path_or_none(backups.get("path"))},
         # the plugins installed (registry.mirror_entries; files from before plugins have none). Checked when put back
         "plugins": [e for e in (raw.get("plugins") if isinstance(raw.get("plugins"), list) else [])[:100] if isinstance(e, dict)],
+        # Stream control (files from before it have none); checked when put back
+        "stream_control": raw.get("stream_control") if isinstance(raw.get("stream_control"), dict) else {},
         # files from before it have none: their orders are taken as they are
         "printer_names": {
             k: v for k, v in (raw.get("printer_names") if isinstance(raw.get("printer_names"), dict) else {}).items()

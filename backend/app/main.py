@@ -13,7 +13,7 @@ from .database import SessionLocal, create_schema, engine
 from .notes import NotesConflict, conflict_response
 from .routers import (
     bundles, config_backups, config_settings, farm_cost, moonraker, plugin_api, plugins, printers, projects, prusalink, source_models,
-    storage_settings,
+    storage_settings, stream_control,
 )
 from .services import storage_settings_service
 from .services.moonraker import MoonrakerError
@@ -62,6 +62,7 @@ app.include_router(config_backups.router)
 app.include_router(prusalink.router)
 app.include_router(farm_cost.router)
 app.include_router(plugins.router)
+app.include_router(stream_control.router)  # the built-in Stream control plugin
 app.include_router(plugin_api.router)  # for plugins' containers only: see docs/plugins.md
 
 

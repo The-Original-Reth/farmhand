@@ -389,10 +389,14 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 **Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
 **YouTube** — the cameras you choose sent live to YouTube, no OBS needed, by the YouTube Stream plugin: once it's added
-on the Plugins page, YouTube is in the menu after Monitor (see "Stream")
+on the Plugins page, YouTube is in the plugins part of the menu, below Appearance (see "Stream")
 
 **Twitch** — the same for Twitch, by the Twitch Stream plugin, independent of YouTube (both can run at once): once
 it's added, Twitch is in the menu right after YouTube (see "Stream")
+
+**Stream control** — a plugin built into Farmhand, off until it's switched on on the Plugins page: one stream designed
+in Farmhand that the YouTube and Twitch plugins both send out, with Go live and Stop for each or all at once, and a
+schedule (see "Stream control")
 
 **Power** — the whole farm's energy use (see "Power")
 
@@ -699,7 +703,7 @@ page of its own and runs no ffmpeg.
 
 To set it up, open **Plugins** and unfold **Run a plugin in its own container**, choose **Stream**, and follow the
 steps: its folder, its docker-compose file (Copy, Download, or the `curl` line that fetches it), its port, and its
-`stream.env`. Once the plugin is added, **Stream** appears in the menu where it always was, after Monitor, and opens the
+`stream.env`. Once the plugin is added, **Stream** appears in the plugins part of the menu (below Appearance, after Stream control) and opens the
 plugin's page; an old `/stream` bookmark opens it too.
 
 A Farmhand that had its own Stream page keeps what that page had saved (its settings and layouts, the stream key and
@@ -712,7 +716,47 @@ Streaming to **Twitch** is a separate plugin, **Twitch Stream**
 same grid of cameras, cards, slideshows and music, with its own layout, cameras, pictures, music and Twitch stream key,
 so the two never get in each other's way and can run on the same machine at once (Twitch on port 8081, YouTube on
 8080). Under **Run a plugin in its own container**, choose **Twitch Stream** for its steps (`/opt/farmhand-twitch`,
-`twitch.env`). Once it's added, **Twitch** is in the menu after Monitor, right after YouTube.
+`twitch.env`). Once it's added, **Twitch** is in the menu right after YouTube.
+
+### Stream control
+
+**Stream control** is a plugin built into Farmhand itself (not a container added by address): one stream designed in
+Farmhand, which the YouTube and Twitch stream plugins each send to their own site. It's off until it's switched on: on
+the **Plugins** page its card (marked "built into Farmhand") has an on/off slider. Switched on, **Stream
+control** is first in the plugins part of the menu (below Appearance), level with YouTube, Twitch and the other plugins; switched off, its page and menu entry are hidden (YouTube and Twitch stay where they are), the schedule rests,
+and what it saved is kept for when it's switched on again.
+
+Its page is the stream plugins' own editor, moved into Farmhand:
+
+- **The stream**: the grid of squares (1×1 to 5×5), each a camera, a card (its colour, a picture or a slideshow, and
+  words, with more pictures and pieces of text placed on it) or nothing; the whole grid or taking turns; the size
+  (720p, 1080p or 2K), border, background, the words' font and colour, each printer's name and print on its camera;
+  the music (MP3s, its volume and shuffling); the holding screen; and saved layouts to switch between. The preview
+  plays it in the browser; **Save** saves it, and each stream plugin following it picks the change up itself.
+- **Title, description and delay**: what each site shows with the stream, and how long each plugin holds the stream
+  before its site gets it. What only one site has (its stream key, sign-in, YouTube privacy or Twitch category) stays on
+  that plugin's own page.
+- **Streams**: each stream plugin added to Farmhand (one whose manifest says it can be started from here, and the
+  YouTube and Twitch plugins as they are now), with how its stream is doing, **Go live** and **Stop**, and **Go live
+  everywhere** / **Stop all**. Each has a tick box: Stream control brings in only the streams ticked (all of them until
+  any is unticked). A ticked one sends Stream control's layout in place of its own (its own is kept, and comes back
+  when it's unticked or Stream control is switched off), and its own page says **"Controlled by Stream control"**
+  where its layout editor was. One left out keeps its own layout, and goes live and stops only from its own page: Go
+  live everywhere, Stop all and the schedule pass it over. The YouTube and Twitch plugins as they are now go live and
+  stop from here but still send their own layout (the page says they need an update), and a plugin that wasn't
+  granted `stream:read` says so.
+- **Schedule**: times on the days chosen when all the streams, or only some, go live and stop by themselves, in the
+  farm's time zone (a stop earlier than its start is the next morning's). Farmhand has to be running then: a time it
+  misses isn't done late.
+
+Its pictures, slideshows and music are files in Farmhand's **stream folder**: `stream` beside the STL folder (beside
+`farm-cost`), so on the NAS when the STL folder is. Uploaded on the page, or copied in by hand and found with **Scan
+folder**, laid out as a stream plugin's own stream folder (`images/`, `slideshows/<name>/`, `music/`). The design,
+saved layouts and schedule are in the settings copy, and Load all puts them back on a Farmhand that has none of its own.
+
+A stream plugin sends this stream only once it supports Stream control (it reads the design through the plugin API's
+`stream:read` permission, and says where Farmhand starts and stops it): see "Stream control" in
+[docs/plugins.md](docs/plugins.md).
 
 ## Power
 
@@ -1087,8 +1131,8 @@ Stream page is gone, and the plugin, in a container of its own, has it all (grid
 turns, YouTube sign-in or a pasted key), so Farmhand's updates and restarts never stop the stream. Each camera is read
 on its own (one that stops shows a "Camera down" square with the printer's name until it's back); it goes live again
 by itself after its own restart and carries on while Farmhand is down (the words under the cameras are then just the
-printers' names). It reads only the cameras' addresses and what's printing. Once it's added, **Stream** is in the menu
-after Monitor, where Farmhand's own Stream page used to be. Given the `stream:migrate` permission, it takes a copy of
+printers' names). It reads only the cameras' addresses and what's printing. Once it's added, **YouTube** is
+in the plugins part of the menu (below Appearance). Given the `stream:migrate` permission, it takes a copy of
 the Stream page set-up an older Farmhand saved (settings, layouts, stream key and YouTube sign-in) once, the first time
 it starts. **The Twitch Stream plugin** ([farmhand-twitch-plugin](https://github.com/The-Original-Reth/farmhand-twitch-plugin),
 its own repository) does the same for Twitch, independently of the YouTube one; both can run on one machine. Once it's
@@ -1104,8 +1148,11 @@ put in the env file beside its docker-compose.yml (`stream.env` for Stream), bef
 you can switch a plugin off (its token is refused and its page leaves the menu), make it a new token (the old one stops
 working), or remove it (its container stays where it runs).
 
-A plugin with a page of its own gets an entry in the menu, below Farmhand's own pages (Stream's goes after Monitor,
-where Farmhand's own Stream page was); its page shows inside Farmhand, in Farmhand's colours,
+**Stream control** is listed first, marked "built into Farmhand": it's part of Farmhand, so it has no address, token or
+Remove, only an on/off slider (see "Stream control").
+
+A plugin with a page of its own gets an entry in the menu, below Farmhand's own pages (Stream control, YouTube and Twitch first,
+then the rest by name); its page shows inside Farmhand, in Farmhand's colours,
 passed on from wherever the plugin runs. When the plugin isn't running, the page says so, with why.
 
 The plugin API is answered on the API's port 4545 (a plugin may be on another machine), never through the web page's
