@@ -466,6 +466,12 @@ export function printingRoutes(ctx) {
     const name = body.files?.[0] || "";
     if (!/\.(bgcode|gcode)$/i.test(name)) throw new HttpError(422, "The printer can only print a sliced .bgcode or .gcode file. Slice the 3MF first.");
     if (liveJob(p)) throw new HttpError(409, "The printer isn't ready for a new print (it says PRINTING).");
+    if (p.statusFrom) { // connected through a plugin: handed to it, as the real API does, when it may start prints
+      const plugin = (farm.plugins || []).find((x) => x.id === p.statusFrom);
+      if (!plugin?.enabled || !plugin.permissions.includes("printers:print")) {
+        throw new HttpError(502, `The ${plugin?.name || p.statusFrom} plugin can't start prints on ${p.name}: it needs a version that does, added with the "start the prints you send" permission (Plugins page).`);
+      }
+    }
     p.prusalink.finished = null;
     (farm.jobs[p.id] ??= []).push({
       job_id: `${42 + farm.jobs[p.id].length}@mock`, filename: name, status: "in_progress", start: nowUnix(), printS: 0, totalS: 0,

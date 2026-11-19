@@ -11,6 +11,7 @@ address" has its token refused from anywhere else (403), and each token may make
 from __future__ import annotations
 
 import math
+from urllib.parse import quote
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -188,6 +189,32 @@ def report_status(
         raise HTTPException(status_code=403, detail=str(e)) from None
     seen = print_progress.progress(db, printer)  # records its prints, and tells plugins listening for events
     return {"recorded": seen["error"] is None, "error": seen["error"]}
+
+
+@router.get("/prints/{ticket}/file")
+def print_file(ticket: str, caller: registry.Caller = Depends(needs("printers:print", limited=False))):
+    """
+    The G-code of a print Farmhand is handing the plugin (it POSTed the ticket to the plugin's print path, and waits
+    for its answer). Once per ticket, only for the plugin it was given to. X-Farmhand-File is the file's name.
+    """
+    held = printer_reports.take_ticket(ticket, caller.plugin_id)
+    if held is None:
+        raise HTTPException(status_code=404, detail="No print is waiting for this plugin under that ticket (it was "
+                            "fetched already, or Farmhand stopped waiting).")
+    data = held["data"]
+
+    def chunks():
+        if isinstance(data, bytes):
+            yield data
+            return
+        data.seek(0)
+        while chunk := data.read(1024 * 1024):
+            yield chunk
+
+    headers = {"X-Farmhand-File": quote(held["name"])}
+    if held["size"] is not None:
+        headers["Content-Length"] = str(held["size"])
+    return StreamingResponse(chunks(), media_type="application/octet-stream", headers=headers)
 
 
 @router.get("/farm", dependencies=[Depends(needs("farm:read"))])

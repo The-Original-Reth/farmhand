@@ -97,6 +97,21 @@ def check_health(address: str, path: str | None) -> tuple[str, str | None]:
     return "running", None
 
 
+def hand_print(address: str, path: str, body: dict, timeout: httpx.Timeout) -> tuple[int, dict]:
+    """POST a print to a plugin's print path (manifest "print"): (status, its JSON answer). ValueError when nothing
+    answers, in plain words."""
+    try:
+        with httpx.Client(transport=transport, timeout=timeout, follow_redirects=False) as client:
+            r = client.post(f"{address}{path}", json=body, headers={"Accept": "application/json"})
+    except httpx.HTTPError as e:
+        raise ValueError(unreachable(address, e)) from None
+    try:
+        answer = r.json()
+    except ValueError:
+        answer = {}
+    return r.status_code, answer if isinstance(answer, dict) else {}
+
+
 def host_of(address: str) -> str:
     return urlsplit(address).hostname or ""
 

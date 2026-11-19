@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Upload } from "lucide-react";
 import { c } from "../theme.js";
-import { fieldBox, foldHeading, headerButton, panelBox, uiText } from "../styles.js";
-import { errorText, getPrintStats, getPrusaLinkStatus, getStatusReporters, sendPrint, setPrinterStatusFrom } from "../api.js";
+import { foldHeading, headerButton, panelBox, uiText } from "../styles.js";
+import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
@@ -75,55 +75,6 @@ export function usePrusaLink(printerId, key, onChanged) {
 const fmtTemp = (now, target) => (now == null ? "—" : `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ""}`);
 
 // Live status (state, temperatures, the print running), Farmhand's statistics for it, "Open PrusaLink" and "Send a print"
-// Where a Prusa printer's status comes from: its own PrusaLink (the default), or a plugin that reports it (the Prusa
-// Connect plugin, say). Shown only when there's such a plugin, or the printer already uses one.
-function StatusSource({ printer, onPrinterChanged }) {
-  const [reporters, setReporters] = useState([]);
-  const [error, setError] = useState(null);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    getStatusReporters().then(setReporters).catch(() => setReporters([]));
-  }, []);
-  const known = reporters.some((r) => r.id === printer.statusFrom);
-  if (!reporters.length && !printer.statusFrom) return null;
-
-  const choose = async (pluginId) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await setPrinterStatusFrom(printer.id, pluginId || null);
-      await onPrinterChanged?.();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div data-testid="prusalink-status-from" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-      <label htmlFor="prusalink-status-from" style={uiText(12, c.textMuted)}>Status from</label>
-      <select
-        id="prusalink-status-from"
-        value={printer.statusFrom || ""}
-        disabled={saving}
-        onChange={(e) => choose(e.target.value)}
-        style={{ ...fieldBox(), padding: "5px 8px" }}
-      >
-        <option value="">Its own PrusaLink</option>
-        {reporters.map((r) => (
-          <option key={r.id} value={r.id}>{r.name} plugin</option>
-        ))}
-        {printer.statusFrom && !known && <option value={printer.statusFrom}>{printer.statusFrom} plugin (not available)</option>}
-      </select>
-      <span style={uiText(12, c.textFaint)}>
-        {printer.statusFrom ? "Prints are still sent to its PrusaLink." : "Or a plugin that reports printers, like Prusa Connect."}
-      </span>
-      {error && <span role="alert" style={uiText(12, c.danger)}>{error}</span>}
-    </div>
-  );
-}
-
 export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = true, onToggle }) {
   const { status, stats } = pl;
   const [chosen, setChosen] = useState(null); // the file picked to send, waiting for the go-ahead
@@ -152,7 +103,7 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
       <div style={foldHeading(open)}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <SectionToggle open={open} onToggle={onToggle} controlsId="prusalink-card-body" testId="toggle-connection">
-            PrusaLink
+            {printer.statusFrom ? reporter?.name || "Connection" : "PrusaLink"}
           </SectionToggle>
           {!open && summary}
         </div>
@@ -164,7 +115,7 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
               Open in {reporter.name}
             </a>
           )}
-          {printer.prusalinkUrl && (
+          {printer.prusalinkUrl && !printer.statusFrom && (
             <a data-testid="open-prusalink" href={printer.prusalinkUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.prusalinkUrl}>
               <ExternalLink size={12} />
               Open PrusaLink
@@ -195,8 +146,7 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
       </div>
       {open && (
       <div id="prusalink-card-body" style={panelBox({ padding: 14 })}>
-        <ConnectionLine testId="prusalink-status" dot={dot} line={line} reachable={status?.reachable} url={printer.prusalinkUrl} />
-        <StatusSource printer={printer} onPrinterChanged={onPrinterChanged} />
+        <ConnectionLine testId="prusalink-status" dot={dot} line={line} reachable={status?.reachable} url={printer.statusFrom ? reporter?.link : printer.prusalinkUrl} />
 
         {job && (
           <JobProgress

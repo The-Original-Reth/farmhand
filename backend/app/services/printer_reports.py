@@ -5,19 +5,23 @@ for a printer switched to take its status from that plugin (PrinterStatusSource)
 The Prusa Connect plugin is the first such plugin: it asks the farm's Prusa Connect server and passes each printer's
 state on. Each report is kept here, in memory (it's about now), in PrusaLink's own shapes, and prusalink/client.py
 answers from it in place of asking the printer: so the printer page, Monitor, the print history Farmhand records and
-plugins' events all work as they do for PrusaLink. Sending the printer a print still goes to its PrusaLink.
+plugins' events all work as they do for PrusaLink. Farmhand doesn't contact such a printer's PrusaLink at all: a print
+sent to it is handed to the plugin (hand_over), when the plugin has printers:print, and the plugin starts it.
 
 A report older than STALE_SECONDS, or none since Farmhand started, makes the printer unreachable, saying why.
 """
 from __future__ import annotations
 
+import secrets
 import threading
 import time
+from typing import BinaryIO
 
 from sqlalchemy.orm import Session
 
 from ..models import Printer, PrinterStatusSource
-from .plugins import registry
+from .plugins import registry, remote
+from .printer_http import UPLOAD_TIMEOUT
 
 STALE_SECONDS = 120.0  # a plugin reports every few seconds: this long without one, it has stopped
 
@@ -74,7 +78,7 @@ def accept(printer: Printer, plugin_id: str, report: dict) -> None:
         raise NotReporter(
             f"Farmhand takes {printer.name}'s status from "
             + (f"the \"{printer.status_from}\" plugin" if printer.status_from else "its PrusaLink")
-            + f", not this plugin. The operator can change that in {printer.name}'s PrusaLink section in Farmhand."
+            + f", not this plugin. The operator can change that in Farmhand: Edit {printer.name}, Connection."
         )
     with _lock:
         _reports[printer.id] = {"at": time.monotonic(), "plugin_id": plugin_id, "report": report}
@@ -153,3 +157,67 @@ def plugin_name_from(printer: Printer) -> str | None:
 
     db = object_session(printer)
     return plugin_name(db, printer.status_from) if db is not None else printer.status_from
+
+
+# ------------------------------------------------------------------ prints sent through the plugin
+
+
+TICKET_SECONDS = 900.0  # a ticket nobody fetched is dropped after this long (normally it goes when the hand-over ends)
+_tickets: dict[str, dict] = {}  # ticket -> {plugin_id, printer_id, name, data, size, at}
+
+
+def hand_over(printer: Printer, name: str, data: bytes | BinaryIO, size: int | None, error_type) -> str:
+    """
+    Send a print to a printer connected through a plugin, which starts it: Farmhand POSTs a one-time ticket to the
+    plugin's print path and waits; the plugin fetches the G-code with the ticket and its token, sends it on and answers
+    where it went. error_type(kind, words) for any problem, as from the printer itself.
+    """
+    from sqlalchemy.orm import object_session
+
+    db = object_session(printer)
+    plugin_id = printer.status_from
+    try:
+        plugin = registry.get(db, plugin_id)
+    except Exception:  # noqa: BLE001 - removed since
+        raise error_type("unreachable", f"{printer.name} is connected through the \"{plugin_id}\" plugin, which isn't added any more.") from None
+    path = ((plugin.manifest or {}).get("print") or {}).get("path")
+    if not plugin.enabled or not path or "printers:print" not in registry.granted(plugin):
+        raise error_type(
+            "unreachable",
+            f"The {plugin.name} plugin can't start prints on {printer.name}: it needs a version that does, added with the "
+            "\"start the prints you send\" permission (Plugins page).",
+        )
+    if size is None and isinstance(data, bytes):
+        size = len(data)
+    ticket = secrets.token_urlsafe(24)
+    with _lock:
+        now = time.monotonic()
+        for old in [t for t, held in _tickets.items() if now - held["at"] > TICKET_SECONDS]:
+            del _tickets[old]
+        _tickets[ticket] = {"plugin_id": plugin.id, "printer_id": printer.id, "name": name, "data": data, "size": size, "at": now}
+    try:
+        status, answer = remote.hand_print(
+            registry.connection_of(plugin).address, path,
+            {"ticket": ticket, "printer_id": printer.id, "file": name, "size": size}, UPLOAD_TIMEOUT,
+        )
+    except ValueError as e:
+        raise error_type("unreachable", str(e)) from None
+    finally:
+        with _lock:
+            _tickets.pop(ticket, None)
+    words = str(answer.get("detail") or "")[:500]
+    if status == 409:
+        raise error_type("busy", words or f"{printer.name} isn't ready for a new print.")
+    if not 200 <= status < 300 or not answer.get("sent"):
+        raise error_type("bad_response", words or f"The {plugin.name} plugin answered {status} and didn't start the print.")
+    return str(answer["sent"])
+
+
+def take_ticket(ticket: str, plugin_id: str) -> dict | None:
+    """The print a ticket stands for, once, for the plugin it was given to; None otherwise."""
+    with _lock:
+        held = _tickets.get(ticket)
+        if held is None or held["plugin_id"] != plugin_id or held.get("taken"):
+            return None
+        held["taken"] = True
+        return dict(held)

@@ -4,9 +4,9 @@ A plugin is a program of your own that adds something to a print farm's Farmhand
 notifier. Streaming to YouTube is itself a plugin, [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), in a repository of its own, and so is streaming to Twitch, [farmhand-twitch-plugin](https://github.com/The-Original-Reth/farmhand-twitch-plugin): Farmhand has no
 Stream page of its own any more. It runs in **its own Docker container**, with its own storage, written in any language. It never touches
 Farmhand's database, files or other containers. It reads what it needs from Farmhand through the **plugin API**
-described here, using a token the operator gave it, and only what the operator allowed. A plugin may also be allowed to
-report Prusa printers' status, in place of Farmhand asking their PrusaLink: [`plugins/prusa-connect`](../plugins/prusa-connect/README.md)
-does that from the farm's Prusa Connect server.
+described here, using a token the operator gave it, and only what the operator allowed. Prusa printers may also be
+connected through a plugin instead of their PrusaLink: it reports their status, and starts the prints Farmhand sends
+them. [`plugins/prusa-connect`](../plugins/prusa-connect/README.md) does that through the farm's Prusa Connect server.
 
 **Start from the example:** [`plugins/hello`](../plugins/hello/README.md) is a small, working plugin (each printer and
 its print's progress, updated live, in Farmhand's colours) with its Dockerfile, tests and instructions for making it
@@ -71,6 +71,7 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
 | `settings_page` | no | Your plugin's settings, shown on Farmhand's Settings page under your plugin's name (below Farmhand's own): a path on your plugin, like `/settings` or `/?view=settings`. See "Your settings on Farmhand's Settings page" |
 | `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is not taken (the operator adds the plugin again to grant it) |
+| `print` | no | A plugin Prusa printers are connected through, which starts the prints Farmhand sends them: `{"path": "/farmhand/print"}`, the path Farmhand POSTs each print to. Needs `printers:print` in `permissions`. See `PUT /printers/{id}/status` and "Starting the prints Farmhand sends" |
 | `stream_control` | no | A stream plugin that Stream control starts and stops: `{"path": "/api/stream-control", "site": "YouTube"}` (`site`, up to 40 characters, is shown beside it), and optionally `"settings": "/?view=youtube-settings"`, a page of yours for that site's own settings, which Stream control opens in a window of its own from a "<site> settings" button. See "Stream control" |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
@@ -85,11 +86,12 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `farm:read` | see Farmhand's colours and the farm's time zone | `GET /farm` |
 | `stream:migrate` | take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy) | `GET /stream/migrate`, `POST /stream/migrate` |
 | `stream:read` | see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site | `GET /stream/design`, `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}`, `GET /stream/music/{name}` |
-| `printers:report` | report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you switch to it | `PUT /printers/{id}/status` |
+| `printers:report` | report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you connect through it | `PUT /printers/{id}/status` |
+| `printers:print` | start the prints you send from Farmhand to the Prusa printers you connect through it (it is handed each G-code to send on) | `GET /prints/{ticket}/file`, and the manifest's `print` path |
 
-The operator grants some or all of the permissions the manifest asks for, never more. `printers:report` is the only one
-that changes anything, and only for the printers the operator switches to the plugin; others are added one at a time,
-when a plugin needs one.
+The operator grants some or all of the permissions the manifest asks for, never more. `printers:report` and
+`printers:print` are the only ones that change anything, and only for the printers the operator connects through the
+plugin; others are added one at a time, when a plugin needs one.
 
 `stream:migrate` is only for a Stream plugin taking over from the Stream page older Farmhands had built in (like
 [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin)): ask for it only if that's what your plugin is. It hands over secrets
@@ -254,13 +256,14 @@ along: for progress, ask each printer's print now and then (every 20 seconds or 
 
 ### `PUT /printers/{id}/status` (`printers:report`)
 
-A Prusa printer's status, from a plugin it takes its status from. The operator chooses that for each Prusa printer, in
-**Status from** in its PrusaLink section (Farmhand's default is the printer's own PrusaLink); `GET /printers` says
-which, in `status_from`. Any other printer is refused with 403, saying where its status comes from now.
+A Prusa printer's status, from the plugin it's connected through. The operator chooses that for each Prusa printer
+under **Connection** when adding or editing it, where each such plugin is a choice beside Mainsail and PrusaLink;
+`GET /printers` says which, in `status_from`. Any other printer is refused with 403, saying how it's connected now.
 
 Farmhand then answers from your reports wherever it would have asked the printer's PrusaLink: the printer's page,
 Monitor, `GET /printers/{id}/print`, `/events`, and the print history it records (a new `job.id` is a new print; a job
-that reaches `FINISHED`, `STOPPED` or `ERROR` has ended). Sending the printer a print still goes to its PrusaLink.
+that reaches `FINISHED`, `STOPPED` or `ERROR` has ended). Farmhand doesn't contact the printer's PrusaLink at all: a
+print sent to it goes to your plugin (`printers:print`, below), or isn't sent.
 Report every few seconds, also while nothing changes: a printer with no report for two minutes shows as unreachable,
 saying your plugin hasn't reported.
 
@@ -285,6 +288,22 @@ In PrusaLink's own words (states `IDLE`, `BUSY`, `PRINTING`, `PAUSED`, `FINISHED
 the printer's. `link` is where the operator can see it (an "Open in <your plugin>" button on its page). `job.id` is a
 whole number (the printer's own job number); `progress` 0 to 100; times in seconds. The answer is
 `{"recorded": true, "error": null}`, or `recorded: false` with why.
+
+### Starting the prints Farmhand sends (`printers:print`)
+
+With `printers:print` and a `print` path in your manifest, a print the operator sends to a printer connected through
+your plugin is handed to you. Farmhand first checks the printer is ready from your latest report (else it says it's
+busy), then POSTs to `<your address><print path>`, and waits (up to ten minutes) for your answer:
+
+```json
+{ "ticket": "l3H0q…", "printer_id": 2, "file": "Frog keychain.bgcode", "size": 1048576 }
+```
+
+Fetch the G-code with `GET /plugin-api/v1/prints/{ticket}/file` and your token (it streams the bytes;
+`X-Farmhand-File` is the file's name, URL-encoded). A ticket works once, only for your plugin, and only while Farmhand
+is waiting for your answer, so a POST that didn't come from Farmhand fetches nothing. Then start the print and answer
+`200 {"sent": "usb/Frog keychain.bgcode"}`, where it went on the printer. To refuse, answer `409 {"detail": "…"}` when
+the printer isn't ready, or any other error status with a `detail` in plain words; Farmhand shows it to the operator.
 
 ### `GET /farm` (`farm:read`)
 

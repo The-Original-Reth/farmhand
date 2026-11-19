@@ -20,7 +20,8 @@ const PERMISSIONS = {
   "farm:read": "see Farmhand's colours and the farm's time zone",
   "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
   "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
-  "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you switch to it",
+  "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you connect through it",
+  "printers:print": "start the prints you send from Farmhand to the Prusa printers you connect through it (it is handed each G-code to send on)",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
 const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
@@ -90,9 +91,10 @@ const ON_THE_NETWORK = {
     settings_page: "/?view=settings",
   },
   "http://192.168.10.93:8085": {
-    id: "prusa-connect", name: "Prusa Connect", version: "1.0.0", farmhand_api: "1", port: 8085, author: "Farmhand mockup", // plugins/prusa-connect's manifest
+    id: "prusa-connect", name: "Prusa Connect", version: "1.1.0", farmhand_api: "1", port: 8085, author: "Farmhand mockup", // plugins/prusa-connect's manifest
     homepage: "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/prusa-connect",
-    page: { menu: "Prusa Connect", icon: "dashboard", path: "/" }, permissions: ["printers:read", "printers:report"], health: "/health",
+    page: { menu: "Prusa Connect", icon: "dashboard", path: "/" }, permissions: ["printers:read", "printers:report", "printers:print"],
+    print: { path: "/farmhand/print" }, health: "/health",
   },
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
@@ -369,7 +371,7 @@ export function pluginsRoutes(ctx) {
     const plugin = needs(h, "printers:report");
     const p = printer(id);
     if (p.statusFrom !== plugin.id) {
-      throw new HttpError(403, `Farmhand takes ${p.name}'s status from ${p.statusFrom ? `the "${p.statusFrom}" plugin` : "its PrusaLink"}, not this plugin. The operator can change that in ${p.name}'s PrusaLink section in Farmhand.`);
+      throw new HttpError(403, `Farmhand takes ${p.name}'s status from ${p.statusFrom ? `the "${p.statusFrom}" plugin` : "its PrusaLink"}, not this plugin. The operator can change that in Farmhand: Edit ${p.name}, Connection.`);
     }
     const reachable = body?.reachable !== false;
     return { recorded: reachable, error: reachable ? null : body?.error || `The "${plugin.id}" plugin can't reach ${p.name}.` };

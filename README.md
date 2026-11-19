@@ -384,8 +384,8 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 - **Moonraker (Klipper)**: connection, lifetime statistics, print history, energy, maintenance shared with
   Mainsail, and the 1500-hour service
 - **PrusaLink (Prusa Core One, MK4, XL…)**: live status, sending a print, a print history Farmhand records,
-  maintenance and the 1500-hour service. A Prusa printer's status can come from the farm's **Prusa Connect** server
-  instead, through the Prusa Connect plugin (**Status from** in its PrusaLink section; see "Plugins")
+  maintenance and the 1500-hour service. A Prusa printer can be connected through the farm's **Prusa Connect** server
+  instead, with the Prusa Connect plugin (a third **Connection** choice; see "Plugins")
 
 **Monitor** — every printer's camera on one screen: arranged by dragging, zoomable (see "Monitor")
 
@@ -1131,8 +1131,8 @@ Plugins are programs other people write that add something to Farmhand (the live
 each running in its own Docker container with its own storage, on Farmhand's machine or another one on the farm's
 network, so a Farmhand update or crash doesn't touch them and they can't touch Farmhand's files. A plugin reads what
 it needs through Farmhand's **plugin API**, with a token of its own, and only what the operator allowed when adding it
-(its printers, their cameras, what they're printing, Farmhand's colours). The only thing a plugin can change is a Prusa
-printer's status, and only for printers switched to it (see the Prusa Connect plugin, below).
+(its printers, their cameras, what they're printing, Farmhand's colours). The only thing a plugin can change is how a
+Prusa printer connected through it is doing, and start the prints sent to it (see the Prusa Connect plugin, below).
 Writing one: see [docs/plugins.md](docs/plugins.md), and start from [plugins/hello](plugins/hello/README.md), a small
 example plugin (each printer and its print's progress, live) made to be copied.
 
@@ -1149,14 +1149,14 @@ its own repository) does the same for Twitch, independently of the YouTube one; 
 added, **Twitch** is in the menu right after YouTube.
 
 **The Prusa Connect plugin** ([plugins/prusa-connect](plugins/prusa-connect/README.md)) gives Farmhand its Prusa
-printers' status and prints from the farm's own **Prusa Connect** server (Prusa's self-hosted printer server) instead
-of each printer's PrusaLink. PrusaLink stays the default: once the plugin is added and paired with Prusa Connect (its
-page shows a short code to approve on Prusa Connect; nobody types a password), choose it under **Status from** in a
-Prusa printer's PrusaLink section. The printer's page, Monitor, plugins' events and the print history Farmhand records
-then come from Prusa Connect, and **Open in Prusa Connect** sits beside **Open PrusaLink**. Prints are still sent to
-the printer's PrusaLink, which keeps working when a printer is paired with Prusa Connect. A Prusa printer can be paired
-with one Connect server at a time, so pairing it with your own takes it off Prusa's cloud Connect. Removing the
-plugin puts its printers back on PrusaLink.
+printers through the farm's own **Prusa Connect** server (Prusa's self-hosted printer server) instead of each
+printer's PrusaLink. Once the plugin is added (and paired with Prusa Connect, if Prusa Connect asks for sign-in: its
+page shows a short code to approve there; nobody types a password), **Prusa Connect** is a third **Connection** choice,
+beside Mainsail and PrusaLink, when adding or editing a printer. A printer connected that way takes its status from
+Prusa Connect (its page, Monitor, plugins' events and the print history Farmhand records), its prints are sent through
+Prusa Connect, which starts them, and Farmhand never contacts its PrusaLink. Its page has **Open in Prusa Connect**.
+A Prusa printer can be paired with one Connect server at a time, so pairing it with your own takes it off Prusa's
+cloud Connect. Removing the plugin puts its printers back on PrusaLink.
 
 **The Plugins page** (in the menu, under Settings) lists the plugins added and how each is doing (Farmhand asks each one
 every 30 seconds: running, running with a problem the plugin names, or not answering and why). Farmhand doesn't start or stop a plugin's container: start it the

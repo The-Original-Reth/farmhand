@@ -11,6 +11,7 @@ The page reads snapshot(): Prusa Connect's state, the printers on both sides and
 """
 from __future__ import annotations
 
+import tempfile
 import threading
 import time
 
@@ -129,6 +130,46 @@ class Reporter:
                 self.settings.link(p["id"], same[0]["id"])
                 taken.add(same[0]["id"])
 
+    # ------------------------------------------------------------------ a print Farmhand sends
+
+    def send_print(self, body: dict) -> dict:
+        """
+        Farmhand hands a print over (POST /farmhand/print): {ticket, printer_id, file, size}. The G-code is fetched
+        from Farmhand with the ticket, put in Prusa Connect and sent on to the printer linked to that Farmhand printer,
+        which starts it. Returns {"sent": where it went on the printer}. PrintRefused (with an HTTP status) otherwise.
+        """
+        ticket, name = body.get("ticket"), body.get("file")
+        try:
+            printer_id = int(body.get("printer_id"))
+        except (TypeError, ValueError):
+            raise PrintRefused(400, "Farmhand didn't say which printer.") from None
+        if not isinstance(ticket, str) or not ticket or not isinstance(name, str) or not name.strip() or "/" in name:
+            raise PrintRefused(400, "Farmhand's print came without its ticket or file name.")
+        device_id = self.settings.links.get(printer_id)
+        if not device_id:
+            raise PrintRefused(409, "This printer isn't linked to a printer on Prusa Connect yet: choose which one it is "
+                                    "on the Prusa Connect plugin's page.")
+        try:
+            device = self.connect.device(device_id)
+            if not device.get("connected"):
+                raise PrintRefused(409, f"Prusa Connect isn't hearing from {device.get('name') or 'the printer'} right now.")
+            state = (device.get("state") or {}).get("/state")
+            if state not in READY_STATES:
+                raise PrintRefused(409, f"{device.get('name') or 'The printer'} isn't ready for a new print (Prusa Connect "
+                                        f"says {state or 'nothing'}).")
+            where = self.connect.printer_storage(device_id)
+            with tempfile.TemporaryFile() as held:
+                size = self.farmhand.fetch_print(ticket, held)
+                held.seek(0)
+                storage, source = self.connect.upload(name, held, size)
+            sent = self.connect.print_file(device_id, storage, source, f"{where}/{name}")
+        except ConnectError as e:
+            raise PrintRefused(409 if e.kind in ("busy", "refused_print") else 502, e.message) from None
+        except FarmhandError as e:
+            raise PrintRefused(502, e.message) from None
+        self.wake()  # report the new print straight away
+        return {"sent": sent.lstrip("/")}
+
     # ------------------------------------------------------------------ what the page and /health read
 
     def _publish(self, farmhand_error, connect, devices, printers=None) -> None:
@@ -152,3 +193,14 @@ class Reporter:
     def problem(self) -> FarmhandError | None:
         """What's wrong between this plugin and Farmhand, if anything (for /health)."""
         return self._farmhand_problem
+
+
+READY_STATES = ("IDLE", "READY", "FINISHED", "STOPPED")  # a Prusa printer takes a new print in these
+
+
+class PrintRefused(Exception):
+    """A print Farmhand handed over that wasn't started: the HTTP status for Farmhand, and why in plain words."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status, self.message = status, message

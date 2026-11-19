@@ -25,12 +25,14 @@ class _Server:
 
             def _go(self):
                 length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length)) if length else None
+                raw = self.rfile.read(length) if length else b""
+                body = json.loads(raw) if raw and "json" in (self.headers.get("Content-Type") or "") else (raw or None)
                 fake.calls.append((self.command, self.path))
                 status, answer = fake.answer(self.command, self.path, self.headers, body)
-                data = json.dumps(answer).encode()
+                binary = isinstance(answer, bytes)
+                data = answer if binary else json.dumps(answer).encode()
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", "application/octet-stream" if binary else "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -58,8 +60,9 @@ class FakeFarmhand(_Server):
             {"id": 2, "name": "Core One", "kind": "Prusa Core One", "connection_type": "prusalink", "status_from": "prusa-connect", "addresses": {}},
             {"id": 3, "name": "MK4", "kind": "Prusa MK4", "connection_type": "prusalink", "status_from": None, "addresses": {}},
         ]
-        self.permissions = {"printers:read", "printers:report"}
+        self.permissions = {"printers:read", "printers:report", "printers:print"}
         self.reports: dict[int, list[dict]] = {}
+        self.tickets: dict[str, bytes] = {}  # prints Farmhand is handing over, by ticket
         super().__init__("/plugin-api/v1")
 
     def answer(self, method, path, headers, body):
@@ -70,6 +73,9 @@ class FakeFarmhand(_Server):
             if "printers:read" not in self.permissions:
                 return 403, {"detail": "The \"prusa-connect\" plugin hasn't been given the printers:read permission, which this needs."}
             return 200, {"printers": self.printers}
+        if method == "GET" and path.startswith("/prints/") and path.endswith("/file"):
+            data = self.tickets.pop(path.split("/")[2], None)
+            return (200, data) if data is not None else (404, {"detail": "No print is waiting for this plugin under that ticket."})
         if method == "PUT" and path.startswith("/printers/") and path.endswith("/status"):
             pid = int(path.split("/")[2])
             printer = next((p for p in self.printers if p["id"] == pid), None)
@@ -87,6 +93,8 @@ class FakePrusaConnect(_Server):
         self.token = "pcl_test_token"
         self.pairing = None  # "pending" | "approved" | "denied" | "expired"
         self.open = False  # set up in open mode: nobody signs in, and no call needs a token
+        self.stored: dict[str, bytes] = {}  # its own storage "local": path -> bytes
+        self.printed: list[dict] = []  # what it was asked to print
         self.pairing_requests: list[dict] = []
         self.devices = {DEVICE: {
             "id": DEVICE, "kind": "printer", "model": "COREONE", "serial": "CZPX1234X004XC12345", "name": "Core One",
@@ -127,6 +135,26 @@ class FakePrusaConnect(_Server):
             return 400, {"code": f"core.auth/{code}", "detail": code.lower()}
         if not self.open and headers.get("Authorization") != f"Bearer {self.token}":
             return 401, {"code": "core.auth/UNAUTHENTICATED", "detail": "no credential"}
-        if method == "GET" and path.split("?")[0] == "/api/v1/devices":
+        bare = path.split("?")[0]
+        if method == "GET" and bare == "/api/v1/devices":
             return 200, {"items": list(self.devices.values()), "total": len(self.devices)}
+        if method == "GET" and bare == f"/api/v1/devices/{DEVICE}":
+            return 200, self.devices[DEVICE]
+        if method == "GET" and bare == f"/api/v1/devices/{DEVICE}/storages":
+            return 200, {"items": [{"mountpoint": "/usb", "name": "usb", "type": "USB", "read_only": False}], "reported": True}
+        if method == "GET" and bare == "/api/v1/storages":
+            return 200, {"items": [{"name": "local", "write": True}]}
+        if method == "PUT" and bare == "/api/v1/storages/local/content":
+            from urllib.parse import parse_qs, urlsplit
+
+            q = parse_qs(urlsplit(path).query)
+            where = "tmp/" + q["path"][0].rsplit("/", 1)[-1] if q.get("temporary") == ["true"] else q["path"][0]
+            self.stored[where] = body or b""
+            return 200, {"bytes": len(body or b""), "path": where}
+        if method == "POST" and bare == f"/api/v1/devices/{DEVICE}/print":
+            self.printed.append(body)
+            if body.get("source") not in self.stored:
+                return 404, {"detail": "no such file in the storage"}
+            self.devices[DEVICE]["state"]["/state"] = "PRINTING"
+            return 200, {"command": {"command_id": "c1", "ok": True}, "path": body["path"]}
         return 404, {"detail": "not in the fake"}

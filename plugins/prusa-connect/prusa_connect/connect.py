@@ -3,7 +3,8 @@ Talking to the farm's Prusa Connect server over its REST API (version 1; the ser
 
 Pairing: the plugin asks for a token (POST /api/v1/auth/app-pairings) and gets a short code; someone signed in to
 Prusa Connect approves it on Prusa Connect's own page, and the plugin collects the token (POST .../token). Nobody types
-a password or pastes a secret. The token is limited to the "read" scope: the plugin only reads printers' state.
+a password or pastes a secret. The token has the "read" and "operate" scopes: the plugin reads printers' state and
+starts the prints Farmhand sends (it uploads each into Prusa Connect, which sends it on to the printer).
 A Prusa Connect set up in open mode (its first-run wizard's "no sign-in") has nobody to approve a pairing and asks no
 token of anyone: the plugin then reads it without one (is_open()).
 
@@ -26,8 +27,10 @@ from urllib.parse import quote, urlencode
 from .config import Settings
 
 TIMEOUT = 8
+UPLOAD_TIMEOUT = 300  # a big G-code into Prusa Connect
+PRINT_TIMEOUT = 900  # Prusa Connect answers once the printer has the file and started it: as long as the transfer
 APP_NAME = "Farmhand"
-SCOPES = ["read"]
+SCOPES = ["read", "operate"]  # reading the printers, and starting the prints Farmhand sends
 
 
 class ConnectError(Exception):
@@ -110,10 +113,40 @@ class PrusaConnect:
     def device(self, device_id: str) -> dict:
         return self._call("GET", f"/api/v1/devices/{quote(device_id)}")
 
+    # ------------------------------------------------------------------ starting a print Farmhand sends
+
+    def printer_storage(self, device_id: str) -> str:
+        """Where on the printer a print goes: the first storage it reported that can be written (its USB stick)."""
+        found = self._call("GET", f"/api/v1/devices/{quote(device_id)}/storages").get("items") or []
+        for s in found:
+            if isinstance(s, dict) and s.get("name") and not s.get("read_only"):
+                return str(s["name"])
+        raise ConnectError("The printer hasn't told Prusa Connect of anywhere to put a print (is its USB stick in?).", "error")
+
+    def upload(self, name: str, data, size: int) -> tuple[str, str]:
+        """Put the G-code in Prusa Connect's own storage, as a temporary copy on its way to a printer. (storage, path)."""
+        storages = self._call("GET", "/api/v1/storages").get("items") or []
+        storage = next((s.get("name") for s in storages if isinstance(s, dict) and s.get("write")), None)
+        if not storage:
+            raise ConnectError("Prusa Connect has no storage it can keep a print in on its way to the printer. Give it "
+                               "one in its settings.", "error")
+        query = urlencode({"path": f"farmhand/{name}", "temporary": "true"})
+        saved = self._call("PUT", f"/api/v1/storages/{quote(storage)}/content?{query}", stream=(data, size))
+        return storage, str(saved.get("path") or f"farmhand/{name}")
+
+    def print_file(self, device_id: str, storage: str, source: str, path: str) -> str:
+        """Send the stored file to the printer at `path` (replacing one of that name) and start it. Returns `path`."""
+        result = self._call("POST", f"/api/v1/devices/{quote(device_id)}/print",
+                            {"path": path, "storage": storage, "source": source, "replace": True}, timeout=PRINT_TIMEOUT)
+        command = result.get("command") or {}
+        if command.get("ok") is False:
+            raise ConnectError(f"The printer turned the print down: {_words(command) or 'it gave no reason'}.", "refused_print")
+        return str(result.get("path") or path)
+
     # ------------------------------------------------------------------ the plumbing
 
-    def _call(self, method: str, path: str, body=None, auth: bool = True) -> dict:
-        status, data = self._raw(method, path, body, auth)
+    def _call(self, method: str, path: str, body=None, auth: bool = True, stream=None, timeout: float = None) -> dict:
+        status, data = self._raw(method, path, body, auth, stream=stream, timeout=timeout)
         if status == 401 and auth:
             raise ConnectError(
                 "Prusa Connect refused the plugin's token (it may have been revoked, or run out after 90 days). Pair "
@@ -123,13 +156,15 @@ class PrusaConnect:
             raise ConnectError(f"Prusa Connect won't let the plugin see that: {_words(data) or 'access denied'}.", "refused")
         if status == 404:
             raise ConnectError("Prusa Connect doesn't know that printer any more (it may have been paired again).", "not_found")
+        if status == 409:
+            raise ConnectError(f"Prusa Connect says the printer can't take that now: {_words(data)}", "busy")
         if status >= 400:
             raise ConnectError(f"Prusa Connect answered {status}: {_words(data)}", "error")
         if not isinstance(data, dict):
             raise ConnectError("The server answered, but not like Prusa Connect does.", "error")
         return data
 
-    def _raw(self, method: str, path: str, body=None, auth: bool = True):
+    def _raw(self, method: str, path: str, body=None, auth: bool = True, stream=None, timeout: float = None):
         base = self.settings.address
         if not base:
             raise ConnectError("Prusa Connect's address isn't set yet. Type it on this page.", "setup")
@@ -144,9 +179,13 @@ class PrusaConnect:
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        elif stream is not None:  # (open file, size): sent a piece at a time
+            data, size = stream
+            headers["Content-Type"] = "application/octet-stream"
+            headers["Content-Length"] = str(size)
         request = urllib.request.Request(base + path, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=TIMEOUT) as answer:
+            with urllib.request.urlopen(request, timeout=timeout or (UPLOAD_TIMEOUT if stream is not None else TIMEOUT)) as answer:
                 return answer.status, _json(answer.read())
         except urllib.error.HTTPError as e:
             try:

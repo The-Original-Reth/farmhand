@@ -51,10 +51,11 @@ the folders has is brought in only by Load all settings or Scan projects, never 
 **Plugins** (`docs/plugins.md`): other people's containers, on this machine or another on the LAN, read Farmhand only
 through the versioned plugin API (`routers/plugin_api.py`, `/plugin-api/v1/` on the API port, Bearer token,
 a permission per endpoint, optionally only from the plugin's address, rate-limited per token). It only reads, except
-`printers:report`: a Prusa printer switched to a plugin (`PrinterStatusSource`, **Status from** in its PrusaLink
-section) takes its status from the plugin's reports (`services/printer_reports.py`), which `prusalink/client.py` answers
-from in place of asking the printer; prints still go to its PrusaLink. `plugins/prusa-connect` is that plugin, reading
-the farm's Prusa Connect server. Farmhand never starts or
+`printers:report` and `printers:print`: a Prusa printer connected through a plugin (`PrinterStatusSource`, a third
+**Connection** choice in the printer forms) takes its status from the plugin's reports (`services/printer_reports.py`),
+which `prusalink/client.py` answers from in place of asking the printer, and its prints are handed to the plugin (a
+one-time ticket POSTed to the manifest's `print` path; the plugin fetches the G-code with it); its PrusaLink is never
+contacted. `plugins/prusa-connect` is that plugin, through the farm's Prusa Connect server. Farmhand never starts or
 stops them: the Plugins page (`routers/plugins.py`, `src/plugins/`) adds one by its address (`remote.py` fetches its
 `/manifest`), and `health.py`'s worker asks each every 30 s. Where a plugin runs is the `plugin_connection` table. Its
 page is an iframe on `/plugins/<id>/`, which nginx sends to the API's `/plugins/<id>/page/` and `pages.py` passes on to

@@ -12,8 +12,10 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 CALL_TIMEOUT = 15
+FETCH_TIMEOUT = 120  # a big G-code from Farmhand, on the farm's network
 
 
 class FarmhandError(Exception):
@@ -37,6 +39,24 @@ class Farmhand:
     def report(self, printer_id: int, report: dict) -> dict:
         """PUT /printers/{id}/status (printers:report): a printer's status, in PrusaLink's words. {recorded, error}."""
         return self._call("PUT", f"/printers/{printer_id}/status", report)
+
+    def fetch_print(self, ticket: str, into) -> int:
+        """GET /prints/{ticket}/file (printers:print): the G-code of a print Farmhand is handing over, written into an
+        open file a piece at a time. Returns how many bytes."""
+        request = urllib.request.Request(
+            f"{self.url}/prints/{quote(ticket, safe='')}/file", headers={"Authorization": f"Bearer {self.token}"},
+        )
+        written = 0
+        try:
+            with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as answer:
+                while chunk := answer.read(1024 * 1024):
+                    into.write(chunk)
+                    written += len(chunk)
+        except urllib.error.HTTPError as e:
+            raise _refusal(e) from None
+        except (urllib.error.URLError, OSError) as e:
+            raise FarmhandError(f"Can't fetch the print from Farmhand at {self.url} ({_reason(e)}).", "down") from None
+        return written
 
     # ------------------------------------------------------------------ the plumbing
 
