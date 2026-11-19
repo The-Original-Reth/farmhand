@@ -64,8 +64,8 @@ def test_a_printers_figures_are_kept_until_its_prints_or_prices_change(farm, mon
     fake.add_job("000001", "Frog.gcode", start=_ts(2026, 10, 5), filament_mm=10_000, metadata=fake.add_gcode("Frog.gcode", cost="20", density="1.25"))
     c.post(f"/printers/{pid}/moonraker/sync")
     worked_out = []
-    real = farm_cost._printer_filament
-    monkeypatch.setattr(farm_cost, "_printer_filament", lambda *a: worked_out.append(a[1]) or real(*a))
+    real = farm_cost._tally
+    monkeypatch.setattr(farm_cost, "_tally", lambda *a, **k: (k["finished"] and worked_out.append(a[1])) or real(*a, **k))
     months = lambda: {p["printer_id"]: p["months"] for p in c.get("/farm-cost").json()["printers"]}[pid]  # noqa: E731
 
     first = months()
@@ -76,6 +76,33 @@ def test_a_printers_figures_are_kept_until_its_prints_or_prices_change(farm, mon
     fake.jobs[0]["filament_used"] = 20_000  # a print the printer now reports differently
     c.post(f"/printers/{pid}/moonraker/sync")
     assert months()[0]["grams"] > first[0]["grams"] * 2 and worked_out.count(pid) == 3
+
+
+def test_a_print_still_going_is_costed_each_time_without_costing_the_finished_ones_again(farm, monkeypatch):
+    from app.services import farm_cost
+
+    c, fake, pid, _ = farm
+    priced = fake.add_gcode("Frog.gcode", cost="20", density="1.25")
+    fake.add_job("000001", "Frog.gcode", start=_ts(2026, 10, 5), filament_mm=10_000, metadata=priced)
+    fake.add_job("000002", "Frog.gcode", status="in_progress", start=_ts(2026, 10, 6), filament_mm=1_000, metadata=priced)
+    c.post(f"/printers/{pid}/moonraker/sync")
+    worked_out = []
+    real = farm_cost._tally
+    monkeypatch.setattr(farm_cost, "_tally", lambda *a, **k: (k["finished"] and worked_out.append(a[1])) or real(*a, **k))
+    figures = lambda: {p["printer_id"]: p for p in c.get("/farm-cost").json()["printers"]}[pid]  # noqa: E731
+
+    first = figures()
+    assert first["months"][0]["prints"] == 2 and [d["prints"] for d in first["days"]] == [1, 1]
+    fake.jobs[1]["filament_used"] = 6_000  # the print going on has used more
+    c.post(f"/printers/{pid}/moonraker/sync")
+    later = figures()
+    assert later["months"][0]["grams"] > first["months"][0]["grams"] and later["months"][0]["prints"] == 2
+    assert worked_out.count(pid) == 1  # the finished print wasn't costed again
+    fake.jobs[1].update(status="completed", end_time=_ts(2026, 10, 6, 5))  # now it's finished
+    c.post(f"/printers/{pid}/moonraker/sync")
+    done = figures()
+    assert done["months"] == later["months"] and worked_out.count(pid) == 2
+    assert figures() == done and worked_out.count(pid) == 2
 
 
 def test_months_follow_the_viewers_time_zone(farm):
