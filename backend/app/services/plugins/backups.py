@@ -49,15 +49,20 @@ def checked(body) -> dict:
     return {"saved_at": saved_at, "data": data}
 
 
-def save(db: Session, plugin_id: str, body) -> dict:
-    """Keep the plugin's newest copy of its settings: {saved_at} as kept. ValueError for one that isn't one."""
-    got = checked(body)
-    row = db.get(PluginBackup, plugin_id)
+def _keep(db: Session, plugin_id: str, row: PluginBackup | None, got: dict) -> PluginBackup:
+    """A checked copy (checked()) kept in place of the plugin's last one (row, None while there's none). Not committed."""
     if row is None:
         row = PluginBackup(plugin_id=plugin_id, data=got["data"], saved_at=got["saved_at"])
         db.add(row)
     else:
         row.data, row.saved_at, row.received_at = got["data"], got["saved_at"], utc_now()
+    return row
+
+
+def save(db: Session, plugin_id: str, body) -> dict:
+    """Keep the plugin's newest copy of its settings: {saved_at} as kept. ValueError for one that isn't one."""
+    got = checked(body)
+    row = _keep(db, plugin_id, db.get(PluginBackup, plugin_id), got)
     db.commit()
     return {"saved_at": row.saved_at}
 
@@ -125,10 +130,7 @@ def read_all(db: Session, folder: Path) -> list[str]:
         row = db.get(PluginBackup, plugin_id)
         if row is not None and row.saved_at >= got["saved_at"]:
             continue
-        if row is None:
-            db.add(PluginBackup(plugin_id=plugin_id, data=got["data"], saved_at=got["saved_at"]))
-        else:
-            row.data, row.saved_at, row.received_at = got["data"], got["saved_at"], utc_now()
+        _keep(db, plugin_id, row, got)
         taken.append(plugin_id)
     db.commit()
     return taken

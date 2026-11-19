@@ -75,6 +75,34 @@ def _copy_file(client: httpx.Client, url: str, target: Path, copied: list[str], 
     copied.append(label)
 
 
+def _their_layout(client: httpx.Client, address: str, plugin_name: str) -> tuple[dict, dict]:
+    """(its own settings, its own stream folder as it lists it) from the plugin's own page. ValueError when it answers
+    no layout."""
+    r = _get(client, f"{address}{PAGE_PATH}")
+    try:
+        page = r.json() if r.status_code == 200 else None
+    except ValueError:
+        page = None
+    settings = page.get("settings") if isinstance(page, dict) else None
+    if not isinstance(settings, dict) or not isinstance(settings.get("cells"), list):
+        raise ValueError(f"{plugin_name} didn't answer with a layout (it answered {r.status_code}). Is it the YouTube or Twitch plugin?")
+    return settings, page.get("media") if isinstance(page.get("media"), dict) else {}
+
+
+def _copy_slideshow(client: httpx.Client, address: str, show_dir: Path, show: str, order: list[str],
+                    copied: list[str], problems: list[str]) -> None:
+    """One slideshow's pictures copied into show_dir (its blank screens are only in its order), and its order kept
+    when the folder has none yet."""
+    for name in order:
+        if media.is_blank(name):
+            continue
+        _copy_file(client, f"{address}{PAGE_PATH}/slideshows/{enc(show)}/pictures/{enc(name)}",
+                   show_dir / media.checked_name(name, "picture"), copied, problems, f"“{show}”: “{name}”")
+    show_dir.mkdir(parents=True, exist_ok=True)
+    if not (show_dir / media.ORDER_FILE).exists():
+        media.write_order(show_dir, order)
+
+
 def copy_from(db: Session, plugin_id: str) -> dict:
     """
     Make this stream plugin's own layout Stream control's, its pictures and slideshows copied over:
@@ -87,15 +115,7 @@ def copy_from(db: Session, plugin_id: str) -> dict:
         raise ValueError(f"{plugin.name} is switched off. Switch it on on the Plugins page first.")
     address = registry.connection_of(plugin).address
     with httpx.Client(transport=remote.transport, timeout=TIMEOUT, follow_redirects=False) as client:
-        r = _get(client, f"{address}{PAGE_PATH}")
-        try:
-            page = r.json() if r.status_code == 200 else None
-        except ValueError:
-            page = None
-        settings = page.get("settings") if isinstance(page, dict) else None
-        if not isinstance(settings, dict) or not isinstance(settings.get("cells"), list):
-            raise ValueError(f"{plugin.name} didn't answer with a layout (it answered {r.status_code}). Is it the YouTube or Twitch plugin?")
-        theirs = page.get("media") if isinstance(page.get("media"), dict) else {}
+        settings, theirs = _their_layout(client, address, plugin.name)
 
         sent = {k: settings[k] for k in LAYOUT_KEYS if k in settings}
         if sent.get("font") not in FONTS:
@@ -127,14 +147,7 @@ def copy_from(db: Session, plugin_id: str) -> dict:
             except ValueError:
                 continue
             order = [n for n in their_shows[show] if isinstance(n, str)]
-            for name in order:
-                if media.is_blank(name):
-                    continue
-                _copy_file(client, f"{address}{PAGE_PATH}/slideshows/{enc(show)}/pictures/{enc(name)}",
-                           show_dir / media.checked_name(name, "picture"), copied, problems, f"“{show}”: “{name}”")
-            show_dir.mkdir(parents=True, exist_ok=True)
-            if not (show_dir / media.ORDER_FILE).exists():
-                media.write_order(show_dir, order)
+            _copy_slideshow(client, address, show_dir, show, order, copied, problems)
     media.forget(at_once=True)
     nas_copy.changed()  # (the pictures copied in: on the NAS copy soon)
     if settings.get("music") is not False and (theirs.get("music") or []):

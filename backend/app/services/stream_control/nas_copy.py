@@ -54,19 +54,22 @@ def working_root() -> Path:
     return storage.local_root().joinpath(*WORKING)
 
 
+def _beside(stl_root: Path) -> Path:
+    """The stream folder beside this STL folder."""
+    from .media import FOLDER_NAME
+
+    return storage.named_folder(stl_root.parent, FOLDER_NAME)
+
+
 def nas_root() -> Path:
     """The stream folder beside the STL folder (on the NAS, when that's where the files are): StorageUnavailableError
     while it can't be used (its share unmounted, say)."""
-    from .media import FOLDER_NAME
-
-    return storage.named_folder(storage.ready_root("stl").parent, FOLDER_NAME)
+    return _beside(storage.ready_root("stl"))
 
 
 def nas_root_named() -> Path:
     """Where the NAS folder is, whether or not it can be used now (for the page)."""
-    from .media import FOLDER_NAME
-
-    return storage.named_folder(storage.effective_root("stl").parent, FOLDER_NAME)
+    return _beside(storage.effective_root("stl"))
 
 
 def _state() -> dict:

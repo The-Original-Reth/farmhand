@@ -67,14 +67,12 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const cameras = active.flatMap((p) => (cams[p.id]?.webcams || []).map((cam) => ({ key: `${p.id}:${cam.name}` }))).map((x) => ({ ...x, label: label(x.key) }));
   const finding = active.some((p) => !cams[p.id] || cams[p.id].kept);
 
-  // ask the server (busy as `what`); the page it answers is taken. The page, or null when it couldn't.
-  const ask = async (what, call) => {
+  // ask the server (busy as `what`): what `work` answers, or null when it couldn't (and the problem is shown)
+  const run = async (what, work) => {
     setBusy(what);
     setProblem(null);
     try {
-      const p = await call();
-      take(p);
-      return p;
+      return await work();
     } catch (e) {
       setProblem(errorText(e));
       return null;
@@ -82,6 +80,13 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
       setBusy(null);
     }
   };
+  // ask the server for a change; the page it answers is taken. The page, or null when it couldn't.
+  const ask = (what, call) =>
+    run(what, async () => {
+      const p = await call();
+      take(p);
+      return p;
+    });
   const renameShow = async (old, name) => {
     const p = await ask("picture", () => renameSlideshow(old, name));
     if (!p) return null;
@@ -141,54 +146,33 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
 
   // Copy layout: a stream's own layout made Stream control's (anything changed here and not saved yet is let go).
   // { copied, problems } once done, or null when it couldn't.
-  const copyLayout = async (id) => {
-    setBusy("copy");
-    setProblem(null);
-    try {
+  const copyLayout = (id) =>
+    run("copy", async () => {
       const r = await copyStreamLayout(id);
       take(r.page);
       setDraft(null);
       return { copied: r.copied, problems: r.problems };
-    } catch (e) {
-      setProblem(errorText(e));
-      return null;
-    } finally {
-      setBusy(null);
-    }
-  };
+    });
 
   // Which stream plugins are brought in (saved straight away, on its own)
-  const choose = async (ids) => {
-    setBusy("choose");
-    setProblem(null);
-    try {
+  const choose = (ids) =>
+    run("choose", async () => {
       const r = await chooseStreamPlugins(ids);
       setPage((now) => ({ ...now, streams: r.streams, happened: r.happened }));
-    } catch (e) {
-      setProblem(errorText(e));
-    } finally {
-      setBusy(null);
-    }
-  };
+    });
 
   // Go live and Stop: one stream plugin, or all of them. What's changed here is saved first, so it goes out.
   const streamAnswer = (answers) =>
     setPage((now) => ({ ...now, streams: now.streams.map((s) => answers.find((a) => a.id === s.id) || s) }));
   const act = async (what, call, saveFirst) => {
     if (saveFirst && changed && !(await saveAll())) return;
-    setBusy(what);
-    setProblem(null);
-    try {
+    await run(what, async () => {
       const got = await call();
       const answers = Array.isArray(got) ? got : [got];
       streamAnswer(answers);
       const failed = answers.filter((a) => a.error && !a.live && what.startsWith("start"));
       if (failed.length) setProblem(failed.map((a) => `${a.site}: ${a.error}`).join(" "));
-    } catch (e) {
-      setProblem(errorText(e));
-    } finally {
-      setBusy(null);
-    }
+    });
   };
 
   const squares = shown.cells.map((cell) => {

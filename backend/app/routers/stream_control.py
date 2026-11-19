@@ -55,10 +55,15 @@ def save_design(body: dict = Body(...), db: Session = Depends(get_db)):
 # ------------------------------------------------------------------ the stream plugins
 
 
+def _streams_answer(listed: list[dict]) -> dict:
+    """{streams, happened}: the stream plugins as listed, with what the schedule did lately."""
+    return {"streams": listed, "happened": schedule.happened()}
+
+
 @router.get("/streams")
 def stream_plugins(db: Session = Depends(get_db)):
     """Each stream plugin and how its stream is doing (the page asks every few seconds)."""
-    return {"streams": streams.listed(db), "happened": schedule.happened()}
+    return _streams_answer(streams.listed(db))
 
 
 class ChosenIn(BaseModel):
@@ -70,7 +75,7 @@ def choose_streams(body: ChosenIn, db: Session = Depends(get_db)):
     """Which stream plugins Stream control brings in: {streams, happened}. One left out keeps its own layout and isn't
     started or stopped from here. In the settings copy."""
     with answer_errors():
-        return {"streams": streams.choose(db, body.chosen), "happened": schedule.happened()}
+        return _streams_answer(streams.choose(db, body.chosen))
 
 
 @router.post("/streams/{plugin_id}/copy-layout")
@@ -89,7 +94,7 @@ def start_or_stop(plugin_id: str, action: str, db: Session = Depends(get_db)):
     if action not in ("start", "stop"):
         raise HTTPException(status_code=404, detail="Not Found")
     with answer_errors():
-        return (streams.start if action == "start" else streams.stop)(db, plugin_id)
+        return streams.start_or_stop(db, plugin_id, action)
 
 
 @router.post("/start-all")
@@ -127,6 +132,14 @@ def _media(call):
         return call()
 
 
+async def _take_in(files: list[UploadFile], most: int, add) -> None:
+    """Each uploaded file, read up to one byte past `most` (so one too big is refused as such), handed to
+    add(file name, data) in turn."""
+    for file in files:
+        data = await file.read(most + 1)
+        _media(lambda: add(file.filename or "", data))
+
+
 @router.post("/scan")
 def scan_folder(db: Session = Depends(get_db)):
     """Read the stream folder again (pictures or music copied in, or taken out, by hand)."""
@@ -153,9 +166,7 @@ def get_picture(name: str, db: Session = Depends(get_db)):
 @router.post("/pictures", status_code=201)
 async def add_pictures(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
     """Pictures (PNG, JPEG, WebP or SVG, under 10 MB each) into the stream folder's images."""
-    for file in files:
-        data = await file.read(media.PICTURE_MAX + 1)
-        _media(lambda: media.add_picture(db, None, file.filename or "", data))
+    await _take_in(files, media.PICTURE_MAX, lambda filename, data: media.add_picture(db, None, filename, data))
     return page(db, with_streams=False)
 
 
@@ -176,9 +187,7 @@ def add_slideshow(body: SlideshowIn, db: Session = Depends(get_db)):
 @router.put("/slideshows/{name}")
 def rename_slideshow(name: str, body: SlideshowIn, db: Session = Depends(get_db)):
     """Rename a slideshow: its folder, and every square showing it (in the design and saved layouts) follows."""
-    new = _media(lambda: media.rename_slideshow(db, name, body.name))
-    if new != name:
-        design.rename_slideshow(db, name, new)
+    _media(lambda: design.rename_slideshow_folder(db, name, body.name))
     return page(db, with_streams=False)
 
 
@@ -210,9 +219,7 @@ def get_slideshow_picture(name: str, picture: str, db: Session = Depends(get_db)
 
 @router.post("/slideshows/{name}/pictures", status_code=201)
 async def add_slideshow_pictures(name: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
-    for file in files:
-        data = await file.read(media.PICTURE_MAX + 1)
-        _media(lambda: media.add_picture(db, name, file.filename or "", data))
+    await _take_in(files, media.PICTURE_MAX, lambda filename, data: media.add_picture(db, name, filename, data))
     return page(db, with_streams=False)
 
 
@@ -232,9 +239,7 @@ def get_track(name: str, db: Session = Depends(get_db)):
 @router.post("/music", status_code=201)
 async def add_tracks(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
     """MP3s into the stream folder's music (under 50 MB each; bigger ones can be copied in by hand)."""
-    for file in files:
-        data = await file.read(media.TRACK_MAX + 1)
-        _media(lambda: media.add_track(db, file.filename or "", data))
+    await _take_in(files, media.TRACK_MAX, lambda filename, data: media.add_track(db, filename, data))
     return page(db, with_streams=False)
 
 

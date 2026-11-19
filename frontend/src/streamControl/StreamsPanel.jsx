@@ -48,11 +48,7 @@ export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, 
           <span style={uiText(12, c.amber, { flex: 1, minWidth: 200, lineHeight: 1.5 })}>
             The stream folder isn't available, so the streams can't get its pictures and music: {media.error}
           </span>
-          {media.on_share && onReconnect && (
-            <button type="button" data-testid="stream-control-reconnect-nas" onClick={onReconnect} disabled={!!busy} style={headerButton()}>
-              {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
-            </button>
-          )}
+          {media.on_share && onReconnect && <ReconnectNas testid="stream-control-reconnect-nas" busy={busy} onReconnect={onReconnect} />}
         </div>
       )}
       <NasCopy copy={media?.copy} busy={busy} onReconnect={media?.on_share ? onReconnect : null} />
@@ -94,6 +90,15 @@ const shortened = (text) => {
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 };
 
+// Reconnect NAS: the network share the stream folder is on connected again
+function ReconnectNas({ testid, busy, onReconnect }) {
+  return (
+    <button type="button" data-testid={testid} onClick={onReconnect} disabled={!!busy} style={headerButton()}>
+      {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
+    </button>
+  );
+}
+
 // How the stream folder's copy on the NAS is going (media.copy): Stream control works from Farmhand's own copy of its
 // pictures and music, so the streams never wait on the NAS, and keeps the stream folder on the NAS in step with it.
 // Nothing shown until that's how it works (the first copying from the NAS still under way: it works from the NAS).
@@ -107,11 +112,7 @@ function NasCopy({ copy, busy, onReconnect }) {
           The streams carry on from Farmhand's own copy of the pictures and music, but the NAS copy isn't being kept up to date
           {copy.copied_at ? ` (last at ${clock(copy.copied_at)})` : ""}: {copy.error}
         </span>
-        {onReconnect && (
-          <button type="button" data-testid="stream-control-nas-copy-reconnect" onClick={onReconnect} disabled={!!busy} style={headerButton()}>
-            {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
-          </button>
-        )}
+        {onReconnect && <ReconnectNas testid="stream-control-nas-copy-reconnect" busy={busy} onReconnect={onReconnect} />}
       </div>
     );
   }
@@ -256,11 +257,6 @@ function StreamLinks({ s }) {
   );
 }
 
-const CAMERA_TONE = { live: "green", down: "danger", starting: "amber" };
-const CAMERA_WORD = { live: "live", down: "down", starting: "starting" };
-
-// Each camera in the stream while it's live, as the plugin sends it: live, down (its square shows "Camera down"), or
-// starting
 // The cameras of the streams going out, once: every stream brought in sends the same design, so they're the same
 // cameras. Each in the order the first live stream gives them; one down (or starting) in any stream shows so.
 const WORST = { down: 2, starting: 1, live: 0 };
@@ -276,7 +272,9 @@ const camerasOf = (streams) => {
   return [...out.values()];
 };
 
-// (as a list in two columns, each line the printer's name, then live, down or starting); nothing while none is live
+// Each camera in the stream while it's live, as the plugin sends it: live, down (its square shows "Camera down"), or
+// starting (as a list in two columns, each line the printer's name, then live, down or starting); nothing while none is live
+const CAMERA_TONE = { live: "green", down: "danger", starting: "amber" };
 function CameraStates({ cameras }) {
   if (!cameras.length) return null;
   const down = cameras.filter((x) => x.state === "down").length;
@@ -289,7 +287,7 @@ function CameraStates({ cameras }) {
         {cameras.map((x, i) => (
           <div key={x.key || i} data-testid="stream-control-camera" style={{ display: "flex", gap: 6, minWidth: 0 }}>
             <span style={{ color: c.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={x.label}>{x.label}</span>
-            <span style={{ color: c[CAMERA_TONE[x.state]], fontWeight: 600, flexShrink: 0 }}>{CAMERA_WORD[x.state]}</span>
+            <span style={{ color: c[CAMERA_TONE[x.state]], fontWeight: 600, flexShrink: 0 }}>{x.state}</span>
           </div>
         ))}
       </div>

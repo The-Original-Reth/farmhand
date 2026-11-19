@@ -228,7 +228,10 @@ def _each(db: Session, ask, only_chosen: bool = False) -> list[dict]:
     on = [p for p in plugins if p.enabled and (not only_chosen or picked is None or p.id in picked)]
     asked = {}
     if on:
-        targets = {p.id: (registry.connection_of(p).address, control_of(p)["path"], control_of(p)["legacy"]) for p in on}
+        targets = {}
+        for p in on:
+            sc = control_of(p)
+            targets[p.id] = (registry.connection_of(p).address, sc["path"], sc["legacy"])
         db.commit()  # let go of its database connection while the plugins are asked (a slow one can take seconds)
         with ThreadPoolExecutor(max_workers=min(8, len(on))) as pool:
             jobs = {pid: pool.submit(ask, address, path, legacy=legacy) for pid, (address, path, legacy) in targets.items()}
@@ -268,6 +271,11 @@ def start(db: Session, plugin_id: str) -> dict:
 
 def stop(db: Session, plugin_id: str) -> dict:
     return _act(db, _one(db, plugin_id), "stop")
+
+
+def start_or_stop(db: Session, plugin_id: str, action: str) -> dict:
+    """start() or stop(), as `action` ("start" or "stop") says."""
+    return (start if action == "start" else stop)(db, plugin_id)
 
 
 def all_of(db: Session, action: str) -> list[dict]:
