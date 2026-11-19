@@ -369,6 +369,49 @@ def test_music_plays_from_the_folders_chosen_without_copying(api):
     assert api.put("/stream-control", json={"music_from": []}).status_code == 422
 
 
+def test_a_plugin_that_answers_slowly_keeps_its_tracks_playing(api, monkeypatch):
+    fake = FakeStreams()
+    remote.transport = httpx.MockTransport(fake.handle)
+    switch(api)
+    token = add_stream_plugin(api, "stream", "YouTube")
+    headers = {"Authorization": f"Bearer {token}"}
+    api.put("/stream-control", json={"music_from": ["stream"]})
+    assert api.get("/plugin-api/v1/stream/music/beat.mp3", headers=headers).content == b"picture:beat.mp3"
+
+    # the list goes stale and the plugin stops answering (busy streaming): its last list is still played from
+    monkeypatch.setattr(music_sources, "LIST_FOR", -1)
+    fake.down.add("stream")
+    got = api.get("/plugin-api/v1/stream/design", headers=headers).json()["media"]
+    assert got["music"] == ["beat.mp3"]
+    [youtube] = [x for x in api.get("/stream-control").json()["media"]["music_sources"] if x["id"] == "stream"]
+    assert youtube["problem"] and youtube["tracks"] == 1  # "1 track, not answering just now"
+    # past KEEP_GOOD_FOR it's given up on
+    monkeypatch.setattr(music_sources, "KEEP_GOOD_FOR", -1)
+    assert api.get("/plugin-api/v1/stream/design", headers=headers).json()["media"]["music"] == []
+
+
+def test_one_request_at_a_time_asks_a_plugin_for_its_tracks(api, monkeypatch):
+    import threading
+
+    fake = FakeStreams()
+    remote.transport = httpx.MockTransport(fake.handle)
+    switch(api)
+    add_stream_plugin(api, "stream", "YouTube")
+    api.put("/stream-control", json={"music_from": ["stream"]})
+    db = api_db(api)
+    music_sources.forget()
+    assert music_sources.plugin_tracks(db, "stream")[0] == ["beat.mp3"]
+    monkeypatch.setattr(music_sources, "LIST_FOR", -1)  # stale from now on
+    lock = music_sources._asking["stream"]
+    lock.acquire()  # someone is asking it right now
+    try:
+        fake.asked.clear()
+        assert music_sources.plugin_tracks(db, "stream") == (["beat.mp3"], None)  # what it said last, at once
+        assert not fake.asked
+    finally:
+        lock.release()
+
+
 def test_only_the_streams_brought_in_are_started_stopped_or_sent_the_design(api):
     fake = FakeStreams()
     remote.transport = httpx.MockTransport(fake.handle)
@@ -578,3 +621,19 @@ def test_reconnect_nas_reads_the_stream_folder_again(api, monkeypatch):
     monkeypatch.setattr(network_shares_service, "reconnect_holding", refused)
     r = api.post("/stream-control/reconnect")
     assert r.status_code == 422 and "Timed out" in r.json()["detail"]
+
+
+def test_files_outside_a_folder_are_counted_by_their_path_without_looking_each_up(monkeypatch, tmp_path):
+    import os
+
+    from app.services import storage_settings_service as s
+
+    root = tmp_path / "STL"
+    root.mkdir()
+    looked_up = []
+    real = os.path.realpath
+    monkeypatch.setattr(os.path, "realpath", lambda p, *a, **k: looked_up.append(str(p)) or real(p, *a, **k))
+    outside = s._outside(root)
+    assert not outside(str(root / "12" / "frog.stl")) and not outside(str(root))
+    assert outside(str(tmp_path / "STLx" / "frog.stl")) and outside("/elsewhere/frog.stl")
+    assert looked_up == [str(root)]  # the folder once; the files never
