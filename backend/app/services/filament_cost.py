@@ -176,6 +176,15 @@ def from_gcode(tail: bytes) -> dict:
     }
 
 
+def from_settings(found: dict) -> dict:
+    """{cost_per_kg, density, diameter} (None where missing) from the settings parsers/gcode.filament_settings read."""
+    return {
+        "cost_per_kg": _first_number(found.get("filament_cost")),
+        "density": _first_number(found.get("filament_density")),
+        "diameter": _first_number(found.get("filament_diameter")),
+    }
+
+
 def _priced(filament_mm: float, price: float, density: float, diameter: float | None, **source) -> dict:
     diameter = diameter or DEFAULT_DIAMETER
     g = grams(filament_mm, diameter, density)

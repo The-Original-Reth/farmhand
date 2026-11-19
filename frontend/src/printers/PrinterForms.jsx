@@ -19,7 +19,8 @@ const CONNECTIONS = [
   { value: "prusalink", label: "PrusaLink (Prusa Core One, MK4, XL...)" },
 ];
 // "plugin:<id>": a Prusa printer connected through a plugin that reports printers and starts their prints (the Prusa
-// Connect plugin), one choice per such plugin. Farmhand then never contacts the printer's PrusaLink.
+// Connect plugin), one choice per such plugin. Farmhand then asks the printer's PrusaLink for one thing only: reading
+// the start of each printed file for its filament price (read only), with the PrusaLink login if one is given.
 const viaPlugin = (type) => (type?.startsWith("plugin:") ? type.slice(7) : null);
 const newConnection = (printer = null) => ({
   type: printer?.statusFrom ? `plugin:${printer.statusFrom}` : printer?.connectionType || "moonraker",
@@ -99,7 +100,10 @@ function PrusaLinkPassword({ value, onChange, saved }) {
 // What the API is sent for it: only the chosen kind's fields
 const connectionFields = (conn) =>
   viaPlugin(conn.type)
-    ? { connectionType: "prusalink", statusFrom: viaPlugin(conn.type), cameraAddress: conn.cameraAddress.trim() }
+    ? {
+      connectionType: "prusalink", statusFrom: viaPlugin(conn.type), cameraAddress: conn.cameraAddress.trim(),
+      prusalinkPassword: conn.prusalinkPassword || undefined, // only for reading printed files' filament price
+    }
     : conn.type === "prusalink"
     ? {
         connectionType: "prusalink",
@@ -131,7 +135,12 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
         <>
           <div data-testid="connection-through-plugin" style={uiText(12, c.textFaint, { marginTop: -6, marginBottom: 14, lineHeight: 1.5 })}>
             Farmhand gets this printer's status from {connections.find((o) => o.value === conn.type)?.label.split(" (")[0] || "the plugin"},
-            and sends its prints there too. Its PrusaLink isn't used. Choose which printer it is on the plugin's page.
+            and sends its prints there too. Choose which printer it is on the plugin's page.
+          </div>
+          <PrusaLinkPassword value={conn.prusalinkPassword} onChange={set("prusalinkPassword")} saved={saved} />
+          <div style={uiText(11, c.textFaint, { marginTop: -8, marginBottom: 14, lineHeight: 1.5 })}>
+            Optional: with it, Farmhand reads the start of each printed file on the printer (only reads) for its filament
+            price, as Mainsail&apos;s are costed. Nothing else goes to PrusaLink.
           </div>
           {camera}
         </>

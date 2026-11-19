@@ -28,6 +28,9 @@ class FakePrusaLink:
         self.uploads: list[dict] = []  # {path, size, headers}
         self.down = False  # True: behaves like a printer that's switched off
         self.requests: list[tuple[str, str]] = []
+        # files on the USB stick, for reading a printed file back: {name: (bytes, m_timestamp)}
+        self.files: dict[str, tuple[bytes, int]] = {}
+        self.downloaded: list[str] = []  # names whose download was asked for
 
     def start_job(self, job_id: int, name: str, *, progress=0.0, time_printing=0, time_remaining=3600, state="PRINTING",
                   meta=True):
@@ -89,6 +92,20 @@ class FakePrusaLink:
         if path == "/api/v1/storage":
             usb = {"name": "usb", "type": "USB", "path": "/usb", "available": self.usb_present, "read_only": False, "free_space": 10**9}
             return httpx.Response(200, json={"storage_list": [usb]})
+        if path.startswith("/api/v1/files/usb/") and request.method == "GET":
+            name = path.removeprefix("/api/v1/files/usb/")
+            if name not in self.files:
+                return httpx.Response(404)
+            data, stamp = self.files[name]
+            short = f"/usb/F{list(self.files).index(name)}.BGC"
+            return httpx.Response(200, json={"name": short[5:], "display_name": name, "type": "PRINT_FILE", "size": len(data),
+                                             "m_timestamp": stamp, "ro": False, "refs": {"download": short}})
+        if path.startswith("/usb/") and request.method == "GET":
+            found = [n for i, n in enumerate(self.files) if path == f"/usb/F{i}.BGC"]
+            if not found:
+                return httpx.Response(404)
+            self.downloaded.append(found[0])
+            return httpx.Response(200, content=self.files[found[0]][0])
         if path.startswith("/api/v1/files/") and request.method == "PUT":
             if self.state not in ("IDLE", "READY", "FINISHED", "STOPPED"):
                 return httpx.Response(409)

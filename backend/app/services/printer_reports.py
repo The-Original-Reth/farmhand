@@ -204,6 +204,9 @@ def hand_over(printer: Printer, name: str, data: bytes | BinaryIO, size: int | N
         )
     if size is None and isinstance(data, bytes):
         size = len(data)
+    from .prusalink import printed_filament
+
+    printed_filament.from_sent_file(db, printer, name, data)  # its price, from Farmhand's own copy
     ticket = secrets.token_urlsafe(24)
     with _lock:
         now = time.monotonic()
