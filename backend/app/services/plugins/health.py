@@ -10,6 +10,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from ...database import SessionLocal
+from ...models import PluginAsks
 from ...periodic import PeriodicWorker
 from ...timeutil import utc_now
 from . import manifest as manifests
@@ -40,7 +41,8 @@ def refresh_manifest(plugin, address: str) -> bool:
     """
     The plugin's manifest read again, so a new name, menu entry or version (a plugin updated where it runs) shows in
     Farmhand without adding it again. Kept only when it is still the same plugin, on the same plugin API, asking for no
-    permission it didn't ask for before (a new one needs the operator's yes: add it again). True when something changed.
+    permission it didn't ask for before: one asking for a new one is kept aside (plugin_asks) until the operator
+    allows it on the Plugins page (registry.allow), the plugin going on as it was meanwhile. True when something changed.
     """
     try:
         found = manifests.check(remote.fetch_manifest(address))
@@ -48,7 +50,18 @@ def refresh_manifest(plugin, address: str) -> bool:
         return False  # (the health check says what's wrong, if anything)
     asked = set((plugin.manifest or {}).get("permissions") or [])
     same = found["id"] == plugin.id and found["farmhand_api"] == plugin.farmhand_api
-    if not same or not set(found["permissions"]) <= asked or found == plugin.manifest:
+    if not same:
+        return False
+    if not set(found["permissions"]) <= asked:
+        if plugin.asks is None or plugin.asks.manifest != found:
+            if plugin.asks is None:
+                log.info("The %s plugin asks for more: %s", plugin.id, ", ".join(sorted(set(found["permissions"]) - asked)))
+            plugin.asks = PluginAsks(plugin_id=plugin.id, manifest=found)
+            return True
+        return False
+    if plugin.asks is not None:
+        plugin.asks = None  # (it no longer asks for more)
+    if found == plugin.manifest:
         return False
     if (found["name"], found["version"]) != (plugin.name, plugin.version):
         log.info("The %s plugin is now %s %s", plugin.id, found["name"], found["version"])

@@ -2,7 +2,8 @@
 The plugin API, version 1: what a plugin's container may read of Farmhand (docs/plugins.md has every shape). Each call
 carries the plugin's token (Authorization: Bearer ...): none or a bad one is 401, and a call outside the permissions
 the operator granted it is 403 naming the one it needs. It only reads, except a Prusa
-printer's status reported by a plugin it's switched to (printers:report). v1 only ever gains fields and endpoints.
+printer's status reported by a plugin it's switched to (printers:report), and a plugin's own copy of its settings
+(stream:backup). v1 only ever gains fields and endpoints.
 
 Reached over the farm's network on the API's port (a plugin may run on another machine), never through the web
 page's server (nginx doesn't pass /plugin-api/ on). Besides the token: a plugin set to "only accept calls from its
@@ -10,6 +11,7 @@ address" has its token refused from anywhere else (403), and each token may make
 """
 from __future__ import annotations
 
+import json
 import math
 from urllib.parse import quote
 from collections.abc import Callable
@@ -22,7 +24,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import NotFound
 from ..services import print_progress, printer_reports, stream_control
-from ..services.plugins import answers, events, handover, limits, registry, remote
+from ..services.plugins import answers, backups, events, handover, limits, registry, remote
 from ..services.plugins.manifest import API_VERSION
 from ..services.stream_control import design as stream_design
 from ..services.stream_control import media as stream_media
@@ -309,3 +311,33 @@ def stream_slideshow_picture(show: str, name: str, db: Session = Depends(get_db)
 def stream_track(name: str, db: Session = Depends(get_db)):
     """A track of the stream's music, from whichever chosen folder has it (another stream plugin's, passed on)."""
     return _stream_file(db, lambda: stream_track_response(music_sources.find(db, name)))
+
+
+# ------------------------------------------------------------------ stream:backup (a plugin's own settings, kept with Farmhand's)
+
+
+@router.put("/backup")
+async def put_backup(request: Request, db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:backup"))):
+    """Keep this copy of the plugin's own settings ({format: 1, saved_at, settings: {key: text}}, at most 2 MB): kept in
+    place of the last, and written to the settings folder (plugin-backups/<id>.json). {saved_at}."""
+    raw = await request.body()
+    if len(raw) > backups.MOST + 64 * 1024:
+        raise HTTPException(status_code=413, detail=f"A plugin's settings copy may be at most {backups.MOST // (1024 * 1024)} MB.")
+    try:
+        kept = backups.save(db, caller.plugin_id, json.loads(raw or b"null"))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    from ..services import config_service  # (not at the top: config_service reads the plugins this module serves)
+
+    config_service.request_mirror(config_service.MirrorScope())
+    return kept
+
+
+@router.get("/backup")
+def get_backup(db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("stream:backup"))):
+    """The plugin's own copy of its settings, as it sent it ({format, saved_at, settings}): for taking them back when
+    the operator restores them. 404 while Farmhand has none."""
+    try:
+        return backups.get(db, caller.plugin_id)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None

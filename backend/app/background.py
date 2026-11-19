@@ -16,6 +16,7 @@ from .printer_poller import poller
 from .services import bundle_service, config_service, library_records, previews, project_records, sub_printer_service
 from .services.plugins import health as plugin_health
 from .services.stream_control import schedule as stream_schedule
+from .services.stream_control import nas_copy as stream_nas_copy
 
 log = logging.getLogger("farmhand.startup")
 
@@ -72,6 +73,8 @@ def start_all() -> None:
     plugin_health.worker.start()
     # Stream control's schedule: the stream plugins started and stopped at the times set (while it's switched on)
     stream_schedule.worker.start()
+    # Stream control works from its own copy of its pictures and music: kept in step with the stream folder on the NAS
+    stream_nas_copy.worker.start()
     # Records written beside the files after every change, and all of them once now
     project_records.background.enable()
     library_records.background.enable()
@@ -85,5 +88,5 @@ def start_all() -> None:
 
 def stop_all() -> None:
     _stopping.set()
-    for worker in (supervisor, poller, farm_cost_recorder, previews_worker, plugin_health.worker, stream_schedule.worker):
+    for worker in (supervisor, poller, farm_cost_recorder, previews_worker, plugin_health.worker, stream_schedule.worker, stream_nas_copy.worker):
         worker.stop()

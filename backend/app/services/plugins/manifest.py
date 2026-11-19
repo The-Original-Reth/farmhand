@@ -28,6 +28,10 @@ PERMISSIONS = {
     "its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
     # A stream plugin sending the stream designed in Stream control (services/stream_control): the design and its files
     "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
+    # A plugin keeping a copy of its own settings in Farmhand's settings folder (services/plugins/backups.py), for
+    # Farmhand to give back to it (the Plugins page's Restore settings): its secrets included, so said plainly
+    "stream:backup": "keep a copy of its own settings with Farmhand's (in the settings folder), the stream key and the "
+    "sign-in included, so they can be given back to it if it's set up again",
 }
 
 ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
@@ -75,6 +79,7 @@ def check(raw) -> dict:
         "health": _path(raw, "health"),
         "stream_control": _stream_control(raw.get("stream_control")),
         "print": _print(raw.get("print"), permissions),
+        "backup": _backup(raw.get("backup"), permissions),
     }
 
 
@@ -143,6 +148,22 @@ def _print(raw, permissions: list[str]) -> dict | None:
     if "printers:print" not in permissions:
         raise ValueError("The plugin's print needs the printers:print permission in its manifest's permissions.")
     return {"path": path}
+
+
+def _backup(raw, permissions: list[str]) -> dict | None:
+    """A plugin keeping a copy of its settings with Farmhand's (stream:backup): {"restore": "/api/farmhand-backup/restore"},
+    the path Farmhand POSTs {saved_at} to when the operator restores them (the plugin then fetches them with GET
+    /plugin-api/v1/backup and its token); see docs/plugins.md."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("The plugin's backup must be an object, like {\"restore\": \"/api/farmhand-backup/restore\"}.")
+    path = _path({"backup restore": raw.get("restore")}, "backup restore")
+    if path is None:
+        raise ValueError("The plugin's backup needs a restore path, like \"/api/farmhand-backup/restore\".")
+    if "stream:backup" not in permissions:
+        raise ValueError("The plugin's backup needs the stream:backup permission in its manifest's permissions.")
+    return {"restore": path}
 
 
 def _page(raw) -> dict | None:

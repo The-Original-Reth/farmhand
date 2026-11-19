@@ -43,4 +43,9 @@ class FakePlugin:
             return httpx.Response(302, headers={"Location": f"{self.address}/new"})
         if path == "/events":
             return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, content=b"event: hi\ndata: 1\n\n")
+        if path == "/api/farmhand-backup/restore" and request.method == "POST":  # asked to take its settings back
+            return httpx.Response(self.restore_answer[0], json=self.restore_answer[1])
         return httpx.Response(404, text="not here")
+
+    # what it answers when asked to take its settings back: (status, json)
+    restore_answer = (200, {"restored": True, "saved_at": "2026-11-19T10:00:00+00:00", "note": "Restored."})

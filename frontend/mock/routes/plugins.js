@@ -22,6 +22,7 @@ const PERMISSIONS = {
   "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
   "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you connect through it",
   "printers:print": "start the prints you send from Farmhand to the Prusa printers you connect through it (it is handed each G-code to send on)",
+  "stream:backup": "keep a copy of its own settings with Farmhand's (in the settings folder), the stream key and the sign-in included, so they can be given back to it if it's set up again",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
 const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
@@ -200,6 +201,16 @@ export function pluginsRoutes(ctx) {
     added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080"), added("http://192.168.10.217:8081"), added("http://192.168.10.93:8085"),
   ]);
   plugins(); // made now: the printers' routes (before these) read farm.plugins for the plugins that can report a printer
+  // The stream plugins' settings copies (stream:backup): YouTube's kept already and ready to give back; Twitch's an
+  // older version that, updated where it runs, now asks for the permission (so Allow shows on its card)
+  for (const p of plugins()) {
+    if (p.id === "stream" && !p.backup) {
+      p.manifest = { ...p.manifest, backup: { restore: "/api/farmhand-backup/restore" }, permissions: [...p.manifest.permissions, "stream:backup"] };
+      p.permissions = [...p.permissions, "stream:backup"];
+      p.backup = { saved_at: new Date(Date.now() - 3600e3).toISOString(), received_at: new Date(Date.now() - 3600e3).toISOString(), size: 5321 };
+    }
+    if (p.id === "twitch" && p.asks === undefined) p.asks = ["stream:backup"];
+  }
   const find = (id) => plugins().find((p) => p.id === id) || (() => { throw new HttpError(404, "Plugin not found"); })();
   const out = (p) => ({
     id: p.id, name: p.name, version: p.version, image: p.image, farmhand_api: p.farmhand_api, enabled: p.enabled,
@@ -207,6 +218,7 @@ export function pluginsRoutes(ctx) {
     address: p.address, only_from_address: p.onlyFromAddress, needs_token: !!p.needsToken, page: p.manifest.page ?? null,
     health: p.enabled ? p.health : { ...p.health, state: "off" },
     token_created_at: p.needsToken ? null : p.tokenCreatedAt, token_last_used_at: p.tokenLastUsedAt,
+    asks: describe((p.asks || []).filter((x) => !p.permissions.includes(x))), backup: p.backup || null, can_restore: !!p.manifest.backup?.restore,
   });
   const checkGrant = (manifest, granted) => {
     if (!Array.isArray(granted) || !granted.every((p) => typeof p === "string")) throw new HttpError(422, "The permissions granted must be a list, like [\"printers:read\"].");
@@ -270,6 +282,27 @@ export function pluginsRoutes(ctx) {
     if (body.enabled != null) p.enabled = !!body.enabled;
     if (body.only_from_address != null) p.onlyFromAddress = !!body.only_from_address;
     return out(p);
+  });
+  // A permission its newer manifest asks for, granted: its token keeps working (the real one: registry.allow)
+  on("POST", "/plugins/:id/allow", ({ id }) => {
+    const p = find(id);
+    const more = (p.asks || []).filter((x) => !p.permissions.includes(x));
+    if (!more.length) throw new HttpError(422, `${p.name} isn't asking for anything new.`);
+    p.permissions = [...p.permissions, ...more];
+    p.manifest = { ...p.manifest, permissions: [...new Set([...p.manifest.permissions, ...more])],
+      ...(more.includes("stream:backup") && { backup: { restore: "/api/farmhand-backup/restore" } }) };
+    p.asks = [];
+    // (as the real plugin would, once allowed: it sends its settings copy within half a minute; here at once)
+    if (more.includes("stream:backup")) p.backup = { saved_at: new Date().toISOString(), received_at: new Date().toISOString(), size: 2210 };
+    return out(p);
+  });
+  // Its settings copy given back (the real one asks the plugin, which fetches it with its token: services/plugins/backups.py)
+  on("POST", "/plugins/:id/backup/restore", ({ id }, _body, q) => {
+    requireConfirm(q, "Restoring replaces the plugin's own settings with Farmhand's copy: say confirm=true.");
+    const p = find(id);
+    if (!p.manifest.backup?.restore) throw new HttpError(422, `${p.name} doesn't say how to take its settings back (this version of it can't).`);
+    if (!p.backup) throw new HttpError(404, `Farmhand has no copy of ${p.name}'s settings yet.`);
+    return { restored: true, saved_at: p.backup.saved_at, note: "Restored. A stream that's live keeps going as it is; the restored settings are used from the next Go live." };
   });
   on("POST", "/plugins/:id/token", ({ id }) => {
     const p = newToken(find(id));

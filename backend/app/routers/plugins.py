@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..errors import NotFound, answer_errors
 from ..services import stream_control
-from ..services.plugins import answers, pages, registry
+from ..services.plugins import answers, backups, pages, registry
 from ..services.plugins import manifest as manifests
 from .common import require_confirm
 
@@ -108,6 +108,22 @@ def new_token(plugin_id: str, db: Session = Depends(get_db)):
     with answer_errors():
         token = registry.new_token(db, plugin_id)
         return {"plugin": registry.out(registry.get(db, plugin_id)), "token": token}
+
+
+@router.post("/{plugin_id}/allow")
+def allow_plugin(plugin_id: str, db: Session = Depends(get_db)):
+    """Grant what the plugin's newer manifest asks for (its `asks`): its token keeps working, with them added."""
+    with answer_errors():
+        return registry.out(registry.allow(db, plugin_id))
+
+
+@router.post("/{plugin_id}/backup/restore")
+def restore_plugin_settings(plugin_id: str, confirm: bool = False, db: Session = Depends(get_db)):
+    """Give the plugin back the copy of its own settings Farmhand keeps (its settings are replaced by it: 409 without
+    confirm=true). The plugin's answer, {restored, saved_at, note}; 404 with no copy, 422 saying why it couldn't be done."""
+    require_confirm(confirm, "Restoring replaces the plugin's own settings with Farmhand's copy: say confirm=true.")
+    with answer_errors():
+        return backups.restore(db, plugin_id)
 
 
 @router.delete("/{plugin_id}", status_code=204)

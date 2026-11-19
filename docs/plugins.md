@@ -70,8 +70,9 @@ Put it in your image at `/farmhand-plugin.json`, and serve the same thing at `GE
 | `page` | no | A page in Farmhand's menu: `menu` (its label, up to 40 characters), `icon` (optional: `youtube`, `video`, `camera`, `chart`, `bell`, `dashboard` or `twitch`; a puzzle piece otherwise), `path` on your plugin (default `/`). See "Your page inside Farmhand" |
 | `permissions` | no | What it needs to read (below). Ask only for what you use: the operator sees each one in plain words before saying yes |
 | `settings_page` | no | Your plugin's settings, shown on Farmhand's Settings page under your plugin's name (below Farmhand's own): a path on your plugin, like `/settings` or `/?view=settings`. See "Your settings on Farmhand's Settings page" |
-| `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is not taken (the operator adds the plugin again to grant it) |
+| `health` | no | A path that answers 2xx while your plugin is well. Farmhand asks it every 30 seconds (`/manifest` when there's none) and shows the operator "running", "running, with a problem" (any other answer: send a short plain-words reason as text, like "Farmhand refused this plugin's token: make a new one on the Plugins page"; your page is still shown) or "not answering" (nothing answered: Farmhand shows that in place of your page). While it answers well, Farmhand also reads your `/manifest` again, so a new `name`, `version` or `page` shows without adding the plugin again; a manifest asking for a permission it didn't ask for before is kept aside: the Plugins page shows what it now asks for with **Allow**, which grants it (the token stays the same) and takes the new manifest; until then the plugin goes on with what it was given |
 | `print` | no | A plugin Prusa printers are connected through, which starts the prints Farmhand sends them: `{"path": "/farmhand/print"}`, the path Farmhand POSTs each print to. Needs `printers:print` in `permissions`. See `PUT /printers/{id}/status` and "Starting the prints Farmhand sends" |
+| `backup` | no | A plugin that keeps a copy of its own settings with Farmhand's: `{"restore": "/api/farmhand-backup/restore"}`, the path Farmhand POSTs to when the operator restores them. Needs `stream:backup` in `permissions`. See "Keeping a copy of your settings" |
 | `stream_control` | no | A stream plugin that Stream control starts and stops: `{"path": "/api/stream-control", "site": "YouTube"}` (`site`, up to 40 characters, is shown beside it), and optionally `"settings": "/?view=youtube-settings"`, a page of yours for that site's own settings, which Stream control opens in a window of its own from a "<site> settings" button. See "Stream control" |
 
 Farmhand checks the manifest when the plugin is installed, and says in plain words what's wrong with one it won't take.
@@ -88,10 +89,12 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `stream:read` | see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site | `GET /stream/design`, `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}`, `GET /stream/music/{name}` |
 | `printers:report` | report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you connect through it | `PUT /printers/{id}/status` |
 | `printers:print` | start the prints you send from Farmhand to the Prusa printers you connect through it (it is handed each G-code to send on) | `GET /prints/{ticket}/file`, and the manifest's `print` path |
+| `stream:backup` | keep a copy of its own settings with Farmhand's (in the settings folder), the stream key and the sign-in included, so they can be given back to it if it's set up again | `PUT /backup`, `GET /backup`, and the manifest's `backup` restore path |
 
 The operator grants some or all of the permissions the manifest asks for, never more. `printers:report` and
-`printers:print` are the only ones that change anything, and only for the printers the operator connects through the
-plugin; others are added one at a time, when a plugin needs one.
+`printers:print` are the only ones that change anything of Farmhand's, and only for the printers the operator connects through the
+plugin (`stream:backup` keeps only the plugin's own copy of its settings); others are added one at a time, when a plugin
+needs one.
 
 `stream:migrate` is only for a Stream plugin taking over from the Stream page older Farmhands had built in (like
 [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin)): ask for it only if that's what your plugin is. It hands over secrets
@@ -435,6 +438,26 @@ runs:
 
 Stream control lists every added plugin with `stream_control`, asks each switched-on one every few seconds, and calls
 start and stop from its **Go live** and **Stop** buttons, **Go live everywhere**, **Stop all** and its schedule.
+
+## Keeping a copy of your settings (`stream:backup`)
+
+A plugin whose own settings would be hard to set up again (a stream plugin's layouts, stream key and sign-in) can keep
+a copy of them with Farmhand's: Farmhand keeps the newest one, writes it to the settings folder beside
+`farmhand-config.json` (`plugin-backups/<id>.json`, read back by Load all settings on a new Farmhand), and gives it back
+when the operator presses **Restore settings…** on your card on the Plugins page. It's kept by your plugin's id, so
+removing your plugin and adding it again (with a new token) keeps it: that's when it's wanted.
+
+- `PUT /backup` with `{"format": 1, "saved_at": "<ISO time you made it>", "settings": {"<key>": "<text>", ...}}` (at
+  most 2 MB): kept in place of the last one; answers `{"saved_at": ...}`. **422** for anything else, **413** when too big.
+  Send it when your settings change (Farmhand keeps whatever you send, so only when they did). Leave out what changes
+  by itself or must never move to another machine (a "live now" flag, a NAS password).
+- `GET /backup`: your copy as you sent it (`{format, saved_at, settings}`), **404** while there's none.
+- Restoring: with `"backup": {"restore": "/api/farmhand-backup/restore"}` in your manifest, Farmhand POSTs
+  `{"saved_at": "..."}` there (nothing secret: anyone could send it). Fetch your copy with `GET /backup` and your token,
+  put it in place, and answer `200 {"restored": true, "saved_at": "...", "note": "when it takes effect, in plain words"}`;
+  or a 4xx with `{"detail": "why, in plain words"}`, shown to the operator as it is.
+
+What's in it is yours to choose; it's kept as text and never shown on the Plugins page.
 
 ## Versions
 

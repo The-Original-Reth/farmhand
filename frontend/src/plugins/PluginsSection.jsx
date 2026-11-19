@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Check, Copy, ExternalLink, KeyRound, Pencil, Puzzle } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { addPlugin, changePlugin, errorText, newPluginToken, pluginApiUrl, previewPlugin, removePlugin, switchBuiltinPlugin } from "../api.js";
+import {
+  addPlugin, allowPlugin, changePlugin, errorText, newPluginToken, pluginApiUrl, previewPlugin, removePlugin, restorePluginSettings, switchBuiltinPlugin,
+} from "../api.js";
 import { cancelButton, fieldBox, monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
@@ -279,7 +281,8 @@ function AddressLine({ plugin: p, onChanged }) {
 }
 
 function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
-  const [asking, setAsking] = useState(null); // "token" | "remove"
+  const [asking, setAsking] = useState(null); // "token" | "remove" | "restore"
+  const [restored, setRestored] = useState(null); // what it said when it took its settings back
   const change = useAction();
   const state = STATES[p.health.state] || STATES.unknown;
   const set = (what) => change.run(async () => { await changePlugin(p.id, what); onChanged(); });
@@ -311,7 +314,41 @@ function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
             ? "none yet: Load all settings brought this plugin back without one. Make a new token and give it to the plugin."
             : `made ${fmtWhen(p.tokenCreatedAt)}, last used ${fmtWhen(p.tokenLastUsedAt, "never")}`}
         </span>
+        {(p.backup || p.canRestore) && (
+          <>
+            <span style={uiText(12, c.textFaint)}>Settings copy</span>
+            <span data-testid={`plugin-${p.id}-backup`} style={uiText(12, c.textMuted)}>
+              {p.backup
+                ? `kept with Farmhand's settings, last sent ${fmtWhen(p.backup.receivedAt)}`
+                : p.permissions.includes("stream:backup")
+                  ? "none sent yet"
+                  : "none: it needs the permission to keep one (Allow it below)"}
+            </span>
+          </>
+        )}
       </div>
+      {p.asks.length > 0 && (
+        <div data-testid={`plugin-${p.id}-asks`} style={{ border: `1px solid ${c.amber}`, borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+          <div style={uiText(12, c.amber, { marginBottom: 4 })}>Updated where it runs: it now also asks to</div>
+          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
+            {p.asks.map(({ permission, means }) => (
+              <li key={permission} style={uiText(13, c.textMuted, { lineHeight: 1.5 })}>{means}</li>
+            ))}
+          </ul>
+          <button
+            data-testid={`plugin-${p.id}-allow`} disabled={change.busy} style={toolButton(12)}
+            onClick={() => change.run(async () => { await allowPlugin(p.id); onChanged(); })}
+          >
+            <Check size={13} /> Allow
+          </button>
+          <span style={uiText(12, c.textFaint, { marginLeft: 8 })}>Its token keeps working; until then it goes on as it is.</span>
+        </div>
+      )}
+      {restored && (
+        <div data-testid={`plugin-${p.id}-restored`} style={uiText(12, c.green, { marginBottom: 10, lineHeight: 1.5 })}>
+          {p.name} took back its settings from {fmtWhen(restored.savedAt)}.{restored.note ? ` ${restored.note}` : ""}
+        </div>
+      )}
       {["unwell", "not_answering"].includes(p.health.state) && p.health.lastError && (
         <div style={uiText(12, c.amber, { marginBottom: 10, lineHeight: 1.5 })}>{p.health.lastError}</div>
       )}
@@ -345,6 +382,11 @@ function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
         <button onClick={() => setAsking("token")} style={toolButton(12)}>
           <KeyRound size={13} /> New token…
         </button>
+        {p.canRestore && p.backup && p.enabled && (
+          <button data-testid={`plugin-${p.id}-restore`} onClick={() => setAsking("restore")} style={toolButton(12)}>
+            Restore settings…
+          </button>
+        )}
         <button onClick={() => setAsking("remove")} style={toolButton(12, { color: c.danger, borderColor: c.danger })}>
           Remove…
         </button>
@@ -370,6 +412,22 @@ function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
           {p.needsToken
             ? `${p.name} has no token yet. Farmhand makes one and shows it once, to give to the plugin.`
             : `The token ${p.name} has now stops working at once. Farmhand shows the new one once: give it to the plugin and restart its container.`}
+        </ConfirmDialog>
+      )}
+      {asking === "restore" && (
+        <ConfirmDialog
+          title={`Give ${p.name} back its settings?`}
+          confirmLabel="Restore settings"
+          tone="amber"
+          onClose={() => setAsking(null)}
+          onConfirm={async () => {
+            setRestored(await restorePluginSettings(p.id));
+            onChanged();
+          }}
+        >
+          {p.name}'s own settings (its layouts, stream key and sign-in among them) are replaced by the copy Farmhand kept,
+          last sent {fmtWhen(p.backup.receivedAt)}. Use it after setting the plugin up again from scratch. A stream that's
+          live keeps going as it is.
         </ConfirmDialog>
       )}
       {asking === "remove" && (
