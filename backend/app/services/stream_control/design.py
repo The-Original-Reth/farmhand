@@ -320,6 +320,17 @@ def rename_slideshow(db: Session, old: str, new: str) -> int:
     return changed + in_layouts
 
 
+def rename_slideshow_folder(db: Session, old: str, name: str) -> str:
+    """Rename a slideshow's folder in the stream folder (media.rename_slideshow), and every square showing it follows
+    (rename_slideshow). Its new name, as the folder has it."""
+    from . import media
+
+    new = media.rename_slideshow(db, old, name)
+    if new != old:
+        rename_slideshow(db, old, new)
+    return new
+
+
 def put_whole(db: Session, raw: dict) -> None:
     """A design brought back by Load all settings: kept as it was written (read through settings() as any other)."""
     if isinstance(raw, dict):

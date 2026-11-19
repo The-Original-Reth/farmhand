@@ -138,7 +138,7 @@ def _do(db: Session, action: str, entry: dict) -> None:
             results.append({"name": s["name"], "live": False, "error": f"{s['name']} is switched off."})
             continue
         try:
-            done = (streams.start if action == "start" else streams.stop)(db, s["id"])
+            done = streams.start_or_stop(db, s["id"], action)
         except ValueError as e:
             done = {"name": s["name"], "live": None, "error": str(e)}
         results.append({"name": done["name"], "live": done.get("live"), "error": done.get("error")})
