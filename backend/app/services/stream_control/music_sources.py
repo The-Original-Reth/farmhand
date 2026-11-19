@@ -159,7 +159,15 @@ def for_stream_plugins(db: Session) -> dict:
 
 def find(db: Session, name: str) -> Path | tuple[str, str]:
     """Where a track of the stream's music is: a file in Stream control's own folder (its Path), or a plugin's
-    (address, path) to pass on from. NotFound when none of the chosen folders has it."""
+    (address, path) to pass on from. NotFound when none of the chosen folders has it. Ends the request's database
+    transaction, so passing a track on (a minute, from a busy plugin) holds no database connection."""
+    try:
+        return _find(db, name)
+    finally:
+        db.commit()
+
+
+def _find(db: Session, name: str) -> Path | tuple[str, str]:
     for t in tracks(db):
         if t["name"] != name:
             continue
