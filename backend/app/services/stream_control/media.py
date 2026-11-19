@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -124,7 +125,7 @@ def set_order(db: Session, name: str, order: list[str]) -> list[str]:
         raise ValueError(f"“{missing[0]}” isn't one of the slideshow's pictures (Scan folder, and try again).")
     keep = list(dict.fromkeys(order)) + [n for n in _slides_in(d) if n not in set(order)]
     write_order(d, keep)
-    forget()
+    forget(at_once=True)
     return keep
 
 
@@ -135,7 +136,7 @@ def add_blank(db: Session, name: str) -> str:
     numbers = [int(n[len(BLANK):]) for n in slides if is_blank(n) and n[len(BLANK):].isdigit()]
     blank = f"{BLANK}{max(numbers, default=0) + 1}"
     write_order(d, slides + [blank])
-    forget()
+    forget(at_once=True)
     return blank
 
 
@@ -143,21 +144,47 @@ def add_blank(db: Session, name: str) -> str:
 # after a change made through Farmhand (the design saved included), or when the folder is another one; never just
 # because the page looked again, so a folder on the NAS isn't read every few seconds.
 _found: tuple[str, dict] | None = None
+_stale = False  # read it again: in the background, while what was found last is still answered
+_reading = threading.Lock()
 
 
-def forget() -> None:
-    """Read the stream folder again the next time it's asked about."""
-    global _found
-    _found = None
+def forget(at_once: bool = False) -> None:
+    """Read the stream folder again. at_once: the next time it's asked about (files were just added through
+    Farmhand: they're shown straight away); else in the background, the last listing answered meanwhile: reading a
+    folder on the NAS can take many seconds, and the stream plugins ask for the design every few seconds."""
+    global _found, _stale
+    if at_once:
+        _found = None
+    else:
+        _stale = True
+
+
+def run_in_background(work) -> None:
+    """Tests swap this for one that runs the work at once."""
+    threading.Thread(target=work, daemon=True, name="stream-folder").start()
 
 
 def media(db: Session, scan: bool = False) -> dict:
     """{path, images: [names], slideshows: [{name, images: [names]}], music: [the tracks' names], error (why the
     folder can't be used now, or None)}:
-    what's in the stream folder, as last found (read now when `scan`, or the first time)."""
-    global _found
+    what's in the stream folder, as last found (read now when `scan`, or the first time; read again in the background
+    after forget())."""
+    global _found, _stale
     which = str(_root())
     if not scan and _found and _found[0] == which:
+        if _stale and _reading.acquire(blocking=False):
+            _stale = False
+            bind = db.get_bind()
+
+            def refresh():
+                global _found
+                try:
+                    with Session(bind=bind) as fresh:
+                        _found = (which, _read(fresh))
+                finally:
+                    _reading.release()
+
+            run_in_background(refresh)
         return _found[1]
     _found = (which, _read(db))
     return _found[1]
@@ -286,7 +313,7 @@ def add_picture(db: Session, slideshow: str | None, filename: str, data: bytes) 
     d.mkdir(parents=True, exist_ok=True)
     name = _free_name(d, name)
     storage.write_bytes_atomically(d / name, data)
-    forget()
+    forget(at_once=True)
     return name
 
 
@@ -299,7 +326,7 @@ def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
         write_order(d, [n for n in slides if n != name])
     else:
         picture_path(db, slideshow, name).unlink()
-    forget()
+    forget(at_once=True)
 
 
 def add_slideshow(db: Session, name: str) -> str:
@@ -309,7 +336,7 @@ def add_slideshow(db: Session, name: str) -> str:
     if any(e.name.lower() == name.lower() for e in os.scandir(d) if e.is_dir()):
         raise ValueError(f"There's already a slideshow called “{name}”.")
     (d / name).mkdir()
-    forget()
+    forget(at_once=True)
     return name
 
 
@@ -328,7 +355,7 @@ def rename_slideshow(db: Session, name: str, new: str) -> str:
         os.rename(d / name, d / new)
     except OSError as e:
         raise ValueError(f"Couldn't rename the slideshow's folder: {e.strerror or e}") from None
-    forget()
+    forget(at_once=True)
     return new
 
 
@@ -338,7 +365,7 @@ def remove_slideshow(db: Session, name: str) -> None:
     for n in _pictures_in(d):
         (d / n).unlink(missing_ok=True)
     (d / ORDER_FILE).unlink(missing_ok=True)  # Farmhand's own: its order
-    forget()
+    forget(at_once=True)
     try:
         d.rmdir()
     except OSError:
@@ -376,10 +403,10 @@ def add_track(db: Session, filename: str, data: bytes) -> str:
     d = folder(db, make=True) / MUSIC
     name = _free_name(d, name)
     storage.write_bytes_atomically(d / name, data)
-    forget()
+    forget(at_once=True)
     return name
 
 
 def remove_track(db: Session, name: str) -> None:
     track_path(db, name).unlink()
-    forget()
+    forget(at_once=True)

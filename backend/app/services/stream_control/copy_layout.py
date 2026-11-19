@@ -108,7 +108,7 @@ def copy_from(db: Session, plugin_id: str) -> dict:
             folder = media.folder(db, make=True)
         except storage.StorageUnavailableError as e:
             problems.append(f"The pictures weren't copied: {e}")
-            media.forget()
+            media.forget(at_once=True)
             return {"copied": copied, "problems": problems, "design": new}
         images, shows = _pictures_shown(settings)
         for name in sorted(images):
@@ -135,7 +135,7 @@ def copy_from(db: Session, plugin_id: str) -> dict:
             show_dir.mkdir(parents=True, exist_ok=True)
             if not (show_dir / media.ORDER_FILE).exists():
                 media.write_order(show_dir, order)
-    media.forget()
+    media.forget(at_once=True)
     if settings.get("music") is not False and (theirs.get("music") or []):
         problems.append(f"{plugin.name}'s music tracks weren't copied: add them under Music on this page.")
     return {"copied": copied, "problems": problems, "design": new}
