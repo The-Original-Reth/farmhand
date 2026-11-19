@@ -9,6 +9,7 @@ A track is known by its file name; two folders with a track of the same name pla
 """
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -22,10 +23,14 @@ from ..plugins import registry, remote
 from . import design, media, streams
 
 PAGE_PATH = streams.PAGE_PATH
-LIST_FOR = 10.0  # seconds a plugin's list of tracks is kept (the page and the stream plugins ask every few seconds)
+LIST_FOR = 10.0  # seconds a plugin's list of tracks is fresh (the page and the stream plugins ask every few seconds)
+KEEP_GOOD_FOR = 1800.0  # seconds the last list a plugin gave is still used while it doesn't answer
 LIST_TIMEOUT = 6.0
 TRACK_TIMEOUT = 60.0
 _listed: dict[str, tuple[float, list[str], str | None]] = {}  # plugin id -> (when, tracks, why none)
+_good: dict[str, tuple[float, list[str]]] = {}  # plugin id -> (when, the last list it did give)
+_asking: dict[str, threading.Lock] = {}  # one listing at a time per plugin
+_asking_lock = threading.Lock()
 
 
 def _plugin(db: Session, plugin_id: str):
@@ -37,11 +42,30 @@ def _plugin(db: Session, plugin_id: str):
 
 
 def plugin_tracks(db: Session, plugin_id: str) -> tuple[list[str], str | None]:
-    """(the MP3s in this stream plugin's own music folder, why there are none when it couldn't be asked)."""
-    now = time.monotonic()
+    """
+    (the MP3s in this stream plugin's own music folder, why there are none when it couldn't be asked). One request
+    asks the plugin at a time: the others meanwhile get the list it last gave (fresh or not). While the plugin doesn't
+    answer, the last list it gave is still used for up to KEEP_GOOD_FOR, so a slow answer (a busy stream plugin)
+    doesn't make all of its tracks "not in the music folders chosen".
+    """
     kept = _listed.get(plugin_id)
-    if kept and now - kept[0] < LIST_FOR:
+    if kept and time.monotonic() - kept[0] < LIST_FOR:
         return kept[1], kept[2]
+    with _asking_lock:
+        lock = _asking.setdefault(plugin_id, threading.Lock())
+    if not lock.acquire(blocking=kept is None):  # being asked already: what it said last
+        return kept[1], kept[2]
+    try:
+        kept = _listed.get(plugin_id)
+        if kept and time.monotonic() - kept[0] < LIST_FOR:
+            return kept[1], kept[2]
+        return _ask(db, plugin_id)
+    finally:
+        lock.release()
+
+
+def _ask(db: Session, plugin_id: str) -> tuple[list[str], str | None]:
+    now = time.monotonic()
     plugin = _plugin(db, plugin_id)
     if plugin is None:
         tracks, problem = [], f"“{plugin_id}” isn't a stream plugin that's switched on."
@@ -56,12 +80,17 @@ def plugin_tracks(db: Session, plugin_id: str) -> tuple[list[str], str | None]:
             problem = None if r.status_code == 200 else f"{plugin.name} answered {r.status_code}."
         except (httpx.HTTPError, ValueError, AttributeError) as e:
             tracks, problem = [], remote.unreachable(address, e) if isinstance(e, httpx.HTTPError) else f"{plugin.name} didn't answer with its music."
+    if problem is None:
+        _good[plugin_id] = (now, tracks)
+    elif plugin is not None and plugin_id in _good and now - _good[plugin_id][0] < KEEP_GOOD_FOR:
+        tracks = _good[plugin_id][1]  # still played from: the last list it gave
     _listed[plugin_id] = (now, tracks, problem)
     return tracks, problem
 
 
 def forget() -> None:
     _listed.clear()
+    _good.clear()
 
 
 def tracks(db: Session) -> list[dict]:

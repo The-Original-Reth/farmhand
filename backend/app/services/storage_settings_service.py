@@ -49,14 +49,21 @@ def count_version_files(db: Session, stl: Callable[[str], bool], threemf: Callab
     return n_stl, n_3mf
 
 
+def _outside(root) -> Callable[[str], bool]:
+    """Whether a recorded file's path is outside this folder, by its path alone: the folder is resolved once, the files
+    never (each lookup is a round trip to the NAS, and there are hundreds), as recorded paths are absolute already."""
+    roots = {os.path.normpath(str(root)), os.path.realpath(str(root))}
+
+    def outside(path: str) -> bool:
+        p = os.path.normpath(path)
+        return not any(p == r or p.startswith(r.rstrip(os.sep) + os.sep) for r in roots)
+
+    return outside
+
+
 def _count_outside(db: Session) -> dict:
-    stl_root = storage.effective_root("stl")
-    threemf_root = storage.effective_root("threemf")
-    project_root = storage.effective_root("project")
-    n_stl, n_3mf = count_version_files(
-        db, lambda p: not storage.is_inside(p, stl_root), lambda p: not storage.is_inside(p, threemf_root)
-    )
-    return {"stl": n_stl, "threemf": n_3mf, "project": count_project_files(db, lambda p: not storage.is_inside(p, project_root))}
+    n_stl, n_3mf = count_version_files(db, _outside(storage.effective_root("stl")), _outside(storage.effective_root("threemf")))
+    return {"stl": n_stl, "threemf": n_3mf, "project": count_project_files(db, _outside(storage.effective_root("project")))}
 
 
 def describe(db: Session) -> dict:
