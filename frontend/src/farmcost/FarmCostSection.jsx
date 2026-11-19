@@ -11,6 +11,7 @@ import { MaybeEstimated, SectionLabel, StatTile } from "../components/common/ui.
 import { approx, fmtCost as money, fmtGrams, fmtKwh, plural } from "../lib/format.js";
 import { energyCost, priceForMonth, useEnergyPrices } from "../lib/energyPrice.js";
 import { PeriodButtons, periodKey, periodLabel, PeriodPicker, periodWord, tableHead } from "../lib/periods.jsx";
+import { prusaVia } from "../printers/webUi.js";
 
 const add = (a, b) => (b == null ? a : (a ?? 0) + b); // null + nothing stays null: "—" rather than $0.00
 
@@ -85,7 +86,7 @@ const gaps = (r) => [
 const estimateLabel = (r) => (r.estimated < r.prints - r.unweighed ? "partly estimated" : "estimated");
 const estimates = (r) =>
   r.estimated
-    ? `${plural(r.estimated, "print")} with estimated filament: PrusaLink doesn't report the filament a print uses, so it's the slicer's figure from the G-code of the 3MF it was sliced from`
+    ? `${plural(r.estimated, "print")} with estimated filament: a Prusa printer doesn't report the filament a print uses, so it's the slicer's figure from the G-code of the 3MF it was sliced from`
     : null;
 
 const orDash = (v, format) => (v == null ? "—" : format(v));
@@ -362,7 +363,7 @@ export function FarmCostSection({ order = [], onOrder }) {
               </div>
               <FigureCells
                 f={r}
-                kwhTitle={r.kwh == null ? (r.printer.connectionType === "prusalink" ? "PrusaLink doesn't report energy use" : "No power meter readings") : undefined}
+                kwhTitle={r.kwh == null ? (r.printer.connectionType === "prusalink" ? `${prusaVia(r.printer)} doesn't report energy use` : "No power meter readings") : undefined}
                 unpricedTitle="Some months have no price per kWh"
               />
             </div>

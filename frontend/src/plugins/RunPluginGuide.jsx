@@ -99,8 +99,8 @@ export const GUIDED_PLUGINS = {
         </div>
         <div style={{ marginTop: 6 }}>
           <b>After adding it.</b> Open its page in Farmhand, type Prusa Connect's address and pair it (Prusa Connect
-          shows a short code to approve). Then set <b>Status from</b> in each Prusa printer's PrusaLink section to it.
-          Prints are still sent to the printer's PrusaLink.
+          shows a short code to approve). Then edit each Prusa printer and set its <b>Connection</b> to
+          Prusa Connect: its status and the prints you send it then go through Prusa Connect, never its PrusaLink.
         </div>
       </>
     ),

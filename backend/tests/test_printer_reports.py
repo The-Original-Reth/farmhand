@@ -189,6 +189,8 @@ def test_a_print_is_handed_to_the_plugin_and_prusalink_is_never_asked(api, prusa
     p = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "status_from": "prusa-connect"}).json()
     assert p["status_from"] == "prusa-connect"  # connected through the plugin from the start, no IP or PrusaLink login
     _report(api, auth, p["id"], READY)
+    listed = next(x for x in api.get("/printers").json() if x["id"] == p["id"])
+    assert listed["status_from_name"] == "Prusa Connect" and listed["status_link"] == READY["link"]  # its page there
     r = api.post(f"/printers/{p['id']}/prusalink/print", files={"file": ("Frog keychain.bgcode", b"GCDE" + b"x" * 100)})
     assert r.status_code == 200 and r.json()["sent"] == "usb/Frog keychain.bgcode"
     [h] = handed

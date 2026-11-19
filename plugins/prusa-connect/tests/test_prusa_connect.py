@@ -135,6 +135,7 @@ def test_a_printer_with_the_same_name_is_linked_and_reported(plugin, connect, fa
     assert sent["job"] == {"id": 12, "state": "PRINTING", "file": "Frog keychain.bgcode", "path": "/usb/Frog keychain.bgcode",
                            "progress": 40.0, "time_printing": 1200, "time_remaining": 1800}
     assert 3 not in farmhand.reports  # the MK4 takes its status from its PrusaLink: nothing sent for it
+    assert sent["link"] == f"{connect.url}/printers/{DEVICE}"  # its own page on Prusa Connect
     [core] = [p for p in snap["printers"] if p["id"] == 2]
     assert core["last"]["recorded"] and [p["name"] for p in snap["printers"]] == ["Core One", "MK4"]  # Prusa printers only
 

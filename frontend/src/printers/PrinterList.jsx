@@ -175,7 +175,8 @@ export function PrinterList({ setPath, sort: printerSort, onSortChange }) {
   );
 }
 
-// Opens the printer's own web page in a new tab: PrusaLink for a Prusa reached that way, Mainsail for a Klipper one.
+// Opens the printer's own web page in a new tab: PrusaLink for a Prusa reached that way, its page on Prusa Connect for
+// one connected through that, Mainsail for a Klipper one.
 // With no address it shows "—" in the list (`orDash`), or nothing; `style` dresses it like the buttons beside it.
 export function WebUiButton({ printer, orDash = true, style = headerButton() }) {
   const web = webUiOf(printer);

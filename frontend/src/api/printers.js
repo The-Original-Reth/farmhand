@@ -21,7 +21,9 @@ export const normalizePrinter = (p) => ({
   prusalinkUrlOverride: p.prusalink_url_override || null,
   prusalinkUsername: p.prusalink_username || "maker",
   hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself only comes from getPrusaLinkPassword
-  statusFrom: p.status_from || null, // a plugin reporting a Prusa printer's status instead of its PrusaLink (its id), or null
+  statusFrom: p.status_from || null, // the plugin a Prusa printer is connected through instead of its PrusaLink (its id), or null
+  statusFromName: p.status_from_name || null, // that plugin's name ("Prusa Connect")
+  statusLink: p.status_link || null, // the printer's page on the plugin's side (on Prusa Connect), or null
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
   // its printer presets in the slicer, A to Z: [{ id, name, aliases, settingsCopiedFrom }]; settingsCopiedFrom: a copy's
   // original, whose printer settings it was copied with (null for one that isn't a copy, or got none)
