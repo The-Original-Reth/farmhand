@@ -148,3 +148,14 @@ def test_a_nas_folder_found_emptied_takes_nothing_out_of_farmhands_copy(api):
     nas_copy.sync()
     assert page_media(api)["images"] == ["a.png", "b.png", "c.png"]
     assert sorted(p.name for p in (nas() / "images").iterdir()) == ["a.png", "b.png", "c.png"]  # (copied back out)
+
+
+def test_the_page_always_says_how_the_copying_is_going_now_though_the_listing_is_kept(api):
+    switch(api)
+    first = page_media(api)  # (the listing kept from here until the folder is read again)
+    assert first["copy"]["working"] is False and first["copy"]["copied_at"] is None
+    nas_copy.sync()  # the first copying from the NAS finishes meanwhile (as the worker does it, in the background)
+    now = page_media(api)
+    assert now["copy"]["working"] is True and now["copy"]["copied_at"]
+    nas_copy._status["error"] = "The STL folder's share isn't connected."
+    assert page_media(api)["copy"]["error"] == "The STL folder's share isn't connected."
