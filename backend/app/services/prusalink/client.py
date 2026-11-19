@@ -66,8 +66,20 @@ def _json(r: httpx.Response) -> dict:
     return data
 
 
+def _reported(printer: Printer):
+    """printer_reports, when the printer takes its status from a plugin (the Prusa Connect plugin, say) instead of its
+    own PrusaLink being asked; else None. Sending it a print always goes to its PrusaLink."""
+    if not printer.status_from:
+        return None
+    from .. import printer_reports
+
+    return printer_reports
+
+
 def version(printer: Printer) -> dict:
     """{api, server, text, firmware, printer}: what the printer says it is (e.g. text "PrusaLink", printer "COREONE")."""
+    if reports := _reported(printer):
+        return reports.version(printer, PrusaLinkError)
     return _json(_call(printer, "GET", "/api/version"))
 
 
@@ -103,11 +115,15 @@ def status(printer: Printer) -> dict:
     time_printing} | missing, storage, transfer}. state is one of IDLE, BUSY, PRINTING, PAUSED, FINISHED, STOPPED,
     ERROR, ATTENTION, READY.
     """
+    if reports := _reported(printer):
+        return reports.status(printer, PrusaLinkError)
     return _json(_call(printer, "GET", "/api/v1/status"))
 
 
 def job(printer: Printer) -> dict | None:
     """The current job ({id, state, progress, time_printing, time_remaining, file: {name, display_name, ...}}), or None."""
+    if reports := _reported(printer):
+        return reports.job(printer, PrusaLinkError)
     return _json(_call(printer, "GET", "/api/v1/job")) or None
 
 

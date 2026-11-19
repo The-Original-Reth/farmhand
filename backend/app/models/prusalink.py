@@ -36,6 +36,22 @@ class PrusaLinkConnection(Base):
     printer: Mapped["Printer"] = relationship(back_populates="prusalink_row")  # noqa: F821
 
 
+class PrinterStatusSource(Base):
+    """
+    A Prusa printer whose status and prints Farmhand takes from a plugin (one granted printers:report, such as the
+    Prusa Connect plugin) instead of asking its PrusaLink. Having this row is what switches it over; with none (the
+    default) Farmhand asks the printer's PrusaLink. Sending it a print still goes to its PrusaLink either way, and its
+    PrusaLinkConnection row keeps the login and the print Farmhand is following, so switching back loses nothing.
+    """
+
+    __tablename__ = "printer_status_source"
+
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), primary_key=True)
+    plugin_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+
+    printer: Mapped["Printer"] = relationship(back_populates="status_source_row")  # noqa: F821
+
+
 class MaintenanceEntry(Base):
     """
     A maintenance reminder kept in Farmhand, for printers with nowhere else to keep one (PrusaLink has no database

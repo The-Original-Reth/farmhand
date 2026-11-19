@@ -72,7 +72,7 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
   );
   const pl = usePrusaLink(
     isPrusaLink ? printer.id : null,
-    isPrusaLink ? `${printer.id}|${printer.prusalinkUrl}|${printer.prusalinkUsername}|${printer.hasPrusalinkPassword}` : null,
+    isPrusaLink ? `${printer.id}|${printer.prusalinkUrl}|${printer.prusalinkUsername}|${printer.hasPrusalinkPassword}|${printer.statusFrom}` : null,
     refreshPrinters,
   );
   const link = isPrusaLink ? pl : mr; // for what both show: the connection dot, the history reloading
@@ -92,7 +92,7 @@ function PrinterLive({ printer, sections, refreshPrinters, children }) {
     <>
       {isPrusaLink ? (
         <>
-          <PrusaLinkCard printer={printer} pl={pl} summary={linkSummary} {...fold("connection")} />
+          <PrusaLinkCard printer={printer} pl={pl} summary={linkSummary} onPrinterChanged={refreshPrinters} {...fold("connection")} />
           <MaintenanceSection printer={printer} reachable {...fold("maintenance")} />
         </>
       ) : (

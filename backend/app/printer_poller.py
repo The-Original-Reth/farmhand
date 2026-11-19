@@ -53,7 +53,7 @@ class PrinterPoller(PeriodicWorker):
                     continue
                 try:
                     if printer.connection_type == "prusalink":
-                        if printer.prusalink_url:
+                        if printer.prusalink_url or printer.status_from:  # a plugin's report, or its PrusaLink
                             print_progress.progress(db, printer)  # polls it (recording its prints), telling plugins
                     elif printer.moonraker_url:
                         if events.listening():

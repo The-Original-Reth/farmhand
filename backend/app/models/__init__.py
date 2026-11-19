@@ -24,7 +24,7 @@ from .project import (
     ProjectPart, ProjectPrinter, ProjectSourceModel, ProjectStlFile, ProjectStlFileComponent, ProjectStlVersion,
     ProjectThreemfFile, ProjectThreemfGcode, ProjectThreemfVersion,
 )
-from .prusalink import MaintenanceEntry, PrusaLinkConnection
+from .prusalink import MaintenanceEntry, PrinterStatusSource, PrusaLinkConnection
 from .source_model_note import SourceModelNote
 from .sub_printer import (
     BundleVersionSubPrinter, DefaultSubPrinter, SubPrinter, SubPrinterAlias, SubPrinterPart, SubPrinterSettingsCopy,
@@ -42,6 +42,7 @@ __all__ = [
     "PrintJob",
     "GcodeFilament",
     "PrusaLinkConnection",
+    "PrinterStatusSource",
     "MaintenanceEntry",
     "SourceModel",
     "SourceModelVersion",

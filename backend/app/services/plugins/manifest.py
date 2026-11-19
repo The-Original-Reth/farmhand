@@ -15,6 +15,10 @@ PERMISSIONS = {
     "cameras:read": "see your printers' cameras and the addresses to stream them from",
     "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
     "farm:read": "see Farmhand's colours and the farm's time zone",
+    # Reporting printers' status in place of Farmhand asking them (services/printer_reports.py): only for the Prusa
+    # printers the operator switches to the plugin, one at a time, in each printer's PrusaLink section
+    "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of "
+    "Farmhand asking their PrusaLink, for the printers you switch to it",
     # Only for a Stream plugin taking over from the Stream page Farmhand used to have; handed over once (handover.py)
     "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: "
     "its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",

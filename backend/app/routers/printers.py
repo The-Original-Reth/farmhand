@@ -48,6 +48,15 @@ def discover_range(db: Session = Depends(get_db)):
     return {"cidr": printer_discovery.default_range(db)}
 
 
+@router.get("/status-reporters")
+def status_reporters(db: Session = Depends(get_db)):
+    """The plugins a Prusa printer can take its status from instead of its PrusaLink: [{id, name}], those installed,
+    switched on and granted printers:report (the Prusa Connect plugin, say)."""
+    from ..services import printer_reports
+
+    return printer_reports.reporters(db)
+
+
 @router.get("/{printer_id}", response_model=PrinterOut)
 def get_printer(printer_id: int, db: Session = Depends(get_db)):
     return require_printer(db, printer_id)

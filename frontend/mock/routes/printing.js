@@ -437,10 +437,17 @@ export function printingRoutes(ctx) {
     const p = prusaPrinter(id);
     const out = {
       prusalink_url: prusalinkUrl(p), has_password: !!p.prusalink.hasPassword, reachable: false, error: null, error_kind: null,
+      // a plugin reporting its status in place of its PrusaLink (the pretend Prusa Connect plugin reports it as PrusaLink would)
+      status_from: p.statusFrom
+        ? { id: p.statusFrom, name: (farm.plugins || []).find((x) => x.id === p.statusFrom)?.name || p.statusFrom, link: "http://192.168.10.93:8080/" }
+        : null,
       state: null, printer_type: null, firmware: null, temps: null, job: null, ...syncState(p),
     };
-    if (!prusalinkUrl(p)) return { ...out, error: "This printer has no IP address or PrusaLink address set.", error_kind: "no_address" };
-    if (!p.prusalink.hasPassword) return { ...out, error: "PrusaLink refused the login. Check the username (usually maker) and the password shown on the printer under Settings > Network > PrusaLink.", error_kind: "unauthorized" };
+    if (!p.statusFrom && !prusalinkUrl(p)) return { ...out, error: "This printer has no IP address or PrusaLink address set.", error_kind: "no_address" };
+    if (p.statusFrom && !(farm.plugins || []).some((x) => x.id === p.statusFrom && x.enabled)) {
+      return { ...out, error: `The "${p.statusFrom}" plugin hasn't said how ${p.name} is for a while. Is the plugin running? (Its status comes from that plugin; the Plugins page says how it is.)`, error_kind: "unreachable" };
+    }
+    if (!p.statusFrom && !p.prusalink.hasPassword) return { ...out, error: "PrusaLink refused the login. Check the username (usually maker) and the password shown on the printer under Settings > Network > PrusaLink.", error_kind: "unauthorized" };
     if (!p.prusalink.reachable) return { ...out, error: `PrusaLink at ${prusalinkUrl(p)} didn't answer in time. Is the printer on?`, error_kind: "unreachable" };
     const job = liveJob(p);
     farm.connections[p.id] = { last_sync_at: iso(nowUnix()), last_sync_error: null };

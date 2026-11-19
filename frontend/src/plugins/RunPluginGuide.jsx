@@ -6,6 +6,7 @@ import { foldHeading, monoText, panelBox, toolButton, uiText } from "../styles.j
 // The plugins' own compose files, the same as plugins/<id>/docker-compose.yml (each plugin's tests check they match)
 import streamCompose from "./compose/stream.yml?raw";
 import helloCompose from "./compose/hello.yml?raw";
+import prusaConnectCompose from "./compose/prusa-connect.yml?raw";
 // The Twitch Stream plugin's own repository's docker-compose.yml, copied by hand
 import twitchCompose from "./compose/twitch.yml?raw";
 
@@ -84,6 +85,24 @@ export const GUIDED_PLUGINS = {
         Hello is the example plugin: each printer and how far along its print is. Copy its folder in Farmhand's
         repository ({kbd("plugins/hello")}) to start a plugin of your own.
       </div>
+    ),
+  },
+  "prusa-connect": {
+    name: "Prusa Connect",
+    port: 8085,
+    compose: prusaConnectCompose,
+    notes: (
+      <>
+        <div>
+          <b>Where to run it.</b> Any machine that reaches both Farmhand and the farm's Prusa Connect server; beside
+          Prusa Connect is simplest.
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <b>After adding it.</b> Open its page in Farmhand, type Prusa Connect's address and pair it (Prusa Connect
+          shows a short code to approve). Then set <b>Status from</b> in each Prusa printer's PrusaLink section to it.
+          Prints are still sent to the printer's PrusaLink.
+        </div>
+      </>
     ),
   },
 };

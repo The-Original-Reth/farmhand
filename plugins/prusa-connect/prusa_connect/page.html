@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prusa Connect</title>
+<!-- Farmhand's helper: its colours as CSS variables (served by Farmhand; on the plugin's own port the fallbacks apply) -->
+<script src="/plugins/farmhand-plugin.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 20px; max-width: 980px;
+    background: var(--farmhand-bg, #1B1D1E); color: var(--farmhand-text-primary, #F4F5F4);
+    font-family: var(--farmhand-font, system-ui, sans-serif); font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; color: var(--farmhand-heading, #FFFFFF); }
+  h2 { font-size: 15px; margin: 0 0 8px; color: var(--farmhand-heading, #FFFFFF); }
+  .muted { color: var(--farmhand-text-muted, #CBCED0); }
+  .faint { color: var(--farmhand-text-faint, #A3A7AA); font-size: 12px; }
+  .panel {
+    margin-top: 16px; padding: 14px 16px; border-radius: 4px;
+    background: var(--farmhand-panel, #232527); border: 1px solid var(--farmhand-border, #3D4042);
+  }
+  .banner {
+    margin-top: 12px; padding: 10px 14px; border-radius: 4px;
+    background: var(--farmhand-danger-dim, #3A2321); border: 1px solid var(--farmhand-danger, #E27A72);
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input, select {
+    font: inherit; padding: 5px 8px; border-radius: 4px; min-width: 0;
+    background: var(--farmhand-bg, #1B1D1E); color: var(--farmhand-text-primary, #F4F5F4);
+    border: 1px solid var(--farmhand-border, #3D4042);
+  }
+  input[type=text] { width: 280px; max-width: 100%; }
+  button {
+    padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font: inherit;
+    background: var(--farmhand-amber, #E39F3A); color: var(--farmhand-on-accent, #241A08);
+  }
+  button.quiet { background: transparent; color: var(--farmhand-amber, #E39F3A); border: 1px solid var(--farmhand-border, #3D4042); }
+  button:disabled { opacity: 0.55; cursor: default; }
+  a { color: var(--farmhand-amber, #E39F3A); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--farmhand-text-faint, #A3A7AA); }
+  .ok { background: var(--farmhand-green, #7BC47F); }
+  .bad { background: var(--farmhand-danger, #E27A72); }
+  .code { font-family: ui-monospace, monospace; font-size: 22px; letter-spacing: 2px; color: var(--farmhand-heading, #FFFFFF); }
+  .error { color: var(--farmhand-danger, #E27A72); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--farmhand-border, #3D4042); vertical-align: top; }
+  th { color: var(--farmhand-text-muted, #CBCED0); font-weight: 600; font-size: 12px; border-top: none; }
+  @media (max-width: 640px) { table, tbody, tr, td { display: block; } thead { display: none; } td { border-top: none; padding: 4px 0; } tr { border-top: 1px solid var(--farmhand-border, #3D4042); padding: 8px 0; } }
+</style>
+</head>
+<body>
+  <h1>Prusa Connect</h1>
+  <div class="faint">Farmhand's Prusa printers' status and prints from the farm's Prusa Connect server, instead of each printer's PrusaLink. Built on Prusa Connect by Prusa Research.</div>
+  <div class="banner" id="problem" hidden></div>
+
+  <div class="panel">
+    <h2>The Prusa Connect server</h2>
+    <div class="row">
+      <label for="address" class="muted">Address</label>
+      <input type="text" id="address" placeholder="http://192.168.10.93:8080" autocomplete="off">
+      <button type="button" id="save-address">Save</button>
+    </div>
+    <div id="server-line" class="faint" style="margin-top: 8px"></div>
+    <div id="pairing" style="margin-top: 12px"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Printers</h2>
+    <div class="faint">
+      For each Prusa printer, choose which printer on Prusa Connect it is (a printer with the same name is chosen by
+      itself). Then, in Farmhand, open the printer and set <b>Status from</b> in its PrusaLink section to this plugin.
+      Prints are still sent to the printer's PrusaLink.
+    </div>
+    <div id="printers" style="margin-top: 10px"></div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+let pairTimer = null;
+let typing = false;
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const child of children.flat()) if (child !== null && child !== undefined && child !== false) node.append(child);
+  return node;
+}
+
+async function call(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || `The plugin answered ${r.status}.`);
+  return data;
+}
+
+function showProblem(text) {
+  $("problem").hidden = !text;
+  $("problem").textContent = text || "";
+}
+
+function renderServer() {
+  if (!typing) $("address").value = state.address || "";
+  const c = state.connect || {};
+  const line = $("server-line");
+  line.replaceChildren(
+    el("span", { class: `dot ${!state.address ? "" : c.reachable && !c.error ? "ok" : "bad"}` }),
+    !state.address ? "Type the address Prusa Connect is at (the one you open it at in a browser)."
+      : c.error ? el("span", { class: "error" }, c.error)
+      : c.reachable ? `Prusa Connect ${c.version || ""} answers${state.paired ? ", and the plugin is paired with it." : "."}`
+      : "Asking Prusa Connect…",
+  );
+
+  const box = $("pairing");
+  if (!state.address) return box.replaceChildren();
+  const p = state.pairing;
+  if (p) {
+    box.replaceChildren(
+      el("div", { class: "muted" }, "Approve this code on Prusa Connect, signed in as someone allowed to see the printers:"),
+      el("div", { class: "code", "data-testid": "pairing-code" }, p.user_code),
+      el("div", { class: "row" },
+        p.verification_uri_complete && el("a", { href: p.verification_uri_complete, target: "_blank", rel: "noreferrer" }, "Open Prusa Connect to approve it"),
+        el("span", { class: "faint" }, "Waiting for it to be approved…")),
+    );
+    startChecking(p.interval || 5);
+  } else {
+    box.replaceChildren(el("div", { class: "row" },
+      el("button", { type: "button", class: state.paired ? "quiet" : "", onclick: startPairing }, state.paired ? "Pair again" : "Pair with Prusa Connect"),
+      el("span", { class: "faint" }, state.paired
+        ? "Paired. Prusa Connect lists the plugin under Settings, API credentials, where it can be revoked."
+        : "Prusa Connect shows a short code; approve it there and the plugin can read the printers (it can't change anything)."),
+    ));
+  }
+}
+
+function lastLine(last) {
+  if (!last) return el("span", { class: "faint" }, "—");
+  const sent = last.sent || {};
+  if (!sent.reachable || last.error) return el("span", { class: "error" }, last.error || sent.error || "Not reachable");
+  const job = sent.job;
+  return el("span", {}, `${sent.state || "?"}${job && job.file ? ` · ${job.file}${job.progress != null ? ` · ${Math.round(job.progress)}%` : ""}` : ""}`,
+    el("div", { class: "faint" }, `Reported to Farmhand ${new Date(last.at * 1000).toLocaleTimeString()}`));
+}
+
+function renderPrinters() {
+  const box = $("printers");
+  if (state.farmhand_error) return box.replaceChildren(el("div", { class: "error" }, state.farmhand_error));
+  if (!state.printers.length) return box.replaceChildren(el("div", { class: "faint" }, "Farmhand has no Prusa (PrusaLink) printers in service."));
+  const devices = state.devices || [];
+  box.replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Farmhand printer"), el("th", {}, "Printer on Prusa Connect"), el("th", {}, "Status in Farmhand"), el("th", {}, "Last report"))),
+    el("tbody", {}, state.printers.map((p) => {
+      const select = el("select", { "aria-label": `Prusa Connect printer for ${p.name}`, disabled: !state.paired, onchange: (e) => link(p.id, e.target.value || null) },
+        el("option", { value: "" }, state.paired ? "Not linked" : "Pair first"),
+        devices.map((d) => el("option", { value: d.id, selected: d.id === p.device_id }, `${d.name}${d.connected ? "" : " (not connected)"}`)),
+        p.device_id && !devices.some((d) => d.id === p.device_id) && el("option", { value: p.device_id, selected: true }, "A printer Prusa Connect no longer lists"));
+      const mine = p.status_from === state.plugin_id;
+      return el("tr", {},
+        el("td", {}, el("b", {}, p.name)),
+        el("td", {}, select),
+        el("td", {}, mine ? "From this plugin" : el("span", { class: "faint" }, p.status_from ? `From the ${p.status_from} plugin` : "From its PrusaLink")),
+        el("td", {}, mine ? lastLine(p.last) : el("span", { class: "faint" }, "Not reported")));
+    })),
+  ));
+}
+
+async function refresh() {
+  try {
+    state = await call("api/status");
+    showProblem(null);
+    renderServer();
+    renderPrinters();
+  } catch (e) {
+    showProblem(`Can't reach the plugin: ${e.message}`);
+  }
+}
+
+async function saveAddress() {
+  try {
+    state = await call("api/address", { url: $("address").value });
+    typing = false;
+    showProblem(null);
+    setTimeout(refresh, 800);
+    renderServer();
+  } catch (e) {
+    showProblem(e.message);
+  }
+}
+
+async function startPairing() {
+  try {
+    await call("api/pairing", {});
+    showProblem(null);
+    await refresh();
+  } catch (e) {
+    showProblem(e.message);
+  }
+}
+
+function startChecking(interval) {
+  if (pairTimer) return;
+  pairTimer = setInterval(async () => {
+    try {
+      const r = await call("api/pairing/check", {});
+      if (r.state !== "pending") {
+        clearInterval(pairTimer);
+        pairTimer = null;
+        showProblem(r.message);
+        setTimeout(refresh, 500);
+      }
+    } catch (e) {
+      showProblem(e.message);
+    }
+  }, Math.max(5, interval) * 1000);
+}
+
+async function link(printerId, deviceId) {
+  try {
+    state = await call("api/link", { printer_id: printerId, device_id: deviceId });
+    renderPrinters();
+  } catch (e) {
+    showProblem(e.message);
+  }
+}
+
+$("save-address").addEventListener("click", saveAddress);
+$("address").addEventListener("input", () => { typing = true; });
+$("address").addEventListener("keydown", (e) => { if (e.key === "Enter") saveAddress(); });
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+</script>
+</body>
+</html>

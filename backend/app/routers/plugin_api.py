@@ -1,7 +1,8 @@
 """
 The plugin API, version 1: what a plugin's container may read of Farmhand (docs/plugins.md has every shape). Each call
 carries the plugin's token (Authorization: Bearer ...): none or a bad one is 401, and a call outside the permissions
-the operator granted it is 403 naming the one it needs. Read-only, and v1 only ever gains fields and endpoints.
+the operator granted it is 403 naming the one it needs. It only reads, except a Prusa
+printer's status reported by a plugin it's switched to (printers:report). v1 only ever gains fields and endpoints.
 
 Reached over the farm's network on the API's port (a plugin may run on another machine), never through the web
 page's server (nginx doesn't pass /plugin-api/ on). Besides the token: a plugin set to "only accept calls from its
@@ -14,11 +15,12 @@ from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..errors import NotFound
-from ..services import stream_control
+from ..services import print_progress, printer_reports, stream_control
 from ..services.plugins import answers, events, handover, limits, registry, remote
 from ..services.plugins.manifest import API_VERSION
 from ..services.stream_control import design as stream_design
@@ -137,6 +139,55 @@ async def printer_events(request: Request, caller: registry.Caller = Depends(nee
         events.stream(still_allowed=still_allowed), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class ReportedTemps(BaseModel):
+    temp_nozzle: float | None = None
+    target_nozzle: float | None = None
+    temp_bed: float | None = None
+    target_bed: float | None = None
+
+
+class ReportedJob(BaseModel):
+    id: int  # the printer's own job number (PrusaLink's): a new number is a new print
+    state: str | None = Field(None, max_length=40)  # PRINTING, PAUSED, FINISHED, STOPPED, ERROR...
+    file: str | None = Field(None, max_length=255)  # the file's name, as it should be shown
+    display_name: str | None = Field(None, max_length=255)
+    path: str | None = Field(None, max_length=500)  # where it is on the printer
+    progress: float | None = Field(None, ge=0, le=100)
+    time_printing: float | None = Field(None, ge=0)  # seconds
+    time_remaining: float | None = Field(None, ge=0)  # seconds
+
+
+class PrinterReport(BaseModel):
+    """A Prusa printer's status, in PrusaLink's words (docs/plugins.md, "Reporting a printer's status")."""
+
+    reachable: bool = True  # false: the plugin can't hear from the printer now (say why in error)
+    error: str | None = Field(None, max_length=300)
+    state: str | None = Field(None, max_length=40)  # IDLE, BUSY, PRINTING, PAUSED, FINISHED, STOPPED, ERROR, ATTENTION, READY
+    temps: ReportedTemps = ReportedTemps()
+    printer_type: str | None = Field(None, max_length=60)  # the model, e.g. COREONE
+    firmware: str | None = Field(None, max_length=60)
+    job: ReportedJob | None = None  # the print it shows, if any (a finished one too, until it's cleared)
+    link: str | None = Field(None, max_length=500)  # where the operator can see it (its page on Prusa Connect, say)
+
+
+@router.put("/printers/{printer_id}/status")
+def report_status(
+    printer_id: int, report: PrinterReport, db: Session = Depends(get_db), caller: registry.Caller = Depends(needs("printers:report")),
+):
+    """
+    A Prusa printer's status, from a plugin it's switched to take it from (403 for any other printer: GET /printers
+    says which are, in status_from). Farmhand records its prints from these reports as it would from its PrusaLink.
+    Send one every few seconds: a printer without one for two minutes shows as unreachable.
+    """
+    printer = require_printer(db, printer_id)
+    try:
+        printer_reports.accept(printer, caller.plugin_id, report.model_dump())
+    except printer_reports.NotReporter as e:
+        raise HTTPException(status_code=403, detail=str(e)) from None
+    seen = print_progress.progress(db, printer)  # records its prints, and tells plugins listening for events
+    return {"recorded": seen["error"] is None, "error": seen["error"]}
 
 
 @router.get("/farm", dependencies=[Depends(needs("farm:read"))])

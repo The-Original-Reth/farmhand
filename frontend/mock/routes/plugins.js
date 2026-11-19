@@ -20,6 +20,7 @@ const PERMISSIONS = {
   "farm:read": "see Farmhand's colours and the farm's time zone",
   "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
   "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
+  "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you switch to it",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
 const MJPEG = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
@@ -87,6 +88,11 @@ const ON_THE_NETWORK = {
     homepage: "https://github.com/The-Original-Reth/farmhand-twitch-plugin",
     page: { menu: "Twitch", icon: "twitch", path: "/" }, permissions: ["cameras:read", "prints:read"], health: "/health",
     settings_page: "/?view=settings",
+  },
+  "http://192.168.10.93:8085": {
+    id: "prusa-connect", name: "Prusa Connect", version: "1.0.0", farmhand_api: "1", port: 8085, author: "Farmhand mockup", // plugins/prusa-connect's manifest
+    homepage: "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/prusa-connect",
+    page: { menu: "Prusa Connect", icon: "dashboard", path: "/" }, permissions: ["printers:read", "printers:report"], health: "/health",
   },
   "http://192.168.10.216:8080": {
     id: "shelf-clock", name: "Shelf clock", version: "1.2.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
@@ -188,7 +194,10 @@ export function pluginsRoutes(ctx) {
   // Hello, Stream and Twitch are added already: the sample farm's plugins (their tokens aren't given to anyone, they're
   // pretend). Stream and Twitch come first in the menu's plugins group, after Stream control (Sidebar.jsx STREAM_PLUGINS).
   const added = (address) => record(checkManifest(ON_THE_NETWORK[address]), { permissions: ON_THE_NETWORK[address].permissions, address, onlyFrom: true });
-  const plugins = () => (farm.plugins ??= [added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080"), added("http://192.168.10.217:8081")]);
+  const plugins = () => (farm.plugins ??= [
+    added("http://192.168.10.215:8080"), added("http://192.168.10.217:8080"), added("http://192.168.10.217:8081"), added("http://192.168.10.93:8085"),
+  ]);
+  plugins(); // made now: the printers' routes (before these) read farm.plugins for the plugins that can report a printer
   const find = (id) => plugins().find((p) => p.id === id) || (() => { throw new HttpError(404, "Plugin not found"); })();
   const out = (p) => ({
     id: p.id, name: p.name, version: p.version, image: p.image, farmhand_api: p.farmhand_api, enabled: p.enabled,
@@ -268,6 +277,7 @@ export function pluginsRoutes(ctx) {
     requireConfirm(q);
     find(id);
     farm.plugins = plugins().filter((p) => p.id !== id);
+    for (const pr of farm.printers) if (pr.statusFrom === id) pr.statusFrom = null; // back on their own PrusaLink
     return [204, null];
   });
 
@@ -328,7 +338,7 @@ export function pluginsRoutes(ctx) {
   on("GET", api("/printers"), (_p, _b, _q, h) => {
     needs(h, "printers:read");
     return { printers: active().map((p) => ({
-      id: p.id, name: p.name, kind: p.kind ?? null, connection_type: kindOf(p),
+      id: p.id, name: p.name, kind: p.kind ?? null, connection_type: kindOf(p), status_from: (p.prusalink && p.statusFrom) || null,
       addresses: {
         wired_ip: p.wired_ip ?? null, wireless_ip: p.wireless_ip ?? null,
         moonraker_url: p.prusalink ? null : moonrakerUrl(p), mainsail_url: p.prusalink ? null : mainsailUrl(p),
@@ -353,6 +363,16 @@ export function pluginsRoutes(ctx) {
       const web = mainsailUrl(p);
       return { ...base, cameras: [camera("Bed", "mjpeg", `${web}webcam/?action=stream`, `${web}webcam/?action=snapshot`)], error: null };
     }) };
+  });
+  // A plugin reporting a Prusa printer's status (the real one keeps it and records the printer's prints from it)
+  on("PUT", api("/printers/:id/status"), ({ id }, body, _q, h) => {
+    const plugin = needs(h, "printers:report");
+    const p = printer(id);
+    if (p.statusFrom !== plugin.id) {
+      throw new HttpError(403, `Farmhand takes ${p.name}'s status from ${p.statusFrom ? `the "${p.statusFrom}" plugin` : "its PrusaLink"}, not this plugin. The operator can change that in ${p.name}'s PrusaLink section in Farmhand.`);
+    }
+    const reachable = body?.reachable !== false;
+    return { recorded: reachable, error: reachable ? null : body?.error || `The "${plugin.id}" plugin can't reach ${p.name}.` };
   });
   on("GET", api("/printers/:id/print"), ({ id }, _b, _q, h) => {
     needs(h, "prints:read");

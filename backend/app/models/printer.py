@@ -65,6 +65,10 @@ class Printer(HasNotes, Base):
     prusalink_row: Mapped["PrusaLinkConnection | None"] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan", uselist=False
     )
+    # A Prusa printer whose status a plugin reports instead of its PrusaLink being asked (see PrinterStatusSource)
+    status_source_row: Mapped["PrinterStatusSource | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
     maintenance_rows: Mapped[list["MaintenanceEntry"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
@@ -132,6 +136,11 @@ class Printer(HasNotes, Base):
     def connection_type(self) -> str:
         """How Farmhand talks to it: "moonraker" (Klipper) or "prusalink" (a Prusa Core One, MK4, XL...)."""
         return "prusalink" if self.prusalink_row is not None else "moonraker"
+
+    @property
+    def status_from(self) -> str | None:
+        """The plugin (its id) a Prusa printer's status and prints come from, or None: its own PrusaLink (the default)."""
+        return self.status_source_row.plugin_id if self.status_source_row is not None and self.prusalink_row is not None else None
 
     @property
     def prusalink_url_override(self) -> str | None:

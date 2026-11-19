@@ -26,6 +26,8 @@ def live_status(db: Session, printer: Printer) -> dict:
     out = {
         "prusalink_url": printer.prusalink_url,
         "has_password": printer.has_prusalink_password,
+        # where its status comes from: its own PrusaLink (null), or a plugin that reports it {id, name, link}
+        "status_from": None,
         "reachable": False, "error": None, "error_kind": None,
         "state": None, "printer_type": None, "firmware": None, "temps": None, "job": None,
     }
@@ -46,4 +48,11 @@ def live_status(db: Session, printer: Printer) -> dict:
     except PrusaLinkError as e:
         out.update(error=str(e), error_kind=e.kind)
     out["prusalink_url"] = printer.prusalink_url  # the one of its IPs it answered at just now
+    if printer.status_from:
+        from .. import printer_reports
+
+        out["status_from"] = {
+            "id": printer.status_from, "name": printer_reports.plugin_name(db, printer.status_from),
+            "link": printer_reports.link(printer),
+        }
     return out

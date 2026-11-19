@@ -1,0 +1,26 @@
+# Farmhand's Prusa Connect plugin: Farmhand's Prusa printers' status and prints from the farm's Prusa Connect server.
+# Put this file in a folder of its own on any machine on the farm's network that has Docker and reaches both Farmhand
+# and Prusa Connect (beside Prusa Connect is good, e.g. /opt/farmhand-prusa-connect), then, in that folder:
+#
+#   sudo docker compose up -d --build
+#
+# Docker builds the plugin straight from Farmhand's GitHub repository (git must be installed). Then add it on
+# Farmhand's Plugins page at http://<this machine>:8085, put the two lines Farmhand shows into prusa-connect.env
+# (beside this file) and start it again:  sudo docker compose up -d --force-recreate
+# Last, open its page in Farmhand: type Prusa Connect's address and pair the plugin with it.
+services:
+  prusa-connect:
+    build: https://github.com/The-Original-Reth/farmhand.git#main:plugins/prusa-connect
+    image: farmhand-prusa-connect
+    container_name: farmhand-prusa-connect
+    restart: unless-stopped        # back by itself after a reboot or a crash
+    ports:
+      - "8085:8085"                # Farmhand reaches the plugin at http://<this machine>:8085
+    env_file:
+      - path: prusa-connect.env    # FARMHAND_URL and FARMHAND_TOKEN, from Farmhand's Plugins page
+        required: false            # (not there until then)
+    volumes:
+      - prusa-connect-data:/data   # Prusa Connect's address, the plugin's token for it, which printer is which
+
+volumes:
+  prusa-connect-data:
