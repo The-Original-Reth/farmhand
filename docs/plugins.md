@@ -439,7 +439,10 @@ network reaches. It's never passed on by Farmhand's web page server (port 3636).
 - **The token.** Every call needs one; Farmhand keeps only its hash and shows it once, when it's made.
 - **The plugin's address.** With "Only accept its token from its own address" on (the default for a plugin added by
   its address), a token is refused from anywhere but the machine at the plugin's address (its name looked up, if it
-  has one). A token copied elsewhere is no use.
+  has one). A token copied elsewhere is no use. If your container moves (a new IP from DHCP, another port), the
+  operator gives Farmhand its new address with **Change…** on the Plugins page: Farmhand fetches `<new address>/manifest`
+  and takes the address only when its `id` is your plugin's. Your token and permissions stay the same, so nothing
+  changes on your side; your calls are then taken from the new address.
 - **How often.** Each token may make 10 calls a second (60 at once after a quiet spell); beyond that is 429.
 - **Switching off.** A plugin switched off on the Plugins page has its token refused until it's switched on again.
 

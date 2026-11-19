@@ -11,6 +11,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app.database import get_db
 from app.main import app
 from app.services.plugins import cache, health, limits, registry, remote
 
@@ -109,6 +110,24 @@ def test_moving_a_plugin_to_another_address(api, plugin):
     plugin.manifest["id"] = "other"
     r = api.patch("/plugins/hello", json={"address": plugin.address})
     assert r.status_code == 422 and 'is "other", not "hello"' in r.json()["detail"]
+
+
+def test_a_moved_plugin_keeps_its_token_and_everything_follows_its_new_address(api, plugin):
+    token = add(api)["token"]
+    plugin.address = "http://192.168.10.99:8080"  # its container came back with a new IP
+    p = api.patch("/plugins/hello", json={"address": "192.168.10.99:8080"}).json()
+    assert p["address"] == plugin.address and p["health"]["state"] == "running"
+    assert p["permissions"] == ["printers:read", "farm:read"] and p["only_from_address"] is True
+    # the same token, now taken only from the new address
+    assert from_ip(api, "192.168.10.99").get("/plugin-api/v1/me", headers=bearer(token)).status_code == 200
+    assert from_ip(api, "192.168.10.215").get("/plugin-api/v1/me", headers=bearer(token)).status_code == 403
+    # its page and its health check are asked at the new address
+    assert api.get("/plugins/hello/page/").text == "<h1>Hello from the plugin</h1>"
+    db = next(app.dependency_overrides[get_db]())  # the API's own database
+    assert health.check(db, registry.get(db, "hello")) is None
+    plugin.address = "http://192.168.10.215:8080"  # nothing answers at its new address any more
+    assert "nothing answered there" in health.check(db, registry.get(db, "hello"))
+    db.close()
 
 
 # ------------------------------------------------------------------ the plugin API across the network
