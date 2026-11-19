@@ -640,3 +640,19 @@ def test_files_outside_a_folder_are_counted_by_their_path_without_looking_each_u
     assert not outside(str(root / "12" / "frog.stl")) and not outside(str(root))
     assert outside(str(tmp_path / "STLx" / "frog.stl")) and outside("/elsewhere/frog.stl")
     assert looked_up == [str(root)]  # the folder once; the files never
+
+
+def test_saving_the_design_reads_the_stream_folder_again_in_the_background(api, monkeypatch):
+    from app.services.stream_control import media as stream_media
+
+    switch(api)
+    api.post("/stream-control/pictures", files=[("files", ("logo.png", PNG, "image/png"))])
+    folder = Path(api.get("/stream-control").json()["media"]["path"])
+    (folder / "images" / "dropped.png").write_bytes(PNG)  # copied in by hand, on the NAS
+    later = []
+    monkeypatch.setattr(stream_media, "run_in_background", later.append)
+    saved = api.put("/stream-control", json={"title": "Farm"}).json()
+    assert saved["media"]["images"] == ["logo.png"] and len(later) == 1  # answered from the last listing, at once
+    assert api.get("/stream-control").json()["media"]["images"] == ["logo.png"] and len(later) == 1  # one re-read at a time
+    later[0]()
+    assert api.get("/stream-control").json()["media"]["images"] == ["dropped.png", "logo.png"]
