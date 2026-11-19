@@ -18,8 +18,9 @@ const emptyReminder = () => ({
   date: { bool: false, value: null },
 });
 
-// noFilament: the printer doesn't report filament use (PrusaLink), so a filament reminder isn't offered
-export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFilament = false }) {
+// noFilament: the printer doesn't report filament use (PrusaLink), so a filament reminder isn't offered. kept: the
+// reminders are kept in Farmhand (a Prusa printer), not on the printer
+export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFilament = false, kept = noFilament }) {
   const parts = noFilament ? REMINDER_PARTS.filter((p) => p.key !== "filament") : REMINDER_PARTS;
   const [name, setName] = useState(initial?.name || "");
   const [note, setNote] = useState(initial?.note || "");
@@ -92,8 +93,9 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
         </div>
       )}
       <div style={uiText(11, c.textFaint, { marginBottom: 14, lineHeight: 1.5 })}>
-        {noFilament
-          ? "Kept in Farmhand: this printer has nowhere to keep maintenance itself. Print time counts the prints Farmhand has recorded."
+        {kept
+          ? `Kept in Farmhand: this printer has nowhere to keep maintenance itself. Print time counts the prints Farmhand has recorded.${
+            noFilament ? "" : " Filament counts the printer's own counter of filament fed, through Prusa Connect."}`
           : "Saved on the printer, the same way Mainsail keeps its maintenance list, so it shows there too."}
       </div>
       <ModalActions onClose={onClose} onSubmit={submit} actionLabel={actionLabel} submitting={submitting} errorMsg={errorMsg} submittingLabel="Saving…" />

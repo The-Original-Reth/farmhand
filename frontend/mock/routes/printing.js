@@ -376,7 +376,7 @@ export function printingRoutes(ctx) {
     return { name, note, perform_note: null, start_time: nowUnix(), end_time: null, start_filament: t.total_filament_used, end_filament: null, start_printtime: t.total_print_time, end_printtime: null, last_entry: lastEntry, reminder };
   };
   const noFilament = (p, r) => {
-    if (p.prusalink && r.filament.bool) throw new HttpError(422, "This printer doesn't report how much filament it uses: pick print time or days for the reminder");
+    if (p.prusalink && !p.statusFrom && r.filament.bool) throw new HttpError(422, "This printer doesn't report how much filament it uses: pick print time or days for the reminder");
     return r;
   };
   const reachablePrinter = (id) => {
@@ -458,7 +458,7 @@ export function printingRoutes(ctx) {
       // beyond PrusaLink, from the pretend Prusa Connect: material, nozzle, chamber, fans, speed and flow
       extras: p.statusFrom
         ? { material: "PETG", nozzle_diameter: 0.4, nozzle_hardened: false, nozzle_high_flow: false, temp_chamber: job ? 38.5 : 29.4,
-          target_chamber: 0, print_fan_rpm: job ? 5200 : 0, heatbreak_fan_rpm: 8003, speed: 100, flow: 100, dialog: null }
+          target_chamber: 0, print_fan_rpm: job ? 5200 : 0, heatbreak_fan_rpm: 8003, speed: 100, flow: 100, odometer_e: 238900, dialog: null }
         : null,
       temps: job ? { temp_nozzle: 239.6, target_nozzle: 240, temp_bed: 85.2, target_bed: 85 } : { temp_nozzle: 27.4, target_nozzle: 0, temp_bed: 26.1, target_bed: 0 },
       job: job

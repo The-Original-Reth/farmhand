@@ -90,6 +90,8 @@ function MaintenanceRow({ entry, onDone, onEdit, onDelete }) {
 // Folds away (open/onToggle); folded, it still says how many are due.
 export function MaintenanceSection({ printer, reachable, open: unfolded = true, onToggle }) {
   const inFarmhand = printer.connectionType === "prusalink";
+  // a Prusa printer counts no filament, unless it's connected through Prusa Connect (its extruder's own counter)
+  const noFilament = inFarmhand && !printer.statusFrom;
   const [data, setData] = useState(null); // { entries, totals }
   const [error, setError] = useState(null);
   const [dialog, setDialog] = useState(null); // { kind: "add" | "edit" | "done" | "delete", entry }
@@ -188,7 +190,7 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
 
       {dialog?.kind === "add" && (
         <Modal title="Add maintenance" onClose={close} width={480}>
-          <MaintenanceForm actionLabel="Add" noFilament={inFarmhand} onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
+          <MaintenanceForm actionLabel="Add" noFilament={noFilament} kept={inFarmhand} onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
         </Modal>
       )}
       {dialog?.kind === "edit" && (
@@ -196,7 +198,8 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
           <MaintenanceForm
             initial={dialog.entry}
             actionLabel="Save"
-            noFilament={inFarmhand}
+            noFilament={noFilament}
+            kept={inFarmhand}
             onClose={close}
             onSubmit={async (v) => setData(await updateMaintenance(printer.id, dialog.entry.id, v))}
           />

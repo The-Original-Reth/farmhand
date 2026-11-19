@@ -41,9 +41,11 @@ def poll(db: Session, printer: Printer) -> tuple[dict, dict | None]:
         record_sync_error(db, printer, e)
         raise
     now = dt.datetime.now(dt.timezone.utc)
-    touched = _record(db, printer, current, now, _odometer(printer))
+    odometer = _odometer(printer)
+    touched = _record(db, printer, current, now, odometer, _material(printer))
     filament_estimate.update(db, printer, touched)
-    record_sync_ok(printer, totals(db, printer.id), now)  # the totals of the prints Farmhand has recorded so far
+    # the totals of the prints Farmhand has recorded so far; a Prusa Connect printer's filament is its own counter
+    record_sync_ok(printer, totals(db, printer.id, counter=_counter(printer, odometer)), now)
     db.commit()
     return status, current
 
@@ -56,11 +58,36 @@ def _odometer(printer: Printer) -> float | None:
     return printer_reports.odometer(printer)
 
 
+def _material(printer: Printer) -> str | None:
+    """The filament loaded (PETG, PLA...), as a printer connected through Prusa Connect says; None otherwise."""
+    if not printer.status_from:
+        return None
+    from .. import printer_reports
+
+    found = (printer_reports.extras(printer) or {}).get("material")
+    return str(found) if found else None
+
+
+def _counter(printer: Printer, odometer: float | None) -> float | None:
+    """A Prusa Connect printer's lifetime filament (mm): its extruder's odometer now, or while that isn't reported (no
+    fresh report), the last one Farmhand noted, so a filament maintenance reminder never jumps back. None for a printer
+    that keeps none (PrusaLink)."""
+    if not printer.status_from:
+        return None
+    if odometer is not None:
+        return odometer
+    kept = (printer.connection_row.totals if printer.connection_row else None) or {}
+    return kept.get("total_filament_used") if kept.get("filament_counter") else None
+
+
 # A print first seen this far in (seconds printing) or less counts as seen from its start, for measuring its filament
 MEASURE_FROM_START = 300.0
 
 
-def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetime, odometer: float | None = None) -> list[PrintJob]:
+def _record(
+    db: Session, printer: Printer, current: dict | None, now: dt.datetime, odometer: float | None = None,
+    material: str | None = None,
+) -> list[PrintJob]:
     """Bring the history up to date with what the printer shows now. Returns the prints that changed."""
     touched: list[PrintJob] = []
     link = printer.prusalink_row
@@ -91,6 +118,8 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
         row = PrintJob(printer_id=printer.id, job_id=f"{job_id}@{start:%Y%m%dT%H%M%S}", filename="", status=status, start_time=start)
         if odometer is not None and float(current.get("time_printing") or 0) <= MEASURE_FROM_START:
             row.job_metadata = {"odometer_start": odometer}  # its filament is measured from here
+        if material:
+            row.job_metadata = {**(row.job_metadata or {}), "filament_type": material}  # loaded as it started
         db.add(row)
         db.flush()
     link.current_job_id, link.current_print_id = job_id, row.id
@@ -111,6 +140,8 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
         "estimated_time": row.print_duration + float(remaining) if isinstance(remaining, (int, float)) else meta.get("estimated_time"),
         "progress": current.get("progress"),  # the last seen: how much of its filament an unfinished print used
     }
+    if material and not row.job_metadata.get("filament_type"):
+        row.job_metadata = {**row.job_metadata, "filament_type": material}
     start_odo = row.job_metadata.get("odometer_start")
     if isinstance(start_odo, (int, float)) and odometer is not None and odometer >= start_odo:
         row.filament_used = round(odometer - start_odo, 2)  # measured by the printer, not estimated
@@ -124,7 +155,8 @@ def _record(db: Session, printer: Printer, current: dict | None, now: dt.datetim
 
 # What a print's metadata keeps from one look to the next: its filament estimate (filament_estimate.py)
 _KEPT = (filament_estimate.KEY, "filament_estimated", "filament_total", "filament_weight_total",
-         "odometer_start", "odometer_last", "filament_measured")  # and its measured filament (Prusa Connect)
+         "odometer_start", "odometer_last", "filament_measured",  # and its measured filament (Prusa Connect)
+         "filament_type")  # the material loaded when it started (Prusa Connect)
 
 
 def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> PrintJob | None:
@@ -151,9 +183,16 @@ def _close_left_open(db: Session, printer_id: int, keep: int | None, now: dt.dat
     return closed
 
 
-def totals(db: Session, printer_id: int) -> dict:
-    """Lifetime figures for a printer that keeps none itself: what Farmhand has recorded, in Moonraker's shape."""
+def totals(db: Session, printer_id: int, counter: float | None = None) -> dict:
+    """
+    Lifetime figures for a printer that keeps none itself: what Farmhand has recorded, in Moonraker's shape. counter: a
+    Prusa Connect printer's own lifetime filament (its extruder's odometer, mm), given as total_filament_used with
+    filament_counter: True; a PrusaLink printer has none (null).
+    """
     jobs, print_time, longest = db.execute(
         select(func.count(), func.sum(PrintJob.print_duration), func.max(PrintJob.print_duration)).where(PrintJob.printer_id == printer_id)
     ).one()
-    return {"total_jobs": int(jobs or 0), "total_print_time": float(print_time or 0), "total_filament_used": None, "longest_print": float(longest or 0)}
+    out = {"total_jobs": int(jobs or 0), "total_print_time": float(print_time or 0), "total_filament_used": None, "longest_print": float(longest or 0)}
+    if counter is not None:
+        out.update(total_filament_used=float(counter), filament_counter=True)
+    return out

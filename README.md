@@ -1157,7 +1157,9 @@ Prusa Connect (its page, Monitor, plugins' events and the print history Farmhand
 Prusa Connect, which starts them, and Farmhand never contacts its PrusaLink. Its page has **Open in Prusa Connect**,
 and shows what PrusaLink never said: the loaded material, the nozzle, the chamber temperature, fans, speed and flow,
 and any message on the printer's screen. A print it sees start has its filament measured by the printer instead of
-estimated from the slicer (prints recorded before keep their figures).
+estimated from the slicer, notes the material loaded, and is weighed from that material when its 3MF isn't in Farmhand
+(prints recorded before keep their figures). The printer's own filament counter is its **Filament used**, and its
+maintenance reminders can be "every so many metres of filament".
 A Prusa printer can be paired with one Connect server at a time, so pairing it with your own takes it off Prusa's
 cloud Connect. Removing the plugin puts its printers back on PrusaLink.
 

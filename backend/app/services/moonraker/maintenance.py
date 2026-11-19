@@ -71,7 +71,8 @@ def _remove(printer: Printer, key: str) -> None:
 
 
 def _check_parts(printer: Printer, reminder: dict) -> dict:
-    if _in_farmhand(printer) and (reminder.get("filament") or {}).get("bool"):
+    # a Prusa Connect printer counts its filament (its extruder's odometer, in its totals); a PrusaLink one doesn't
+    if _in_farmhand(printer) and not printer.status_from and (reminder.get("filament") or {}).get("bool"):
         raise ValueError("This printer doesn't report how much filament it uses: pick print time or days for the reminder")
     return reminder
 
