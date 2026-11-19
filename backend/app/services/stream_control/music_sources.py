@@ -43,46 +43,65 @@ def _plugin(db: Session, plugin_id: str):
 
 def plugin_tracks(db: Session, plugin_id: str) -> tuple[list[str], str | None]:
     """
-    (the MP3s in this stream plugin's own music folder, why there are none when it couldn't be asked). One request
-    asks the plugin at a time: the others meanwhile get the list it last gave (fresh or not). While the plugin doesn't
-    answer, the last list it gave is still used for up to KEEP_GOOD_FOR, so a slow answer (a busy stream plugin)
-    doesn't make all of its tracks "not in the music folders chosen".
+    (the MP3s in this stream plugin's own music folder, why there are none when it couldn't be asked). Answered at
+    once from the list the plugin last gave: once that's LIST_FOR old, a fresh one is asked for in the background (one
+    at a time). Never waited for, except the very first time: the stream plugin itself asks Farmhand for the design,
+    which lists its tracks, and it can't answer Farmhand while it waits for that answer. While the plugin doesn't
+    answer, the last list it gave is still used for up to KEEP_GOOD_FOR.
     """
     kept = _listed.get(plugin_id)
     if kept and time.monotonic() - kept[0] < LIST_FOR:
         return kept[1], kept[2]
     with _asking_lock:
         lock = _asking.setdefault(plugin_id, threading.Lock())
-    if not lock.acquire(blocking=kept is None):  # being asked already: what it said last
+    if kept is not None:
+        if lock.acquire(blocking=False):  # nobody asking it yet: ask in the background, answer what it said last
+            target = _target(db, plugin_id)
+
+            def refresh():
+                try:
+                    _ask(plugin_id, target)
+                finally:
+                    lock.release()
+
+            run_in_background(refresh)
         return kept[1], kept[2]
-    try:
+    with lock:  # the first time: nothing to answer with yet
         kept = _listed.get(plugin_id)
-        if kept and time.monotonic() - kept[0] < LIST_FOR:
+        if kept:
             return kept[1], kept[2]
-        return _ask(db, plugin_id)
-    finally:
-        lock.release()
+        return _ask(plugin_id, _target(db, plugin_id))
 
 
-def _ask(db: Session, plugin_id: str) -> tuple[list[str], str | None]:
-    now = time.monotonic()
+def run_in_background(work) -> None:
+    """Tests swap this for one that runs the work at once."""
+    threading.Thread(target=work, daemon=True, name="stream-music-list").start()
+
+
+def _target(db: Session, plugin_id: str) -> tuple[str, str] | None:
+    """(its address, its name) to ask, or None when it isn't a stream plugin that's switched on."""
     plugin = _plugin(db, plugin_id)
-    if plugin is None:
+    return (registry.connection_of(plugin).address, plugin.name) if plugin is not None else None
+
+
+def _ask(plugin_id: str, target: tuple[str, str] | None) -> tuple[list[str], str | None]:
+    now = time.monotonic()
+    if target is None:
         tracks, problem = [], f"“{plugin_id}” isn't a stream plugin that's switched on."
     else:
-        address = registry.connection_of(plugin).address
+        address, name = target
         try:
             with httpx.Client(transport=remote.transport, timeout=LIST_TIMEOUT, follow_redirects=False) as client:
                 r = client.get(f"{address}{PAGE_PATH}", headers={"Accept": "application/json"})
             body = r.json() if r.status_code == 200 else {}
             found = ((body or {}).get("media") or {}).get("music") or []
             tracks = [n for n in found if isinstance(n, str) and Path(n).suffix.lower() in media.TRACK_TYPES]
-            problem = None if r.status_code == 200 else f"{plugin.name} answered {r.status_code}."
+            problem = None if r.status_code == 200 else f"{name} answered {r.status_code}."
         except (httpx.HTTPError, ValueError, AttributeError) as e:
-            tracks, problem = [], remote.unreachable(address, e) if isinstance(e, httpx.HTTPError) else f"{plugin.name} didn't answer with its music."
+            tracks, problem = [], remote.unreachable(address, e) if isinstance(e, httpx.HTTPError) else f"{name} didn't answer with its music."
     if problem is None:
         _good[plugin_id] = (now, tracks)
-    elif plugin is not None and plugin_id in _good and now - _good[plugin_id][0] < KEEP_GOOD_FOR:
+    elif target is not None and plugin_id in _good and now - _good[plugin_id][0] < KEEP_GOOD_FOR:
         tracks = _good[plugin_id][1]  # still played from: the last list it gave
     _listed[plugin_id] = (now, tracks, problem)
     return tracks, problem
@@ -91,6 +110,8 @@ def _ask(db: Session, plugin_id: str) -> tuple[list[str], str | None]:
 def forget() -> None:
     _listed.clear()
     _good.clear()
+    with _asking_lock:
+        _asking.clear()
 
 
 def tracks(db: Session) -> list[dict]:

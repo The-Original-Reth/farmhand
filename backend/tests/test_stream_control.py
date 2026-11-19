@@ -380,19 +380,20 @@ def test_a_plugin_that_answers_slowly_keeps_its_tracks_playing(api, monkeypatch)
 
     # the list goes stale and the plugin stops answering (busy streaming): its last list is still played from
     monkeypatch.setattr(music_sources, "LIST_FOR", -1)
+    monkeypatch.setattr(music_sources, "run_in_background", lambda work: work())
     fake.down.add("stream")
+    api.get("/plugin-api/v1/stream/design", headers=headers)  # answered from the old list; the refresh fails
     got = api.get("/plugin-api/v1/stream/design", headers=headers).json()["media"]
     assert got["music"] == ["beat.mp3"]
     [youtube] = [x for x in api.get("/stream-control").json()["media"]["music_sources"] if x["id"] == "stream"]
     assert youtube["problem"] and youtube["tracks"] == 1  # "1 track, not answering just now"
     # past KEEP_GOOD_FOR it's given up on
     monkeypatch.setattr(music_sources, "KEEP_GOOD_FOR", -1)
+    api.get("/plugin-api/v1/stream/design", headers=headers)
     assert api.get("/plugin-api/v1/stream/design", headers=headers).json()["media"]["music"] == []
 
 
-def test_one_request_at_a_time_asks_a_plugin_for_its_tracks(api, monkeypatch):
-    import threading
-
+def test_a_stale_track_list_is_answered_at_once_and_refreshed_in_the_background(api, monkeypatch):
     fake = FakeStreams()
     remote.transport = httpx.MockTransport(fake.handle)
     switch(api)
@@ -400,16 +401,18 @@ def test_one_request_at_a_time_asks_a_plugin_for_its_tracks(api, monkeypatch):
     api.put("/stream-control", json={"music_from": ["stream"]})
     db = api_db(api)
     music_sources.forget()
-    assert music_sources.plugin_tracks(db, "stream")[0] == ["beat.mp3"]
-    monkeypatch.setattr(music_sources, "LIST_FOR", -1)  # stale from now on
+    assert music_sources.plugin_tracks(db, "stream")[0] == ["beat.mp3"]  # the first time: asked and waited for
+    monkeypatch.setattr(music_sources, "LIST_FOR", -1)
+    later = []
+    monkeypatch.setattr(music_sources, "run_in_background", later.append)
+    fake.asked.clear()
+    assert music_sources.plugin_tracks(db, "stream") == (["beat.mp3"], None)  # at once, from the last list
+    assert not fake.asked and len(later) == 1  # the plugin is asked in the background
+    assert music_sources.plugin_tracks(db, "stream") == (["beat.mp3"], None) and len(later) == 1  # one at a time
+    later[0]()
     lock = music_sources._asking["stream"]
-    lock.acquire()  # someone is asking it right now
-    try:
-        fake.asked.clear()
-        assert music_sources.plugin_tracks(db, "stream") == (["beat.mp3"], None)  # what it said last, at once
-        assert not fake.asked
-    finally:
-        lock.release()
+    assert fake.asked and lock.acquire(blocking=False)  # the refresh let go of it
+    lock.release()
 
 
 def test_only_the_streams_brought_in_are_started_stopped_or_sent_the_design(api):
