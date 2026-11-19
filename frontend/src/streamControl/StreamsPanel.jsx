@@ -55,6 +55,7 @@ export function StreamsPanel({ streams, busy, onStart, onStop, onAll, onChoose, 
           )}
         </div>
       )}
+      <NasCopy copy={media?.copy} busy={busy} onReconnect={media?.on_share ? onReconnect : null} />
       {!streams.length && (
         <div style={help}>
           No stream plugin is added yet. Add the YouTube or Twitch stream plugin on the{" "}
@@ -92,6 +93,35 @@ const shortened = (text) => {
   if (parts.length > 2) return `${parts.slice(0, 2).join("; ")}; and ${parts.length - 2} more like it`;
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 };
+
+// How the stream folder's copy on the NAS is going (media.copy): Stream control works from Farmhand's own copy of its
+// pictures and music, so the streams never wait on the NAS, and keeps the stream folder on the NAS in step with it.
+// Nothing shown until that's how it works (the first copying from the NAS still under way: it works from the NAS).
+const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null);
+function NasCopy({ copy, busy, onReconnect }) {
+  if (!copy?.working) return null;
+  if (copy.error) {
+    return (
+      <div data-testid="stream-control-nas-copy" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={uiText(12, c.amber, { flex: 1, minWidth: 200, lineHeight: 1.5 })}>
+          The streams carry on from Farmhand's own copy of the pictures and music, but the NAS copy isn't being kept up to date
+          {copy.copied_at ? ` (last at ${clock(copy.copied_at)})` : ""}: {copy.error}
+        </span>
+        {onReconnect && (
+          <button type="button" data-testid="stream-control-nas-copy-reconnect" onClick={onReconnect} disabled={!!busy} style={headerButton()}>
+            {busy === "reconnect" ? "Reconnecting…" : "Reconnect NAS"}
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div data-testid="stream-control-nas-copy" style={uiText(12, c.textFaint, { lineHeight: 1.5 })}>
+      Pictures and music are kept on Farmhand and copied to the stream folder on the NAS
+      {copy.copying || copy.waiting ? ": copying now" : copy.copied_at ? `, last at ${clock(copy.copied_at)}` : ""}.
+    </div>
+  );
+}
 
 // Where a live stream's work is done, as its plugin says: the cameras unpacked and the stream compressed on the GPU (an
 // NVIDIA card) or the CPU (the processor), and why the card isn't used for something it did before. Nothing from a

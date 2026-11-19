@@ -31,6 +31,11 @@ const normalizePlugin = (p) => ({
   createdAt: p.created_at,
   tokenCreatedAt: p.token_created_at,
   tokenLastUsedAt: p.token_last_used_at,
+  // what its newer manifest asks for that it hasn't been given: [{ permission, means }] (Allow on its card), or []
+  asks: p.asks || [],
+  // the copy of its own settings Farmhand keeps: { savedAt, receivedAt, size }, or null; canRestore: it can take it back
+  backup: p.backup ? { savedAt: p.backup.saved_at, receivedAt: p.backup.received_at, size: p.backup.size } : null,
+  canRestore: !!p.can_restore,
 });
 
 // A plugin built into Farmhand (Stream control): { id, name, builtin: true, enabled, description, page: { menu, icon, path } }.
@@ -68,6 +73,15 @@ export const newPluginToken = (id) =>
     .then((r) => ({ plugin: normalizePlugin(r.plugin), token: r.token }));
 
 export const removePlugin = (id) => del(`/plugins/${encodeURIComponent(id)}`);
+
+// Grant what the plugin's newer manifest asks for (its `asks`): its token keeps working. Answers the plugin.
+export const allowPlugin = (id) => request(`/plugins/${encodeURIComponent(id)}/allow`, { method: "POST" }).then(normalizePlugin);
+
+// Give the plugin back the copy of its own settings Farmhand keeps (its settings are replaced by it):
+// { restored, savedAt, note (the plugin's own words: when they take effect) }
+export const restorePluginSettings = (id) =>
+  request(`/plugins/${encodeURIComponent(id)}/backup/restore?confirm=true`, { method: "POST" })
+    .then((r) => ({ restored: !!r.restored, savedAt: r.saved_at || null, note: r.note || null }));
 
 // Where a plugin's page is shown from: the web server passes /plugins/<id>/ on to the plugin (nginx.conf; the
 // mockup and `npm run dev` do the same)

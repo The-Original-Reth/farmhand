@@ -35,6 +35,8 @@ class Plugin(Base):
     )
     # What it was handed once (plugin_handover). Goes with it.
     handovers: Mapped[list["PluginHandover"]] = relationship(cascade="all, delete-orphan")
+    # A permission its newer manifest asks for, waiting for the operator's yes (plugin_asks). Goes with it.
+    asks: Mapped["PluginAsks | None"] = relationship(cascade="all, delete-orphan", uselist=False)
 
 
 class PluginToken(Base):
@@ -88,3 +90,33 @@ class PluginHandover(Base):
     plugin_id: Mapped[str] = mapped_column(ForeignKey("plugin.id", ondelete="CASCADE"), primary_key=True)
     what: Mapped[str] = mapped_column(String(40), primary_key=True)
     handed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PluginBackup(Base):
+    """
+    A copy of a plugin's own settings it sends Farmhand (stream:backup, services/plugins/backups.py), its secrets
+    included (a stream plugin's stream key and sign-in), for Farmhand to give back to it when the operator restores
+    them. Kept by the plugin's id, not tied to the plugin: removing the plugin and adding it again (with a new token)
+    keeps it, which is just when it's wanted. Also written to the settings folder, beside farmhand-config.json.
+    """
+
+    __tablename__ = "plugin_backup"
+
+    plugin_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    data: Mapped[str] = mapped_column(Text, nullable=False)  # the settings, as JSON ({"<key>": "<value>"})
+    saved_at: Mapped[str] = mapped_column(String(40), nullable=False)  # when the plugin made it (its own ISO time)
+    received_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PluginAsks(Base):
+    """
+    A permission a plugin's manifest asks for that it wasn't granted when it was added (it was updated where it runs
+    and needs one more): its newer manifest, kept until the operator allows it on the Plugins page (or the plugin is
+    removed). Its token and the permissions it has go on as they are meanwhile.
+    """
+
+    __tablename__ = "plugin_asks"
+
+    plugin_id: Mapped[str] = mapped_column(ForeignKey("plugin.id", ondelete="CASCADE"), primary_key=True)
+    manifest: Mapped[dict] = mapped_column(JSON, nullable=False)  # the newer manifest, as checked
+    seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

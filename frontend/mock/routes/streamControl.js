@@ -47,7 +47,11 @@ export function streamControlRoutes(ctx) {
   };
   const cameras = (cells) => cells.filter((c) => c?.camera).map((c) => c.camera);
   const design = () => ({ ...state().design, cameras: cameras(state().design.cells) });
-  const media = () => ({ path: "/data/nas/farmhand/stream", windows_path: String.raw`\\192.168.10.5\farmhand\stream`, ...state().media, error: null, on_share: true });
+  // (copy: Stream control works from Farmhand's own copy of its pictures and music, kept in step with the NAS folder)
+  const media = () => ({
+    path: "/data/nas/farmhand/stream", windows_path: String.raw`\\192.168.10.5\farmhand\stream`, ...state().media, error: null, on_share: true,
+    copy: { working: true, copied_at: new Date(Date.now() - 40e3).toISOString(), error: null, copying: false, waiting: false },
+  });
   // the stream plugins: the added plugins whose manifest says they can be started from here
   // (YouTube and Twitch, as they are now, from before Stream control: started and stopped through their own page, sending their own layout)
   const BEFORE = { stream: "YouTube", twitch: "Twitch" };

@@ -17,7 +17,7 @@ from .source_model import SourceFileType, SourceModel, SourceModelVersion
 from .printer_camera import PrinterCamera
 from .printer_config_backup import PrinterConfigBackup, PrinterConfigBackupFile, PrinterSshCheck
 from .printer_note import PrinterNote
-from .plugin import Plugin, PluginConnection, PluginHandover, PluginToken
+from .plugin import Plugin, PluginAsks, PluginBackup, PluginConnection, PluginHandover, PluginToken
 from .project import (
     Project, ProjectBundle, ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition,
     ProjectDocVersion, ProjectFolder, ProjectModelComponent,
@@ -54,6 +54,8 @@ __all__ = [
     "Plugin",
     "PluginConnection",
     "PluginHandover",
+    "PluginAsks",
+    "PluginBackup",
     "PluginToken",
     "Project",
     "ProjectBundle",

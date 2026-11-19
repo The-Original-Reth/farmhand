@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ... import config_store, mounts, storage
 from ...models import NetworkShare
+from ..plugins import backups as plugin_backups
 from ..plugins import registry as plugin_registry
 from ..stream_control import settings_copy as stream_control_copy
 from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
@@ -189,6 +190,9 @@ def restore(db: Session) -> dict:
     plugins = plugin_registry.restore_entries(db, doc["plugins"])
     result["warnings"] += plugins.pop("warnings")
     result["plugins"] = plugins
+    # each plugin's own copy of its settings (stream:backup), for giving back to it from the Plugins page
+    if plugin_backups.read_all(db, Path(path)):
+        result["restored"].append("plugins' settings copies")
     if plugins["added"]:
         result["restored"].append("plugins")
     # Stream control's design, layouts and schedule, on a Farmhand that has none of its own yet

@@ -61,7 +61,11 @@ stops them: the Plugins page (`routers/plugins.py`, `src/plugins/`) adds one by 
 page is an iframe on `/plugins/<id>/`, which nginx sends to the API's `/plugins/<id>/page/` and `pages.py` passes on to
 the plugin; its manifest's `settings_page` is shown the same way on the Settings page, under the plugin's name below
 Farmhand's own settings (`src/plugins/PluginSettings.jsx`), as tall as `farmhand-plugin.js` says it is. Rules are in `services/plugins/`. v1 only gains fields and endpoints. Camera addresses for ffmpeg are
-`services/camera_streams.py` (handed to plugins as data; Farmhand runs no ffmpeg itself).
+`services/camera_streams.py` (handed to plugins as data; Farmhand runs no ffmpeg itself). A plugin may keep a copy of
+its own settings with Farmhand's (`stream:backup`, `services/plugins/backups.py`: the `plugin_backup` table, kept by id
+so removing and re-adding the plugin keeps it, written to the settings folder as `plugin-backups/<id>.json`; the Plugins
+page's Restore settings asks the plugin to fetch it back). A manifest asking for a new permission waits in `plugin_asks`
+for the Plugins page's Allow, which adds it to the existing token.
 
 **Stream is only a plugin** (https://github.com/The-Original-Reth/farmhand-youtube-plugin, its own repository and container): Farmhand has no stream
 code of its own. Once it's
@@ -81,7 +85,8 @@ off by default; `GET /plugins`' `builtin`, `PATCH /plugins/stream-control`). Off
 and its menu entry is hidden; on, `STREAM_PLUGINS` puts it first in the plugins group, level with YouTube, Twitch and the rest. It holds one stream design in the stream plugins' own shape (`squares.py`, `layouts.py`,
 `media.py` and the editor in `src/streamControl/` are copied from the YouTube plugin: keep them alike, except that
 `MusicPanel.jsx` and `StreamPreview.jsx` here leave out what only a stream going out from the page needs), with its files
-in a `stream` folder beside the STL folder. Stream plugins read it with `stream:read` (`/plugin-api/v1/stream/...`),
+in a `stream` folder beside the STL folder, worked from a copy on Farmhand's own disk (`nas_copy.py`, kept in step both ways
+with the NAS folder by a `PeriodicWorker`, so the page and the plugins never wait on the NAS). Stream plugins read it with `stream:read` (`/plugin-api/v1/stream/...`),
 and Stream control starts and stops each through its manifest's `stream_control` path (`streams.py`); its schedule is
 a `PeriodicWorker` (`schedule.py`). Still no ffmpeg in Farmhand: each stream plugin encodes the stream itself.
 

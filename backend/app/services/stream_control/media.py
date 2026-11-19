@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from ... import storage
 from ...errors import NotFound
+from . import nas_copy
 
 FOLDER_NAME = "stream"
 IMAGES, SLIDESHOWS, MUSIC = "images", "slideshows", "music"
@@ -36,13 +37,23 @@ NAME = re.compile(r"^[^/\\\0]{1,120}$")
 
 
 def _root() -> Path:
-    """Where the stream folder is (made or not)."""
+    """Where the stream folder Stream control works from is (made or not): Farmhand's own copy (nas_copy.py), once it
+    has been filled from the NAS folder; until then the NAS folder itself."""
+    if nas_copy.ready():
+        return nas_copy.working_root()
     return storage.named_folder(storage.effective_root("stl").parent, FOLDER_NAME)
 
 
 def folder(db: Session, make: bool = False) -> Path:
-    """The stream folder, while it can be used (StorageUnavailableError otherwise: the STL folder's share is
-    unmounted, say); with `make`, it and its folders made."""
+    """The stream folder Stream control works from, while it can be used (StorageUnavailableError otherwise: until
+    Farmhand's own copy is filled, the NAS folder, whose share may be unmounted); with `make`, it and its folders made."""
+    if nas_copy.ready():  # Farmhand's own copy: always there
+        root = nas_copy.working_root()
+        root.mkdir(parents=True, exist_ok=True)
+        if make:
+            for d in (IMAGES, SLIDESHOWS, MUSIC):
+                (root / d).mkdir(parents=True, exist_ok=True)
+        return root
     root = storage.named_folder(storage.ready_root("stl").parent, FOLDER_NAME)
     if make:
         root.mkdir(exist_ok=True)
@@ -125,7 +136,7 @@ def set_order(db: Session, name: str, order: list[str]) -> list[str]:
         raise ValueError(f"“{missing[0]}” isn't one of the slideshow's pictures (Scan folder, and try again).")
     keep = list(dict.fromkeys(order)) + [n for n in _slides_in(d) if n not in set(order)]
     write_order(d, keep)
-    forget(at_once=True)
+    _changed()
     return keep
 
 
@@ -136,7 +147,7 @@ def add_blank(db: Session, name: str) -> str:
     numbers = [int(n[len(BLANK):]) for n in slides if is_blank(n) and n[len(BLANK):].isdigit()]
     blank = f"{BLANK}{max(numbers, default=0) + 1}"
     write_order(d, slides + [blank])
-    forget(at_once=True)
+    _changed()
     return blank
 
 
@@ -159,6 +170,12 @@ def forget(at_once: bool = False) -> None:
         _stale = True
 
 
+def _changed() -> None:
+    """Something was changed through Farmhand: shown at once, and copied to the NAS soon (nas_copy.py)."""
+    forget(at_once=True)
+    nas_copy.changed()
+
+
 def run_in_background(work) -> None:
     """Tests swap this for one that runs the work at once."""
     threading.Thread(target=work, daemon=True, name="stream-folder").start()
@@ -168,8 +185,12 @@ def media(db: Session, scan: bool = False) -> dict:
     """{path, images: [names], slideshows: [{name, images: [names]}], music: [the tracks' names], error (why the
     folder can't be used now, or None)}:
     what's in the stream folder, as last found (read now when `scan`, or the first time; read again in the background
-    after forget())."""
+    after forget()). While Stream control works from Farmhand's own copy, Scan folder and the reading again in the
+    background first bring it in step with the NAS folder (files copied in or taken out there by hand), and `path` is
+    the NAS folder (where people copy files in by hand), `copy` how keeping the NAS copy is going (nas_copy.status)."""
     global _found, _stale
+    if scan and nas_copy.ready():
+        nas_copy.sync_quietly()
     which = str(_root())
     if not scan and _found and _found[0] == which:
         if _stale and _reading.acquire(blocking=False):
@@ -179,6 +200,8 @@ def media(db: Session, scan: bool = False) -> dict:
             def refresh():
                 global _found
                 try:
+                    if nas_copy.ready():
+                        nas_copy.sync_quietly()
                     with Session(bind=bind) as fresh:
                         _found = (which, _read(fresh))
                 finally:
@@ -198,7 +221,7 @@ def _read(db: Session) -> dict:
             root = folder(db)
     except storage.StorageUnavailableError as e:
         return {"path": str(_root()), "windows_path": None, "images": [], "slideshows": [], "music": [], "error": str(e), "stamps": {},
-                "on_share": _on_share(db)}
+                "on_share": _on_share(db), "copy": nas_copy.status()}
     shows = []
     try:
         for e in sorted(os.scandir(root / SLIDESHOWS), key=lambda e: _natural(e.name)):
@@ -209,16 +232,17 @@ def _read(db: Session) -> dict:
     images, music = _pictures_in(root / IMAGES), _files_in(root / MUSIC, TRACK_TYPES)
     files = [f"{IMAGES}/{n}" for n in images] + [f"{MUSIC}/{n}" for n in music] + [
         f"{SLIDESHOWS}/{s['name']}/{n}" for s in shows for n in s["images"] if not is_blank(n)]
-    return {"path": str(root), "windows_path": shown_as(db, root), "images": images, "slideshows": shows, "music": music,
-            "error": None, "stamps": _stamps(root, files), "on_share": _on_share(db)}
+    seen = nas_copy.nas_root_named() if nas_copy.ready() else root  # (where people copy files in by hand)
+    return {"path": str(seen), "windows_path": shown_as(db, seen), "images": images, "slideshows": shows, "music": music,
+            "error": None, "stamps": _stamps(root, files), "on_share": _on_share(db), "copy": nas_copy.status()}
 
 
 def _on_share(db: Session) -> bool:
-    """The stream folder is on a NAS share Farmhand connects itself (so the page offers Reconnect NAS)."""
+    """The stream folder on the NAS is on a share Farmhand connects itself (so the page offers Reconnect NAS)."""
     from ..network_shares_service import shares_holding  # (not at the top: it reads the storage roots this module does)
 
     try:
-        return bool(shares_holding(db, _root()))
+        return bool(shares_holding(db, nas_copy.nas_root_named()))
     except Exception:  # noqa: BLE001 - only decides whether a button is shown
         return False
 
@@ -313,7 +337,7 @@ def add_picture(db: Session, slideshow: str | None, filename: str, data: bytes) 
     d.mkdir(parents=True, exist_ok=True)
     name = _free_name(d, name)
     storage.write_bytes_atomically(d / name, data)
-    forget(at_once=True)
+    _changed()
     return name
 
 
@@ -326,7 +350,7 @@ def remove_picture(db: Session, slideshow: str | None, name: str) -> None:
         write_order(d, [n for n in slides if n != name])
     else:
         picture_path(db, slideshow, name).unlink()
-    forget(at_once=True)
+    _changed()
 
 
 def add_slideshow(db: Session, name: str) -> str:
@@ -336,7 +360,7 @@ def add_slideshow(db: Session, name: str) -> str:
     if any(e.name.lower() == name.lower() for e in os.scandir(d) if e.is_dir()):
         raise ValueError(f"There's already a slideshow called “{name}”.")
     (d / name).mkdir()
-    forget(at_once=True)
+    _changed()
     return name
 
 
@@ -355,7 +379,7 @@ def rename_slideshow(db: Session, name: str, new: str) -> str:
         os.rename(d / name, d / new)
     except OSError as e:
         raise ValueError(f"Couldn't rename the slideshow's folder: {e.strerror or e}") from None
-    forget(at_once=True)
+    _changed()
     return new
 
 
@@ -365,7 +389,7 @@ def remove_slideshow(db: Session, name: str) -> None:
     for n in _pictures_in(d):
         (d / n).unlink(missing_ok=True)
     (d / ORDER_FILE).unlink(missing_ok=True)  # Farmhand's own: its order
-    forget(at_once=True)
+    _changed()
     try:
         d.rmdir()
     except OSError:
@@ -403,10 +427,10 @@ def add_track(db: Session, filename: str, data: bytes) -> str:
     d = folder(db, make=True) / MUSIC
     name = _free_name(d, name)
     storage.write_bytes_atomically(d / name, data)
-    forget(at_once=True)
+    _changed()
     return name
 
 
 def remove_track(db: Session, name: str) -> None:
     track_path(db, name).unlink()
-    forget(at_once=True)
+    _changed()

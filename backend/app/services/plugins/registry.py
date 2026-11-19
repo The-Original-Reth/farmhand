@@ -138,6 +138,27 @@ def update(db: Session, plugin_id: str, enabled=None, only_from_address=None, ad
     return plugin
 
 
+def allow(db: Session, plugin_id: str) -> Plugin:
+    """
+    Grant what the plugin's newer manifest asks for (plugin_asks, from the health check): its token keeps working,
+    with the new permissions added, and the newer manifest is taken. ValueError when it isn't asking for anything.
+    """
+    plugin = get(db, plugin_id)
+    if plugin.asks is None:
+        raise ValueError(f"{plugin.name} isn't asking for anything new.")
+    found = plugin.asks.manifest
+    if found.get("id") != plugin.id or found.get("farmhand_api") != plugin.farmhand_api:
+        plugin.asks = None
+        db.commit()
+        raise ValueError(f"{plugin.name}'s newer manifest is for another plugin or plugin API: add it again instead.")
+    for token in plugin.tokens:  # (only ever one)
+        token.permissions = list(dict.fromkeys([*(token.permissions or []), *found["permissions"]]))
+    plugin.name, plugin.version, plugin.manifest = found["name"], found["version"], found
+    plugin.asks = None
+    db.commit()
+    return plugin
+
+
 def new_token(db: Session, plugin_id: str) -> str:
     """A new token for the plugin, with the same permissions; the old one stops working at once."""
     plugin = get(db, plugin_id)
@@ -210,7 +231,23 @@ def out(plugin: Plugin) -> dict:
         "page": (plugin.manifest or {}).get("page"), "health": health_of(plugin),
         "token_created_at": utc_iso(token.created_at) if token and not link.needs_token else None,
         "token_last_used_at": utc_iso(token.last_used_at) if token else None,
+        # permissions its newer manifest asks for that it hasn't been given (allow()): [{permission, means}], or []
+        "asks": manifests.describe([p for p in (plugin.asks.manifest.get("permissions") or []) if p not in permissions])
+        if plugin.asks is not None else [],
+        # the copy of its own settings Farmhand keeps ({saved_at, received_at, size}, or None), and whether it can
+        # take it back (its manifest says how: backups.restore)
+        "backup": _backup_summary(plugin),
+        "can_restore": bool(((plugin.manifest or {}).get("backup") or {}).get("restore")),
     }
+
+
+def _backup_summary(plugin: Plugin) -> dict | None:
+    from sqlalchemy.orm import object_session
+
+    from . import backups  # (not at the top: backups reads this module)
+
+    db = object_session(plugin)
+    return backups.summary(db, plugin.id) if db is not None else None
 
 
 def mirror_entries(db: Session) -> list[dict]:

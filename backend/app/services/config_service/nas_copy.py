@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ... import config_store, record_files, storage
 from ...models import NetworkShare, Printer
 from .. import app_settings, records_service
+from ..plugins import backups as plugin_backups
 from ..plugins import registry as plugin_registry
 from ..stream_control import settings_copy as stream_control_copy
 
@@ -111,6 +112,7 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
         folder = storage.ensure_ready_folder(path, "settings folder")
         config_store.write_document(folder, build_document(db))
         records_service.write_all(db, folder, scope)
+        plugin_backups.write_all(db, folder)  # each plugin's own copy of its settings (plugin-backups/<id>.json)
         error = None
     except storage.StorageUnavailableError as e:
         error = str(e)
