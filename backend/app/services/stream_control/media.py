@@ -208,9 +208,16 @@ def media(db: Session, scan: bool = False) -> dict:
                     _reading.release()
 
             run_in_background(refresh)
-        return _found[1]
+        return _with_copy(_found[1])
     _found = (which, _read(db))
-    return _found[1]
+    return _with_copy(_found[1])
+
+
+def _with_copy(found: dict) -> dict:
+    """A listing with how keeping the NAS copy is going now: the listing is kept until the folder is read again, but
+    the copying moves on meanwhile (the first copying from the NAS finishing, an error, or the NAS back), so that's
+    always as it is now."""
+    return {**found, "copy": nas_copy.status()}
 
 
 def _read(db: Session) -> dict:
