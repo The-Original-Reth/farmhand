@@ -7,7 +7,10 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
 
-engine = create_engine(settings.database_url, future=True)
+# More connections than SQLAlchemy's 5 (+10): a request waiting on a printer or plugin can hold one for a while, and
+# the rest of Farmhand shouldn't queue behind it. Postgres allows 100.
+_pool = {"pool_size": 10, "max_overflow": 30, "pool_timeout": 30} if settings.database_url.startswith("postgresql") else {}
+engine = create_engine(settings.database_url, future=True, **_pool)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
