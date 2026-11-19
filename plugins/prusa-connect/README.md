@@ -40,6 +40,8 @@ Farmhand's Plugins page has the same steps under **Run a plugin in its own conta
    link beside it), sign in, and approve it. The plugin gets a token that can only read; nobody types a password.
    Prusa Connect lists it under Settings, API credentials, where it can be revoked. Tokens last 90 days: pair again
    when the page says Prusa Connect refused it.
+   A Prusa Connect set up in **open mode** (no sign-in) has nobody to approve a code, and needs none: the page says so
+   and the plugin reads it without pairing.
 4. **Say which printer is which**: on the plugin's page, choose the Prusa Connect printer for each Farmhand Prusa
    printer. One with the same name on both sides is chosen by itself.
 5. **Switch the printers over**: in Farmhand, open each printer and set **Status from** (in its PrusaLink section) to

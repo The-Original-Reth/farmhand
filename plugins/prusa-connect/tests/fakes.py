@@ -86,6 +86,7 @@ class FakePrusaConnect(_Server):
     def __init__(self):
         self.token = "pcl_test_token"
         self.pairing = None  # "pending" | "approved" | "denied" | "expired"
+        self.open = False  # set up in open mode: nobody signs in, and no call needs a token
         self.pairing_requests: list[dict] = []
         self.devices = {DEVICE: {
             "id": DEVICE, "kind": "printer", "model": "COREONE", "serial": "CZPX1234X004XC12345", "name": "Core One",
@@ -105,6 +106,10 @@ class FakePrusaConnect(_Server):
     def answer(self, method, path, headers, body):
         if path == "/api/v1/health":
             return 200, {"status": "ok", "version": "0.2.0"}
+        if path == "/api/v1/auth/info":
+            if self.open:
+                return 200, {"provider": "", "credentials": False, "redirect": False, "needs_setup": False}
+            return 200, {"provider": "local", "credentials": True, "redirect": False, "needs_setup": False}
         if method == "POST" and path == "/api/v1/auth/app-pairings":
             self.pairing_requests.append(body)
             self.pairing = "pending"
@@ -120,7 +125,7 @@ class FakePrusaConnect(_Server):
             if self.pairing != "pending":
                 self.pairing = None
             return 400, {"code": f"core.auth/{code}", "detail": code.lower()}
-        if headers.get("Authorization") != f"Bearer {self.token}":
+        if not self.open and headers.get("Authorization") != f"Bearer {self.token}":
             return 401, {"code": "core.auth/UNAUTHENTICATED", "detail": "no credential"}
         if method == "GET" and path.split("?")[0] == "/api/v1/devices":
             return 200, {"items": list(self.devices.values()), "total": len(self.devices)}

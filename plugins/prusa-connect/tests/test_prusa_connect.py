@@ -151,6 +151,18 @@ def test_a_printer_not_linked_or_not_heard_is_reported_unreachable(plugin, conne
     assert "isn't hearing from Core One" in farmhand.reports[2][-1]["error"]
 
 
+def test_an_open_prusa_connect_needs_no_pairing(plugin, connect, farmhand):
+    _page(plugin, "/api/pairing", {})
+    connect.open = True
+    plugin.connect._open = None  # asked again now, not in a minute
+    connect.pairing_requests.clear()
+    snap = plugin.run_once()
+    assert snap["open"] and snap["paired"] and snap["connect"]["open"] and snap["pairing"] is None
+    assert farmhand.reports[2][-1]["reachable"] and farmhand.reports[2][-1]["state"] == "IDLE"
+    status, out = _page(plugin, "/api/pairing", {})
+    assert status >= 400 and "needs no pairing" in out["detail"] and connect.pairing_requests == []
+
+
 def test_before_pairing_its_printers_are_told_why(plugin, farmhand):
     plugin.settings.link(2, DEVICE)
     plugin.run_once()
