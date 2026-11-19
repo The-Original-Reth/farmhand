@@ -18,7 +18,11 @@ PERMISSIONS = {
     # Reporting printers' status in place of Farmhand asking them (services/printer_reports.py): only for the Prusa
     # printers the operator switches to the plugin, one at a time, in each printer's PrusaLink section
     "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of "
-    "Farmhand asking their PrusaLink, for the printers you switch to it",
+    "Farmhand asking their PrusaLink, for the printers you connect through it",
+    # Starting the prints Farmhand sends those printers: Farmhand calls the manifest's "print" path with a one-time
+    # ticket, and the plugin fetches the G-code with it (GET /plugin-api/v1/prints/{ticket}/file)
+    "printers:print": "start the prints you send from Farmhand to the Prusa printers you connect through it (it is "
+    "handed each G-code to send on)",
     # Only for a Stream plugin taking over from the Stream page Farmhand used to have; handed over once (handover.py)
     "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: "
     "its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
@@ -70,6 +74,7 @@ def check(raw) -> dict:
         "settings_page": _path(raw, "settings_page"),
         "health": _path(raw, "health"),
         "stream_control": _stream_control(raw.get("stream_control")),
+        "print": _print(raw.get("print"), permissions),
     }
 
 
@@ -123,6 +128,21 @@ def _stream_control(raw) -> dict | None:
         raise ValueError("The plugin's stream_control needs a path, like \"/api/stream-control\".")
     # settings: a page of the plugin's own for its site's settings (stream key, sign-in...), opened from Stream control
     return {"path": path, "site": _text(named, "stream_control site", 40), "settings": _path(named, "stream_control settings")}
+
+
+def _print(raw, permissions: list[str]) -> dict | None:
+    """A plugin printers are connected through, which starts the prints Farmhand sends them: {"path": "/farmhand/print"}.
+    Farmhand POSTs {ticket, printer_id, file, size} there and waits for {"sent": where it went}; see docs/plugins.md."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("The plugin's print must be an object, like {\"path\": \"/farmhand/print\"}.")
+    path = _path({"print path": raw.get("path")}, "print path")
+    if path is None:
+        raise ValueError("The plugin's print needs a path, like \"/farmhand/print\".")
+    if "printers:print" not in permissions:
+        raise ValueError("The plugin's print needs the printers:print permission in its manifest's permissions.")
+    return {"path": path}
 
 
 def _page(raw) -> dict | None:

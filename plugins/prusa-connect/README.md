@@ -1,12 +1,12 @@
 # Prusa Connect plugin
 
-Farmhand's Prusa printers' status and prints from the farm's own **Prusa Connect** server (Prusa's self-hosted printer
+Farmhand's Prusa printers connected through the farm's own **Prusa Connect** server (Prusa's self-hosted printer
 server, [prusa3d/prusa-connect](https://github.com/prusa3d/prusa-connect)) instead of each printer's PrusaLink.
 
-PrusaLink stays Farmhand's default. For each Prusa printer you switch to this plugin, Farmhand takes its state,
-temperatures and current print from Prusa Connect: on the printer's page, on Monitor, for other plugins' events, and for
-the print history Farmhand records. Sending the printer a print still goes to its PrusaLink, which keeps working when
-the printer is paired with Prusa Connect.
+Once the plugin is added, **Prusa Connect** is a third **Connection** choice for a printer, beside Mainsail and
+PrusaLink. For each printer connected this way, Farmhand takes its state, temperatures and current print from Prusa
+Connect (on the printer's page, on Monitor, for other plugins' events, and for the print history Farmhand records), and
+a print sent to it from Farmhand goes through Prusa Connect, which starts it. Farmhand never contacts its PrusaLink.
 
 Built on Prusa Connect by Prusa Research. The plugin only calls Prusa Connect's REST API; none of its code is used here.
 Prusa Connect is a public beta (0.x), so its API can still change from one release to the next.
@@ -32,22 +32,30 @@ sudo docker compose up -d --build
 Farmhand's Plugins page has the same steps under **Run a plugin in its own container** (choose Prusa Connect).
 
 1. **Add it** on Farmhand's Plugins page at `http://<that machine>:8085`. It asks to see your printers
-   (`printers:read`) and to report your Prusa printers' status (`printers:report`).
+   (`printers:read`), to report your Prusa printers' status (`printers:report`) and to start the prints you send them
+   (`printers:print`).
 2. **Give it its token**: put the two lines Farmhand shows (`FARMHAND_URL=...`, `FARMHAND_TOKEN=...`) in
    `prusa-connect.env` beside the compose file, then `sudo docker compose up -d --force-recreate`.
 3. **Pair it with Prusa Connect**: open **Prusa Connect** in Farmhand's menu, type Prusa Connect's address (e.g.
    `http://192.168.10.93:8080`) and press **Pair with Prusa Connect**. It shows a short code: open Prusa Connect (the
-   link beside it), sign in, and approve it. The plugin gets a token that can only read; nobody types a password.
+   link beside it), sign in, and approve it. The plugin gets a token that can read the printers and start prints
+   ("read" and "operate"); nobody types a password.
    Prusa Connect lists it under Settings, API credentials, where it can be revoked. Tokens last 90 days: pair again
    when the page says Prusa Connect refused it.
    A Prusa Connect set up in **open mode** (no sign-in) has nobody to approve a code, and needs none: the page says so
    and the plugin reads it without pairing.
 4. **Say which printer is which**: on the plugin's page, choose the Prusa Connect printer for each Farmhand Prusa
    printer. One with the same name on both sides is chosen by itself.
-5. **Switch the printers over**: in Farmhand, open each printer and set **Status from** (in its PrusaLink section) to
-   the Prusa Connect plugin. Set it back to **Its own PrusaLink** any time; nothing is lost either way.
+5. **Connect the printers through it**: in Farmhand, edit each printer and set **Connection** to **Prusa Connect**.
+   Set it back to **PrusaLink** any time; nothing is lost either way.
 
 ## How it works
+
+**Sending a print**: Farmhand POSTs a one-time ticket to the plugin's `/farmhand/print`. The plugin fetches the G-code
+from Farmhand with it, puts it in Prusa Connect's storage as a temporary copy, and asks Prusa Connect to send it to the
+printer's USB stick (replacing a file of that name) and start it. A printer that isn't ready, or isn't linked yet, is
+refused with the reason, which Farmhand shows.
+
 
 Every 10 seconds the plugin asks Prusa Connect for its printers and sends Farmhand a report of each printer switched
 to it (`PUT /plugin-api/v1/printers/{id}/status`, see [docs/plugins.md](../../docs/plugins.md)), also while nothing

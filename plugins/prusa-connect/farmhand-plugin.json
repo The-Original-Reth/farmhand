@@ -1,12 +1,13 @@
 {
   "id": "prusa-connect",
   "name": "Prusa Connect",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "farmhand_api": "1",
   "author": "Farmhand",
   "homepage": "https://github.com/The-Original-Reth/farmhand/tree/main/plugins/prusa-connect",
   "port": 8085,
   "page": { "menu": "Prusa Connect", "icon": "dashboard", "path": "/" },
-  "permissions": ["printers:read", "printers:report"],
+  "permissions": ["printers:read", "printers:report", "printers:print"],
+  "print": { "path": "/farmhand/print" },
   "health": "/health"
 }

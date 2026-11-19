@@ -79,6 +79,11 @@ export function printersRoutes(ctx) {
       p.apiKey = body.moonraker_api_key || null;
     }
     p.cameraAddress = body.camera_address || null;
+    if (body.status_from) {
+      if (!p.prusalink) throw new HttpError(409, "Only a Prusa printer (one set up for PrusaLink) can take its status from a plugin.");
+      if (!statusReporters().some((r) => r.id === body.status_from)) throw new HttpError(409, "That plugin can't report printers' status: it isn't installed and switched on with the \"report your printers' status\" permission. Check it on the Plugins page.");
+      p.statusFrom = body.status_from;
+    }
     farm.printers.push(p);
     return [201, printerOut(p)];
   });

@@ -9,6 +9,8 @@ The plugin's web server. What Farmhand asks it for, and what its page asks it fo
     POST /api/pairing          start pairing: a short code to approve on Prusa Connect's page
     POST /api/pairing/check    {state: paired | pending | denied | expired | none, message}
     POST /api/link             {"printer_id": 3, "device_id": "<Prusa Connect's id>" | null}: which printer is which
+    POST /farmhand/print       Farmhand handing over a print: {ticket, printer_id, file, size}. Fetches the G-code
+                               with the ticket (only Farmhand's own tickets work), starts it, answers {"sent": path}
 
 The page uses relative addresses ("api/status"), so they work inside Farmhand and on the plugin's own port alike.
 """
@@ -21,7 +23,7 @@ from pathlib import Path
 
 from .config import Settings
 from .connect import ConnectError
-from .reporter import Reporter
+from .reporter import PrintRefused, Reporter
 
 PAGE = Path(__file__).with_name("page.html")
 MANIFESTS = [Path("/farmhand-plugin.json"), Path(__file__).resolve().parent.parent / "farmhand-plugin.json"]
@@ -65,6 +67,11 @@ class Handler(BaseHTTPRequestHandler):
                 answer = self.reporter.connect.start_pairing()
             elif path == "/api/pairing/check":
                 answer = self.reporter.connect.check_pairing()
+            elif path == "/farmhand/print":
+                try:
+                    answer = self.reporter.send_print(body)
+                except PrintRefused as e:
+                    return self.send_json({"detail": e.message}, e.status)
             elif path == "/api/link":
                 self.settings.link(body.get("printer_id"), body.get("device_id"))
                 answer = self.reporter.snapshot()

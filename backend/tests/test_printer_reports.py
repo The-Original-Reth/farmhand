@@ -149,3 +149,85 @@ def test_the_printer_file_remembers_the_choice(api, prusalink, db_session):
     db_session.commit()
     [doc] = records_service.printer_documents(db_session).values()
     assert doc["printer"]["status_from"] == "prusa-connect"
+
+
+# ------------------------------------------------------------------ prints sent through the plugin (printers:print)
+
+PRINTING_MANIFEST = {**MANIFEST, "permissions": ["printers:read", "printers:report", "printers:print"], "print": {"path": "/farmhand/print"}}
+READY = {**PRINTING, "state": "IDLE", "job": None}
+
+
+def _plugin_that_prints(api, monkeypatch, answer=None):
+    """The plugin added with printers:print, and a stand-in for it at its address that fetches each print it's handed."""
+    import httpx
+
+    from app.services.plugins import remote
+
+    r = api.post("/plugins", json={"manifest": PRINTING_MANIFEST, "permissions": PRINTING_MANIFEST["permissions"]})
+    assert r.status_code == 201, r.text
+    auth = {"Authorization": f"Bearer {r.json()['token']}"}
+    handed = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        import json
+
+        body = json.loads(request.content)
+        got = api.get(f"/plugin-api/v1/prints/{body['ticket']}/file", headers=auth)
+        again = api.get(f"/plugin-api/v1/prints/{body['ticket']}/file", headers=auth)
+        handed.append({"url": str(request.url), "body": body, "status": got.status_code, "data": got.content,
+                       "name": got.headers.get("x-farmhand-file"), "again": again.status_code})
+        if answer:
+            return httpx.Response(answer[0], json=answer[1])
+        return httpx.Response(200, json={"sent": f"usb/{body['file']}"})
+
+    monkeypatch.setattr(remote, "transport", httpx.MockTransport(handle))
+    return auth, handed
+
+
+def test_a_print_is_handed_to_the_plugin_and_prusalink_is_never_asked(api, prusalink, monkeypatch):
+    auth, handed = _plugin_that_prints(api, monkeypatch)
+    p = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "status_from": "prusa-connect"}).json()
+    assert p["status_from"] == "prusa-connect"  # connected through the plugin from the start, no IP or PrusaLink login
+    _report(api, auth, p["id"], READY)
+    r = api.post(f"/printers/{p['id']}/prusalink/print", files={"file": ("Frog keychain.bgcode", b"GCDE" + b"x" * 100)})
+    assert r.status_code == 200 and r.json()["sent"] == "usb/Frog keychain.bgcode"
+    [h] = handed
+    assert h["url"] == "http://prusa-connect:8085/farmhand/print" and h["body"]["printer_id"] == p["id"] and h["body"]["size"] == 104
+    assert h["status"] == 200 and h["data"] == b"GCDE" + b"x" * 100 and h["name"] == "Frog%20keychain.bgcode"
+    assert h["again"] == 404  # a ticket is good once
+    assert prusalink.uploads == []  # its PrusaLink was never sent anything
+
+
+def test_a_busy_printer_or_a_refusal_is_said_plainly(api, prusalink, monkeypatch):
+    auth, handed = _plugin_that_prints(api, monkeypatch, answer=(409, {"detail": "Prusa Connect says Core One is printing."}))
+    p = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "status_from": "prusa-connect"}).json()
+    _report(api, auth, p["id"], PRINTING)
+    r = api.post(f"/printers/{p['id']}/prusalink/print", files={"file": ("next.bgcode", b"GCDE")})
+    assert r.status_code == 409 and handed == []  # Farmhand saw it printing: nothing handed over
+    _report(api, auth, p["id"], READY)
+    r = api.post(f"/printers/{p['id']}/prusalink/print", files={"file": ("next.bgcode", b"GCDE")})
+    assert r.status_code == 409 and "Prusa Connect says Core One is printing." in r.json()["detail"]
+
+
+def test_a_plugin_that_only_reports_cannot_be_sent_prints(api, prusalink):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], READY)
+    r = api.post(f"/printers/{p['id']}/prusalink/print", files={"file": ("next.bgcode", b"GCDE")})
+    assert r.status_code >= 400 and "start the prints you send" in r.json()["detail"] and prusalink.uploads == []
+
+
+def test_a_ticket_is_only_for_its_plugin(api):
+    printer_reports._tickets["t"] = {"plugin_id": "other", "printer_id": 1, "name": "x.gcode", "data": b"x", "size": 1, "at": 0}
+    assert printer_reports.take_ticket("t", "prusa-connect") is None
+    assert printer_reports.take_ticket("t", "other")["name"] == "x.gcode"
+    assert printer_reports.take_ticket("t", "other") is None
+
+
+def test_a_manifest_with_print_needs_the_permission():
+    from app.services.plugins import manifest
+
+    with pytest.raises(ValueError, match="printers:print"):
+        manifest.check({**MANIFEST, "print": {"path": "/farmhand/print"}})
+    assert manifest.check(PRINTING_MANIFEST)["print"] == {"path": "/farmhand/print"}

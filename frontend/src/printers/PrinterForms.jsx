@@ -9,7 +9,8 @@ import { useAction } from "../hooks/useAction.js";
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
 
-// How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink", moonrakerUrl,
+// How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink" | "plugin:<id>",
+// moonrakerUrl,
 // apiKey, removeKey, prusalinkUrl, prusalinkUsername, prusalinkPassword, cameraAddress }. saved: the printer as it is (Edit), for
 // saying a key or password is already saved; null when adding. ips: the wired and wireless IPs typed above (either may be
 // blank), for the default addresses: Moonraker and PrusaLink are each tried at both, wired first.
@@ -17,8 +18,11 @@ const CONNECTIONS = [
   { value: "moonraker", label: "Mainsail (Moonraker / Klipper: Voron...)" },
   { value: "prusalink", label: "PrusaLink (Prusa Core One, MK4, XL...)" },
 ];
+// "plugin:<id>": a Prusa printer connected through a plugin that reports printers and starts their prints (the Prusa
+// Connect plugin), one choice per such plugin. Farmhand then never contacts the printer's PrusaLink.
+const viaPlugin = (type) => (type?.startsWith("plugin:") ? type.slice(7) : null);
 const newConnection = (printer = null) => ({
-  type: printer?.connectionType || "moonraker",
+  type: printer?.statusFrom ? `plugin:${printer.statusFrom}` : printer?.connectionType || "moonraker",
   moonrakerUrl: printer?.moonrakerUrlOverride || "",
   apiKey: "", // blank = keep whatever is saved
   removeKey: false,
@@ -26,23 +30,20 @@ const newConnection = (printer = null) => ({
   prusalinkUsername: printer?.prusalinkUsername || "maker",
   prusalinkPassword: "", // blank = keep whatever is saved
   cameraAddress: printer?.cameraAddress || "", // the Buddy3D camera's IP: a Prusa's camera has its own
-  statusFrom: printer?.statusFrom || "", // Edit only: "" = its own PrusaLink, or a plugin that reports it
 });
 
-// Edit only: where a Prusa printer's status comes from, its own PrusaLink or a plugin that reports printers (the Prusa
-// Connect plugin). Shown when there's such a plugin, or the printer already uses one. Prints still go to its PrusaLink.
-function StatusFromField({ value, onChange }) {
+// The Connection choices: Mainsail and PrusaLink, and each plugin printers can be connected through (Prusa Connect)
+function useConnections(current) {
   const [reporters, setReporters] = useState([]);
   useEffect(() => {
     getStatusReporters().then(setReporters).catch(() => setReporters([]));
   }, []);
-  if (!reporters.length && !value) return null;
-  const options = [
-    { value: "", label: "Its own PrusaLink" },
-    ...reporters.map((r) => ({ value: r.id, label: `${r.name} plugin` })),
-    ...(value && !reporters.some((r) => r.id === value) ? [{ value, label: `${value} plugin (not available)` }] : []),
+  const chosen = viaPlugin(current);
+  return [
+    ...CONNECTIONS,
+    ...reporters.map((r) => ({ value: `plugin:${r.id}`, label: `${r.name} (Prusa printers, through its plugin)` })),
+    ...(chosen && !reporters.some((r) => r.id === chosen) ? [{ value: current, label: `${chosen} (its plugin isn't available)` }] : []),
   ];
-  return <FieldSelect label="Status from (prints are still sent to its PrusaLink)" value={value} onChange={onChange} options={options} />;
 }
 // The PrusaLink password box, with Show / Hide. Showing it on a printer with one saved fetches the saved one into the box
 // (saving the form then keeps it as it is).
@@ -97,7 +98,9 @@ function PrusaLinkPassword({ value, onChange, saved }) {
 
 // What the API is sent for it: only the chosen kind's fields
 const connectionFields = (conn) =>
-  conn.type === "prusalink"
+  viaPlugin(conn.type)
+    ? { connectionType: "prusalink", statusFrom: viaPlugin(conn.type), cameraAddress: conn.cameraAddress.trim() }
+    : conn.type === "prusalink"
     ? {
         connectionType: "prusalink",
         prusalinkUrl: conn.prusalinkUrl.trim(),
@@ -111,12 +114,29 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
   const set = (key) => (value) => setConn((c) => ({ ...c, [key]: value }));
   const [ip, otherIp] = ips.filter(Boolean);
   const both = otherIp && otherIp !== ip;
+  const connections = useConnections(conn.type);
+  const plugin = viaPlugin(conn.type);
+  const camera = (
+    <TextField
+      label="Buddy3D camera IP (optional)"
+      value={conn.cameraAddress}
+      onChange={set("cameraAddress")}
+      placeholder="e.g. 192.168.10.131. Turn on local streaming for it in the Prusa app"
+    />
+  );
   return (
     <>
-      <FieldSelect label="Connection" value={conn.type} onChange={set("type")} options={CONNECTIONS} />
-      {conn.type === "prusalink" ? (
+      <FieldSelect label="Connection" value={conn.type} onChange={set("type")} options={connections} />
+      {plugin ? (
         <>
-          {saved && <StatusFromField value={conn.statusFrom} onChange={set("statusFrom")} />}
+          <div data-testid="connection-through-plugin" style={uiText(12, c.textFaint, { marginTop: -6, marginBottom: 14, lineHeight: 1.5 })}>
+            Farmhand gets this printer's status from {connections.find((o) => o.value === conn.type)?.label.split(" (")[0] || "the plugin"},
+            and sends its prints there too. Its PrusaLink isn't used. Choose which printer it is on the plugin's page.
+          </div>
+          {camera}
+        </>
+      ) : conn.type === "prusalink" ? (
+        <>
           <TextField
             label="PrusaLink address (optional)"
             value={conn.prusalinkUrl}
@@ -129,12 +149,7 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
           />
           <TextField label="PrusaLink username" value={conn.prusalinkUsername} onChange={set("prusalinkUsername")} placeholder="maker" />
           <PrusaLinkPassword value={conn.prusalinkPassword} onChange={set("prusalinkPassword")} saved={saved} />
-          <TextField
-            label="Buddy3D camera IP (optional)"
-            value={conn.cameraAddress}
-            onChange={set("cameraAddress")}
-            placeholder="e.g. 192.168.10.131. Turn on local streaming for it in the Prusa app"
-          />
+          {camera}
         </>
       ) : (
         <>
@@ -223,7 +238,8 @@ export function EditPrinterForm({ printer, onClose }) {
         wirelessIp: wirelessIp.trim(),
         decommissioned,
         ...connectionFields(conn),
-        ...(conn.type === "prusalink" && (conn.statusFrom || printer.statusFrom) ? { statusFrom: conn.statusFrom } : {}),
+        // back to its own PrusaLink from a plugin
+        ...(conn.type === "prusalink" && printer.statusFrom ? { statusFrom: "" } : {}),
       }));
       onClose();
     });

@@ -56,6 +56,7 @@ class PrinterCreate(BaseModel):
     prusalink_username: str | None = None
     prusalink_password: str | None = None
     camera_address: str | None = None
+    status_from: str | None = None  # a Prusa printer connected through a plugin (Prusa Connect) instead of PrusaLink
 
     @field_validator("moonraker_url", "prusalink_url")
     @classmethod

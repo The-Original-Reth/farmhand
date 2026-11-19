@@ -67,7 +67,7 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
 // The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter
 export const createPrinter = ({
   name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,
-  cameraAddress,
+  cameraAddress, statusFrom,
 }) =>
   request("/printers", jsonBody("POST", {
     name,
@@ -81,6 +81,7 @@ export const createPrinter = ({
     ...(prusalinkUsername ? { prusalink_username: prusalinkUsername } : {}),
     ...(prusalinkPassword ? { prusalink_password: prusalinkPassword } : {}),
     ...(cameraAddress ? { camera_address: cameraAddress } : {}),
+    ...(statusFrom ? { status_from: statusFrom } : {}), // connected through a plugin (Prusa Connect)
   }));
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.

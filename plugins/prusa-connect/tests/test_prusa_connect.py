@@ -99,7 +99,7 @@ def test_settings_are_kept_and_a_new_address_forgets_the_token(tmp_path):
 def test_pairing_with_a_short_code_never_shows_the_secret(plugin, connect):
     status, started = _page(plugin, "/api/pairing", {})
     assert status == 200 and started["user_code"] == "BCDF-GHJK" and "device_code" not in started
-    assert connect.pairing_requests == [{"app_name": "Farmhand", "scopes": ["read"]}]
+    assert connect.pairing_requests == [{"app_name": "Farmhand", "scopes": ["read", "operate"]}]
     assert _page(plugin, "/api/pairing/check", {})[1]["state"] == "pending"
     snap = _page(plugin, "/api/status")[1]
     assert snap["pairing"]["user_code"] == "BCDF-GHJK" and not snap["paired"]
@@ -186,6 +186,36 @@ def test_the_report_shape_from_a_device():
 
 def test_manifest_and_page_are_served(plugin):
     status, manifest = _page(plugin, "/manifest")
-    assert status == 200 and manifest["id"] == "prusa-connect" and manifest["permissions"] == ["printers:read", "printers:report"]
+    assert status == 200 and manifest["id"] == "prusa-connect"
+    assert manifest["permissions"] == ["printers:read", "printers:report", "printers:print"] and manifest["print"] == {"path": "/farmhand/print"}
     status, page = _page(plugin, "/")
     assert status == 200 and "Built on Prusa Connect by Prusa Research" in page
+
+
+# ------------------------------------------------------------------ prints Farmhand sends
+
+
+def test_a_print_farmhand_hands_over_is_put_in_prusa_connect_and_started(plugin, connect, farmhand):
+    _pair(plugin, connect)
+    plugin.run_once()  # links Core One by its name
+    gcode = b"GCDE" + bytes(range(256)) * 50
+    farmhand.tickets["t1"] = gcode
+    status, out = _page(plugin, "/farmhand/print", {"ticket": "t1", "printer_id": 2, "file": "Frog keychain.bgcode", "size": len(gcode)})
+    assert status == 200 and out == {"sent": "usb/Frog keychain.bgcode"}
+    assert connect.stored == {"tmp/Frog keychain.bgcode": gcode}
+    assert connect.printed == [{"path": "usb/Frog keychain.bgcode", "storage": "local", "source": "tmp/Frog keychain.bgcode", "replace": True}]
+    assert farmhand.tickets == {}  # fetched once
+
+
+def test_a_print_is_refused_when_the_printer_is_busy_unlinked_or_the_ticket_is_wrong(plugin, connect, farmhand):
+    _pair(plugin, connect)
+    status, out = _page(plugin, "/farmhand/print", {"ticket": "t1", "printer_id": 2, "file": "a.bgcode", "size": 1})
+    assert status == 409 and "isn't linked" in out["detail"]
+    plugin.run_once()
+    connect.start_job(12, "/usb/other.bgcode", progress=10, time_printing=60)
+    status, out = _page(plugin, "/farmhand/print", {"ticket": "t1", "printer_id": 2, "file": "a.bgcode", "size": 1})
+    assert status == 409 and "isn't ready" in out["detail"] and connect.printed == []
+    connect.devices[DEVICE]["state"]["/state"] = "IDLE"
+    status, out = _page(plugin, "/farmhand/print", {"ticket": "made-up", "printer_id": 2, "file": "a.bgcode", "size": 1})
+    assert status == 502 and connect.printed == []  # only Farmhand's own tickets fetch anything
+    assert _page(plugin, "/farmhand/print", {"printer_id": 2})[0] == 400

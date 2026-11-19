@@ -161,6 +161,10 @@ def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO, si
     data: the bytes, or an open file read from where it is now (with its size): streamed a piece at a time, so a big
     G-code is never held in memory whole.
     """
+    if printer.status_from:  # connected through a plugin (Prusa Connect): it starts the print, not PrusaLink
+        from .. import printer_reports
+
+        return printer_reports.hand_over(printer, filename, data, size, PrusaLinkError)
     storage = _storage(printer)
     path = f"/api/v1/files/{quote(storage)}/{quote(filename)}"
     headers = {"Content-Type": "application/octet-stream", "Print-After-Upload": "?1", "Overwrite": "?1"}
