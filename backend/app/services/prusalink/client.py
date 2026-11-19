@@ -155,6 +155,48 @@ class FileChunks:
             yield chunk
 
 
+FILE_START_MOST = 64 * 1024 * 1024  # never read more of a printed file than this (a .bgcode's settings are near its start)
+
+
+def printed_file_settings(printer: Printer, path: str, filename: str | None = None) -> tuple[dict, float]:
+    """
+    The filament settings of a file on the printer, read from the file itself (parsers/gcode.filament_settings), and
+    when it was written (PrusaLink's m_timestamp): (settings, modified). Read only: the file's details, then its
+    download, stopped as soon as a .bgcode's settings block is in (a .gcode's are at its end: read whole, up to
+    FILE_START_MOST). Used for a printer connected through Prusa Connect too, which can't read files on the printer.
+    """
+    from ...parsers import gcode
+
+    info = _json(_call(printer, "GET", f"/api/v1/files/{quote(path.lstrip('/'), safe='/')}"))
+    download = (info.get("refs") or {}).get("download")
+    if not download:
+        raise PrusaLinkError("not_found", "PrusaLink offers no download of that file.")
+    base = answered_at(printer) or (printer.prusalink_urls or [None])[0]
+    if not base:
+        raise PrusaLinkError("no_address", "This printer has no IP address or PrusaLink address set.")
+    link = printer.prusalink_row
+    auth = httpx.DigestAuth(link.username or "maker", link.password or "") if link and link.password else None
+    name = filename or path  # its full name says what it is: the path may be a short 8.3 one ("FROGKE~1.BGC")
+    binary = name.lower().endswith(".bgcode")
+    start = bytearray()
+    try:
+        with httpx.Client(transport=transport, timeout=UPLOAD_TIMEOUT, auth=auth) as c, c.stream("GET", base.rstrip("/") + download) as r:
+            if r.status_code == 404:
+                raise PrusaLinkError("not_found", "That file isn't on the printer any more.")
+            if r.status_code >= 400:
+                raise PrusaLinkError("bad_response", f"PrusaLink answered {r.status_code} to reading the file.")
+            for chunk in r.iter_bytes():
+                start += chunk
+                if (binary and gcode.bgcode_settings_in(bytes(start))) or len(start) >= FILE_START_MOST:
+                    break
+    except httpx.HTTPError as e:
+        raise PrusaLinkError("unreachable", f"PrusaLink didn't finish sending the file ({e}).") from None
+    import io
+
+    found = gcode.filament_settings(io.BytesIO(bytes(start)), name)
+    return found, float(info.get("m_timestamp") or 0)
+
+
 def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO, size: int | None = None) -> str:
     """
     Put the file on the printer (replacing one of the same name) and start printing it. Returns where it went.

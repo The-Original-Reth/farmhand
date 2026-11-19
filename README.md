@@ -1154,7 +1154,9 @@ printer's PrusaLink. Once the plugin is added (and paired with Prusa Connect, if
 page shows a short code to approve there; nobody types a password), **Prusa Connect** is a third **Connection** choice,
 beside Mainsail and PrusaLink, when adding or editing a printer. A printer connected that way takes its status from
 Prusa Connect (its page, Monitor, plugins' events and the print history Farmhand records), its prints are sent through
-Prusa Connect, which starts them, and Farmhand never contacts its PrusaLink. Its page has **Open in Prusa Connect**,
+Prusa Connect, which starts them. Its PrusaLink is asked for one thing only, given its password: reading the start of
+each printed file (read only) for the filament price the slicer wrote, so its prints are costed as Mainsail's are (a
+print sent from Farmhand is read from Farmhand's own copy). Its page has **Open in Prusa Connect**,
 and shows what PrusaLink never said: the loaded material, the nozzle, the chamber temperature, fans, speed and flow,
 and any message on the printer's screen. A print it sees start has its filament measured by the printer instead of
 estimated from the slicer, notes the material loaded, and is weighed from that material when its 3MF isn't in Farmhand

@@ -9,6 +9,9 @@ from the settings PrusaSlicer writes into the G-code itself.
 Anything not found (another slicer, no physical printer picked, an unreadable file) answers None: then there's
 nothing to check against, and the G-code is taken as it is.
 
+And the filament settings the slicer wrote (filament_settings): its price per kg, density and diameter, from the
+same settings block, for costing a print as Mainsail's G-codes are (services/filament_cost.py).
+
 And the slicer's own estimate of the filament a G-code uses (slicer_filament): "filament used [mm]", "[g]" and
 "filament cost", which PrusaSlicer writes as "; key = value" comments near the end of a .gcode, and in a .bgcode's
 printer and print metadata blocks (which come before the moves).
@@ -138,3 +141,58 @@ def _total(value: str) -> float | None:
         return None
     total = sum(numbers)
     return round(total, 3) if numbers and math.isfinite(total) and total >= 0 else None
+
+
+
+# ------------------------------------------------------------------ the filament's price, density and diameter
+
+_SETTINGS_RE = re.compile(rb"^[ \t;]*(filament_cost|filament_density|filament_diameter)[ \t]*=([^\r\n]*)", re.MULTILINE)
+
+
+def filament_settings(file_obj, filename: str | None) -> dict[str, str]:
+    """
+    {"filament_cost": "27.82", "filament_density": "1.27", "filament_diameter": "1.75"} as the slicer wrote them (one
+    value per filament, comma separated), from a .bgcode's settings block or the end of a .gcode; a key is left out
+    when the file doesn't say. The file is left at its start.
+    """
+    try:
+        if (filename or "").lower().endswith(".bgcode"):
+            texts = [data for _, data in _bgcode_blocks(file_obj, {_SLICER_METADATA})]
+        else:
+            texts = [_tail(file_obj)]
+    except (OSError, ValueError, struct.error, zlib.error):
+        return {}
+    finally:
+        file_obj.seek(0)
+    out: dict[str, str] = {}
+    for text in texts:
+        for key, value in _SETTINGS_RE.findall(text):
+            out.setdefault(key.decode(), value.decode("utf-8", "replace").strip())
+    return out
+
+
+def bgcode_settings_in(start: bytes) -> bool:
+    """
+    Whether this much of a .bgcode's start already holds its settings block (or shows it has none: its moves begin,
+    or it isn't a .bgcode): so a file read from a printer can stop there, long before the moves.
+    """
+    if len(start) < 10:
+        return False
+    if start[:4] != b"GCDE":
+        return True
+    checksum_size = 4 if struct.unpack("<H", start[8:10])[0] == 1 else 0
+    pos = 10
+    while True:
+        if pos + 8 > len(start):
+            return False
+        kind, compression, size = struct.unpack_from("<HHI", start, pos)
+        if kind == _GCODE:
+            return True
+        head = 12 if compression != _NO_COMPRESSION else 8
+        if pos + head > len(start):
+            return False
+        stored = struct.unpack_from("<I", start, pos + 8)[0] if compression != _NO_COMPRESSION else size
+        end = pos + head + (6 if kind == _THUMBNAIL else 2) + stored + checksum_size
+        if kind == _SLICER_METADATA:
+            return end <= len(start)
+        pos = end

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from ...models import Printer, PrintJob
 from ...timeutil import as_utc
 from ..printer_service import record_sync_error, record_sync_ok
-from . import client, filament_estimate
+from . import client, filament_estimate, printed_filament
 from .client import PrusaLinkError, job_file_name
 
 # PrusaLink's job states, as Farmhand's history says them
@@ -47,6 +47,8 @@ def poll(db: Session, printer: Printer) -> tuple[dict, dict | None]:
     # the totals of the prints Farmhand has recorded so far; a Prusa Connect printer's filament is its own counter
     record_sync_ok(printer, totals(db, printer.id, counter=_counter(printer, odometer)), now)
     db.commit()
+    if printer.status_from:
+        _read_prices(db, printer, touched)
     return status, current
 
 
@@ -56,6 +58,14 @@ def _odometer(printer: Printer) -> float | None:
     from .. import printer_reports
 
     return printer_reports.odometer(printer)
+
+
+def _read_prices(db: Session, printer: Printer, touched: list[PrintJob]) -> None:
+    """The price of what a printer connected through Prusa Connect is printing, read from the printed file once
+    (printed_filament): after the commit, in the background."""
+    for row in touched:
+        if row.end_time is None:
+            printed_filament.start(db, printer, row)
 
 
 def _material(printer: Printer) -> str | None:
@@ -120,6 +130,8 @@ def _record(
             row.job_metadata = {"odometer_start": odometer}  # its filament is measured from here
         if material:
             row.job_metadata = {**(row.job_metadata or {}), "filament_type": material}  # loaded as it started
+        if printer.status_from:  # which copy of its file was printed: the one written before this (filament_cost)
+            row.job_metadata = {**(row.job_metadata or {}), "modified": start.timestamp()}
         db.add(row)
         db.flush()
     link.current_job_id, link.current_print_id = job_id, row.id
@@ -156,7 +168,8 @@ def _record(
 # What a print's metadata keeps from one look to the next: its filament estimate (filament_estimate.py)
 _KEPT = (filament_estimate.KEY, "filament_estimated", "filament_total", "filament_weight_total",
          "odometer_start", "odometer_last", "filament_measured",  # and its measured filament (Prusa Connect)
-         "filament_type")  # the material loaded when it started (Prusa Connect)
+         "filament_type",  # the material loaded when it started (Prusa Connect)
+         "modified")  # when its file was printed from, for its price (Prusa Connect)
 
 
 def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> PrintJob | None:

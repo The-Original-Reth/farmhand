@@ -6,7 +6,9 @@ server, [prusa3d/prusa-connect](https://github.com/prusa3d/prusa-connect)) inste
 Once the plugin is added, **Prusa Connect** is a third **Connection** choice for a printer, beside Mainsail and
 PrusaLink. For each printer connected this way, Farmhand takes its state, temperatures and current print from Prusa
 Connect (on the printer's page, on Monitor, for other plugins' events, and for the print history Farmhand records), and
-a print sent to it from Farmhand goes through Prusa Connect, which starts it. Farmhand never contacts its PrusaLink.
+a print sent to it from Farmhand goes through Prusa Connect, which starts it. Farmhand asks its PrusaLink only to read the
+start of each printed file for its filament price (read only, given the PrusaLink password), since Prusa Connect can't
+read files on the printer.
 
 Built on Prusa Connect by Prusa Research. The plugin only calls Prusa Connect's REST API; none of its code is used here.
 Prusa Connect is a public beta (0.x), so its API can still change from one release to the next.

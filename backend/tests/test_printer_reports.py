@@ -101,7 +101,8 @@ def test_its_status_and_prints_come_from_the_reports(api, prusalink):
     assert out["printer_type"] == "COREONE" and out["firmware"] == "6.4.0"
     assert out["job"]["file"] == "Frog keychain.bgcode" and out["job"]["progress"] == 40
     assert out["status_from"] == {"id": "prusa-connect", "name": "Prusa Connect", "link": "http://192.168.10.93:8080/printers/abc"}
-    assert prusalink.requests == []  # its own PrusaLink was never asked
+    # its own PrusaLink was only asked about the printed file (for its price), read only
+    assert {m for m, _ in prusalink.requests} <= {"GET"} and all(p.startswith("/api/v1/files/") for _, p in prusalink.requests)
 
     done = {**PRINTING, "state": "FINISHED", "job": {**PRINTING["job"], "state": "FINISHED", "progress": 100, "time_printing": 3000}}
     _report(api, auth, p["id"], done)
@@ -242,9 +243,10 @@ EXTRAS = {"material": "PETG", "nozzle_diameter": 0.4, "nozzle_hardened": False, 
           "flow": 100, "odometer_e": 236033.0, "dialog": None}
 
 
-def _starting(odometer, time_printing=10, state="PRINTING", job_id=13, progress=1):
+def _starting(odometer, time_printing=10, state="PRINTING", job_id=13, progress=1, path=None):
     return {**PRINTING, "state": state, "extras": {**EXTRAS, "odometer_e": odometer},
-            "job": {**PRINTING["job"], "id": job_id, "state": state, "time_printing": time_printing, "progress": progress}}
+            "job": {**PRINTING["job"], "id": job_id, "state": state, "time_printing": time_printing, "progress": progress,
+                    "path": path or PRINTING["job"]["path"]}}
 
 
 def test_the_extras_are_shown(api, prusalink):
@@ -330,3 +332,96 @@ def test_a_filament_reminder_counts_the_prusa_connect_printers_odometer(api, pru
     [entry] = api.get(f"/printers/{p['id']}/maintenance").json()["entries"]
     [check] = [c for c in entry["checks"] if c["kind"] == "filament"]
     assert check["used"] == 2.5 and check["due"]
+
+
+# ------------------------------------------------------------------ a Prusa Connect print's price, from the printed file (as Mainsail's)
+
+from app.parsers import gcode as gcode_parser  # noqa: E402
+from app.services.prusalink import printed_filament  # noqa: E402
+
+from .test_gcode_printer import _block  # noqa: E402
+
+PRICE_INI = b"filament_cost = 27.82\nfilament_density = 1.27\nfilament_diameter = 1.75\nfilament_type = PETG\n"
+
+
+def _priced_bgcode() -> bytes:
+    import struct
+
+    return (
+        b"GCDE" + struct.pack("<IH", 1, 1)
+        + _block(0, b"Producer=PrusaSlicer 2.9.6\n", struct.pack("<H", 0))
+        + _block(3, b"filament used [g]=122.86\n", struct.pack("<H", 0))
+        + _block(5, b"\x89PNG" + b"x" * 300, struct.pack("<HHH", 0, 16, 16))
+        + _block(2, PRICE_INI.replace(b" = ", b"="), struct.pack("<H", 0), deflate=True)
+        + _block(1, b"G28\n" * 5000, struct.pack("<H", 0), deflate=True)
+    )
+
+
+@pytest.fixture()
+def inline_reads(monkeypatch):
+    monkeypatch.setattr(printed_filament, "run_in_background", lambda work: work())
+    printed_filament.forget_all()
+    yield
+    printed_filament.forget_all()
+
+
+def test_the_settings_are_read_from_a_bgcode_and_its_start_is_enough():
+    import io
+
+    data = _priced_bgcode()
+    found = gcode_parser.filament_settings(io.BytesIO(data), "x.bgcode")
+    assert found == {"filament_cost": "27.82", "filament_density": "1.27", "filament_diameter": "1.75"}
+    moves_at = data.index(b"\x01\x00\x01\x00")  # the G-code block's header
+    assert gcode_parser.bgcode_settings_in(data[:moves_at]) and not gcode_parser.bgcode_settings_in(data[:200])
+    gcode_text = b"G28\n" * 10 + b"; " + PRICE_INI.replace(b"\n", b"\n; ")
+    assert gcode_parser.filament_settings(io.BytesIO(gcode_text), "x.gcode")["filament_cost"] == "27.82"
+
+
+def test_a_print_started_on_a_prusa_connect_printer_is_priced_from_the_printed_file(api, prusalink, inline_reads):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    prusalink.files["Frog keychain.bgcode"] = (_priced_bgcode(), 1795000000)
+    long = "/usb/Frog keychain.bgcode"  # as Prusa Connect reports it
+    _report(api, auth, p["id"], _starting(236033.0, path=long))
+    _report(api, auth, p["id"], _starting(237033.0, time_printing=1200, state="FINISHED", progress=100, path=long))  # 1 m PETG
+    [job] = api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]
+    assert job["filament_used"] == 1000 and job["filament_cost_detail"]["source"] == "gcode"
+    assert job["filament_cost_detail"]["cost_per_kg"] == 27.82 and job["filament_grams"] == 3.1
+    assert job["filament_cost"] == round(3.0538 / 1000 * 27.82, 2)
+    assert prusalink.downloaded == ["Frog keychain.bgcode"]  # read once, read only: only GETs went to PrusaLink
+    assert {m for m, _ in prusalink.requests} == {"GET"}
+
+    _report(api, auth, p["id"], _starting(237033.0, job_id=14, path=long))  # the same file printed again: not read again
+    assert prusalink.downloaded == ["Frog keychain.bgcode"]
+
+
+def test_a_file_that_cant_be_read_now_is_tried_later_and_a_gone_one_is_noted(api, prusalink, inline_reads, db_session):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    long = "/usb/Frog keychain.bgcode"
+    _report(api, auth, p["id"], _starting(236033.0, path=long))  # its file isn't on the stick
+    asked = [r for r in prusalink.requests if r[1].startswith("/api/v1/files/")]
+    assert set(asked) == {("GET", "/api/v1/files/usb/Frog keychain.bgcode")} and prusalink.downloaded == []  # (login + ask)
+    _report(api, auth, p["id"], _starting(236533.0, time_printing=60, path=long))
+    assert [r for r in prusalink.requests if r[1].startswith("/api/v1/files/")] == asked  # noted gone: not asked again
+    prusalink.down = True  # another print, while PrusaLink doesn't answer: tried, then left for RETRY_AFTER
+    _report(api, auth, p["id"], _starting(236533.0, job_id=20, path="/usb/Other.bgcode"))
+    prusalink.down = False
+    _report(api, auth, p["id"], _starting(236633.0, job_id=20, time_printing=60, path="/usb/Other.bgcode"))
+    assert ("GET", "/api/v1/files/usb/Other.bgcode") not in prusalink.requests
+
+
+def test_a_print_farmhand_sends_is_priced_from_its_own_copy(api, prusalink, monkeypatch, inline_reads):
+    auth, handed = _plugin_that_prints(api, monkeypatch)
+    p = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "status_from": "prusa-connect"}).json()
+    _report(api, auth, p["id"], READY)
+    data = _priced_bgcode()
+    assert api.post(f"/printers/{p['id']}/prusalink/print", files={"file": ("Frog keychain.bgcode", data)}).status_code == 200
+    long = "/usb/Frog keychain.bgcode"
+    _report(api, auth, p["id"], _starting(236033.0, path=long))
+    _report(api, auth, p["id"], _starting(237033.0, time_printing=1200, state="FINISHED", progress=100, path=long))
+    [job] = api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]
+    assert job["filament_cost_detail"]["cost_per_kg"] == 27.82
+    assert prusalink.requests == []  # its PrusaLink was never asked
