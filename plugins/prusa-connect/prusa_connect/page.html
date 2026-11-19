@@ -113,14 +113,18 @@ function renderServer() {
     el("span", { class: `dot ${!state.address ? "" : c.reachable && !c.error ? "ok" : "bad"}` }),
     !state.address ? "Type the address Prusa Connect is at (the one you open it at in a browser)."
       : c.error ? el("span", { class: "error" }, c.error)
-      : c.reachable ? `Prusa Connect ${c.version || ""} answers${state.paired ? ", and the plugin is paired with it." : "."}`
+      : c.reachable ? `Prusa Connect ${c.version || ""} answers${state.open ? ", without asking anyone to sign in." : state.paired ? ", and the plugin is paired with it." : "."}`
       : "Asking Prusa Connect…",
   );
 
   const box = $("pairing");
   if (!state.address) return box.replaceChildren();
   const p = state.pairing;
-  if (p) {
+  if (state.open) {
+    box.replaceChildren(el("div", { class: "faint" },
+      "This Prusa Connect lets anyone in without signing in, so the plugin needs no pairing. To ask for sign-in, set "
+      + "Prusa Connect up with accounts; then pair the plugin here."));
+  } else if (p) {
     box.replaceChildren(
       el("div", { class: "muted" }, "Approve this code on Prusa Connect, signed in as someone allowed to see the printers:"),
       el("div", { class: "code", "data-testid": "pairing-code" }, p.user_code),

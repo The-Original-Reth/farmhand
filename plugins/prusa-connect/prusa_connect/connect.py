@@ -4,6 +4,8 @@ Talking to the farm's Prusa Connect server over its REST API (version 1; the ser
 Pairing: the plugin asks for a token (POST /api/v1/auth/app-pairings) and gets a short code; someone signed in to
 Prusa Connect approves it on Prusa Connect's own page, and the plugin collects the token (POST .../token). Nobody types
 a password or pastes a secret. The token is limited to the "read" scope: the plugin only reads printers' state.
+A Prusa Connect set up in open mode (its first-run wizard's "no sign-in") has nobody to approve a pairing and asks no
+token of anyone: the plugin then reads it without one (is_open()).
 
 Prusa Connect keeps each printer's state as a tree of paths ("/state", "/job/progress", "/temperature/bed"...) in the
 words the printer's firmware uses, which are PrusaLink's too (PRINTING, IDLE, FINISHED...): report() turns one into the
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import quote, urlencode
@@ -35,9 +38,13 @@ class ConnectError(Exception):
         self.message, self.kind = message, kind
 
 
+OPEN_CHECK_SECONDS = 60
+
+
 class PrusaConnect:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self._open: tuple[str, bool, float] | None = None  # (address, open?, when asked)
 
     # ------------------------------------------------------------------ the server
 
@@ -45,8 +52,25 @@ class PrusaConnect:
         """GET /api/v1/health: {status, version}. Needs no token."""
         return self._call("GET", "/api/v1/health", auth=False)
 
+    def is_open(self) -> bool:
+        """Does this Prusa Connect let anyone in without signing in (open mode)? GET /api/v1/auth/info, asked once a minute."""
+        address = self.settings.address
+        if not address:
+            return False
+        now = time.monotonic()
+        if self._open and self._open[0] == address and now - self._open[2] < OPEN_CHECK_SECONDS:
+            return self._open[1]
+        status, info = self._raw("GET", "/api/v1/auth/info", auth=False)
+        is_open = (status == 200 and isinstance(info, dict) and not info.get("provider")
+                   and not info.get("credentials") and not info.get("needs_setup"))
+        self._open = (address, is_open, now)
+        return is_open
+
     def start_pairing(self) -> dict:
         """Ask for a token: the short code to approve on Prusa Connect's page. Returns the pairing as the page shows it."""
+        if self.is_open():
+            raise ConnectError("This Prusa Connect lets anyone in without signing in, so the plugin needs no pairing: "
+                               "it reads Prusa Connect's printers already.", "setup")
         data = self._call("POST", "/api/v1/auth/app-pairings", {"app_name": APP_NAME, "scopes": SCOPES}, auth=False)
         if not data.get("device_code") or not data.get("user_code"):
             raise ConnectError("Prusa Connect didn't give a pairing code.", "error")
@@ -112,9 +136,10 @@ class PrusaConnect:
         headers = {"Accept": "application/json"}
         if auth:
             token = self.settings.token
-            if not token:
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            elif not self.is_open():
                 raise ConnectError("The plugin isn't paired with Prusa Connect yet. Pair it on this page.", "setup")
-            headers["Authorization"] = f"Bearer {token}"
         data = None
         if body is not None:
             data = json.dumps(body).encode("utf-8")

@@ -62,13 +62,16 @@ class Reporter:
 
     def run_once(self) -> dict:
         """One look: Prusa Connect's printers, Farmhand's, and a report of each printer Farmhand takes from here."""
-        connect = {"reachable": False, "version": None, "error": None}
+        connect = {"reachable": False, "version": None, "error": None, "open": False}
         devices: list[dict] | None = None
         connect_error = None
         if self.settings.address:
             try:
                 connect.update(reachable=True, version=self.connect.health().get("version"))
-                if self.settings.token:
+                connect["open"] = self.connect.is_open()
+                if connect["open"] and self.settings.pairing:
+                    self.settings.set_pairing(None)  # nobody can approve it, and it isn't needed
+                if self.settings.token or connect["open"]:
                     devices = self.connect.devices()
             except ConnectError as e:
                 connect_error = e.message
@@ -140,7 +143,8 @@ class Reporter:
         with self._lock:
             snap = dict(self._snapshot)
         snap.update(
-            plugin_id=PLUGIN_ID, address=self.settings.address, paired=bool(self.settings.token),
+            plugin_id=PLUGIN_ID, address=self.settings.address, open=bool((snap.get("connect") or {}).get("open")),
+            paired=bool(self.settings.token) or bool((snap.get("connect") or {}).get("open")),
             pairing=shown_pairing(self.settings.pairing), links={str(k): v for k, v in self.settings.links.items()},
         )
         return snap
