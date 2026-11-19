@@ -187,9 +187,12 @@ class PrinterOut(BaseModel):
     prusalink_url_override: str | None = None
     prusalink_username: str | None = None
     has_prusalink_password: bool = False  # the password itself is never returned
-    # A Prusa printer whose status and prints come from a plugin (its id, e.g. "prusa-connect") instead of its own
-    # PrusaLink; null = its PrusaLink (the default). Prints are sent to its PrusaLink either way.
+    # A Prusa printer connected through a plugin (its id, e.g. "prusa-connect") instead of its own PrusaLink: its status
+    # and prints go through the plugin. null = its PrusaLink (the default). status_from_name: the plugin's name.
+    # status_link: the printer's page on the plugin's side (on Prusa Connect), from its latest report, or null.
     status_from: str | None = None
+    status_from_name: str | None = None
+    status_link: str | None = None
     camera_address: str | None = None  # a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
     # The 1500-hour service reminder Farmhand keeps: {state: waiting | off | ok | due, enabled, interval_hours,
     # hours_since, started_at, last_done: {done_at, hours, note} | null}

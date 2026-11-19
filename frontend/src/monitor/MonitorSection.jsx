@@ -4,7 +4,7 @@ import { c } from "../theme.js";
 import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js";
 import { errorText } from "../api.js";
 import { useData } from "../data.jsx";
-import { webUiOf } from "../printers/webUi.js";
+import { webUiOf, prusaVia } from "../printers/webUi.js";
 import { usePrintProgress, usePrinterCameras } from "./cameras.js";
 import { CameraTile } from "./CameraTile.jsx";
 import { fit, GAP, useRoom } from "./wall.js";
@@ -21,7 +21,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery.js";
 // The cameras are found as cameras.js says: each printer's as soon as it answers, starting from the ones remembered.
 const TOOLBAR = 46; // the Save layout line above the grid, with the gap below it
 const ZOOMS = [2, 3, 4, 6, 8]; // the max zoom choices; the server takes only these
-const PRUSA_BOARD = { name: "Prusa", model: "A Prusa printer, reached through PrusaLink" };
+const prusaBoard = (p) => ({ name: "Prusa", model: `A Prusa printer, reached through ${prusaVia(p)}` });
 
 export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   const { printers } = useData();
@@ -62,7 +62,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
     const web = webUiOf(p);
     const link = web && { ...web, printer: p.name };
     // the computer it runs on, named in the tiles' top right corner; a Prusa says nothing of its own, so it's "Prusa"
-    const board = p.connectionType === "prusalink" ? PRUSA_BOARD : cams[p.id]?.board || null;
+    const board = p.connectionType === "prusalink" ? prusaBoard(p) : cams[p.id]?.board || null;
     const print = progress[p.id] || null; // the print under way, shown beside the board
     return list.map((cam) => ({ key: `${p.id}:${cam.name}`, label: list.length > 1 ? `${p.name} · ${cam.name}` : p.name, cam, link, board, print }));
   });

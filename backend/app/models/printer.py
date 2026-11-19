@@ -143,6 +143,25 @@ class Printer(HasNotes, Base):
         return self.status_source_row.plugin_id if self.status_source_row is not None and self.prusalink_row is not None else None
 
     @property
+    def status_from_name(self) -> str | None:
+        """That plugin's name ("Prusa Connect"), or None."""
+        if not self.status_from:
+            return None
+        from ..services import printer_reports
+
+        return printer_reports.plugin_name_from(self)
+
+    @property
+    def status_link(self) -> str | None:
+        """Where the operator sees the printer on that plugin's side (its page on Prusa Connect), from the plugin's
+        latest report; None without a fresh one."""
+        if not self.status_from:
+            return None
+        from ..services import printer_reports
+
+        return printer_reports.link(self)
+
+    @property
     def prusalink_url_override(self) -> str | None:
         return self.prusalink_row.url if self.prusalink_row else None
 

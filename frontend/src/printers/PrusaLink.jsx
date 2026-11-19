@@ -9,6 +9,7 @@ import { SectionToggle, StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, formatBytes } from "../lib/format.js";
 import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
+import { prusaVia } from "./webUi.js";
 
 // ---- a PrusaLink printer (Prusa Core One, MK4, XL...) ----
 const PRUSALINK_LOOK_MS = 10000; // how often the open printer page looks at the printer
@@ -94,7 +95,7 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
       line = `${PRUSALINK_STATES[status.state] || status.state || "Connected"}${what ? ` · ${what}` : ""}`;
     } else {
       dot = c.danger;
-      line = status.error || (reporter ? `The ${reporter.name} plugin can't reach it.` : "Can't reach PrusaLink.");
+      line = status.error || (printer.statusFrom ? `${prusaVia(printer)} can't reach it.` : "Can't reach PrusaLink.");
     }
   }
 
@@ -103,7 +104,7 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
       <div style={foldHeading(open)}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <SectionToggle open={open} onToggle={onToggle} controlsId="prusalink-card-body" testId="toggle-connection">
-            {printer.statusFrom ? reporter?.name || "Connection" : "PrusaLink"}
+            {prusaVia(printer)}
           </SectionToggle>
           {!open && summary}
         </div>

@@ -8,6 +8,7 @@ import { SectionLabel, StatTile } from "../components/common/ui.jsx";
 import { fmtCost, fmtKwh } from "../lib/format.js";
 import { energyCost, parsePrice, priceForMonth } from "../lib/energyPrice.js";
 import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, PeriodPicker, periodWord, tableHead } from "../lib/periods.jsx";
+import { prusaVia } from "../printers/webUi.js";
 
 const NO_PRICES = { current: null, history: [], months: {} };
 
@@ -307,7 +308,7 @@ export function PowerSection({ prices = NO_PRICES, onEnergyPrice, onMonthPrice, 
                     <div style={uiText(12, c.amber, { gridColumn: "span 5" })}>Couldn't load: {x.data.error}</div>
                   ) : !x.has ? (
                     <div style={uiText(12, c.textFaint, { gridColumn: "span 5" })}>
-                      {x.printer.connectionType === "prusalink" ? "PrusaLink doesn't report energy use" : "No power meter or print energy yet"}
+                      {x.printer.connectionType === "prusalink" ? `${prusaVia(x.printer)} doesn't report energy use` : "No power meter or print energy yet"}
                     </div>
                   ) : (
                     <>

@@ -14,6 +14,7 @@ from __future__ import annotations
 import tempfile
 import threading
 import time
+from urllib.parse import quote
 
 from .config import Settings
 from .connect import ConnectError, PrusaConnect, device_out, report, shown_pairing
@@ -99,7 +100,9 @@ class Reporter:
         return self.snapshot()
 
     def _report_one(self, printer: dict, device_id, by_id: dict, asked: bool, connect_error) -> dict:
-        link = self.settings.address + "/" if self.settings.address else None
+        address = self.settings.address
+        # its page on Prusa Connect (the printer's own, once linked): Farmhand's "Open in Prusa Connect"
+        link = (f"{address}/printers/{quote(device_id, safe='')}" if device_id else f"{address}/") if address else None
         if not device_id:
             sent = report(None, link, f"Not linked to a printer on Prusa Connect yet: choose which one it is on the Prusa Connect plugin's page.")
         elif not asked:
