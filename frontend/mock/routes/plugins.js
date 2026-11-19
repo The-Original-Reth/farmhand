@@ -71,6 +71,11 @@ const ON_THE_NETWORK = {
     id: "hello", name: "Hello", version: "1.0.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // plugins/hello's manifest
     page: { menu: "Hello", icon: "dashboard", path: "/" }, permissions: ["printers:read", "prints:read", "farm:read"], health: "/health",
   },
+  // Hello again, as if its container came back from DHCP with a new IP: its address can be changed to this one
+  "http://192.168.10.225:8080": {
+    id: "hello", name: "Hello", version: "1.0.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup",
+    page: { menu: "Hello", icon: "dashboard", path: "/" }, permissions: ["printers:read", "prints:read", "farm:read"], health: "/health",
+  },
   "http://192.168.10.217:8080": {
     id: "stream", name: "YouTube Stream", version: "1.1.0", farmhand_api: "1", port: 8080, author: "Farmhand mockup", // the YouTube plugin's manifest
     homepage: "https://github.com/The-Original-Reth/farmhand-youtube-plugin",

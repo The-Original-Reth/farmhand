@@ -1154,7 +1154,10 @@ Farmhand asks the plugin what it is and shows what it wants to read in plain wor
 didn't see, and say yes. Farmhand then shows the plugin's `FARMHAND_URL` and `FARMHAND_TOKEN` once, as two lines to
 put in the env file beside its docker-compose.yml (`stream.env` for Stream), before starting it again. From the page
 you can switch a plugin off (its token is refused and its page leaves the menu), make it a new token (the old one stops
-working), or remove it (its container stays where it runs).
+working), or remove it (its container stays where it runs). When a plugin's container moves (a new IP from DHCP, another
+port), **Change…** beside its address takes the new one: Farmhand asks the new address what plugin is there and saves it
+only if it's the same plugin, keeping its token, permissions and settings; its page, health check and "only from its
+address" follow it at once.
 
 **Stream control** is listed first, marked "built into Farmhand": it's part of Farmhand, so it has no address, token or
 Remove, only an on/off slider (see "Stream control").

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, ExternalLink, KeyRound, Puzzle } from "lucide-react";
+import { Check, Copy, ExternalLink, KeyRound, Pencil, Puzzle } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
 import { addPlugin, changePlugin, errorText, newPluginToken, pluginApiUrl, previewPlugin, removePlugin, switchBuiltinPlugin } from "../api.js";
 import { cancelButton, fieldBox, monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
@@ -219,6 +219,65 @@ function Slider({ on, busy, onTurn, testid, label }) {
   );
 }
 
+// The plugin's address, and changing it in place when its container moved (a new IP from DHCP, another port): Farmhand
+// asks the new address for its /manifest first and takes it only if the same plugin answers there. Its token,
+// permissions and settings stay as they are.
+function AddressLine({ plugin: p, onChanged }) {
+  const [editing, setEditing] = useState(false);
+  const [address, setAddress] = useState(p.address);
+  const save = useAction();
+  const close = () => {
+    setEditing(false);
+    save.setError(null);
+  };
+  if (!editing) {
+    return (
+      <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+        <span data-testid={`plugin-${p.id}-address`} style={monoText(12, c.textPrimary, { wordBreak: "break-all" })}>{p.address}</span>
+        <button
+          type="button" data-testid={`plugin-${p.id}-change-address`} title="It moved: give Farmhand its new address"
+          onClick={() => { setAddress(p.address); setEditing(true); }} style={toolButton(11, { padding: "2px 8px" })}
+        >
+          <Pencil size={11} /> Change…
+        </button>
+      </span>
+    );
+  }
+  const unchanged = !address.trim() || address.trim() === p.address;
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (unchanged) return close();
+        if (await save.run(() => changePlugin(p.id, { address }))) {
+          close();
+          onChanged();
+        }
+      }}
+      style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}
+    >
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input
+          data-testid={`plugin-${p.id}-address-input`} aria-label={`${p.name}'s new address`} autoFocus
+          value={address} onChange={(e) => setAddress(e.target.value)} disabled={save.busy}
+          onKeyDown={(e) => { if (e.key === "Escape") close(); }}
+          placeholder="http://192.168.10.215:8080"
+          style={{ ...fieldBox(), ...mono, flex: "1 1 220px", minWidth: 0, padding: "6px 8px" }}
+        />
+        <button type="submit" data-testid={`plugin-${p.id}-address-save`} disabled={save.busy || unchanged} style={primaryButton(save.busy || unchanged)}>
+          {save.busy ? "Asking it…" : "Save"}
+        </button>
+        <button type="button" onClick={close} disabled={save.busy} style={cancelButton(save.busy)}>Cancel</button>
+      </div>
+      <span style={uiText(12, c.textFaint, { lineHeight: 1.5 })}>
+        Farmhand asks the new address what plugin is there and saves it only if it's {p.name}. Its token, permissions and
+        settings stay as they are{p.onlyFromAddress ? "; its token is then taken only from the new address" : ""}.
+      </span>
+      {save.error && <span style={uiText(12, c.amber, { lineHeight: 1.5 })}>{save.error}</span>}
+    </form>
+  );
+}
+
 function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
   const [asking, setAsking] = useState(null); // "token" | "remove"
   const change = useAction();
@@ -242,8 +301,8 @@ function PluginCard({ plugin: p, onChanged, onToken, onOpenPage }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 12px", marginBottom: 10 }}>
-        <span style={uiText(12, c.textFaint)}>Address</span>
-        <span style={monoText(12, c.textPrimary, { wordBreak: "break-all" })}>{p.address}</span>
+        <span style={uiText(12, c.textFaint, { alignSelf: "center" })}>Address</span>
+        <AddressLine plugin={p} onChanged={onChanged} />
         <span style={uiText(12, c.textFaint)}>Last answered</span>
         <span style={uiText(12, c.textMuted)}>{fmtWhen(p.health.lastSeenAt, "never")}</span>
         <span style={uiText(12, c.textFaint)}>Token</span>
