@@ -90,6 +90,10 @@ class FakeStreams:
                     "delay": ({"seconds": 60.0, "held": 23.46, "filling": True} if host == "twitch"
                               else {"seconds": 60.0, "held": 61.0, "filling": False}) if live else {"seconds": 60.0, "held": 0.0, "filling": False},
                     "holding": live and host == "twitch",
+                    # where its work is done: YouTube's all on the card, Twitch's cameras left on the processor
+                    "encoder": "nvenc" if live else None,
+                    "camera_decoding": ("gpu" if host == "stream" else "cpu") if live else None,
+                    "camera_decoding_note": "the NVIDIA card's video decoder didn't work here" if live and host == "twitch" else None,
                 },
             })
         if path == "/api/stream-control/start":
@@ -301,10 +305,13 @@ def test_the_youtube_and_twitch_plugins_from_before_stream_control_start_and_sto
     # each one's delay as it holds it (never more than it's set to), the holding screen on while it fills again
     assert listed["stream"]["buffer"] == {"seconds": 60.0, "held": 60.0, "filling": False, "holding": False}
     assert listed["twitch"]["buffer"] == {"seconds": 60.0, "held": 23.5, "filling": True, "holding": True}
+    # where each one's work is done: on the NVIDIA card or the processor, and why not the card
+    assert listed["stream"]["hardware"] == {"encoder": "gpu", "cameras": "gpu", "note": None}
+    assert listed["twitch"]["hardware"] == {"encoder": "gpu", "cameras": "cpu", "note": "the NVIDIA card's video decoder didn't work here"}
 
     stopped = api.post("/stream-control/stop-all").json()["streams"]
     assert all(not s["live"] for s in stopped) and all(s["cameras"] == [] for s in stopped)
-    assert all(s["buffer"] is None for s in stopped)  # (not live: no delay shown)
+    assert all(s["buffer"] is None and s["hardware"] is None for s in stopped)  # (not live: no delay, nor where it runs)
 
 
 def test_copy_layout_makes_one_stream_s_own_layout_stream_control_s_with_its_pictures(api, tmp_path):

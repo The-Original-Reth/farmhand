@@ -93,6 +93,29 @@ const shortened = (text) => {
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 };
 
+// Where a live stream's work is done, as its plugin says: the cameras unpacked and the stream compressed on the GPU (an
+// NVIDIA card) or the CPU (the processor), and why the card isn't used for something it did before. Nothing from a
+// plugin that doesn't say.
+const ON = { gpu: "GPU", cpu: "CPU" };
+function StreamHardware({ hw }) {
+  if (!hw) return null;
+  const { encoder, cameras } = hw;
+  let text;
+  if (encoder && encoder === cameras) text = `${ON[encoder]}: cameras and compressing`;
+  else text = [cameras && `cameras on the ${ON[cameras]}`, encoder && `compressing on the ${ON[encoder]}`].filter(Boolean).join(", ");
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  return (
+    <div
+      data-testid="stream-control-hardware" data-encoder={encoder || ""} data-cameras={cameras || ""}
+      title="Where the plugin does the stream's work: GPU is the NVIDIA card, CPU the processor"
+      style={uiText(12, hw.note ? c.amber : c.textMuted, { lineHeight: 1.5 })}
+    >
+      {text}
+      {hw.note ? ` · ${hw.note}` : ""}
+    </div>
+  );
+}
+
 // A live stream's delay, as its plugin holds it: how much of it is held, as words and a bar. While it's being collected
 // again (after going live, or a stall used it up) the site is shown the holding screen meanwhile.
 function StreamBuffer({ s }) {
@@ -148,6 +171,7 @@ function StreamRow({ s, busy, onStart, onStop, onToggle, onOpenPlugin }) {
           {s.live && s.viewers !== null ? ` · ${s.viewers} watching` : ""}
         </div>
         {s.chosen && s.live && <StreamBuffer s={s} />}
+        {s.chosen && s.live && <StreamHardware hw={s.hardware} />}
         {s.settingsPage && s.enabled && (
           <button
             type="button" data-testid="stream-control-site-settings" onClick={() => openSiteSettings(s)}

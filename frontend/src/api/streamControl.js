@@ -53,6 +53,9 @@ export const normalizeStreamPlugin = (s) => ({
   // going live or a stall), holding (the holding screen is on the site meanwhile) }, or null
   buffer: s.buffer ? { seconds: s.buffer.seconds, held: s.buffer.held, filling: !!s.buffer.filling, holding: !!s.buffer.holding } : null,
   settingsPage: s.settings_page || null, // its site's settings window, a page of its own ("/?view=youtube-settings")
+  // while live, where its work is done: { encoder (compressing the stream), cameras (unpacking and fitting them):
+  // "gpu" | "cpu" | null (not said), note (why something the card did is on the processor now, or null) }, or null
+  hardware: s.hardware ? { encoder: s.hardware.encoder || null, cameras: s.hardware.cameras || null, note: s.hardware.note || null } : null,
 });
 
 // What the schedule did lately: [{ at, action: "start" | "stop", streams: "all" | [ids], results: [{ name, live, error }] }]
