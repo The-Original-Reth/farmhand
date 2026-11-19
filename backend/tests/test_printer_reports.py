@@ -233,3 +233,54 @@ def test_a_manifest_with_print_needs_the_permission():
     with pytest.raises(ValueError, match="printers:print"):
         manifest.check({**MANIFEST, "print": {"path": "/farmhand/print"}})
     assert manifest.check(PRINTING_MANIFEST)["print"] == {"path": "/farmhand/print"}
+
+
+# ------------------------------------------------------------------ beyond PrusaLink: the extras, and measured filament
+
+EXTRAS = {"material": "PETG", "nozzle_diameter": 0.4, "nozzle_hardened": False, "nozzle_high_flow": False,
+          "temp_chamber": 29.4, "target_chamber": 0, "print_fan_rpm": 0, "heatbreak_fan_rpm": 8003, "speed": 100,
+          "flow": 100, "odometer_e": 236033.0, "dialog": None}
+
+
+def _starting(odometer, time_printing=10, state="PRINTING", job_id=13, progress=1):
+    return {**PRINTING, "state": state, "extras": {**EXTRAS, "odometer_e": odometer},
+            "job": {**PRINTING["job"], "id": job_id, "state": state, "time_printing": time_printing, "progress": progress}}
+
+
+def test_the_extras_are_shown_but_not_the_odometer(api, prusalink):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    dialog = {"code": "31819", "title": "Filament runout", "text": "Insert filament, then press Retry."}
+    _report(api, auth, p["id"], {**READY, "state": "ATTENTION", "extras": {**EXTRAS, "dialog": dialog}})
+    out = api.get(f"/printers/{p['id']}/prusalink").json()
+    assert out["extras"]["material"] == "PETG" and out["extras"]["temp_chamber"] == 29.4 and out["extras"]["dialog"] == dialog
+    assert "odometer_e" not in out["extras"]
+    plain = _core_one(api, "MK4")
+    assert api.get(f"/printers/{plain['id']}/prusalink").json()["extras"] is None  # a PrusaLink printer has none
+
+
+def test_a_new_print_through_prusa_connect_has_its_filament_measured(api, prusalink):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], _starting(236033.0))
+    _report(api, auth, p["id"], _starting(237533.0, time_printing=600, progress=50))
+    _report(api, auth, p["id"], _starting(238533.5, time_printing=1200, state="FINISHED", progress=100))
+    [job] = api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]
+    assert job["status"] == "completed" and job["filament_used"] == 2500.5 and not job["filament_estimated"]
+
+
+def test_a_print_first_seen_part_way_or_from_prusalink_keeps_no_measured_figure(api, prusalink):
+    auth = _install(api)
+    p = _core_one(api)
+    # a print Farmhand recorded through PrusaLink, before the switch: left as it was
+    prusalink.start_job(7, "older.bgcode", progress=50, time_printing=600)
+    api.get(f"/printers/{p['id']}/prusalink")
+    [before] = api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], _starting(236033.0, time_printing=3600, job_id=21, progress=60))  # seen an hour in
+    _report(api, auth, p["id"], _starting(240000.0, time_printing=4000, job_id=21, state="FINISHED", progress=100))
+    jobs = {j["filename"]: j for j in api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]}
+    assert jobs["older.bgcode"]["id"] == before["id"] and jobs["older.bgcode"]["filament_used"] == before["filament_used"]
+    assert jobs["Frog keychain.bgcode"]["filament_used"] == 0  # not measured: its start wasn't seen

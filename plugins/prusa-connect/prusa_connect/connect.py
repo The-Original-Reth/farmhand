@@ -259,6 +259,7 @@ def report(device: dict | None, link: str | None = None, error: str | None = Non
         },
         "printer_type": device.get("model"), "firmware": device.get("firmware"),
         "job": None,
+        "extras": extras(state),
     }
     number = _job_number(state, summary)
     if number is not None:
@@ -277,6 +278,47 @@ def report(device: dict | None, link: str | None = None, error: str | None = Non
             "time_remaining": remaining if remaining is None or remaining >= 0 else None,
         }
     return out
+
+
+MATERIAL = "/tools/0/material_package_instance/package/material/abbreviation"
+
+
+def _flag(value):
+    return value if isinstance(value, bool) else None
+
+
+def _text(value, most: int):
+    return str(value)[:most] if value not in (None, "") else None
+
+
+def extras(state: dict) -> dict:
+    """What Prusa Connect knows of the printer beyond PrusaLink: the loaded material, the nozzle, the chamber, fans,
+    speed and flow, a message on its screen, and the extruder's odometer (mm fed, ever), which Farmhand measures each
+    print's filament with."""
+    dialog = None
+    if state.get("/dialog/id") is not None or state.get("/dialog/code") is not None:
+        dialog = {"code": _text(state.get("/dialog/code"), 40), "title": _text(state.get("/dialog/title"), 200),
+                  "text": _text(state.get("/dialog/text"), 1000)}
+    nozzle = _num(state.get("/tools/0/features/nozzle_diameter"))
+    return {
+        "material": _text(state.get(MATERIAL), 40),
+        "nozzle_diameter": nozzle if nozzle and 0 < nozzle <= 5 else None,
+        "nozzle_hardened": _flag(state.get("/tools/0/features/nozzle_hardened")),
+        "nozzle_high_flow": _flag(state.get("/tools/0/features/nozzle_high_flow")),
+        "temp_chamber": _num(state.get("/temperature/chamber")),
+        "target_chamber": _num(state.get("/temperature/chamber_target")),
+        "print_fan_rpm": _positive(state.get("/tools/0/print_fan_rpm")),
+        "heatbreak_fan_rpm": _positive(state.get("/tools/0/heatbreak_fan_rpm")),
+        "speed": _positive(state.get("/speed")),
+        "flow": _positive(state.get("/flow")),
+        "odometer_e": _positive(state.get("/tools/0/odometer_e")),
+        "dialog": dialog,
+    }
+
+
+def _positive(value):
+    value = _num(value)
+    return value if value is not None and value >= 0 else None
 
 
 def device_out(device: dict) -> dict:

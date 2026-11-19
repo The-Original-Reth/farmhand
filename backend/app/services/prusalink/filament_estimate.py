@@ -44,7 +44,8 @@ def update(db: Session, printer: Printer, touched: list[PrintJob]) -> None:
         if r.id not in rows and _worth_looking(r, newest):
             rows[r.id] = r
     for r in rows.values():
-        estimate(db, printer.id, r, newest)
+        if not (r.job_metadata or {}).get("filament_measured"):  # one measured by the printer keeps its figure
+            estimate(db, printer.id, r, newest)
 
 
 def _worth_looking(row: PrintJob, newest: int) -> bool:

@@ -104,6 +104,21 @@ def latest(printer: Printer) -> dict | None:
     return kept["report"]
 
 
+def extras(printer: Printer) -> dict | None:
+    """What the plugin knows of the printer beyond PrusaLink (material, nozzle, chamber, fans, a message on its
+    screen, the extruder's odometer), while its report is fresh and the printer reachable."""
+    report = latest(printer)
+    if not report or not report.get("reachable", True):
+        return None
+    return report.get("extras") or None
+
+
+def odometer(printer: Printer) -> float | None:
+    """The mm of filament the printer's extruder has fed, ever, as the plugin last reported it; None when unknown."""
+    value = (extras(printer) or {}).get("odometer_e")
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
 def link(printer: Printer) -> str | None:
     """Where the plugin says the printer can be seen (its page on Prusa Connect, say), while its report is fresh."""
     report = latest(printer)

@@ -280,9 +280,21 @@ In PrusaLink's own words (states `IDLE`, `BUSY`, `PRINTING`, `PAUSED`, `FINISHED
     "id": 12, "state": "PRINTING", "file": "Frog keychain.bgcode", "path": "/usb/FROGKE~1.BGC",
     "progress": 40, "time_printing": 1200, "time_remaining": 1800
   },
-  "link": "http://192.168.10.93:8080/"
+  "link": "http://192.168.10.93:8080/printers/0199a1b2-…",
+  "extras": {
+    "material": "PETG", "nozzle_diameter": 0.4, "nozzle_hardened": false, "nozzle_high_flow": false,
+    "temp_chamber": 29.4, "target_chamber": 0, "print_fan_rpm": 0, "heatbreak_fan_rpm": 8003,
+    "speed": 100, "flow": 100, "odometer_e": 236033,
+    "dialog": { "code": "13501", "title": "Filament runout", "text": "Insert filament, then press Retry." }
+  }
 }
 ```
+
+`extras` is what you know beyond PrusaLink; every field may be left out. Farmhand shows them on the printer's page
+(`dialog` is a message on the printer's screen, `null` when there's none). `odometer_e` is the mm of filament the
+extruder has ever fed: for a print Farmhand sees start (within five minutes of it), it measures the print's filament as
+the odometer at the end less at the start, instead of estimating it from the slicer. Prints recorded before keep their
+figures.
 
 `reachable: false` with an `error` in plain words says you can't hear from the printer now; Farmhand shows the error as
 the printer's. `link` is where the operator can see it (an "Open in <your plugin>" button on its page). `job.id` is a
