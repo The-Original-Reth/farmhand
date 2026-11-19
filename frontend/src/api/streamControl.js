@@ -60,6 +60,8 @@ export const normalizeStreamPlugin = (s) => ({
 
 // What the schedule did lately: [{ at, action: "start" | "stop", streams: "all" | [ids], results: [{ name, live, error }] }]
 const normalizeHappened = (h) => h || [];
+// The stream plugins' own answer (GET or PUT /stream-control/streams): { streams, happened }
+const normalizeStreams = (r) => ({ streams: r.streams.map(normalizeStreamPlugin), happened: normalizeHappened(r.happened) });
 
 // The whole page: { design, resolutions: [{ key, label }], fonts: [{ key, label, generic }], media: { path, images,
 // slideshows: [{ name, images }], music, error } (the stream folder), layouts (the saved ones, as the server keeps them),
@@ -97,16 +99,10 @@ export const saveStreamDesign = async (s = {}) =>
   );
 
 // The stream plugins: { streams, happened }
-export const getStreamPlugins = async () => {
-  const r = await request("/stream-control/streams");
-  return { streams: r.streams.map(normalizeStreamPlugin), happened: normalizeHappened(r.happened) };
-};
+export const getStreamPlugins = async () => normalizeStreams(await request("/stream-control/streams"));
 // Which stream plugins Stream control brings in (their ids; the others keep their own layout and aren't started or
 // stopped from here): { streams, happened }
-export const chooseStreamPlugins = async (ids) => {
-  const r = await request("/stream-control/streams", jsonBody("PUT", { chosen: ids }));
-  return { streams: r.streams.map(normalizeStreamPlugin), happened: normalizeHappened(r.happened) };
-};
+export const chooseStreamPlugins = async (ids) => normalizeStreams(await request("/stream-control/streams", jsonBody("PUT", { chosen: ids })));
 // Copy layout: this stream plugin's own layout made Stream control's (every stream brought in then shows it), its
 // pictures and slideshows copied into the stream folder: { page, copied: [what was copied], problems: [what wasn't] }
 export const copyStreamLayout = async (id) => {

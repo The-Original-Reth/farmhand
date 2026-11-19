@@ -13,6 +13,9 @@ const FONTS = [
 const RESOLUTIONS = [{ key: "720p", label: "720p (1280×720)" }, { key: "1080p", label: "1080p (1920×1080)" }, { key: "1440p", label: "2K (2560×1440)" }];
 const SAVED = ["cols", "rows", "cells", "show_status", "layout", "seconds_all", "seconds_each", "resolution", "border_color", "background", "font",
   "color", "music", "music_volume", "music_shuffle", "music_from", "delay", "holding", "title", "description"];
+// a card as the real API keeps one (squares.py), before what's set on it: a new one each time
+const card = () => ({ background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false,
+  picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 }, captions: {}, picture_boxes: {}, layers: [], slide_layers: {} });
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 // a stand-in for a picture of the stream folder: its name on a coloured card
@@ -28,8 +31,7 @@ export function streamControlRoutes(ctx) {
   const fresh = () => ({
     enabled: false,
     design: {
-      cols: 2, rows: 1, cells: [{ camera: "1:Bed" }, { background: "#1F3A5F", image: null, slideshow: null, seconds: 10, text: "Printing live", color: null, font: null, band: false,
-        picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 }, captions: {}, picture_boxes: {}, layers: [], slide_layers: {} }],
+      cols: 2, rows: 1, cells: [{ camera: "1:Bed" }, { ...card(), background: "#1F3A5F", text: "Printing live" }],
       show_status: true, layout: "grid", seconds_all: 30, seconds_each: 20, resolution: "720p", border_color: "#000000", background: "#000000",
       font: "play", color: "#FFFFFF", music: true, music_volume: 50, music_shuffle: true, delay: 60,
       holding: { text: "Back in a minute", image: null, background: null, color: null, font: null }, title: "The print farm, live", description: "",
@@ -123,6 +125,10 @@ export function streamControlRoutes(ctx) {
     state().live[p.id] = action === "start";
     return entry(p);
   };
+  // { streams, happened }, as GET and PUT /stream-control/streams answer
+  const streamsAnswer = () => ({ streams: streamPlugins().map((p) => entry(p)), happened: state().happened });
+  // Go live everywhere / Stop all: each switched-on stream plugin brought in, as it answered
+  const allOf = (action) => (sc(), { streams: streamPlugins().filter((p) => p.enabled && isChosen(p.id)).map((p) => act(p, action)) });
   const one = (id) => {
     const p = (farm.plugins || []).find((x) => x.id === id);
     if (!p) throw new HttpError(404, "Plugin not found");
@@ -137,7 +143,7 @@ export function streamControlRoutes(ctx) {
     const unknown = ids.find((x) => !streamPlugins().some((p) => p.id === x));
     if (unknown) throw new HttpError(422, `"${unknown}" isn't a stream plugin added to Farmhand.`);
     state().chosen = [...new Set(ids)];
-    return { streams: streamPlugins().map((p) => entry(p)), happened: state().happened };
+    return streamsAnswer();
   });
 
   on("GET", "/stream-control", () => (sc(), page()));
@@ -164,7 +170,7 @@ export function streamControlRoutes(ctx) {
     return page();
   });
 
-  on("GET", "/stream-control/streams", () => (sc(), { streams: streamPlugins().map((p) => entry(p)), happened: state().happened }));
+  on("GET", "/stream-control/streams", () => (sc(), streamsAnswer()));
   // Copy layout: the pretend plugins' own layouts (YouTube's a 2x2 of cameras and its logo, Twitch's a slideshow beside a camera)
   const OWN_LAYOUTS = {
     stream: { cols: 2, rows: 2, title: "Live from the print farm", cells: [{ camera: "1:Bed" }, { camera: "2:Bed" }, { background: "#B3261E", image: "youtube-logo.png", text: "" }, null] },
@@ -174,8 +180,7 @@ export function streamControlRoutes(ctx) {
     const s = sc();
     const p = one(id);
     const own = OWN_LAYOUTS[p.id] || { cols: 1, rows: 1, cells: [null] };
-    const cell = (c) => (c && !c.camera ? { background: null, image: null, slideshow: null, seconds: 10, text: "", color: null, font: null, band: false,
-      picture_box: { x: 0, y: 0, w: 1, h: 1 }, text_box: { x: 0.5, y: 0.5, size: 0.125 }, captions: {}, picture_boxes: {}, layers: [], slide_layers: {}, ...c } : c);
+    const cell = (c) => (c && !c.camera ? { ...card(), ...c } : c);
     s.design = { ...s.design, ...own, cells: own.cells.map(cell), revision: s.design.revision + 1, saved_at: new Date().toISOString() };
     const copied = [];
     if (p.id === "stream" && !s.media.images.includes("youtube-logo.png")) (s.media.images = [...s.media.images, "youtube-logo.png"].sort()), copied.push("the picture “youtube-logo.png”");
@@ -190,8 +195,8 @@ export function streamControlRoutes(ctx) {
     if (!["start", "stop"].includes(action)) throw new HttpError(404, "Not Found");
     return act(one(id), action);
   });
-  on("POST", "/stream-control/start-all", () => (sc(), { streams: streamPlugins().filter((p) => p.enabled && isChosen(p.id)).map((p) => act(p, "start")) }));
-  on("POST", "/stream-control/stop-all", () => (sc(), { streams: streamPlugins().filter((p) => p.enabled && isChosen(p.id)).map((p) => act(p, "stop")) }));
+  on("POST", "/stream-control/start-all", () => allOf("start"));
+  on("POST", "/stream-control/stop-all", () => allOf("stop"));
 
   on("PUT", "/stream-control/schedule", (_p, body) => {
     const s = sc();
