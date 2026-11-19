@@ -19,6 +19,12 @@ const PRUSALINK_STATES = {
 };
 const PRUSALINK_FREE = ["IDLE", "READY", "FINISHED", "STOPPED"]; // states a new print can be sent in
 
+// What Prusa Connect says of the nozzle: "0.4 mm", with "hardened" / "high flow" when it is
+const nozzleOf = (x) =>
+  x.nozzle_diameter ? [`${x.nozzle_diameter} mm`, x.nozzle_hardened && "hardened", x.nozzle_high_flow && "high flow"].filter(Boolean).join(", ") : "—";
+const fansOf = (x) =>
+  x.print_fan_rpm == null && x.heatbreak_fan_rpm == null ? "—" : `${Math.round(x.print_fan_rpm ?? 0)} / ${Math.round(x.heatbreak_fan_rpm ?? 0)}`;
+
 // The printer's PrusaLink as the printer page sees it: its live status, looked at every few seconds while the page is
 // open. Each look also brings Farmhand's record of its prints up to date (PrusaLink keeps no history of its own).
 // `key` restarts it when the printer or its login changes. onChanged: called when a print starts or ends (the page
@@ -85,6 +91,7 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
   const job = status?.job;
   const free = !!status?.reachable && PRUSALINK_FREE.includes(status.state);
   const reporter = status?.status_from; // { id, name, link } when a plugin reports its status
+  const extras = status?.reachable ? status.extras : null; // beyond PrusaLink, from Prusa Connect: material, nozzle...
 
   let dot = c.textFaint;
   let line = "Checking the printer…";
@@ -161,9 +168,26 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
           />
         )}
 
+        {extras?.dialog && (
+          <div data-testid="prusalink-dialog" role="status" style={uiText(13, c.amber, { marginTop: 10, lineHeight: 1.5 })}>
+            The printer shows a message on its screen{extras.dialog.title ? `: ${extras.dialog.title}` : ""}
+            {extras.dialog.text ? `. ${extras.dialog.text}` : ". Answer it at the printer."}
+            {extras.dialog.code && <span style={uiText(12, c.textFaint)}> (code {extras.dialog.code})</span>}
+          </div>
+        )}
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginTop: 12 }}>
           <StatTile label="Nozzle" value={fmtTemp(status?.temps?.temp_nozzle, status?.temps?.target_nozzle)} hint="Now / target" />
           <StatTile label="Bed" value={fmtTemp(status?.temps?.temp_bed, status?.temps?.target_bed)} hint="Now / target" />
+          {extras && (
+            <>
+              <StatTile label="Chamber" value={fmtTemp(extras.temp_chamber, extras.target_chamber)} hint="Now / target" />
+              <StatTile label="Material" value={extras.material || "—"} hint="The filament loaded, as the printer names it" />
+              <StatTile label="Nozzle size" value={nozzleOf(extras)} hint="The nozzle the printer says it has" />
+              <StatTile label="Speed / flow" value={extras.speed == null && extras.flow == null ? "—" : `${extras.speed ?? "—"}% / ${extras.flow ?? "—"}%`} />
+              <StatTile label="Fans" value={fansOf(extras)} hint="Print fan / hotend (heatbreak) fan, in RPM" />
+            </>
+          )}
           <StatTile label="Prints" value={totals ? totals.total_jobs.toLocaleString() : "—"} hint="Prints Farmhand has recorded" />
           <StatTile label="Print time" value={totals ? fmtDuration(totals.total_print_time) : "—"} hint="Time spent printing, as Farmhand has recorded it" />
           <StatTile label="Longest print" value={totals ? fmtDuration(totals.longest_print) : "—"} />

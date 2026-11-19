@@ -439,9 +439,9 @@ export function printingRoutes(ctx) {
       prusalink_url: prusalinkUrl(p), has_password: !!p.prusalink.hasPassword, reachable: false, error: null, error_kind: null,
       // a plugin reporting its status in place of its PrusaLink (the pretend Prusa Connect plugin reports it as PrusaLink would)
       status_from: p.statusFrom
-        ? { id: p.statusFrom, name: (farm.plugins || []).find((x) => x.id === p.statusFrom)?.name || p.statusFrom, link: "http://192.168.10.93:8080/" }
+        ? { id: p.statusFrom, name: (farm.plugins || []).find((x) => x.id === p.statusFrom)?.name || p.statusFrom, link: "http://192.168.10.93:8080/printers/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" }
         : null,
-      state: null, printer_type: null, firmware: null, temps: null, job: null, ...syncState(p),
+      state: null, printer_type: null, firmware: null, temps: null, job: null, extras: null, ...syncState(p),
     };
     if (!p.statusFrom && !prusalinkUrl(p)) return { ...out, error: "This printer has no IP address or PrusaLink address set.", error_kind: "no_address" };
     if (p.statusFrom && !(farm.plugins || []).some((x) => x.id === p.statusFrom && x.enabled)) {
@@ -455,6 +455,11 @@ export function printingRoutes(ctx) {
     return {
       ...out, ...syncState(p), reachable: true, printer_type: "COREONE", firmware: p.prusalink.firmware,
       state: job ? "PRINTING" : done ? "FINISHED" : "IDLE",
+      // beyond PrusaLink, from the pretend Prusa Connect: material, nozzle, chamber, fans, speed and flow
+      extras: p.statusFrom
+        ? { material: "PETG", nozzle_diameter: 0.4, nozzle_hardened: false, nozzle_high_flow: false, temp_chamber: job ? 38.5 : 29.4,
+          target_chamber: 0, print_fan_rpm: job ? 5200 : 0, heatbreak_fan_rpm: 8003, speed: 100, flow: 100, dialog: null }
+        : null,
       temps: job ? { temp_nozzle: 239.6, target_nozzle: 240, temp_bed: 85.2, target_bed: 85 } : { temp_nozzle: 27.4, target_nozzle: 0, temp_bed: 26.1, target_bed: 0 },
       job: job
         ? { id: 41, state: "PRINTING", file: job.filename, progress: Math.round((job.printS / job.estimated) * 1000) / 10, time_printing: job.printS, time_remaining: job.estimated - job.printS }

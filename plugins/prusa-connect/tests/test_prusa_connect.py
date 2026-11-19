@@ -179,6 +179,18 @@ def test_health_says_when_farmhand_refuses_the_plugin(plugin, connect, farmhand,
     assert status == 503 and "Farmhand refused this plugin's token" in words
 
 
+def test_the_extras_beyond_prusalink():
+    state = {"/state": "ATTENTION", "/tools/0/odometer_e": 236033, "/temperature/chamber": 29.4, "/speed": 100,
+             "/tools/0/material_package_instance/package/material/abbreviation": "PETG",
+             "/tools/0/features/nozzle_diameter": 0.4, "/tools/0/features/nozzle_hardened": False,
+             "/dialog/id": 406277942, "/dialog/code": "31819", "/dialog/buttons": ["Ok"]}
+    out = report({"name": "X", "connected": True, "state": state})["extras"]
+    assert out["material"] == "PETG" and out["nozzle_diameter"] == 0.4 and out["nozzle_hardened"] is False
+    assert out["temp_chamber"] == 29.4 and out["odometer_e"] == 236033 and out["speed"] == 100 and out["flow"] is None
+    assert out["dialog"] == {"code": "31819", "title": None, "text": None}
+    assert report({"name": "X", "connected": True, "state": {"/state": "IDLE"}})["extras"]["dialog"] is None
+
+
 def test_the_report_shape_from_a_device():
     assert report(None, None, "why")["reachable"] is False
     device = {"name": "X", "connected": True, "model": "MK4", "state": {"/state": "IDLE"}}

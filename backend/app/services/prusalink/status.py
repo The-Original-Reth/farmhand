@@ -30,6 +30,9 @@ def live_status(db: Session, printer: Printer) -> dict:
         "status_from": None,
         "reachable": False, "error": None, "error_kind": None,
         "state": None, "printer_type": None, "firmware": None, "temps": None, "job": None,
+        # beyond PrusaLink, from the plugin a printer is connected through (Prusa Connect): material, nozzle, chamber,
+        # fans, speed and flow, a message on its screen (dialog). null for a PrusaLink printer.
+        "extras": None,
     }
     try:
         status, current = poll(db, printer)
@@ -55,4 +58,6 @@ def live_status(db: Session, printer: Printer) -> dict:
             "id": printer.status_from, "name": printer_reports.plugin_name(db, printer.status_from),
             "link": printer_reports.link(printer),
         }
+        found = printer_reports.extras(printer) if out["reachable"] else None
+        out["extras"] = {k: v for k, v in found.items() if k != "odometer_e"} if found else None
     return out

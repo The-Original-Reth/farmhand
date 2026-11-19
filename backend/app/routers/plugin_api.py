@@ -160,6 +160,32 @@ class ReportedJob(BaseModel):
     time_remaining: float | None = Field(None, ge=0)  # seconds
 
 
+class ReportedDialog(BaseModel):
+    """A message the printer shows on its screen, waiting for someone (its state is then ATTENTION, say)."""
+
+    code: str | None = Field(None, max_length=40)  # Prusa's own code for it
+    title: str | None = Field(None, max_length=200)
+    text: str | None = Field(None, max_length=1000)
+
+
+class ReportedExtras(BaseModel):
+    """What a printer's server knows beyond PrusaLink (Prusa Connect does): shown on its page; odometer_e measures the
+    filament its prints use. Every field may be left out."""
+
+    material: str | None = Field(None, max_length=40)  # loaded, as the printer names it: PETG, PLA...
+    nozzle_diameter: float | None = Field(None, gt=0, le=5)  # mm
+    nozzle_hardened: bool | None = None
+    nozzle_high_flow: bool | None = None
+    temp_chamber: float | None = None
+    target_chamber: float | None = None
+    print_fan_rpm: float | None = Field(None, ge=0)
+    heatbreak_fan_rpm: float | None = Field(None, ge=0)
+    speed: float | None = Field(None, ge=0, le=1000)  # %
+    flow: float | None = Field(None, ge=0, le=1000)  # %
+    odometer_e: float | None = Field(None, ge=0)  # mm of filament the extruder has fed, ever: only ever goes up
+    dialog: ReportedDialog | None = None
+
+
 class PrinterReport(BaseModel):
     """A Prusa printer's status, in PrusaLink's words (docs/plugins.md, "Reporting a printer's status")."""
 
@@ -171,6 +197,7 @@ class PrinterReport(BaseModel):
     firmware: str | None = Field(None, max_length=60)
     job: ReportedJob | None = None  # the print it shows, if any (a finished one too, until it's cleared)
     link: str | None = Field(None, max_length=500)  # where the operator can see it (its page on Prusa Connect, say)
+    extras: ReportedExtras | None = None  # beyond PrusaLink: material, nozzle, chamber, fans, a message on its screen
 
 
 @router.put("/printers/{printer_id}/status")
