@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
 import { fieldBox, toolButton, uiText } from "../styles.js";
-import { createPrinter, errorText, getPrusaLinkPassword, updatePrinter } from "../api.js";
+import { createPrinter, errorText, getPrusaLinkPassword, getStatusReporters, updatePrinter } from "../api.js";
 import { useData } from "../data.jsx";
 import { useAction } from "../hooks/useAction.js";
 
@@ -26,7 +26,24 @@ const newConnection = (printer = null) => ({
   prusalinkUsername: printer?.prusalinkUsername || "maker",
   prusalinkPassword: "", // blank = keep whatever is saved
   cameraAddress: printer?.cameraAddress || "", // the Buddy3D camera's IP: a Prusa's camera has its own
+  statusFrom: printer?.statusFrom || "", // Edit only: "" = its own PrusaLink, or a plugin that reports it
 });
+
+// Edit only: where a Prusa printer's status comes from, its own PrusaLink or a plugin that reports printers (the Prusa
+// Connect plugin). Shown when there's such a plugin, or the printer already uses one. Prints still go to its PrusaLink.
+function StatusFromField({ value, onChange }) {
+  const [reporters, setReporters] = useState([]);
+  useEffect(() => {
+    getStatusReporters().then(setReporters).catch(() => setReporters([]));
+  }, []);
+  if (!reporters.length && !value) return null;
+  const options = [
+    { value: "", label: "Its own PrusaLink" },
+    ...reporters.map((r) => ({ value: r.id, label: `${r.name} plugin` })),
+    ...(value && !reporters.some((r) => r.id === value) ? [{ value, label: `${value} plugin (not available)` }] : []),
+  ];
+  return <FieldSelect label="Status from (prints are still sent to its PrusaLink)" value={value} onChange={onChange} options={options} />;
+}
 // The PrusaLink password box, with Show / Hide. Showing it on a printer with one saved fetches the saved one into the box
 // (saving the form then keeps it as it is).
 function PrusaLinkPassword({ value, onChange, saved }) {
@@ -99,6 +116,7 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
       <FieldSelect label="Connection" value={conn.type} onChange={set("type")} options={CONNECTIONS} />
       {conn.type === "prusalink" ? (
         <>
+          {saved && <StatusFromField value={conn.statusFrom} onChange={set("statusFrom")} />}
           <TextField
             label="PrusaLink address (optional)"
             value={conn.prusalinkUrl}
@@ -205,6 +223,7 @@ export function EditPrinterForm({ printer, onClose }) {
         wirelessIp: wirelessIp.trim(),
         decommissioned,
         ...connectionFields(conn),
+        ...(conn.type === "prusalink" && (conn.statusFrom || printer.statusFrom) ? { statusFrom: conn.statusFrom } : {}),
       }));
       onClose();
     });

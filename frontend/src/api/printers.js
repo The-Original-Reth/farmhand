@@ -90,7 +90,7 @@ export const updatePrinter = (
   id,
   {
     name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey, connectionType, prusalinkUrl, prusalinkUsername,
-    prusalinkPassword, cameraAddress,
+    prusalinkPassword, cameraAddress, statusFrom,
   },
 ) =>
   // Blank optional fields are sent as null so they actually clear
@@ -107,6 +107,8 @@ export const updatePrinter = (
     ...(prusalinkUsername !== undefined ? { prusalink_username: prusalinkUsername } : {}),
     ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
     ...(cameraAddress !== undefined ? { camera_address: cameraAddress || null } : {}),
+    // a Prusa printer's status from its PrusaLink ("") or a plugin that reports it
+    ...(statusFrom !== undefined ? { status_from: statusFrom || "" } : {}),
   }));
 
 // Only a decommissioned printer with no 3MF files kept for it (409 otherwise, saying why)
