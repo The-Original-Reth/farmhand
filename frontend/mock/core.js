@@ -48,7 +48,8 @@ export function createCore() {
 
   const totalsFor = (p) => jobTotals(farm.jobs[p.id] || []);
   const synced = (p) => farm.connections[p.id] || {};
-  const syncedTotals = (p) => p.prusalink ? { ...totalsFor(p), total_filament_used: null } : (p.moonraker && (p.moonraker.reachable || synced(p).last_sync_at || farm.jobs[p.id]) ? totalsFor(p) : null);
+  // a Prusa printer keeps no filament total, unless it's connected through Prusa Connect: its extruder's own counter
+  const syncedTotals = (p) => p.prusalink ? { ...totalsFor(p), ...(p.statusFrom ? { total_filament_used: 238900, filament_counter: true } : { total_filament_used: null }) } : (p.moonraker && (p.moonraker.reachable || synced(p).last_sync_at || farm.jobs[p.id]) ? totalsFor(p) : null);
   const ipOf = (p) => p.wired_ip || p.wireless_ip; // wired preferred
   const moonrakerUrl = (p) => p.moonraker_url_override || (ipOf(p) ? `http://${ipOf(p)}:7125` : null);
   const mainsailUrl = (p) => { const u = moonrakerUrl(p); return u ? `http://${new URL(u).hostname}/` : null; };

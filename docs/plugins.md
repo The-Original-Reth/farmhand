@@ -293,8 +293,9 @@ In PrusaLink's own words (states `IDLE`, `BUSY`, `PRINTING`, `PAUSED`, `FINISHED
 `extras` is what you know beyond PrusaLink; every field may be left out. Farmhand shows them on the printer's page
 (`dialog` is a message on the printer's screen, `null` when there's none). `odometer_e` is the mm of filament the
 extruder has ever fed: for a print Farmhand sees start (within five minutes of it), it measures the print's filament as
-the odometer at the end less at the start, instead of estimating it from the slicer. Prints recorded before keep their
-figures.
+the odometer at the end less at the start, instead of estimating it from the slicer, and weighs it from the
+`material` loaded when neither its G-code nor its 3MF gives a density. The odometer is also the printer's lifetime
+filament (its "Filament used"), which filament maintenance reminders count. Prints recorded before keep their figures.
 
 `reachable: false` with an `error` in plain words says you can't hear from the printer now; Farmhand shows the error as
 the printer's. `link` is where the operator can see it (an "Open in <your plugin>" button on its page). `job.id` is a

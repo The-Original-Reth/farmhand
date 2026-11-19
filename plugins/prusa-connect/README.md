@@ -54,7 +54,8 @@ Farmhand's Plugins page has the same steps under **Run a plugin in its own conta
 **Beyond PrusaLink**: each report also carries what Prusa Connect knows that PrusaLink doesn't: the loaded material,
 the nozzle (size, hardened, high flow), the chamber temperature, fans, speed and flow, and a message on the printer's
 screen. Farmhand shows them on the printer's page. It also carries the extruder's odometer, from which Farmhand measures
-each new print's filament (instead of the slicer's estimate); prints recorded before keep their figures.
+each new print's filament (instead of the slicer's estimate), the printer's lifetime "Filament used", and filament
+maintenance reminders; prints recorded before keep their figures.
 
 **Sending a print**: Farmhand POSTs a one-time ticket to the plugin's `/farmhand/print`. The plugin fetches the G-code
 from Farmhand with it, puts it in Prusa Connect's storage as a temporary copy, and asks Prusa Connect to send it to the

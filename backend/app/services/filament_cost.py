@@ -111,11 +111,24 @@ def grams(filament_mm: float, diameter_mm: float, density_g_cm3: float) -> float
     return filament_mm * math.pi * (diameter_mm / 2) ** 2 * density_g_cm3 / 1000
 
 
+# The usual density (g/cm³) of a material, by the name a Prusa printer gives the filament loaded: for weighing a print
+# whose filament the printer measured (Prusa Connect) when neither its G-code nor its 3MF says (DEFAULT_DIAMETER)
+TYPICAL_DENSITY = {
+    "PLA": 1.24, "PETG": 1.27, "PET": 1.27, "ASA": 1.07, "ABS": 1.04, "PC": 1.20, "PCTG": 1.23, "TPU": 1.21,
+    "FLEX": 1.21, "PA": 1.14, "PVB": 1.08, "HIPS": 1.04, "PP": 0.90,
+}
+
+
+def measured(j: PrintJob) -> bool:
+    """Whether the printer measured the print's filament (its extruder's odometer, through Prusa Connect)."""
+    return bool((j.job_metadata or {}).get("filament_measured"))
+
+
 def grams_used(j: PrintJob, cost: dict | None) -> float | None:
     """
     The filament a print used, in grams: as its filament cost worked it out (the G-code's or 3MF's diameter and
-    density), or else from the slicer's own estimate in the G-code's metadata (its grams per mm of filament). None
-    when neither is known.
+    density), or else from the slicer's own estimate in the G-code's metadata (its grams per mm of filament), or for a
+    print the printer measured, from the usual density of the material it had loaded. None when none is known.
     """
     if cost:
         return cost["grams"]
@@ -123,8 +136,13 @@ def grams_used(j: PrintJob, cost: dict | None) -> float | None:
     try:
         per_mm = float(meta.get("filament_weight_total")) / float(meta.get("filament_total"))
     except (TypeError, ValueError, ZeroDivisionError):
-        return None
-    return round((j.filament_used or 0) * per_mm, 1) if per_mm > 0 else None
+        per_mm = 0
+    if per_mm > 0:
+        return round((j.filament_used or 0) * per_mm, 1)
+    density = TYPICAL_DENSITY.get(str(meta.get("filament_type") or "").strip().upper())
+    if measured(j) and density and j.filament_used:
+        return round(grams(j.filament_used, DEFAULT_DIAMETER, density), 1)
+    return None
 
 
 def _pick(versions: list[BundleVersion], started: dt.datetime | None) -> BundleVersion:

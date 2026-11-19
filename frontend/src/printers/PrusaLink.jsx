@@ -6,7 +6,7 @@ import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
-import { fmtDuration, formatBytes } from "../lib/format.js";
+import { fmtDuration, fmtMetres, formatBytes } from "../lib/format.js";
 import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
 import { prusaVia } from "./webUi.js";
@@ -191,6 +191,9 @@ export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = t
           <StatTile label="Prints" value={totals ? totals.total_jobs.toLocaleString() : "—"} hint="Prints Farmhand has recorded" />
           <StatTile label="Print time" value={totals ? fmtDuration(totals.total_print_time) : "—"} hint="Time spent printing, as Farmhand has recorded it" />
           <StatTile label="Longest print" value={totals ? fmtDuration(totals.longest_print) : "—"} />
+          {totals?.filament_counter && (
+            <StatTile label="Filament used" value={fmtMetres(totals.total_filament_used)} hint="The printer's own counter of filament fed, ever, through Prusa Connect" />
+          )}
         </div>
 
         <div data-testid="prusalink-note" style={uiText(12, c.textFaint, { marginTop: 10, lineHeight: 1.6 })}>

@@ -59,5 +59,5 @@ def live_status(db: Session, printer: Printer) -> dict:
             "link": printer_reports.link(printer),
         }
         found = printer_reports.extras(printer) if out["reachable"] else None
-        out["extras"] = {k: v for k, v in found.items() if k != "odometer_e"} if found else None
+        out["extras"] = found or None  # with odometer_e: the printer's own lifetime filament (mm)
     return out

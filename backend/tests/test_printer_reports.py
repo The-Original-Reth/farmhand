@@ -247,7 +247,7 @@ def _starting(odometer, time_printing=10, state="PRINTING", job_id=13, progress=
             "job": {**PRINTING["job"], "id": job_id, "state": state, "time_printing": time_printing, "progress": progress}}
 
 
-def test_the_extras_are_shown_but_not_the_odometer(api, prusalink):
+def test_the_extras_are_shown(api, prusalink):
     auth = _install(api)
     p = _core_one(api)
     api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
@@ -255,7 +255,7 @@ def test_the_extras_are_shown_but_not_the_odometer(api, prusalink):
     _report(api, auth, p["id"], {**READY, "state": "ATTENTION", "extras": {**EXTRAS, "dialog": dialog}})
     out = api.get(f"/printers/{p['id']}/prusalink").json()
     assert out["extras"]["material"] == "PETG" and out["extras"]["temp_chamber"] == 29.4 and out["extras"]["dialog"] == dialog
-    assert "odometer_e" not in out["extras"]
+    assert out["extras"]["odometer_e"] == 236033.0  # the printer's own lifetime filament, shown on its page
     plain = _core_one(api, "MK4")
     assert api.get(f"/printers/{plain['id']}/prusalink").json()["extras"] is None  # a PrusaLink printer has none
 
@@ -284,3 +284,49 @@ def test_a_print_first_seen_part_way_or_from_prusalink_keeps_no_measured_figure(
     jobs = {j["filename"]: j for j in api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]}
     assert jobs["older.bgcode"]["id"] == before["id"] and jobs["older.bgcode"]["filament_used"] == before["filament_used"]
     assert jobs["Frog keychain.bgcode"]["filament_used"] == 0  # not measured: its start wasn't seen
+
+
+# ------------------------------------------------------------------ filament through Prusa Connect: weight, material, totals, reminders
+
+
+def test_a_measured_print_is_weighed_from_its_material_and_notes_it(api, prusalink):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], _starting(236033.0))
+    _report(api, auth, p["id"], _starting(237033.0, time_printing=1200, state="FINISHED", progress=100))  # 1 m of PETG
+    [job] = api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"]
+    assert job["filament_used"] == 1000 and job["filament_type"] == "PETG" and not job["filament_estimated"]
+    assert job["filament_grams"] == 3.1  # 1 m of 1.75 mm filament at PETG's 1.27 g/cm³
+    assert job["filament_cost"] is None  # no price: no 3MF or G-code for it
+
+
+def test_its_filament_total_is_the_printers_own_counter_and_holds_while_unheard(api, prusalink, monkeypatch):
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], {**READY, "extras": EXTRAS})
+    totals = api.get(f"/printers/{p['id']}/prusalink").json()["totals"]
+    assert totals["total_filament_used"] == 236033.0 and totals["filament_counter"]
+    monkeypatch.setattr(printer_reports, "STALE_SECONDS", -1)  # the plugin stopped reporting
+    api.get(f"/printers/{p['id']}/prusalink")
+    assert api.get(f"/printers/{p['id']}/maintenance").json()["totals"]["total_filament_used"] == 236033.0  # kept
+    plain = _core_one(api, "MK4")
+    api.get(f"/printers/{plain['id']}/prusalink")
+    assert api.get(f"/printers/{plain['id']}/maintenance").json()["totals"].get("total_filament_used") is None
+
+
+def test_a_filament_reminder_counts_the_prusa_connect_printers_odometer(api, prusalink):
+    auth = _install(api)
+    p = _core_one(api)
+    reminder = {"type": "repeat", "filament": {"bool": True, "value": 2}}  # every 2 m
+    r = api.post(f"/printers/{p['id']}/maintenance", json={"name": "Clean the extruder", "reminder": reminder})
+    assert r.status_code == 422 and "doesn't report how much filament" in r.json()["detail"]  # on PrusaLink: refused
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], {**READY, "extras": EXTRAS})
+    assert api.post(f"/printers/{p['id']}/maintenance", json={"name": "Clean the extruder", "reminder": reminder}).status_code in (200, 201)
+    _report(api, auth, p["id"], {**READY, "extras": {**EXTRAS, "odometer_e": 238533.0}})  # 2.5 m fed since
+    api.get(f"/printers/{p['id']}/prusalink")
+    [entry] = api.get(f"/printers/{p['id']}/maintenance").json()["entries"]
+    [check] = [c for c in entry["checks"] if c["kind"] == "filament"]
+    assert check["used"] == 2.5 and check["due"]
