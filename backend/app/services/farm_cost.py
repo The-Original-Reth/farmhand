@@ -24,9 +24,11 @@ from .energy import zone
 
 CHUNK = 500  # prints costed at a time, so a long history isn't all held at once
 
-# {(printer id, time zone): (what its figures were made from, {"months", "days"})}: costing every print takes a while,
-# so a printer's figures are kept until one of its prints, the G-codes read for it, or its 3MFs change (see _made_from)
-_cache: dict[tuple[int, str], tuple[tuple, dict]] = {}
+# {(printer id, time zone): (what they were made from, (months, days))}: the figures of a printer's finished prints, by
+# month and by day, unrounded. Costing every print takes a while, so they're kept until one of its finished prints, the
+# G-codes read for it, or its 3MFs change (see _made_from). A print still going changes on every poll, so the few that
+# are aren't kept: they're costed afresh each time and added on (see _printer_filament).
+_cache: dict[tuple[int, str], tuple[tuple, tuple[dict, dict]]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -47,13 +49,13 @@ def filament_by_month(db: Session, tz: str | None) -> dict:
         with _cache_lock:
             cached = _cache.get(key)
         if cached and cached[0] == now:
-            figures = cached[1]
+            finished = cached[1]
         else:
-            figures = _printer_filament(db, printer_id, where_tz)
+            finished = _tally(db, printer_id, where_tz, finished=True)
             with _cache_lock:
-                _cache[key] = (now, figures)
+                _cache[key] = (now, finished)
         out.append({
-            "printer_id": printer_id, **figures,
+            "printer_id": printer_id, **_printer_filament(db, printer_id, where_tz, finished),
             "energy_days": [{"key": d["key"], "whole": d["whole"], "partial": d["partial"]} for d in energy.by_day(db, printer_id, tz)],
         })
     return {"printers": out}
@@ -61,12 +63,13 @@ def filament_by_month(db: Session, tz: str | None) -> dict:
 
 def _made_from(db: Session) -> dict[int, tuple]:
     """
-    For each printer, what its filament figures depend on, in a few numbers that change whenever any of it does: its
-    prints (one added, removed, or changed by a sync: synced_at), the G-codes read for their price, and its 3MF versions.
+    For each printer, what its finished prints' figures depend on, in a few numbers that change whenever any of it does:
+    its finished prints (one added, removed, finishing, or changed by a sync: synced_at), the G-codes read for their
+    price, and its 3MF versions.
     """
     jobs = db.execute(
         select(PrintJob.printer_id, func.count(), func.max(PrintJob.id), func.max(PrintJob.synced_at), func.sum(PrintJob.filament_used))
-        .group_by(PrintJob.printer_id)
+        .where(PrintJob.end_time.isnot(None)).group_by(PrintJob.printer_id)
     ).all()
     gcodes = db.execute(
         select(GcodeFilament.printer_id, func.count(), func.max(GcodeFilament.id), func.max(GcodeFilament.read_at))
@@ -83,12 +86,32 @@ def _made_from(db: Session) -> dict[int, tuple]:
     return {pid: tuple(parts) for pid, parts in out.items()}
 
 
-def _printer_filament(db: Session, printer_id: int, where_tz) -> dict:
-    """One printer's {"months", "days"} (see filament_by_month), every print costed."""
+def _printer_filament(db: Session, printer_id: int, where_tz, finished: tuple[dict, dict]) -> dict:
+    """One printer's {"months", "days"} (see filament_by_month): its finished prints' figures (as _tally) with the prints
+    still going added on, rounded."""
+    months, days = ({k: dict(m) for k, m in rows.items()} for rows in finished)
+    going_months, going_days = _tally(db, printer_id, where_tz, finished=False)
+    for rows, more in ((months, going_months), (days, going_days)):
+        for k, m in more.items():
+            into = rows.setdefault(k, {**m, **{f: 0 for f in m if f != "key"}})
+            for f, v in m.items():
+                if f != "key":
+                    into[f] += v
+    for m in (*months.values(), *days.values()):
+        m["grams"], m["filament_cost"] = round(m["grams"], 1), round(m["filament_cost"], 2)
+    return {"months": _newest_first(months), "days": _newest_first(days)}
+
+
+def _tally(db: Session, printer_id: int, where_tz, *, finished: bool) -> tuple[dict, dict]:
+    """A printer's finished prints (or those still going) that used filament, each costed: ({month: figures}, {day:
+    figures}), unrounded."""
     months: dict[str, dict] = {}
     days: dict[str, dict] = {}
     ids = db.scalars(
-        select(PrintJob.id).where(PrintJob.printer_id == printer_id, PrintJob.filament_used > 0, PrintJob.start_time.isnot(None))
+        select(PrintJob.id).where(
+            PrintJob.printer_id == printer_id, PrintJob.filament_used > 0, PrintJob.start_time.isnot(None),
+            PrintJob.end_time.isnot(None) if finished else PrintJob.end_time.is_(None),
+        )
     ).all()
     for start in range(0, len(ids), CHUNK):
         jobs = list(db.scalars(select(PrintJob).where(PrintJob.id.in_(ids[start:start + CHUNK]))))
@@ -100,9 +123,7 @@ def _printer_filament(db: Session, printer_id: int, where_tz) -> dict:
             _count(months, day[:7], grams, costs[j.id], guess)
             _count(days, day, grams, costs[j.id], guess)
         db.expunge_all()  # done with these prints: don't keep them all in the session
-    for m in (*months.values(), *days.values()):
-        m["grams"], m["filament_cost"] = round(m["grams"], 1), round(m["filament_cost"], 2)
-    return {"months": _newest_first(months), "days": _newest_first(days)}
+    return months, days
 
 
 def _count(rows: dict[str, dict], key: str, grams: float | None, cost: dict | None, estimated: bool = False) -> None:
