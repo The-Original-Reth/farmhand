@@ -68,6 +68,12 @@ export function streamControlRoutes(ctx) {
       viewers: live && p.id === "stream" ? 12 : null,
       // (Twitch's still filling, behind its holding screen, so both looks show)
       buffer: live ? (p.id === "twitch" ? { seconds: 60, held: 23.5, filling: true, holding: true } : { seconds: 60, held: 59.2, filling: false, holding: false }) : null,
+      // where its work is done (YouTube's all on the card; Twitch's compressing left for the processor, so the note shows)
+      hardware: live
+        ? p.id === "twitch"
+          ? { encoder: "cpu", cameras: "gpu", note: "The NVIDIA card wouldn't compress the stream (it said it had no session free, or isn't in reach), so it's compressed on the processor until the card takes it again." }
+          : { encoder: "gpu", cameras: "gpu", note: null }
+        : null,
     };
   };
   const entry = (p, answer = null) => ({

@@ -28,7 +28,11 @@ CHOSEN_KEY = "stream_control_streams"
 # music folders read it too.
 PAGE_PATH = "/api/stream"
 CAMERA_STATES = ("live", "down", "starting")
-NOTHING_SHOWN = {"links": [], "cameras": [], "viewers": None, "buffer": None}
+NOTHING_SHOWN = {"links": [], "cameras": [], "viewers": None, "buffer": None, "hardware": None}
+# What a stream plugin says it compresses its stream with ("encoder") and unpacks its cameras with ("camera_decoding"),
+# as Stream control shows them: "gpu" (an NVIDIA card) or "cpu" (the processor)
+ENCODERS = {"nvenc": "gpu", "cpu": "cpu"}
+DECODERS = {"gpu": "gpu", "cpu": "cpu"}
 
 
 # The YouTube (id "stream") and Twitch (id "twitch") plugins from before Stream control: no `stream_control` in their
@@ -161,9 +165,23 @@ def _buffer(status: dict) -> dict | None:
             "filling": delay.get("filling") is True, "holding": status.get("holding") is True}
 
 
+def _hardware(status: dict) -> dict | None:
+    """Where a live stream's work is done, as its plugin says: {encoder (compressing the stream), cameras (unpacking
+    and fitting them): "gpu" | "cpu" | None (not said), note (why something the card did is on the processor now, or
+    None)}; None when not live, or a plugin that says neither."""
+    if status.get("live") is not True:
+        return None
+    encoder, cameras = ENCODERS.get(status.get("encoder")), DECODERS.get(status.get("camera_decoding"))
+    if encoder is None and cameras is None:
+        return None
+    return {"encoder": encoder, "cameras": cameras,
+            "note": _text(status.get("encoder_note")) or _text(status.get("camera_decoding_note"))}
+
+
 def _shown(page: dict) -> dict:
     """From the plugin's own page answer: {links, cameras: [{key, label, state: live | down | starting, since}] (while
-    live), viewers (YouTube's, while live), buffer (its delay, while live: _buffer)}."""
+    live), viewers (YouTube's, while live), buffer (its delay, while live: _buffer), hardware (GPU or CPU, while live:
+    _hardware)}."""
     status, settings = _dict(page.get("status")), _dict(page.get("settings"))
     cameras = [
         {"key": c.get("key"), "label": c.get("label") or c.get("key"), "state": c["state"], "since": c.get("since")}
@@ -171,7 +189,7 @@ def _shown(page: dict) -> dict:
     ]
     viewers = _dict(status.get("youtube")).get("viewers")
     return {"links": _links(status, settings), "cameras": cameras, "viewers": viewers if type(viewers) is int else None,
-            "buffer": _buffer(status)}
+            "buffer": _buffer(status), "hardware": _hardware(status)}
 
 
 def _status(address: str, path: str, method: str = "GET", legacy: bool = False) -> dict:
@@ -221,6 +239,7 @@ def _each(db: Session, ask, only_chosen: bool = False) -> list[dict]:
 def listed(db: Session) -> list[dict]:
     """Every stream plugin and how its stream is doing: [{id, name, site, enabled, chosen (brought in), live, links,
     cameras (each one's state while live), viewers, buffer (its delay while live: {seconds, held, filling, holding}),
+    hardware (while live, where its work is done: {encoder, cameras: "gpu" | "cpu" | None, note}),
     following, error, watch_url, reachable (None: switched off, not asked), can_read_design (granted stream:read)}]."""
     return _each(db, _status)
 
