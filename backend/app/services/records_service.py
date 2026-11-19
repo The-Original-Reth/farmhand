@@ -96,6 +96,7 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
                 "decommissioned": p.decommissioned, "moonraker_url": p.moonraker_url_override,
                 "connection_type": p.connection_type,
                 "prusalink_url": p.prusalink_url_override, "prusalink_username": p.prusalink_username,
+                "status_from": p.status_from,  # a plugin reporting its status in place of its PrusaLink, or null
                 "camera_address": p.camera_address,
                 "moonraker_api_key": conn.api_key if conn else None,
                 "prusalink_password": p.prusalink_row.password if p.prusalink_row else None,
@@ -201,6 +202,16 @@ def _fill_secrets(printer: Printer, cfg: dict) -> bool:
     return filled
 
 
+def _restore_status_from(db: Session, printer: Printer, cfg: dict) -> None:
+    """A Prusa printer whose status came from a plugin does again, if that plugin is here and may report it; else it
+    starts on its own PrusaLink."""
+    from . import printer_reports
+
+    plugin_id = _text(cfg.get("status_from"), 40)
+    if plugin_id and plugin_id in {r["id"] for r in printer_reports.reporters(db)}:
+        printer_reports.choose(db, printer, plugin_id)
+
+
 def restore_printers(db: Session, records: list[dict]) -> dict:
     out = {"printers_added": [], "printers_filled": [], "prints_added": 0, "readings_added": 0, "prices_added": 0, "warnings": []}
     for rec in records:
@@ -225,6 +236,7 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
                     printer_id=printer.id, url=pl_url if pl_url.lower().startswith(("http://", "https://")) else None,
                     username=_text(cfg.get("prusalink_username"), 120) or "maker",
                 )
+                _restore_status_from(db, printer, cfg)
             camera = _text(cfg.get("camera_address"), 255)
             if camera:
                 printer.camera_row = PrinterCamera(printer_id=printer.id, address=camera)

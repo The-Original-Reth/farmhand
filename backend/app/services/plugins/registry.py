@@ -151,8 +151,13 @@ def new_token(db: Session, plugin_id: str) -> str:
 
 
 def remove(db: Session, plugin_id: str) -> None:
-    """The plugin and its token. (Its container and storage are the plugin manager's, a later step.)"""
+    """The plugin and its token. (Its container and storage are the plugin manager's, a later step.) Printers that took
+    their status from it go back to asking their own PrusaLink."""
+    from ...models import PrinterStatusSource
+
     db.delete(get(db, plugin_id))
+    for row in db.scalars(select(PrinterStatusSource).where(PrinterStatusSource.plugin_id == plugin_id)):
+        db.delete(row)
     db.commit()
 
 

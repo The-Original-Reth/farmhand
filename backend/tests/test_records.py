@@ -57,7 +57,7 @@ def test_each_printer_gets_a_file_with_everything_in_it_its_api_key_too(db_sessi
     assert doc[rs.RECORD_MARKER] == "printers" and doc["name"] == "V2 BOG"
     assert doc["printer"] == {"kind": "Voron 2.4", "wired_ip": "192.168.10.123", "wireless_ip": None,
                               "decommissioned": False, "moonraker_url": "http://192.168.10.123:7125",
-                              "connection_type": "moonraker", "prusalink_url": None, "prusalink_username": None,
+                              "connection_type": "moonraker", "prusalink_url": None, "prusalink_username": None, "status_from": None,
                               "camera_address": None, "moonraker_api_key": "SECRET-KEY", "prusalink_password": None}
     assert doc["notes"] == "Bed: PEI. Lives on shelf 2." and doc["service_notes"] == "Gates 6mm belts"
     assert doc["service"]["history"][0]["note"] == "new belts" and doc["service"]["interval_hours"] == 1500

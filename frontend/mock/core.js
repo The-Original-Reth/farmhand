@@ -78,7 +78,8 @@ export function createCore() {
     has_moonraker_api_key: !!p.apiKey, service: service(p),
     connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
-    has_prusalink_password: !!p.prusalink?.hasPassword, camera_address: p.cameraAddress || null,
+    has_prusalink_password: !!p.prusalink?.hasPassword, status_from: (p.prusalink && p.statusFrom) || null,
+    camera_address: p.cameraAddress || null,
     sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, aliases, settings_copy }) => ({ id, name, aliases: aliases || [], settings_copied_from: settings_copy?.copied_from || null })),
     default_sub_printer_id: p.defaultSubPrinterId ?? null,
   });

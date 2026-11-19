@@ -21,6 +21,7 @@ export const normalizePrinter = (p) => ({
   prusalinkUrlOverride: p.prusalink_url_override || null,
   prusalinkUsername: p.prusalink_username || "maker",
   hasPrusalinkPassword: !!p.has_prusalink_password, // the password itself only comes from getPrusaLinkPassword
+  statusFrom: p.status_from || null, // a plugin reporting a Prusa printer's status instead of its PrusaLink (its id), or null
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
   // its printer presets in the slicer, A to Z: [{ id, name, aliases, settingsCopiedFrom }]; settingsCopiedFrom: a copy's
   // original, whose printer settings it was copied with (null for one that isn't a copy, or got none)
@@ -165,9 +166,18 @@ export const saveSubPrinterParts = (printerId, subPrinterId, parts, removes) =>
 // and maintenance use the same calls as a Moonraker printer's (below); its maintenance is kept in Farmhand. ----
 
 // { reachable, error, error_kind, state, printer_type, firmware, temps: { temp_nozzle, target_nozzle, temp_bed,
-//   target_bed }, job: { id, state, file, progress, time_printing, time_remaining } | null, last_sync_at, totals }
+//   target_bed }, job: { id, state, file, progress, time_printing, time_remaining } | null, last_sync_at, totals,
+//   status_from: { id, name, link } | null (a plugin reporting its status in place of its PrusaLink) }
 // Asking also brings Farmhand's record of its prints up to date.
 export const getPrusaLinkStatus = (printerId) => request(`/printers/${printerId}/prusalink`);
+
+// The plugins a Prusa printer can take its status from instead of its PrusaLink ([{ id, name }]: installed, switched
+// on and granted printers:report, like the Prusa Connect plugin)
+export const getStatusReporters = () => request("/printers/status-reporters");
+
+// Take a Prusa printer's status from that plugin, or (null) from its own PrusaLink again. Resolves to the printer.
+export const setPrinterStatusFrom = (printerId, pluginId) =>
+  request(`/printers/${printerId}`, jsonBody("PATCH", { status_from: pluginId || "" }));
 
 // The PrusaLink password saved for it (null when none is): asked for only when it's to be shown
 export const getPrusaLinkPassword = async (printerId) => (await request(`/printers/${printerId}/prusalink/password`)).password;

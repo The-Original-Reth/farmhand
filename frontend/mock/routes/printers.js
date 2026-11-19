@@ -63,6 +63,10 @@ export function printersRoutes(ctx) {
       .filter((f) => ![f.ip, f.wired_ip, f.wireless_ip].some((h) => h && known.has(h)))
       .map((f) => ({ ...f, decommissioned_id: was(f)?.id ?? null, decommissioned_name: was(f)?.name ?? null }));
   });
+  // The plugins a Prusa printer can take its status from (switched on, granted printers:report): farm.plugins is made
+  // by routes/plugins.js
+  const statusReporters = () => (farm.plugins || []).filter((p) => p.enabled && p.permissions.includes("printers:report")).map(({ id, name }) => ({ id, name }));
+  on("GET", "/printers/status-reporters", () => statusReporters());
   on("GET", "/printers/:id", ({ id }) => printerOut(printer(id)));
   on("POST", "/printers", (_, body) => {
     if (!body.name?.trim()) throw new HttpError(422, "A printer needs a name");
@@ -94,7 +98,10 @@ export function printersRoutes(ctx) {
     if ("moonraker_url" in body) p.moonraker_url_override = body.moonraker_url || null;
     if ("camera_address" in body) p.cameraAddress = body.camera_address || null;
     if (body.moonraker_api_key != null) p.apiKey = body.moonraker_api_key || null;
-    if (body.connection_type === "moonraker") delete p.prusalink;
+    if (body.connection_type === "moonraker") {
+      delete p.prusalink;
+      p.statusFrom = null;
+    }
     if (body.connection_type === "prusalink" && !p.prusalink) p.prusalink = { reachable: true, firmware: "6.2.0", username: "maker", hasPassword: false, url: null };
     if (p.prusalink) {
       if ("prusalink_url" in body) p.prusalink.url = body.prusalink_url || null;
@@ -103,6 +110,12 @@ export function printersRoutes(ctx) {
         p.prusalink.hasPassword = !!body.prusalink_password;
         p.prusalink.password = body.prusalink_password || null;
       }
+    }
+    if (body.status_from != null) {
+      const wanted = body.status_from.trim() || null;
+      if (wanted && !p.prusalink) throw new HttpError(409, "Only a Prusa printer (one set up for PrusaLink) can take its status from a plugin.");
+      if (wanted && !statusReporters().some((r) => r.id === wanted)) throw new HttpError(409, "That plugin can't report printers' status: it isn't installed and switched on with the \"report your printers' status\" permission. Check it on the Plugins page.");
+      p.statusFrom = wanted;
     }
     return printerOut(p);
   });

@@ -15,7 +15,7 @@ from ..models import (
 
 def list_printers(db: Session) -> list[Printer]:
     rows = (
-        Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row,
+        Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row, Printer.status_source_row,
         Printer.camera_row,
     )
     return list(db.scalars(
@@ -150,6 +150,7 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
 
     if changes.get("connection_type") == "moonraker":
         printer.prusalink_row = None  # the login goes; the prints Farmhand recorded stay
+        printer.status_source_row = None
     elif changes.get("connection_type") == "prusalink" or (
         printer.prusalink_row is not None and {"prusalink_url", "prusalink_username", "prusalink_password"} & changes.keys()
     ):
@@ -161,6 +162,11 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
             link.username = changes["prusalink_username"].strip()[:120] or "maker"
         if changes.get("prusalink_password") is not None:
             link.password = changes["prusalink_password"] or None
+
+    if changes.get("status_from") is not None:
+        from . import printer_reports
+
+        printer_reports.choose(db, printer, changes["status_from"].strip() or None)
 
     if "camera_address" in changes:
         address = changes["camera_address"]  # already checked; None = no camera

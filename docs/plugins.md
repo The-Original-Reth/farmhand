@@ -4,7 +4,9 @@ A plugin is a program of your own that adds something to a print farm's Farmhand
 notifier. Streaming to YouTube is itself a plugin, [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin), in a repository of its own, and so is streaming to Twitch, [farmhand-twitch-plugin](https://github.com/The-Original-Reth/farmhand-twitch-plugin): Farmhand has no
 Stream page of its own any more. It runs in **its own Docker container**, with its own storage, written in any language. It never touches
 Farmhand's database, files or other containers. It reads what it needs from Farmhand through the **plugin API**
-described here, using a token the operator gave it, and only what the operator allowed.
+described here, using a token the operator gave it, and only what the operator allowed. A plugin may also be allowed to
+report Prusa printers' status, in place of Farmhand asking their PrusaLink: [`plugins/prusa-connect`](../plugins/prusa-connect/README.md)
+does that from the farm's Prusa Connect server.
 
 **Start from the example:** [`plugins/hello`](../plugins/hello/README.md) is a small, working plugin (each printer and
 its print's progress, updated live, in Farmhand's colours) with its Dockerfile, tests and instructions for making it
@@ -12,7 +14,7 @@ your own. It shows everything below in use: the manifest, the token and its refu
 Farmhand, and settings kept in the plugin's own volume.
 
 What's here (plugin API version 1): the manifest, adding a plugin on Farmhand's Plugins page, the token and
-permissions, the read-only endpoints, the health check, and your plugin's page shown inside Farmhand. Farmhand doesn't
+permissions, the endpoints (and the one a plugin may report a printer's status through), the health check, and your plugin's page shown inside Farmhand. Farmhand doesn't
 start or stop your container: the operator runs it (on Farmhand's machine or another one on the farm's network) the
 way your instructions say, and adds it to Farmhand by its address.
 
@@ -83,9 +85,11 @@ Farmhand checks the manifest when the plugin is installed, and says in plain wor
 | `farm:read` | see Farmhand's colours and the farm's time zone | `GET /farm` |
 | `stream:migrate` | take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy) | `GET /stream/migrate`, `POST /stream/migrate` |
 | `stream:read` | see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site | `GET /stream/design`, `GET /stream/pictures/{name}`, `GET /stream/slideshows/{show}/pictures/{name}`, `GET /stream/music/{name}` |
+| `printers:report` | report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you switch to it | `PUT /printers/{id}/status` |
 
-The operator grants some or all of the permissions the manifest asks for, never more. There are no write permissions
-yet; they'll be added one at a time, when a plugin needs one.
+The operator grants some or all of the permissions the manifest asks for, never more. `printers:report` is the only one
+that changes anything, and only for the printers the operator switches to the plugin; others are added one at a time,
+when a plugin needs one.
 
 `stream:migrate` is only for a Stream plugin taking over from the Stream page older Farmhands had built in (like
 [FarmHand - YouTube Plugin](https://github.com/The-Original-Reth/farmhand-youtube-plugin)): ask for it only if that's what your plugin is. It hands over secrets
@@ -140,13 +144,15 @@ Which plugin the token is, and what it may read. A good first call, to check the
 ### `GET /printers` (`printers:read`)
 
 Every printer in service (retired ones are left out), by name. `connection_type` is `moonraker` (Klipper) or
-`prusalink` (Prusa). Addresses that don't apply to the printer's kind are `null`. Never an API key or password.
+`prusalink` (Prusa). `status_from` is the plugin (its id) a Prusa printer's status comes from, or `null` when Farmhand
+asks the printer itself (see `PUT /printers/{id}/status`). Addresses that don't apply to the printer's kind are `null`.
+Never an API key or password.
 
 ```json
 {
   "printers": [
     {
-      "id": 1, "name": "VT 1190", "kind": "Voron Trident", "connection_type": "moonraker",
+      "id": 1, "name": "VT 1190", "kind": "Voron Trident", "connection_type": "moonraker", "status_from": null,
       "addresses": {
         "wired_ip": "10.0.6.21", "wireless_ip": "10.0.7.21",
         "moonraker_url": "http://10.0.6.21:7125", "mainsail_url": "http://10.0.6.21/",
@@ -154,7 +160,7 @@ Every printer in service (retired ones are left out), by name. `connection_type`
       }
     },
     {
-      "id": 2, "name": "Core One", "kind": null, "connection_type": "prusalink",
+      "id": 2, "name": "Core One", "kind": null, "connection_type": "prusalink", "status_from": "prusa-connect",
       "addresses": {
         "wired_ip": "10.0.6.30", "wireless_ip": null, "moonraker_url": null, "mainsail_url": null,
         "prusalink_url": "http://10.0.6.30", "camera_address": "10.0.6.40"
@@ -245,6 +251,40 @@ much longer than that has gone (time your reads out at 45 seconds or so). Events
 you're not connected is missed, so after connecting, ask `GET /printers/{id}/print` for how things stand. Reconnect if
 the connection drops (Farmhand restarting ends it). Events say when a print starts, pauses or ends, not how it creeps
 along: for progress, ask each printer's print now and then (every 20 seconds or so is plenty).
+
+### `PUT /printers/{id}/status` (`printers:report`)
+
+A Prusa printer's status, from a plugin it takes its status from. The operator chooses that for each Prusa printer, in
+**Status from** in its PrusaLink section (Farmhand's default is the printer's own PrusaLink); `GET /printers` says
+which, in `status_from`. Any other printer is refused with 403, saying where its status comes from now.
+
+Farmhand then answers from your reports wherever it would have asked the printer's PrusaLink: the printer's page,
+Monitor, `GET /printers/{id}/print`, `/events`, and the print history it records (a new `job.id` is a new print; a job
+that reaches `FINISHED`, `STOPPED` or `ERROR` has ended). Sending the printer a print still goes to its PrusaLink.
+Report every few seconds, also while nothing changes: a printer with no report for two minutes shows as unreachable,
+saying your plugin hasn't reported.
+
+In PrusaLink's own words (states `IDLE`, `BUSY`, `PRINTING`, `PAUSED`, `FINISHED`, `STOPPED`, `ERROR`, `ATTENTION`,
+`READY`); every field may be left out or `null`:
+
+```json
+{
+  "reachable": true, "error": null,
+  "state": "PRINTING",
+  "temps": { "temp_nozzle": 214.6, "target_nozzle": 215, "temp_bed": 60, "target_bed": 60 },
+  "printer_type": "COREONE", "firmware": "6.4.0",
+  "job": {
+    "id": 12, "state": "PRINTING", "file": "Frog keychain.bgcode", "path": "/usb/FROGKE~1.BGC",
+    "progress": 40, "time_printing": 1200, "time_remaining": 1800
+  },
+  "link": "http://192.168.10.93:8080/"
+}
+```
+
+`reachable: false` with an `error` in plain words says you can't hear from the printer now; Farmhand shows the error as
+the printer's. `link` is where the operator can see it (an "Open in <your plugin>" button on its page). `job.id` is a
+whole number (the printer's own job number); `progress` 0 to 100; times in seconds. The answer is
+`{"recorded": true, "error": null}`, or `recorded: false` with why.
 
 ### `GET /farm` (`farm:read`)
 

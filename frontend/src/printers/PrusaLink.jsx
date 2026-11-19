@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Upload } from "lucide-react";
 import { c } from "../theme.js";
-import { foldHeading, headerButton, panelBox, uiText } from "../styles.js";
-import { errorText, getPrintStats, getPrusaLinkStatus, sendPrint } from "../api.js";
+import { fieldBox, foldHeading, headerButton, panelBox, uiText } from "../styles.js";
+import { errorText, getPrintStats, getPrusaLinkStatus, getStatusReporters, sendPrint, setPrinterStatusFrom } from "../api.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
@@ -75,7 +75,56 @@ export function usePrusaLink(printerId, key, onChanged) {
 const fmtTemp = (now, target) => (now == null ? "—" : `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ""}`);
 
 // Live status (state, temperatures, the print running), Farmhand's statistics for it, "Open PrusaLink" and "Send a print"
-export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
+// Where a Prusa printer's status comes from: its own PrusaLink (the default), or a plugin that reports it (the Prusa
+// Connect plugin, say). Shown only when there's such a plugin, or the printer already uses one.
+function StatusSource({ printer, onPrinterChanged }) {
+  const [reporters, setReporters] = useState([]);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    getStatusReporters().then(setReporters).catch(() => setReporters([]));
+  }, []);
+  const known = reporters.some((r) => r.id === printer.statusFrom);
+  if (!reporters.length && !printer.statusFrom) return null;
+
+  const choose = async (pluginId) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await setPrinterStatusFrom(printer.id, pluginId || null);
+      await onPrinterChanged?.();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div data-testid="prusalink-status-from" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+      <label htmlFor="prusalink-status-from" style={uiText(12, c.textMuted)}>Status from</label>
+      <select
+        id="prusalink-status-from"
+        value={printer.statusFrom || ""}
+        disabled={saving}
+        onChange={(e) => choose(e.target.value)}
+        style={{ ...fieldBox(), padding: "5px 8px" }}
+      >
+        <option value="">Its own PrusaLink</option>
+        {reporters.map((r) => (
+          <option key={r.id} value={r.id}>{r.name} plugin</option>
+        ))}
+        {printer.statusFrom && !known && <option value={printer.statusFrom}>{printer.statusFrom} plugin (not available)</option>}
+      </select>
+      <span style={uiText(12, c.textFaint)}>
+        {printer.statusFrom ? "Prints are still sent to its PrusaLink." : "Or a plugin that reports printers, like Prusa Connect."}
+      </span>
+      {error && <span role="alert" style={uiText(12, c.danger)}>{error}</span>}
+    </div>
+  );
+}
+
+export function PrusaLinkCard({ printer, pl, summary, onPrinterChanged, open = true, onToggle }) {
   const { status, stats } = pl;
   const [chosen, setChosen] = useState(null); // the file picked to send, waiting for the go-ahead
   const fileInput = useRef(null);
@@ -83,6 +132,7 @@ export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
   const archive = stats?.archive;
   const job = status?.job;
   const free = !!status?.reachable && PRUSALINK_FREE.includes(status.state);
+  const reporter = status?.status_from; // { id, name, link } when a plugin reports its status
 
   let dot = c.textFaint;
   let line = "Checking the printer…";
@@ -93,7 +143,7 @@ export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
       line = `${PRUSALINK_STATES[status.state] || status.state || "Connected"}${what ? ` · ${what}` : ""}`;
     } else {
       dot = c.danger;
-      line = status.error || "Can't reach PrusaLink.";
+      line = status.error || (reporter ? `The ${reporter.name} plugin can't reach it.` : "Can't reach PrusaLink.");
     }
   }
 
@@ -108,6 +158,12 @@ export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
         </div>
         {open && (
         <div style={{ display: "flex", gap: 8 }}>
+          {reporter?.link && (
+            <a data-testid="open-status-source" href={reporter.link} target="_blank" rel="noreferrer" style={headerButton()} title={reporter.link}>
+              <ExternalLink size={12} />
+              Open in {reporter.name}
+            </a>
+          )}
           {printer.prusalinkUrl && (
             <a data-testid="open-prusalink" href={printer.prusalinkUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.prusalinkUrl}>
               <ExternalLink size={12} />
@@ -140,6 +196,7 @@ export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
       {open && (
       <div id="prusalink-card-body" style={panelBox({ padding: 14 })}>
         <ConnectionLine testId="prusalink-status" dot={dot} line={line} reachable={status?.reachable} url={printer.prusalinkUrl} />
+        <StatusSource printer={printer} onPrinterChanged={onPrinterChanged} />
 
         {job && (
           <JobProgress
@@ -162,8 +219,10 @@ export function PrusaLinkCard({ printer, pl, summary, open = true, onToggle }) {
         </div>
 
         <div data-testid="prusalink-note" style={uiText(12, c.textFaint, { marginTop: 10, lineHeight: 1.6 })}>
-          Prusa printers keep no print history, so Farmhand notes each print while it runs: every minute, and every few seconds
-          while this page is open. A print that starts and ends between two looks is missed.
+          {reporter
+            ? <>Its status comes from the {reporter.name} plugin, and Farmhand notes each print from what the plugin reports. </>
+            : <>Prusa printers keep no print history, so Farmhand notes each print while it runs: every minute, and every few seconds
+              while this page is open. A print that starts and ends between two looks is missed.</>}
           <ArchiveSummary archive={archive} failedLabel="failed or unknown" />
         </div>
       </div>
