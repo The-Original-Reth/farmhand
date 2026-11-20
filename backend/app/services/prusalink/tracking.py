@@ -11,6 +11,10 @@ PrusaLink says nothing of the filament a print uses: each print's filament is es
 from (filament_estimate.py), and says so. A printer connected through Prusa Connect reports its extruder's odometer
 (the mm of filament it has ever fed): a print Farmhand sees start there is measured instead, as the odometer now less
 what it was at the start ("filament_measured"). Prints recorded before, through PrusaLink, keep their estimates.
+
+Prusa Connect can report a new print's job number before its printing time, so a new print's first report may still
+say how long the print before it ran. Such a print counts from when it was first seen until the printer gives its own
+time, which then puts its start right (_carried_over, _put_start_right).
 """
 from __future__ import annotations
 
@@ -104,6 +108,7 @@ def _record(
     job_id = current.get("id") if current else None
     status = JOB_STATUS.get(current.get("state"), "in_progress") if current else None
     row = db.get(PrintJob, link.current_print_id) if link.current_print_id else None
+    before = row  # the print followed until now: a new one's first report may still carry its printing time
 
     if row is not None and (link.current_job_id != job_id or (row.end_time is not None and status == "in_progress")):
         # a different job now (or none, or the same id starting over after a restart): the one before has ended
@@ -124,10 +129,14 @@ def _record(
         # which only says how long it has been printing, not how long it was paused.
         row = _open_record(db, printer.id, job_id, job_file_name(current))
     if row is None:
-        start = now - dt.timedelta(seconds=float(current.get("time_printing") or 0))
+        printing = float(current.get("time_printing") or 0)
+        carried = _carried_over(db, printer.id, printing, before, now)
+        start = now if carried else now - dt.timedelta(seconds=printing)
         row = PrintJob(printer_id=printer.id, job_id=f"{job_id}@{start:%Y%m%dT%H%M%S}", filename="", status=status, start_time=start)
-        if odometer is not None and float(current.get("time_printing") or 0) <= MEASURE_FROM_START:
+        if odometer is not None and (carried or printing <= MEASURE_FROM_START):
             row.job_metadata = {"odometer_start": odometer}  # its filament is measured from here
+        if carried:  # its start is put right at the next look, once the printer says how long this print has run
+            row.job_metadata = {**(row.job_metadata or {}), UNSURE: {"seen": now.timestamp(), "carried": printing}}
         if material:
             row.job_metadata = {**(row.job_metadata or {}), "filament_type": material}  # loaded as it started
         if printer.status_from:  # which copy of its file was printed: the one written before this (filament_cost)
@@ -144,8 +153,10 @@ def _record(
     row.filename = job_file_name(current) or row.filename or "(unnamed)"
     row.status = status
     row.print_duration = float(current.get("time_printing") or 0)
-    row.total_duration = max(0.0, (now - as_utc(row.start_time)).total_seconds())
     kept = {k: v for k, v in (row.job_metadata or {}).items() if k in _KEPT}
+    if UNSURE in kept:
+        _put_start_right(row, kept, row.print_duration, now)
+    row.total_duration = max(0.0, (now - as_utc(row.start_time)).total_seconds())
     row.job_metadata = {
         **meta, **kept,
         "path": file.get("path"),
@@ -169,7 +180,45 @@ def _record(
 _KEPT = (filament_estimate.KEY, "filament_estimated", "filament_total", "filament_weight_total",
          "odometer_start", "odometer_last", "filament_measured",  # and its measured filament (Prusa Connect)
          "filament_type",  # the material loaded when it started (Prusa Connect)
-         "modified")  # when its file was printed from, for its price (Prusa Connect)
+         "modified",  # when its file was printed from, for its price (Prusa Connect)
+         "start_unsure")  # its start, until the printer says how long it has really been printing
+
+# A new print's first report that still says how long the print before it ran (Prusa Connect updates a printer's job
+# number before its printing time): {"seen": when it was first seen, "carried": the time it said}
+UNSURE = "start_unsure"
+
+
+def _carried_over(db: Session, printer_id: int, printing: float, before: PrintJob | None, now: dt.datetime) -> bool:
+    """
+    Is a new print's first printing time really the print before's? It is when it's the time that print was last seen
+    at, or when it would have the new print start before the one before ended (a printer runs one print at a time).
+    """
+    if printing <= MEASURE_FROM_START:
+        return False
+    if before is not None and before.print_duration and abs(printing - before.print_duration) <= 5:
+        return True
+    ended = db.scalar(select(func.max(PrintJob.end_time)).where(PrintJob.printer_id == printer_id, PrintJob.end_time < now))
+    return ended is not None and now - dt.timedelta(seconds=printing) < as_utc(ended) - dt.timedelta(seconds=60)
+
+
+def _put_start_right(row: PrintJob, kept: dict, printing: float, now: dt.datetime) -> None:
+    """
+    A print whose first report carried the print before's time (UNSURE): once the printer says another, how long this
+    one has really been printing, its start is put right. Its filament stays measured from when it was first seen only
+    if it had been printing no more than MEASURE_FROM_START by then; else it's left unmeasured, like any print first
+    seen part way. Until then it counts as printing since it was first seen.
+    """
+    unsure = kept[UNSURE]
+    if abs(printing - float(unsure.get("carried") or 0)) <= 5:
+        row.print_duration = max(0.0, (now - as_utc(row.start_time)).total_seconds())
+        return
+    began = now - dt.timedelta(seconds=printing)
+    row.start_time = began
+    if float(unsure.get("seen") or 0) - began.timestamp() > MEASURE_FROM_START:
+        for k in ("odometer_start", "odometer_last", "filament_measured"):
+            kept.pop(k, None)
+        row.filament_used = 0.0
+    del kept[UNSURE]
 
 
 def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> PrintJob | None:
