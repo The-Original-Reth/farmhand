@@ -159,7 +159,18 @@ def job(printer: Printer, error_type) -> dict | None:
         "id": job["id"], "state": job.get("state"), "progress": job.get("progress"),
         "time_printing": job.get("time_printing"), "time_remaining": job.get("time_remaining"),
         "file": {"name": job.get("file"), "display_name": job.get("display_name") or job.get("file"), "path": job.get("path")},
+        # beyond PrusaLink, when the plugin knows them (prusalink/tracking.py uses them)
+        "started": job.get("started"), "print_id": job.get("print_id"),
+        "filament_used": job.get("filament_used"), "slicer": job.get("slicer"),
     }
+
+
+def recent_prints(printer: Printer) -> list[dict]:
+    """The prints that ended lately on the printer, newest first, as the plugin last reported them (its start, end,
+    outcome and measured filament); [] when it reports none, or its report isn't fresh."""
+    report = latest(printer)
+    found = (report or {}).get("recent_prints")
+    return [p for p in found if isinstance(p, dict)] if isinstance(found, list) else []
 
 
 def version(printer: Printer, error_type) -> dict:

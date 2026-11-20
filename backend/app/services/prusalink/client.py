@@ -161,9 +161,20 @@ FILE_START_MOST = 64 * 1024 * 1024  # never read more of a printed file than thi
 def printed_file_settings(printer: Printer, path: str, filename: str | None = None) -> tuple[dict, float]:
     """
     The filament settings of a file on the printer, read from the file itself (parsers/gcode.filament_settings), and
-    when it was written (PrusaLink's m_timestamp): (settings, modified). Read only: the file's details, then its
-    download, stopped as soon as a .bgcode's settings block is in (a .gcode's are at its end: read whole, up to
-    FILE_START_MOST). Used for a printer connected through Prusa Connect too, which can't read files on the printer.
+    when it was written (PrusaLink's m_timestamp): (settings, modified). See printed_file_details.
+    """
+    found, _, modified = printed_file_details(printer, path, filename)
+    return found, modified
+
+
+def printed_file_details(printer: Printer, path: str, filename: str | None = None) -> tuple[dict, dict, float]:
+    """
+    What a file on the printer says of its filament, read from the file itself: (settings, slicer, modified). settings:
+    its price, density and diameter (parsers/gcode.filament_settings); slicer: the slicer's estimate for the whole print
+    ({filament_mm, filament_g, filament_cost}, parsers/gcode.slicer_filament); modified: when it was written
+    (PrusaLink's m_timestamp). Read only: the file's details, then its download, stopped as soon as a .bgcode's
+    settings block is in (its estimate comes before it; a .gcode's are at its end: read whole, up to FILE_START_MOST).
+    Used for a printer connected through Prusa Connect too, which can't read files on the printer.
     """
     from ...parsers import gcode
 
@@ -193,8 +204,10 @@ def printed_file_settings(printer: Printer, path: str, filename: str | None = No
         raise PrusaLinkError("unreachable", f"PrusaLink didn't finish sending the file ({e}).") from None
     import io
 
-    found = gcode.filament_settings(io.BytesIO(bytes(start)), name)
-    return found, float(info.get("m_timestamp") or 0)
+    data = io.BytesIO(bytes(start))
+    found = gcode.filament_settings(data, name)
+    slicer = gcode.slicer_filament(data, name)
+    return found, slicer, float(info.get("m_timestamp") or 0)
 
 
 def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO, size: int | None = None) -> str:

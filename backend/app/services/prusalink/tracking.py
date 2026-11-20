@@ -15,6 +15,14 @@ what it was at the start ("filament_measured"). Prints recorded before, through 
 Prusa Connect can report a new print's job number before its printing time, so a new print's first report may still
 say how long the print before it ran. Such a print counts from when it was first seen until the printer gives its own
 time, which then puts its start right (_carried_over, _put_start_right).
+
+A Prusa Connect that keeps its own record of each print (our build of it) says more, and what it says is used
+outright: when the print started (which a printing time can't say, since it leaves out pauses), its id for the print,
+and the filament it measured with the extruder's odometer from the start ("filament_source": "prusa_connect"). The
+plugin also sends the prints that have ended there lately: each one's start, end, outcome and measured filament are
+put on Farmhand's record of it (_settle_recent), and one Farmhand missed while it was down is recorded then, once
+Farmhand has Prusa Connect's ids for that printer's prints. A print nobody measured gets the slicer's estimate
+(filament_estimate.py): Prusa Connect's, for a file it sent, else the 3MF's in Farmhand, else the printed file's.
 """
 from __future__ import annotations
 
@@ -47,13 +55,25 @@ def poll(db: Session, printer: Printer) -> tuple[dict, dict | None]:
     now = dt.datetime.now(dt.timezone.utc)
     odometer = _odometer(printer)
     touched = _record(db, printer, current, now, odometer, _material(printer))
+    touched += _settle_recent(db, printer, _recent(printer), now)
     filament_estimate.update(db, printer, touched)
     # the totals of the prints Farmhand has recorded so far; a Prusa Connect printer's filament is its own counter
     record_sync_ok(printer, totals(db, printer.id, counter=_counter(printer, odometer)), now)
     db.commit()
     if printer.status_from:
         _read_prices(db, printer, touched)
+    filament_estimate.read_files(db, printer, touched)
     return status, current
+
+
+def _recent(printer: Printer) -> list[dict]:
+    """The prints that ended lately on a printer connected through Prusa Connect, newest first, as the plugin last
+    reported them; [] otherwise."""
+    if not printer.status_from:
+        return []
+    from .. import printer_reports
+
+    return printer_reports.recent_prints(printer)
 
 
 def _odometer(printer: Printer) -> float | None:
@@ -128,12 +148,14 @@ def _record(
         # watching it): carried on, not counted a second time. Its start can't be worked out again from the printer,
         # which only says how long it has been printing, not how long it was paused.
         row = _open_record(db, printer.id, job_id, job_file_name(current))
+    started = _started(current, now)  # when Prusa Connect says it started: used as it is
     if row is None:
         printing = float(current.get("time_printing") or 0)
-        carried = _carried_over(db, printer.id, printing, before, now)
-        start = now if carried else now - dt.timedelta(seconds=printing)
+        carried = started is None and _carried_over(db, printer.id, printing, before, now)
+        start = started or (now if carried else now - dt.timedelta(seconds=printing))
         row = PrintJob(printer_id=printer.id, job_id=f"{job_id}@{start:%Y%m%dT%H%M%S}", filename="", status=status, start_time=start)
-        if odometer is not None and (carried or printing <= MEASURE_FROM_START):
+        fresh = (now - started).total_seconds() <= MEASURE_FROM_START if started else (carried or printing <= MEASURE_FROM_START)
+        if odometer is not None and fresh:
             row.job_metadata = {"odometer_start": odometer}  # its filament is measured from here
         if carried:  # its start is put right at the next look, once the printer says how long this print has run
             row.job_metadata = {**(row.job_metadata or {}), UNSURE: {"seen": now.timestamp(), "carried": printing}}
@@ -154,19 +176,28 @@ def _record(
     row.status = status
     row.print_duration = float(current.get("time_printing") or 0)
     kept = {k: v for k, v in (row.job_metadata or {}).items() if k in _KEPT}
-    if UNSURE in kept:
+    if started is not None:
+        kept.pop(UNSURE, None)
+        if as_utc(row.start_time) != started:
+            row.start_time = started  # Prusa Connect's own record of when it started
+    elif UNSURE in kept:
         _put_start_right(row, kept, row.print_duration, now)
     row.total_duration = max(0.0, (now - as_utc(row.start_time)).total_seconds())
     row.job_metadata = {
         **meta, **kept,
-        "path": file.get("path"),
+        "path": _file_path(file),
         "estimated_time": row.print_duration + float(remaining) if isinstance(remaining, (int, float)) else meta.get("estimated_time"),
         "progress": current.get("progress"),  # the last seen: how much of its filament an unfinished print used
     }
     if material and not row.job_metadata.get("filament_type"):
         row.job_metadata = {**row.job_metadata, "filament_type": material}
+    _connect_facts(row, current)
+    measured = _number(current.get("filament_used"))
     start_odo = row.job_metadata.get("odometer_start")
-    if isinstance(start_odo, (int, float)) and odometer is not None and odometer >= start_odo:
+    if measured is not None:  # Prusa Connect measured it from the start, with the extruder's odometer
+        row.filament_used = round(measured, 2)
+        row.job_metadata = {**row.job_metadata, "filament_measured": True, "filament_source": "prusa_connect"}
+    elif isinstance(start_odo, (int, float)) and odometer is not None and odometer >= start_odo:
         row.filament_used = round(odometer - start_odo, 2)  # measured by the printer, not estimated
         row.job_metadata = {**row.job_metadata, "filament_measured": True, "odometer_last": odometer}
     row.synced_at = now
@@ -181,7 +212,8 @@ _KEPT = (filament_estimate.KEY, "filament_estimated", "filament_total", "filamen
          "odometer_start", "odometer_last", "filament_measured",  # and its measured filament (Prusa Connect)
          "filament_type",  # the material loaded when it started (Prusa Connect)
          "modified",  # when its file was printed from, for its price (Prusa Connect)
-         "start_unsure")  # its start, until the printer says how long it has really been printing
+         "start_unsure",  # its start, until the printer says how long it has really been printing
+         "connect_id", "connect_slicer", "connect_final", "filament_source")  # what Prusa Connect said of it
 
 # A new print's first report that still says how long the print before it ran (Prusa Connect updates a printer's job
 # number before its printing time): {"seen": when it was first seen, "carried": the time it said}
@@ -219,6 +251,132 @@ def _put_start_right(row: PrintJob, kept: dict, printing: float, now: dt.datetim
             kept.pop(k, None)
         row.filament_used = 0.0
     del kept[UNSURE]
+
+
+def _file_path(file: dict) -> str | None:
+    """Where the printed file is on the printer: PrusaLink's job gives its folder ("/usb") and its (short) name apart;
+    a plugin's report gives the whole path."""
+    path, name = file.get("path"), file.get("name")
+    if path and name and not str(path).lower().endswith((".gcode", ".bgcode", ".gco", ".bgc")):
+        return str(path).rstrip("/") + "/" + str(name)
+    return path
+
+
+def _number(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _when(value) -> dt.datetime | None:
+    """A time Prusa Connect gave (a datetime, or ISO 8601 text), in UTC; None when there's none."""
+    if isinstance(value, str):
+        try:
+            value = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if not isinstance(value, dt.datetime):
+        return None
+    return as_utc(value).replace(microsecond=0)
+
+
+def _started(current: dict, now: dt.datetime) -> dt.datetime | None:
+    """When Prusa Connect says the print shown started; None when it doesn't say (or says a time still to come)."""
+    started = _when(current.get("started"))
+    return started if started is not None and started <= now + dt.timedelta(minutes=1) else None
+
+
+def _connect_facts(row: PrintJob, current: dict) -> None:
+    """Prusa Connect's id for the print and the slicer's figures it read from the file it sent, kept on the record."""
+    meta = dict(row.job_metadata or {})
+    if current.get("print_id"):
+        meta["connect_id"] = str(current["print_id"])
+    slicer = current.get("slicer") if isinstance(current.get("slicer"), dict) else {}
+    mm, grams = _number(slicer.get("filament_mm")), _number(slicer.get("filament_g"))
+    if mm:
+        meta["connect_slicer"] = {"filament_mm": mm, "filament_g": grams}
+    if meta != (row.job_metadata or {}):
+        row.job_metadata = meta
+
+
+# How a print ended, in Prusa Connect's words, as Farmhand's history says it
+OUTCOME = {"finished": "completed", "cancelled": "cancelled", "failed": "error"}
+
+
+def _settle_recent(db: Session, printer: Printer, prints: list[dict], now: dt.datetime) -> list[PrintJob]:
+    """
+    The prints Prusa Connect says ended lately: each one's start, end, outcome and measured filament put on Farmhand's
+    record of it, once (connect_final). Which record: the one with Prusa Connect's id for it, else the one with its job
+    number that Farmhand started recording between six hours before its start and its end. One with no record is
+    recorded now. Both only from the first print Farmhand has Prusa Connect's id for on this printer: a print from
+    before Farmhand followed Prusa Connect's record is left as it is (it was down then, or older). Returns the records
+    changed.
+    """
+    ended = []
+    for p in prints:
+        started, finished = _when(p.get("started")), _when(p.get("ended"))
+        if p.get("print_id") and started and finished and started <= finished <= now + dt.timedelta(minutes=1):
+            ended.append((p, started, finished))
+    if not ended:
+        return []
+    oldest = min(s for _, s, _ in ended)
+    rows = list(db.scalars(select(PrintJob).where(
+        PrintJob.printer_id == printer.id, PrintJob.job_id.contains("@"),
+        PrintJob.start_time >= oldest - dt.timedelta(hours=12),
+    )))
+    by_id = {str((r.job_metadata or {}).get("connect_id")): r for r in rows if (r.job_metadata or {}).get("connect_id")}
+    followed = [as_utc(r.start_time) for r in by_id.values()]
+    since = min(followed) if followed else None
+    touched = []
+    for p, started, finished in ended:
+        row = by_id.get(str(p["print_id"]))
+        if row is None and since is not None and started > since:
+            row = _by_number(rows, by_id, p.get("id"), started, finished, since)
+        if row is None:
+            if since is None or started <= since or p.get("id") is None:
+                continue
+            row = PrintJob(printer_id=printer.id, job_id=f"{p['id']}@{started:%Y%m%dT%H%M%S}", status="in_progress",
+                           filename=str(p.get("file") or (str(p.get("path") or "").rsplit("/", 1)[-1]) or "(unnamed)"),
+                           start_time=started, print_duration=(finished - started).total_seconds())
+            db.add(row)
+            rows.append(row)
+        elif (row.job_metadata or {}).get("connect_final"):
+            continue
+        by_id[str(p["print_id"])] = row
+        _settle(row, p, started, finished, now)
+        touched.append(row)
+    if touched:
+        db.flush()
+    return touched
+
+
+def _by_number(rows: list[PrintJob], linked: dict, number, started: dt.datetime, finished: dt.datetime,
+               since: dt.datetime) -> PrintJob | None:
+    if number is None:
+        return None
+    taken = {id(r) for r in linked.values()}
+    near = [r for r in rows if id(r) not in taken and r.job_id.startswith(f"{number}@") and as_utc(r.start_time) > since
+            and started - dt.timedelta(hours=6) <= as_utc(r.start_time) <= finished]
+    return min(near, key=lambda r: abs((as_utc(r.start_time) - started).total_seconds()), default=None)
+
+
+def _settle(row: PrintJob, p: dict, started: dt.datetime, finished: dt.datetime, now: dt.datetime) -> None:
+    """One ended print as Prusa Connect recorded it, put on Farmhand's record."""
+    row.start_time, row.end_time = started, finished
+    row.status = OUTCOME.get(p.get("outcome")) or (row.status if row.status != "in_progress" else "unknown")
+    row.total_duration = (finished - started).total_seconds()
+    meta = {**(row.job_metadata or {}), "connect_id": str(p["print_id"]), "connect_final": True}
+    meta.pop(UNSURE, None)
+    if _number(p.get("progress")) is not None:
+        meta["progress"] = _number(p.get("progress"))
+    if p.get("path") and not meta.get("path"):
+        meta["path"] = p["path"]
+    measured = _number(p.get("filament_used"))
+    if measured is not None:
+        row.filament_used = round(measured, 2)
+        meta.update(filament_measured=True, filament_source="prusa_connect")
+        meta.pop("filament_estimated", None)
+    row.job_metadata = meta
+    _connect_facts(row, p)
+    row.synced_at = now
 
 
 def _open_record(db: Session, printer_id: int, job_id, filename: str | None) -> PrintJob | None:

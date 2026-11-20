@@ -60,6 +60,10 @@ class Printer(HasNotes, Base):
     gcode_filaments: Mapped[list["GcodeFilament"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
+    # The slicer's filament estimate read from each file a Prusa printer printed (see PrintedFileEstimate)
+    printed_file_estimates: Mapped[list["PrintedFileEstimate"]] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan"
+    )
     # Reached through PrusaLink instead of Moonraker (see PrusaLinkConnection), and the maintenance Farmhand keeps
     # for it (a Moonraker printer's maintenance lives in Moonraker)
     prusalink_row: Mapped["PrusaLinkConnection | None"] = relationship(  # noqa: F821

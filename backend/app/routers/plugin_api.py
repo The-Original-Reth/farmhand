@@ -11,6 +11,7 @@ address" has its token refused from anywhere else (403), and each token may make
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 from urllib.parse import quote
@@ -151,6 +152,15 @@ class ReportedTemps(BaseModel):
     target_bed: float | None = None
 
 
+class ReportedSlicer(BaseModel):
+    """What the slicer wrote into the printed file about the whole print (Prusa Connect reads it from a file it sent)."""
+
+    filament_mm: float | None = Field(None, ge=0)
+    filament_g: float | None = Field(None, ge=0)
+    estimated_seconds: float | None = Field(None, ge=0)
+    material: str | None = Field(None, max_length=40)
+
+
 class ReportedJob(BaseModel):
     id: int  # the printer's own job number (PrusaLink's): a new number is a new print
     state: str | None = Field(None, max_length=40)  # PRINTING, PAUSED, FINISHED, STOPPED, ERROR...
@@ -160,6 +170,26 @@ class ReportedJob(BaseModel):
     progress: float | None = Field(None, ge=0, le=100)
     time_printing: float | None = Field(None, ge=0)  # seconds
     time_remaining: float | None = Field(None, ge=0)  # seconds
+    # Beyond PrusaLink, each optional: what the plugin's server keeps of the print itself (Prusa Connect does)
+    started: dt.datetime | None = None  # when it started: used as it is (a printing time leaves out pauses)
+    print_id: str | None = Field(None, max_length=64)  # the server's own id for this print
+    filament_used: float | None = Field(None, ge=0)  # mm, measured from its start (the extruder's odometer); so far
+    slicer: ReportedSlicer | None = None
+
+
+class ReportedPrint(BaseModel):
+    """A print that has ended, as the plugin's server recorded it."""
+
+    print_id: str = Field(..., max_length=64)  # the server's own id for it (ReportedJob.print_id while it ran)
+    id: int | None = None  # the printer's job number
+    file: str | None = Field(None, max_length=255)
+    path: str | None = Field(None, max_length=500)
+    started: dt.datetime
+    ended: dt.datetime
+    outcome: str | None = Field(None, max_length=20)  # finished, cancelled, failed or unknown
+    progress: float | None = Field(None, ge=0, le=100)
+    filament_used: float | None = Field(None, ge=0)  # mm, measured from its start; left out when not measured
+    slicer: ReportedSlicer | None = None
 
 
 class ReportedDialog(BaseModel):
@@ -200,6 +230,7 @@ class PrinterReport(BaseModel):
     job: ReportedJob | None = None  # the print it shows, if any (a finished one too, until it's cleared)
     link: str | None = Field(None, max_length=500)  # where the operator can see it (its page on Prusa Connect, say)
     extras: ReportedExtras | None = None  # beyond PrusaLink: material, nozzle, chamber, fans, a message on its screen
+    recent_prints: list[ReportedPrint] | None = Field(None, max_length=20)  # ended lately, newest first: put on its history
 
 
 @router.put("/printers/{printer_id}/status")
@@ -213,7 +244,7 @@ def report_status(
     """
     printer = require_printer(db, printer_id)
     try:
-        printer_reports.accept(printer, caller.plugin_id, report.model_dump())
+        printer_reports.accept(printer, caller.plugin_id, report.model_dump(mode="json"))
     except printer_reports.NotReporter as e:
         raise HTTPException(status_code=403, detail=str(e)) from None
     seen = print_progress.progress(db, printer)  # records its prints, and tells plugins listening for events

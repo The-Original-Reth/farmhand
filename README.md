@@ -619,6 +619,8 @@ browser only when **Show** asks for it; a Moonraker API key never is.
   These figures show as **≈ … estimated** in the print history and on the Farm cost page. A print has no filament
   figure when no 3MF matches, when the matching 3MF has no G-code kept, or when the kept G-code is a different
   slicing (e.g. `…_3h0m` printed but `…_8h59m` kept). A 3MF added later is picked up at the next look.
+  When no 3MF has a figure, Farmhand reads the slicer's **filament used** from the printed file itself, through
+  PrusaLink (read only, once per file, only for a print it is following), and estimates from that the same way.
 - **Maintenance:** kept in Farmhand (PrusaLink has nowhere to keep it), counted against the recorded print
   time. No filament reminders: PrusaLink doesn't report filament use.
 
@@ -1162,6 +1164,11 @@ and any message on the printer's screen. A print it sees start has its filament 
 estimated from the slicer, notes the material loaded, and is weighed from that material when its 3MF isn't in Farmhand
 (prints recorded before keep their figures). The printer's own filament counter is its **Filament used**, and its
 maintenance reminders can be "every so many metres of filament".
+With our build of Prusa Connect, which keeps its own record of each print, Farmhand takes each print's real start from
+it (a paused print isn't put hours early), the filament Prusa Connect measured from the start, and when a print ends,
+its real end and outcome. Prints that ran while Farmhand was down are added to the history from that record. A print
+nobody measured gets the slicer's estimate: Prusa Connect's (from a file it sent), else the 3MF's, else the printed
+file's, read through PrusaLink.
 A Prusa printer can be paired with one Connect server at a time, so pairing it with your own takes it off Prusa's
 cloud Connect. Removing the plugin puts its printers back on PrusaLink.
 

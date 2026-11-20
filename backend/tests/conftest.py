@@ -206,3 +206,12 @@ def other_farmhand():
     db.close()
 
 
+
+
+@pytest.fixture(autouse=True)
+def _no_stray_file_reads(monkeypatch):
+    """A printed file read in the background (prusalink/printed_filament.py) is dropped unless a test runs it inline
+    (its inline_reads fixture): a thread left reading after its test ends finds the test's database gone."""
+    from app.services.prusalink import printed_filament
+
+    monkeypatch.setattr(printed_filament, "run_in_background", lambda work: None)

@@ -300,6 +300,38 @@ the odometer at the end less at the start, instead of estimating it from the sli
 `material` loaded when neither its G-code nor its 3MF gives a density. The odometer is also the printer's lifetime
 filament (its "Filament used"), which filament maintenance reminders count. Prints recorded before keep their figures.
 
+**What your server keeps of each print** (optional; Prusa Connect's own record of its prints is where the Prusa
+Connect plugin takes them from). Leave out whatever you don't know:
+
+```json
+{
+  "job": {
+    "id": 506, "state": "PRINTING", "...": "as above",
+    "started": "2026-11-20T04:26:10Z", "print_id": "0199e3a4-5bb5-7aac-8a2c-9c3982e6373f",
+    "filament_used": 812.25,
+    "slicer": { "filament_mm": 2000, "filament_g": 6.1, "estimated_seconds": 3600, "material": "PLA" }
+  },
+  "recent_prints": [
+    { "print_id": "0199e3a4-0000-…", "id": 505, "file": "Frog keychain.bgcode", "path": "/usb/FROGKE~1.BGC",
+      "started": "2026-11-19T20:00:00Z", "ended": "2026-11-19T22:00:05Z", "outcome": "finished",
+      "progress": 100, "filament_used": 4321.5 }
+  ]
+}
+```
+
+- `job.started` (ISO 8601) is when the print started. Farmhand uses it as it is, ahead of working the start back from
+  `time_printing` (which leaves out pauses, and which a new print's first report may still carry over from the print
+  before it).
+- `job.print_id` is your server's id for the print, and the same print's `print_id` in `recent_prints` once it has ended.
+- `job.filament_used` is the filament (mm) the print has used so far, measured from its start. Farmhand takes it
+  ahead of its own odometer reading. Leave it out when the print's start wasn't measured.
+- `job.slicer` is what the slicer wrote into the printed file about the whole print. Farmhand uses its `filament_mm`
+  (times the progress) for a print nobody measured, ahead of the 3MF's estimate and the printed file's.
+- `recent_prints` (newest first, at most 20) are prints that have ended. Farmhand puts each one's start, end,
+  `outcome` (`finished`, `cancelled`, `failed` or `unknown`) and measured `filament_used` on its record of that print,
+  once. A print it has no record of is recorded then, when it started after a print whose `print_id` Farmhand already
+  has: so Farmhand catches up on prints that ran while it was down.
+
 `reachable: false` with an `error` in plain words says you can't hear from the printer now; Farmhand shows the error as
 the printer's. `link` is where the operator can see it (an "Open in <your plugin>" button on its page). `job.id` is a
 whole number (the printer's own job number); `progress` 0 to 100; times in seconds. The answer is
