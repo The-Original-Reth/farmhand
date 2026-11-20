@@ -59,6 +59,14 @@ screen. Farmhand shows them on the printer's page. It also carries the extruder'
 each new print's filament (instead of the slicer's estimate), the printer's lifetime "Filament used", and filament
 maintenance reminders; prints recorded before keep their figures.
 
+**Each print's own record**: Prusa Connect keeps a record of every print (`GET /api/v1/devices/{id}/jobs`). The plugin
+passes on when the print now started (Farmhand uses it as it is, so a paused print isn't put hours early), Prusa
+Connect's id for it, and with our build of Prusa Connect (`The-Original-Reth/prusa-connect`) the filament it measured
+with the odometer from the start, and the slicer's figures from a file Prusa Connect sent. It also sends the prints that
+ended lately (`.../jobs/history`, asked again only when the last one changes), so Farmhand puts each one's real end,
+outcome and filament on its history, and records the ones it missed while it was down. With a Prusa Connect that keeps
+no such record, the reports go without it, as before.
+
 **Sending a print**: Farmhand POSTs a one-time ticket to the plugin's `/farmhand/print`. The plugin fetches the G-code
 from Farmhand with it, puts it in Prusa Connect's storage as a temporary copy, and asks Prusa Connect to send it to the
 printer's USB stick (replacing a file of that name) and start it. A printer that isn't ready, or isn't linked yet, is

@@ -232,3 +232,50 @@ def test_a_print_is_refused_when_the_printer_is_busy_unlinked_or_the_ticket_is_w
     status, out = _page(plugin, "/farmhand/print", {"ticket": "made-up", "printer_id": 2, "file": "a.bgcode", "size": 1})
     assert status == 502 and connect.printed == []  # only Farmhand's own tickets fetch anything
     assert _page(plugin, "/farmhand/print", {"printer_id": 2})[0] == 400
+
+
+# ------------------------------------------------------------------ Prusa Connect's own record of the prints
+
+def _connect_job(**kw):
+    job = {"id": "0199e3a4-5bb5-7aac-8a2c-9c3982e6373f", "device_job_id": "506", "device_id": DEVICE,
+           "path": "/usb/frog.bgcode", "display_name": "frog.bgcode", "state": "PRINTING", "progress": 40,
+           "time_remaining_ms": 0, "started": "2026-11-20T04:26:10Z"}
+    job.update(kw)
+    return job
+
+
+def test_the_print_now_carries_its_start_id_and_measured_filament(plugin, connect, farmhand):
+    _pair(plugin, connect)
+    connect.start_job(506, "/usb/frog.bgcode", progress=40, time_printing=29000)
+    ended = _connect_job(id="0199e3a4-0000-7aac-8a2c-9c3982e6373f", device_job_id="505", state="FINISHED",
+                         progress=100, started="2026-11-19T20:00:00Z", ended="2026-11-19T22:00:00Z",
+                         outcome="finished", filament_used_mm=4321.5)
+    connect.jobs = {"current": _connect_job(filament_used_mm=812.25, slicer={"filament_mm": 2000, "filament_g": 6.1,
+                                                                             "estimated_seconds": 3600, "material": "PLA"}),
+                    "last": ended}
+    connect.history = [ended]
+    plugin.run_once()
+    [sent] = farmhand.reports[2]
+    job = sent["job"]
+    assert job["started"] == "2026-11-20T04:26:10Z" and job["print_id"] == "0199e3a4-5bb5-7aac-8a2c-9c3982e6373f"
+    assert job["filament_used"] == 812.25
+    assert job["slicer"] == {"filament_mm": 2000, "filament_g": 6.1, "estimated_seconds": 3600, "material": "PLA"}
+    assert sent["recent_prints"] == [{
+        "print_id": "0199e3a4-0000-7aac-8a2c-9c3982e6373f", "started": "2026-11-19T20:00:00Z", "filament_used": 4321.5,
+        "id": 505, "file": "frog.bgcode", "path": "/usb/frog.bgcode", "ended": "2026-11-19T22:00:00Z",
+        "outcome": "finished", "progress": 100,
+    }]
+    plugin.run_once()
+    assert connect.history_asked == 1  # asked again only once the last print changes
+
+
+def test_a_print_another_number_or_an_older_prusa_connect_adds_nothing(plugin, connect, farmhand):
+    _pair(plugin, connect)
+    connect.start_job(507, "/usb/frog.bgcode", progress=1, time_printing=10)
+    connect.jobs = {"current": _connect_job()}  # Prusa Connect hasn't caught up with 507 yet
+    plugin.run_once()
+    job = farmhand.reports[2][-1]["job"]
+    assert "started" not in job and "print_id" not in job and "recent_prints" not in farmhand.reports[2][-1]
+    connect.jobs = None  # a Prusa Connect without the record
+    plugin.run_once()
+    assert "started" not in farmhand.reports[2][-1]["job"]

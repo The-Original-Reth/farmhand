@@ -113,6 +113,16 @@ class PrusaConnect:
     def device(self, device_id: str) -> dict:
         return self._call("GET", f"/api/v1/devices/{quote(device_id)}")
 
+    def jobs(self, device_id: str) -> dict:
+        """Prusa Connect's record of the printer's print now and the one before it: {current, last}, each with its id,
+        started, ended, outcome and (a build that measures it) filament_used_mm and slicer."""
+        return self._call("GET", f"/api/v1/devices/{quote(device_id)}/jobs")
+
+    def ended_jobs(self, device_id: str, limit: int = 10) -> list[dict]:
+        """The prints that have ended on the printer, newest first, as Prusa Connect recorded them."""
+        data = self._call("GET", f"/api/v1/devices/{quote(device_id)}/jobs/history?" + urlencode({"limit": limit}))
+        return [j for j in (data.get("items") or []) if isinstance(j, dict)]
+
     # ------------------------------------------------------------------ starting a print Farmhand sends
 
     def printer_storage(self, device_id: str) -> str:
@@ -233,10 +243,13 @@ def _job_number(state: dict, summary: dict):
         return None
 
 
-def report(device: dict | None, link: str | None = None, error: str | None = None) -> dict:
+def report(device: dict | None, link: str | None = None, error: str | None = None, jobs: dict | None = None,
+           ended: list[dict] | None = None) -> dict:
     """
     Farmhand's report of a printer (docs/plugins.md, "Reporting a printer's status") from Prusa Connect's record of it.
-    No device (or one Prusa Connect isn't hearing from) is reported unreachable, with why.
+    No device (or one Prusa Connect isn't hearing from) is reported unreachable, with why. jobs: Prusa Connect's
+    record of its print now ({current, last}): the print's start, id and measured filament go in the job. ended: the
+    prints that ended lately (newest first), sent as recent_prints.
     """
     if device is None:
         return {"reachable": False, "error": error or "Prusa Connect couldn't be asked about this printer.", "link": link}
@@ -277,6 +290,47 @@ def report(device: dict | None, link: str | None = None, error: str | None = Non
             "time_printing": _num(state.get("/job/time_printing")),
             "time_remaining": remaining if remaining is None or remaining >= 0 else None,
         }
+        current = (jobs or {}).get("current") if isinstance((jobs or {}).get("current"), dict) else None
+        if current and str(current.get("device_job_id") or "") == str(number) and current.get("id"):
+            out["job"].update(_recorded(current))
+    if ended:
+        out["recent_prints"] = [p for p in (_ended(j) for j in ended[:RECENT]) if p]
+    return out
+
+
+RECENT = 10  # how many ended prints a report carries, newest first
+
+
+def _recorded(job: dict) -> dict:
+    """What Prusa Connect's record of a print adds to Farmhand's job: its id, when it started, and (a build of
+    Prusa Connect that measures it) its filament from the start and the slicer's figures."""
+    out = {"print_id": str(job["id"])[:64], "started": job.get("started") or None}
+    used = _num(job.get("filament_used_mm"))
+    if used is not None and used >= 0:
+        out["filament_used"] = used
+    slicer = job.get("slicer") if isinstance(job.get("slicer"), dict) else None
+    if slicer:
+        out["slicer"] = {
+            "filament_mm": _positive(slicer.get("filament_mm")), "filament_g": _positive(slicer.get("filament_g")),
+            "estimated_seconds": _positive(slicer.get("estimated_seconds")), "material": _text(slicer.get("material"), 40),
+        }
+    return out
+
+
+def _ended(job: dict) -> dict | None:
+    """A print that has ended on Prusa Connect, as Farmhand's recent_prints takes it; None without an id or times."""
+    if not job.get("id") or not job.get("started") or not job.get("ended"):
+        return None
+    path = job.get("path") or ""
+    progress = _num(job.get("progress"))
+    out = {
+        **_recorded(job),
+        "id": _job_number({}, {"device_job_id": job.get("device_job_id")}) if job.get("device_job_id") else None,
+        "file": _text(job.get("display_name") or (path.rsplit("/", 1)[-1] if path else None), 255),
+        "path": _text(path, 500), "ended": job["ended"],
+        "outcome": job.get("outcome") if job.get("outcome") in ("finished", "cancelled", "failed", "unknown") else None,
+        "progress": max(0.0, min(100.0, progress)) if progress is not None else None,
+    }
     return out
 
 

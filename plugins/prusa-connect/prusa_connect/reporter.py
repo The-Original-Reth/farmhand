@@ -8,6 +8,11 @@ PrusaLink section in Farmhand. Which Prusa Connect printer each one is: this plu
 itself when a Prusa Connect printer has the same name as a Farmhand one.
 
 The page reads snapshot(): Prusa Connect's state, the printers on both sides and the last report of each.
+
+Each report also carries Prusa Connect's own record of the printer's prints (GET .../jobs): when the print now started,
+its id and the filament measured since its start; and the prints that ended there lately (GET .../jobs/history, asked
+again only when the last one has changed), so Farmhand puts each one's end on its history, and catches up on prints
+it missed while it was down.
 """
 from __future__ import annotations
 
@@ -17,7 +22,7 @@ import time
 from urllib.parse import quote
 
 from .config import Settings
-from .connect import ConnectError, PrusaConnect, device_out, report, shown_pairing
+from .connect import RECENT, ConnectError, PrusaConnect, device_out, report, shown_pairing
 from .farmhand import Farmhand, FarmhandError
 
 PLUGIN_ID = "prusa-connect"  # farmhand-plugin.json's id: how Farmhand names this plugin in status_from
@@ -34,6 +39,7 @@ class Reporter:
         self._snapshot = {"farmhand_error": None, "connect": {"reachable": False, "version": None, "error": None},
                           "printers": [], "devices": [], "checked_at": None}
         self._farmhand_problem: FarmhandError | None = None
+        self._ended: dict[str, tuple[str | None, list[dict]]] = {}  # device id -> (its last print's id, ended prints)
 
     # ------------------------------------------------------------------ running
 
@@ -110,7 +116,8 @@ class Reporter:
         elif device_id not in by_id:
             sent = report(None, link, "Prusa Connect doesn't know the printer it was linked to any more (it may have been paired again). Choose it again on the Prusa Connect plugin's page.")
         else:
-            sent = report(by_id[device_id], link)
+            jobs, ended = self._records(device_id)
+            sent = report(by_id[device_id], link, jobs=jobs, ended=ended)
         at = time.time()
         try:
             answer = self.farmhand.report(printer["id"], sent)
@@ -119,6 +126,24 @@ class Reporter:
                 raise
             return {"at": at, "sent": sent, "recorded": False, "error": e.message}
         return {"at": at, "sent": sent, "recorded": bool(answer.get("recorded")), "error": answer.get("error")}
+
+    def _records(self, device_id: str) -> tuple[dict | None, list[dict]]:
+        """Prusa Connect's record of the printer's prints: (jobs, the ended ones newest first). Left out when Prusa
+        Connect can't say: the report goes without them."""
+        try:
+            jobs = self.connect.jobs(device_id)
+        except ConnectError:
+            return None, []
+        last = jobs.get("last") if isinstance(jobs.get("last"), dict) else None
+        last_id = last.get("id") if last else None
+        kept = self._ended.get(device_id)
+        if kept is None or kept[0] != last_id:
+            try:
+                ended = self.connect.ended_jobs(device_id, RECENT)
+            except ConnectError:
+                ended = [last] if last else []
+            kept = self._ended[device_id] = (last_id, ended)
+        return jobs, kept[1]
 
     def _link_by_name(self, printers: list[dict], devices: list[dict]) -> None:
         """A Farmhand printer not linked yet, with the same name as a Prusa Connect printer nothing is linked to: linked."""
