@@ -288,6 +288,35 @@ def test_a_print_first_seen_part_way_or_from_prusalink_keeps_no_measured_figure(
     assert jobs["Frog keychain.bgcode"]["filament_used"] == 0  # not measured: its start wasn't seen
 
 
+def _two_prints(api, prusalink, then_printing):
+    """A print that finishes, then a new one whose first report still carries the first one's 1200 s of printing,
+    then says it has printed then_printing; it finishes 600 s later. The jobs, oldest first."""
+    auth = _install(api)
+    p = _core_one(api)
+    api.patch(f"/printers/{p['id']}", json={"status_from": "prusa-connect"})
+    _report(api, auth, p["id"], _starting(236033.0))
+    _report(api, auth, p["id"], _starting(237233.0, time_printing=1200, state="FINISHED", progress=100))
+    _report(api, auth, p["id"], _starting(237233.0, time_printing=1200, job_id=14))  # the number changed, not the time
+    _report(api, auth, p["id"], _starting(237333.0, time_printing=then_printing, job_id=14, progress=2))
+    _report(api, auth, p["id"], _starting(239233.0, time_printing=then_printing + 600, job_id=14, state="FINISHED", progress=100))
+    return sorted(api.get(f"/printers/{p['id']}/print-jobs").json()["jobs"], key=lambda j: j["id"])
+
+
+def test_a_new_print_reported_with_the_last_ones_time_starts_after_it_and_is_measured(api, prusalink):
+    first, second = _two_prints(api, prusalink, then_printing=60)
+    import datetime as dt
+
+    early = dt.datetime.fromisoformat(first["end_time"]) - dt.datetime.fromisoformat(second["start_time"])
+    assert early.total_seconds() < 120  # its own 60 s back (all here happens at once), not the first print's 1200 s
+    assert second["print_duration"] == 660 and second["filament_used"] == 2000  # measured from when it was first seen
+    assert second["status"] == "completed"
+
+
+def test_a_print_found_well_under_way_once_its_time_comes_is_left_unmeasured(api, prusalink):
+    first, second = _two_prints(api, prusalink, then_printing=2400)  # it had really been printing for 40 minutes
+    assert second["print_duration"] == 3000 and second["filament_used"] == 0  # its start wasn't seen
+
+
 # ------------------------------------------------------------------ filament through Prusa Connect: weight, material, totals, reminders
 
 
