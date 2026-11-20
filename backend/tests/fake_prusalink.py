@@ -94,6 +94,7 @@ class FakePrusaLink:
             return httpx.Response(200, json={"storage_list": [usb]})
         if path.startswith("/api/v1/files/usb/") and request.method == "GET":
             name = path.removeprefix("/api/v1/files/usb/")
+            name = {n.lower()[:8] + "~1.BGC": n for n in self.files}.get(name, name)  # its short name, as a job gives it
             if name not in self.files:
                 return httpx.Response(404)
             data, stamp = self.files[name]

@@ -164,3 +164,30 @@ class GcodeFilament(Base):
     )
 
     printer: Mapped["Printer"] = relationship(back_populates="gcode_filaments")  # noqa: F821
+
+
+class PrintedFileEstimate(Base):
+    """
+    The slicer's own estimate of the filament a file on a Prusa printer uses (its "filament used [mm]" and "[g]",
+    every filament added up), read from the file itself through the printer's PrusaLink (read only), for the prints of
+    it that the printer didn't measure (services/prusalink/printed_filament.py). Read once per file: a file is its name
+    and the time it was written (PrusaLink's m_timestamp), so one sliced again under the same name is a new file.
+    `problem` says why nothing could be read (the file is gone from the printer, or names no filament), so it isn't
+    asked for again.
+
+    Its own table, not columns on gcode_filaments: the database is built with create_all, which never alters a table.
+    """
+
+    __tablename__ = "printed_file_estimates"
+    __table_args__ = (UniqueConstraint("printer_id", "filename", "modified", name="uq_printed_file_estimate"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)  # as the print history names it
+    modified: Mapped[float] = mapped_column(Float, nullable=False, default=0)  # PrusaLink's m_timestamp; 0 = not given
+    filament_mm: Mapped[float | None] = mapped_column(Float)  # the whole print's
+    filament_g: Mapped[float | None] = mapped_column(Float)
+    problem: Mapped[str | None] = mapped_column(Text)
+    read_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    printer: Mapped["Printer"] = relationship(back_populates="printed_file_estimates")  # noqa: F821

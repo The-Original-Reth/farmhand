@@ -15,17 +15,28 @@ kept, the time it printed over the time the printer expected. Its metadata says 
 keeps what was found under "filament_estimate" ({version_id, checked, filament_mm, filament_g, filament_cost}), so
 the G-code is read once per print, not on every look. A print with no match is looked at again only once another 3MF
 version has been added to the printer (checked: the newest version id there was).
+
+Two other sources of the slicer's figure come before and after it. First, Prusa Connect's: it reads the figures from a
+file it sent to the printer, and the plugin passes them on ("connect_slicer"). Last, the printed file itself, read
+through the printer's PrusaLink (printed_filament.py, once per file, read only): asked for a print Farmhand is
+following when neither of the others has a figure ("file_estimate": "wanted", then what was found). Which one was used
+is "filament_estimate_source": "prusa_connect", "3mf" or "printed_file". Older prints get a printed file's figure only
+when one is asked for them (the one-off backfill), never on their own.
 """
 from __future__ import annotations
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Bundle, BundleVersion, Printer, PrintJob
+from ...models import Bundle, BundleVersion, PrintedFileEstimate, Printer, PrintJob
+from ...parsers import gcode
 from ...parsers.gcode import slicer_filament
 from .. import filament_cost as fc
+from . import printed_filament
 
 KEY = fc.ESTIMATE
+FILE = "file_estimate"  # in a print's metadata: "wanted" (the printed file is to be read), then {id} of what was read
+WANTED = "wanted"
 
 
 def update(db: Session, printer: Printer, touched: list[PrintJob]) -> None:
@@ -37,18 +48,32 @@ def update(db: Session, printer: Printer, touched: list[PrintJob]) -> None:
         select(func.max(BundleVersion.id)).join(Bundle, Bundle.id == BundleVersion.bundle_id).where(Bundle.printer_id == printer.id)
     ) or 0
     rows = {r.id: r for r in touched}
+    fresh = set(rows)
+    files = set(db.scalars(select(PrintedFileEstimate.filename).where(
+        PrintedFileEstimate.printer_id == printer.id, PrintedFileEstimate.filament_mm.isnot(None),
+    )))
     for r in db.scalars(select(PrintJob).where(
         # only the prints PrusaLink tracking recorded ("<job>@<start>"), not ones from when it was a Klipper printer
         PrintJob.printer_id == printer.id, PrintJob.filament_used == 0, PrintJob.job_id.contains("@"),
     )):
-        if r.id not in rows and _worth_looking(r, newest):
+        if r.id not in rows and _worth_looking(r, newest, files):
             rows[r.id] = r
     for r in rows.values():
         if not (r.job_metadata or {}).get("filament_measured"):  # one measured by the printer keeps its figure
-            estimate(db, printer.id, r, newest)
+            estimate(db, printer.id, r, newest, fresh=r.id in fresh)
 
 
-def _worth_looking(row: PrintJob, newest: int) -> bool:
+def read_files(db: Session, printer: Printer, touched: list[PrintJob]) -> None:
+    """Read (once, in the background) the printed file of each print this look changed that has no figure from
+    Prusa Connect or a 3MF: after the commit, as the prices are read."""
+    for row in touched:
+        if (row.job_metadata or {}).get(FILE) == WANTED:
+            printed_filament.start_estimate(db, printer, row)
+
+
+def _worth_looking(row: PrintJob, newest: int, files: set[str] = frozenset()) -> bool:
+    if (row.job_metadata or {}).get(FILE) == WANTED and row.filename in files:
+        return True  # its printed file has been read since
     found = (row.job_metadata or {}).get(KEY)
     if not isinstance(found, dict):
         return True
@@ -57,8 +82,12 @@ def _worth_looking(row: PrintJob, newest: int) -> bool:
     return bool(found.get("filament_mm")) and _fraction(row) is not None  # its figure can be worked out now
 
 
-def estimate(db: Session, printer_id: int, row: PrintJob, newest: int) -> None:
-    """Find (once) the slicer's filament for this print, and set its filament_used from it and how far it got."""
+def estimate(db: Session, printer_id: int, row: PrintJob, newest: int, fresh: bool = False) -> None:
+    """
+    Find (once) the slicer's filament for this print, and set its filament_used from it and how far it got: Prusa
+    Connect's figure, else the 3MF's, else the printed file's (asked for only when `fresh`: a print this look changed,
+    or the backfill's).
+    """
     meta = dict(row.job_metadata or {})
     found = meta.get(KEY)
     if not isinstance(found, dict) or (found.get("version_id") is None and (found.get("checked") or 0) < newest):
@@ -66,15 +95,35 @@ def estimate(db: Session, printer_id: int, row: PrintJob, newest: int) -> None:
         if found is None:
             return  # its G-code can't be read right now (a share not mounted): tried again next time
         meta[KEY] = found
-    mm, fraction = found.get("filament_mm"), _fraction(row)
+    connect = meta.get("connect_slicer") if isinstance(meta.get("connect_slicer"), dict) else {}
+    if _number(connect.get("filament_mm")):
+        mm, grams, source = connect["filament_mm"], _number(connect.get("filament_g")), "prusa_connect"
+    elif found.get("filament_mm"):
+        mm, grams, source = found["filament_mm"], found.get("filament_g"), "3mf"
+    else:
+        mm = grams = source = None
+        if fresh or meta.get(FILE) == WANTED:
+            read = printed_filament.estimate_for(db, printer_id, row)
+            if read is not None:
+                mm, grams, source = read.filament_mm, read.filament_g, "printed_file"
+                meta[FILE] = {"id": read.id}
+            elif meta.get(FILE) is None and _readable(row):
+                meta[FILE] = WANTED
+    fraction = _fraction(row)
     if mm and fraction is not None:
         row.filament_used = round(mm * fraction, 2)
         meta["filament_estimated"] = True
-        if found.get("filament_g"):
+        meta["filament_estimate_source"] = source
+        if grams:
             # the slicer's weight per mm, for its grams when the 3MF has no density (filament_cost.grams_used)
-            meta["filament_total"], meta["filament_weight_total"] = mm, found["filament_g"]
+            meta["filament_total"], meta["filament_weight_total"] = mm, grams
     if meta != (row.job_metadata or {}):
         row.job_metadata = meta
+
+
+def _readable(row: PrintJob) -> bool:
+    """Whether the print's file can be read on the printer: a G-code, where the printer said it is."""
+    return bool((row.job_metadata or {}).get("path")) and (row.filename or "").lower().endswith(gcode.GCODE_EXTENSIONS)
 
 
 def _number(value) -> float | None:

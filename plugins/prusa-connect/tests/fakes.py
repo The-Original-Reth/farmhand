@@ -96,6 +96,9 @@ class FakePrusaConnect(_Server):
         self.stored: dict[str, bytes] = {}  # its own storage "local": path -> bytes
         self.printed: list[dict] = []  # what it was asked to print
         self.pairing_requests: list[dict] = []
+        self.jobs: dict | None = None  # its record of the printer's prints ({current, last}); None: an older build without it
+        self.history: list[dict] = []  # the ended prints, newest first
+        self.history_asked = 0
         self.devices = {DEVICE: {
             "id": DEVICE, "kind": "printer", "model": "COREONE", "serial": "CZPX1234X004XC12345", "name": "Core One",
             "firmware": "6.4.0", "connected": True,
@@ -140,6 +143,11 @@ class FakePrusaConnect(_Server):
             return 200, {"items": list(self.devices.values()), "total": len(self.devices)}
         if method == "GET" and bare == f"/api/v1/devices/{DEVICE}":
             return 200, self.devices[DEVICE]
+        if method == "GET" and bare == f"/api/v1/devices/{DEVICE}/jobs" and self.jobs is not None:
+            return 200, self.jobs
+        if method == "GET" and bare == f"/api/v1/devices/{DEVICE}/jobs/history" and self.jobs is not None:
+            self.history_asked += 1
+            return 200, {"items": self.history, "cursor": "", "limit": 10}
         if method == "GET" and bare == f"/api/v1/devices/{DEVICE}/storages":
             return 200, {"items": [{"mountpoint": "/usb", "name": "usb", "type": "USB", "read_only": False}], "reported": True}
         if method == "GET" and bare == "/api/v1/storages":

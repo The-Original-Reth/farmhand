@@ -7,6 +7,7 @@ from .network_share import NetworkShare
 from .printer import Printer
 from .printer_connection import (
     GcodeFilament,
+    PrintedFileEstimate,
     PrinterConnection,
     PrinterEnergyReading,
     PrinterServiceNote,
@@ -41,6 +42,7 @@ __all__ = [
     "PrinterEnergyReading",
     "PrintJob",
     "GcodeFilament",
+    "PrintedFileEstimate",
     "PrusaLinkConnection",
     "PrinterStatusSource",
     "MaintenanceEntry",
