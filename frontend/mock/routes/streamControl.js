@@ -42,6 +42,7 @@ export function streamControlRoutes(ctx) {
     happened: [],
     media: { images: ["logo.png"], slideshows: [{ name: "Finished prints", images: ["frog.jpg", "shark.jpg"] }], music: ["Lo-fi beat.mp3"] },
     live: {}, // plugin id -> live
+    music: {}, // plugin id -> the music it sends while live: { on, playing, track, at }
   });
   const sc = () => {
     if (!state().enabled) throw new HttpError(404, "Stream control is switched off. Switch it on on the Plugins page to use it.");
@@ -82,9 +83,17 @@ export function streamControlRoutes(ctx) {
         : null,
     };
   };
+  // the music a live pretend plugin sends (its own player, as the real ones: Back, Play, Pause and Next on it); null when not live
+  const onAir = (p) => {
+    if (!p.enabled || !state().live[p.id]) return null;
+    const tracks = musicTracks().map((t) => t.name);
+    const m = state().music[p.id] || (state().music[p.id] = { playing: true, track: tracks[0] || null, since: Date.now(), at: 0 });
+    const at = m.playing ? m.at + (Date.now() - m.since) / 1000 : m.at;
+    return { on: !!state().design.music, playing: m.playing, track: m.track, at: Math.round(at * 10) / 10 };
+  };
   const entry = (p, answer = null) => ({
     id: p.id, name: p.name, site: controlOf(p).site || p.name, enabled: p.enabled, needs_update: controlOf(p).legacy, has_page: !!p.manifest.page,
-    can_read_design: p.permissions.includes("stream:read"), chosen: isChosen(p.id), ...extras(p),
+    can_read_design: p.permissions.includes("stream:read"), chosen: isChosen(p.id), ...extras(p), music: onAir(p),
     settings_page: { stream: "/?view=youtube-settings", twitch: "/?view=twitch-settings" }[p.id] || null,
     ...(answer || (p.enabled
       ? { live: !!state().live[p.id], following: !controlOf(p).legacy, error: null, watch_url: state().live[p.id] ? `https://example.com/${p.id}/live` : null, reachable: true }
@@ -123,6 +132,7 @@ export function streamControlRoutes(ctx) {
       return entry(p, { live: null, following: null, error: "There's no Twitch stream key yet: put it in on the Twitch plugin's own page.", watch_url: null, reachable: true, refused: true });
     }
     state().live[p.id] = action === "start";
+    if (action === "stop") delete state().music[p.id]; // (going live again starts the music again)
     return entry(p);
   };
   // { streams, happened }, as GET and PUT /stream-control/streams answer
@@ -194,6 +204,29 @@ export function streamControlRoutes(ctx) {
     sc();
     if (!["start", "stop"].includes(action)) throw new HttpError(404, "Not Found");
     return act(one(id), action);
+  });
+  // Back, Play, Pause, Next on the music each live stream brought in sends (POST /api/stream/music/<action> on each)
+  on("POST", "/stream-control/music/:action", ({ action }) => {
+    sc();
+    if (!["back", "play", "pause", "next"].includes(action)) throw new HttpError(404, "Not Found");
+    const told = streamPlugins().filter((p) => p.enabled && isChosen(p.id));
+    if (!told.length) throw new HttpError(422, "No stream is brought into Stream control, so there's no music on a stream to control.");
+    const live = told.filter((p) => state().live[p.id]);
+    if (!live.length) throw new HttpError(422, "The stream isn't live: the music plays on the stream once it is.");
+    if (!state().design.music) throw new HttpError(422, "The music is off: tick Play music on the stream, and Save.");
+    const tracks = musicTracks().map((t) => t.name);
+    for (const p of live) {
+      const now = onAir(p);
+      const m = state().music[p.id];
+      const i = Math.max(0, tracks.indexOf(now.track));
+      if (action === "play" || action === "pause") Object.assign(m, { playing: action === "play", at: now.at, since: Date.now() });
+      else {
+        // Back: the track from its start, or in its first 3 seconds the one before; Next: the next one
+        const step = action === "next" ? 1 : now.at > 3 ? 0 : -1;
+        Object.assign(m, { playing: true, at: 0, since: Date.now(), track: tracks.length ? tracks[(i + step + tracks.length) % tracks.length] : null });
+      }
+    }
+    return streamsAnswer();
   });
   on("POST", "/stream-control/start-all", () => allOf("start"));
   on("POST", "/stream-control/stop-all", () => allOf("stop"));

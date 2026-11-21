@@ -9,9 +9,12 @@ import { OpenFolder } from "./MediaChoices.jsx";
 // The stream's music (the stream plugins' music panel, without what only a stream going out from the page itself
 // needs): the tracks of the music folders chosen, played one after another and round again (shuffled each round, if
 // chosen) on every stream following Stream control. On or off, its volume and shuffling are saved with the page's Save;
-// tracks are added to and deleted from Stream control's own folder straight away. Back, Play/Pause and Next, and each
-// track's own ▶, play the tracks here in this browser at the volume chosen, to hear how they sound; with `autoplay`,
-// the page plays them by itself while it's open. `shown`/`change`: the page's choices; `media`: the stream folder
+// tracks are added to and deleted from Stream control's own folder straight away. Back, Play/Pause and Next: while a
+// stream brought in is live (`live`), the music it sends (`onAir`: its { on, playing, track, at }, heard at `heardAt`;
+// `onControl("back" | "play" | "pause" | "next")` tells the streams), as the stream plugins' own pages have them;
+// not live, the tracks played here in this browser at the volume chosen, to hear how they sound (each track's own ▶
+// too). With `autoplay`, the page plays them by itself while it's open, and while live plays along with the stream (the
+// track it sends, from where it is, paused when it is). `shown`/`change`: the page's choices; `media`: the stream folder
 // (media.music: the tracks' file names, media.musicTracks: each one's folder); `ask`, `busy`: the page's own way of
 // asking the server; `muted`: Mute, this page only; `onWaiting(bool)`: the browser holding the sound back until a click;
 // `extra`: drawn under the heading (the choice of folders); `sourceOf(name)`: the folder a stream plugin's track is in.
@@ -19,9 +22,13 @@ import { OpenFolder } from "./MediaChoices.jsx";
 // the volume as the stream plays it: the slider squared, so its middle sounds about half as loud
 export const musicGain = (volume) => (Math.max(0, Math.min(100, Number(volume) || 0)) / 100) ** 2;
 const BACK_RESTARTS = 3; // seconds into a track after which Back starts it again, as on the stream
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const small = { ...headerButton(), padding: "0 6px" };
 
-export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, onWaiting = null, muted = false, extra = null, sourceOf = null }) {
+export function MusicPanel({
+  shown, change, media, ask, busy, autoplay = false, onWaiting = null, muted = false, extra = null, sourceOf = null,
+  live = false, onAir = null, heardAt = 0, onControl = null,
+}) {
   const input = useRef(null);
   const player = useRef(null);
   const paused = useRef(false); // paused here by hand: it stays so until played again (or Autoplay ticked again)
@@ -30,6 +37,7 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
   const [here, setHere] = useState(null); // the track played here: { name, paused, waiting (for a click: the browser's rule) }
   const [removing, setRemoving] = useState(null); // the track asking "Delete?"
   const [opening, setOpening] = useState(false); // showing where the music folder is, for File Explorer
+  const [, tick] = useState(0); // (live: the time into the track goes on between the page's looks)
   const tracks = media.music || [];
   const off = !!busy || !!media.error;
   const playing = here && !here.paused ? here.name : null;
@@ -50,15 +58,49 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
     if (here && !tracks.includes(here.name)) stopHere(); // deleted, or gone from the folders chosen
   }, [tracks, here]);
   useEffect(() => () => player.current?.pause(), []);
-  // Autoplay: the music plays here all the time, round and round, as on the stream. Unticked, or the music unticked, stops it.
-  const wanted = autoplay && shown.music && tracks.length > 0;
+  useEffect(() => {
+    if (!live || !onAir?.playing) return undefined;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [live, onAir?.playing]);
+  // Live with Autoplay, the page plays along with the stream: the track it's sending, from where it is, paused when it
+  // is (each look at the streams brings it back in step), so you hear what viewers hear. Mute silences it here only.
+  useEffect(() => {
+    if (!live || !autoplay) return;
+    if (!onAir?.on || !onAir.track) {
+      stopHere();
+      return;
+    }
+    const at = onAir.at + (onAir.playing ? Math.max(0, (Date.now() - heardAt) / 1000) : 0);
+    if (here?.name !== onAir.track) {
+      playHere(onAir.track, at, onAir.playing);
+      return;
+    }
+    const a = player.current;
+    if (!a || here.waiting) return;
+    if (!onAir.playing) {
+      a.pause();
+      if (!here.paused) setHere({ name: here.name, paused: true });
+      return;
+    }
+    if (Math.abs(a.currentTime - at) > 2) a.currentTime = at; // drifted: back in step
+    if (here.paused) {
+      a.play().catch(() => {});
+      setHere({ name: here.name, paused: false });
+    }
+  }, [live, autoplay, onAir?.on, onAir?.track, onAir?.playing, heardAt]);
+  // Autoplay, not live: the music plays here all the time, round and round, as on the stream (live, it plays along
+  // instead). Unticked, or the music unticked, stops it.
+  const wanted = autoplay && !live && shown.music && tracks.length > 0;
   useEffect(() => {
     if (!autoplay) paused.current = false; // (ticked again: it starts again)
-    if (!wanted) return stopHere();
+    if (!wanted) {
+      if (!live || !autoplay) stopHere();
+      return;
+    }
     if (!here && !paused.current) advance(null, 1);
-    return undefined;
   }, [wanted, autoplay]);
-  latest.current = { tracks, shuffle: shown.musicShuffle };
+  latest.current = { tracks, shuffle: shown.musicShuffle, live };
 
   // the track `step` along from `name` in the list (round again at either end; shuffled, going on: any other one),
   // played here
@@ -73,16 +115,19 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
     }
     playHere(list[(((i < 0 ? 0 : i + step) % list.length) + list.length) % list.length]);
   };
-  const playHere = (name) => {
+  // `at`: from that far in (playing along with the stream); `go`: false, loaded but held paused
+  const playHere = (name, at = 0, go = true) => {
     const a = player.current || (player.current = new Audio());
-    a.onended = () => advance(name, 1); // on to the next, as the stream does
+    a.onended = () => !latest.current.live && advance(name, 1); // on to the next, as the stream does (live: as it says)
+    a.onloadedmetadata = at ? () => (a.currentTime = Math.min(at, a.duration || at)) : null;
     a.src = streamTrackUrl(name);
     a.volume = musicGain(shown.musicVolume);
     a.muted = muted;
     paused.current = false;
     const asked = ++requests.current;
+    if (!go) return setHere({ name, paused: true });
     setHere({ name, paused: false });
-    a.play().catch((e) => {
+    return a.play().catch((e) => {
       if (asked !== requests.current) return; // another track asked for since: it's that one's
       if (e?.name !== "NotAllowedError") return setHere(null);
       // the browser plays sound only once the page has been clicked: it starts with the first click or key
@@ -96,6 +141,7 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
       };
       document.addEventListener("pointerdown", go, true);
       document.addEventListener("keydown", go, true);
+      return undefined;
     });
   };
   const pauseHere = () => {
@@ -106,26 +152,35 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
   // each track's own ▶: play it here, or pause it
   const toggleTrack = (name) => (playing === name ? pauseHere() : playHere(name));
 
-  // Back, Play/Pause, Next: here, in this browser
-  const isPlaying = !!playing || !!here?.waiting; // (waiting for a click: going, as far as you're concerned)
+  // Back, Play/Pause, Next: the stream's music while live, otherwise here, in this browser
+  const server = (action) => onControl?.(action);
+  const isPlaying = live ? !!onAir?.playing : !!playing || !!here?.waiting; // (waiting for a click: going, as far as you're concerned)
   const back = () => {
+    if (live) return server("back");
     if (!here) return advance(tracks[0], 0);
     if ((player.current?.currentTime || 0) > BACK_RESTARTS) return playHere(here.name);
     return advance(here.name, -1);
   };
-  const next = () => advance(here ? here.name : tracks[0], here ? 1 : 0);
+  const next = () => (live ? server("next") : advance(here ? here.name : tracks[0], here ? 1 : 0));
   const playPause = () => {
+    if (live) return server(onAir?.playing ? "pause" : "play");
     if (!here) return advance(tracks[0], 0);
     if (playing) return pauseHere();
     paused.current = false;
     player.current.play().catch(() => setHere(null));
     return setHere({ name: here.name, paused: false });
   };
-  const controlsOff = !!busy || !tracks.length;
+  const liveOff = live && !onAir?.on; // live with the music off (as saved): nothing to control
+  const controlsOff = !!busy || liveOff || (!live && !tracks.length);
+  const at = onAir ? onAir.at + (onAir.playing ? Math.max(0, (Date.now() - heardAt) / 1000) : 0) : 0;
+  const where = live ? "on the stream" : "here";
   let nowText = "";
-  if (here?.waiting) nowText = `Playing: ${here.name} · starts with your first click on the page (the browser waits for one)`;
+  if (live && !onAir?.on) nowText = "The music is off on the stream (tick Play music on the stream and Save)";
+  else if (live && onAir.track) nowText = `On the stream: ${onAir.track} · ${clock(at)}${onAir.playing ? "" : " (paused)"}`;
+  else if (live) nowText = tracks.length ? "On the stream: starting…" : "On the stream: no tracks, so silence";
+  else if (here?.waiting) nowText = `Playing: ${here.name} · starts with your first click on the page (the browser waits for one)`;
   else if (here) nowText = `Playing: ${here.name}${here.paused ? " (paused)" : ""}`;
-  else if (tracks.length) nowText = "The buttons play the tracks here, in this browser";
+  else if (tracks.length) nowText = "Not live: the buttons play the tracks here, in this browser";
 
   const upload = async (files) => {
     if (files.length) await ask("music", () => uploadStreamMusic(files));
@@ -150,22 +205,22 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
           Play music on the stream
         </label>
         <div style={{ display: "flex", gap: 4 }}>
-          <button type="button" data-testid="stream-music-back" onClick={back} disabled={controlsOff} style={small} aria-label="Back" title="Back (here)">
+          <button type="button" data-testid="stream-music-back" onClick={back} disabled={controlsOff} style={small} aria-label="Back" title={`Back (${where})`}>
             <SkipBack size={13} />
           </button>
           <button
             type="button" data-testid="stream-music-play" onClick={playPause} disabled={controlsOff} style={small} aria-label={isPlaying ? "Pause" : "Play"}
-            title={isPlaying ? "Pause (here)" : "Play (here)"}
+            title={isPlaying ? `Pause (${where})` : `Play (${where})`}
           >
             {isPlaying ? <Pause size={13} /> : <Play size={13} />}
           </button>
-          <button type="button" data-testid="stream-music-next" onClick={next} disabled={controlsOff} style={small} aria-label="Next" title="Next track (here)">
+          <button type="button" data-testid="stream-music-next" onClick={next} disabled={controlsOff} style={small} aria-label="Next" title={`Next track (${where})`}>
             <SkipForward size={13} />
           </button>
         </div>
       </div>
       {nowText && (
-        <div data-testid="stream-music-now" style={uiText(12, c.textMuted, { marginTop: -4 })}>
+        <div data-testid="stream-music-now" style={uiText(12, live && onAir?.track ? c.heading : c.textMuted, { marginTop: -4 })}>
           {nowText}
         </div>
       )}
@@ -187,7 +242,7 @@ export function MusicPanel({ shown, change, media, ask, busy, autoplay = false, 
       <div data-testid="stream-music-tracks" style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
         {!tracks.length && <div style={uiText(12, c.textFaint)}>{media.error ? `The stream folder can't be used now: ${media.error}` : "No tracks yet."}</div>}
         {tracks.map((name) => {
-          const on = name === here?.name; // the one playing here
+          const on = name === (live ? onAir?.track : here?.name); // the one playing (live: the stream's)
           return (
             <div
               key={name} data-testid="stream-music-track" data-playing={on || undefined}
