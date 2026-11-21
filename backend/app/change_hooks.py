@@ -45,6 +45,8 @@ def _what_changed(path: str) -> "config_service.MirrorScope | None":
             return config_service.MirrorScope()  # how often printers are backed up: a preference in the settings file
         if len(parts) > 2 and parts[2] in ("config-backups", "ssh"):
             return None  # a printer's backups are files on the NAS already, not part of its settings file
+        if parts[2:] == ["webcams", "webrtc"]:
+            return None  # only sets up a camera's video
         if len(parts) > 2 and parts[1].isdigit():
             return config_service.MirrorScope(printers={int(parts[1])})  # its notes, a sync, its service...
         return config_service.EVERYTHING  # added, renamed, retired or deleted: file names and models' files follow

@@ -36,6 +36,7 @@ class FakeMoonraker:
         self.temps = {"extruder": (24.0, 0.0), "heater_bed": (23.0, 0.0)}  # (temperature, target)
         self.uploads: list[dict] = []  # {filename, size, root, print}
         self.webcams: list[dict] = []  # as Mainsail's camera settings save them
+        self.webrtc_asked: list[dict] = []  # each camera-streamer WebRTC set-up message POSTed to its camera
         self.web_ui: str | None = "Mainsail"  # the web page on port 80 ("Mainsail" | "Fluidd"); None = no page there
         # The computer it runs on, as /machine/system_info's cpu_info gives it; None = won't say
         self.cpu_info: dict | None = {"model": "Raspberry Pi 4 Model B Rev 1.5", "processor": "aarch64", "total_memory": 3886824, "memory_units": "kB"}
@@ -101,6 +102,12 @@ class FakeMoonraker:
             return self._error(401, "Unauthorized")
         path, q = request.url.path, request.url.params
         if request.url.port in (None, 80):  # the web page on port 80, not Moonraker
+            if path == "/webcam/webrtc" and request.method == "POST":  # camera-streamer's WebRTC set-up
+                message = json.loads(request.content)
+                self.webrtc_asked.append(message)
+                if message.get("type") == "request":
+                    return httpx.Response(200, json={"id": "3", "type": "offer", "sdp": "v=0", "iceServers": []})
+                return httpx.Response(200, text="")
             if path != "/" or self.web_ui is None:
                 return httpx.Response(404, text="Not Found")
             return httpx.Response(200, text=f"<!DOCTYPE html><html><head><title>{self.web_ui}</title></head><body></body></html>")

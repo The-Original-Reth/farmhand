@@ -30,7 +30,8 @@ def test_a_printers_cameras_with_whole_addresses(api, moonraker):
          "rotation": 0, "aspect_ratio": "4:3", "target_fps": 15},
         {"name": "Nozzle", "service": "webrtc-camerastreamer", "mjpeg": False, "stream_url": "http://10.0.6.99/webrtc",
          "snapshot_url": "http://10.0.6.21/webcam2/snapshot", "flip_horizontal": True, "flip_vertical": False,
-         "rotation": 180, "aspect_ratio": "4:3", "target_fps": 10},
+         "rotation": 180, "aspect_ratio": "4:3", "target_fps": 10,
+         "signal_url": f"/printers/{pid}/webcams/webrtc?name=Nozzle"},  # set up through Farmhand's API
     ]
 
 

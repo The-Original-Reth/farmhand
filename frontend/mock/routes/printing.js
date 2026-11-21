@@ -54,6 +54,12 @@ export function printingRoutes(ctx) {
     const stream = `/mock-api/printers/${p.id}/webcam/?action=stream`;
     return { webcams: [camera({ service: "mjpegstreamer-adaptive", stream_url: stream, snapshot_url: cameraPicture(width, height), target_fps: fps, aspect_ratio: width / height > 1.5 ? "16:9" : "4:3" })], error: null, board };
   });
+  // A camera-streamer WebRTC camera's set-up, passed on to the printer: the sample farm has none (its cameras play as
+  // snapshots, the mockup having no video), so it's always the real API's answer for a camera that isn't there
+  on("POST", "/printers/:id/webcams/webrtc", ({ id }, _body, q) => {
+    const p = printer(id);
+    throw new HttpError(404, `${p.name} has no WebRTC (camera-streamer) camera called '${q.get("name") || ""}'.`);
+  });
   // Crowsnest's ustreamer on the printer itself (not Farmhand's API): "state" beside its stream says what it captures
   on("GET", "/printers/:id/webcam/state", ({ id }) => {
     const { width, height, fps } = crowsnestCapture(printer(id));
