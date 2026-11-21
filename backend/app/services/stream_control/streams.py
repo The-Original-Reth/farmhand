@@ -28,7 +28,9 @@ CHOSEN_KEY = "stream_control_streams"
 # music folders read it too.
 PAGE_PATH = "/api/stream"
 CAMERA_STATES = ("live", "down", "starting")
-NOTHING_SHOWN = {"links": [], "cameras": [], "viewers": None, "buffer": None, "hardware": None}
+NOTHING_SHOWN = {"links": [], "cameras": [], "viewers": None, "buffer": None, "hardware": None, "music": None}
+# Back, Play/Pause and Next on the music going out while live: POST PAGE_PATH/music/<action> on each stream plugin
+MUSIC_ACTIONS = ("back", "play", "pause", "next")
 # What a stream plugin says it compresses its stream with ("encoder") and unpacks its cameras with ("camera_decoding"),
 # as Stream control shows them: "gpu" (an NVIDIA card) or "cpu" (the processor)
 ENCODERS = {"nvenc": "gpu", "cpu": "cpu"}
@@ -178,10 +180,22 @@ def _hardware(status: dict) -> dict | None:
             "note": _text(status.get("encoder_note")) or _text(status.get("camera_decoding_note"))}
 
 
+def _music(status: dict) -> dict | None:
+    """The music going out, as its plugin plays it while live: {on (ticked in the design), playing (False: paused),
+    track (its file name, or None before the first), at (seconds into it)}; None when not live, or a plugin that
+    doesn't say."""
+    music = _dict(status.get("music"))
+    if status.get("live") is not True or not music:
+        return None
+    at = music.get("at")
+    return {"on": music.get("on") is True, "playing": music.get("playing") is True, "track": _text(music.get("track")),
+            "at": round(float(at), 1) if isinstance(at, (int, float)) and not isinstance(at, bool) else 0.0}
+
+
 def _shown(page: dict) -> dict:
     """From the plugin's own page answer: {links, cameras: [{key, label, state: live | down | starting, since}] (while
     live), viewers (YouTube's, while live), buffer (its delay, while live: _buffer), hardware (GPU or CPU, while live:
-    _hardware)}."""
+    _hardware), music (what it plays, while live: _music)}."""
     status, settings = _dict(page.get("status")), _dict(page.get("settings"))
     cameras = [
         {"key": c.get("key"), "label": c.get("label") or c.get("key"), "state": c["state"], "since": c.get("since")}
@@ -189,7 +203,7 @@ def _shown(page: dict) -> dict:
     ]
     viewers = _dict(status.get("youtube")).get("viewers")
     return {"links": _links(status, settings), "cameras": cameras, "viewers": viewers if type(viewers) is int else None,
-            "buffer": _buffer(status), "hardware": _hardware(status)}
+            "buffer": _buffer(status), "hardware": _hardware(status), "music": _music(status)}
 
 
 def _status(address: str, path: str, method: str = "GET", legacy: bool = False) -> dict:
@@ -241,7 +255,7 @@ def _each(db: Session, ask, only_chosen: bool = False) -> list[dict]:
 
 def listed(db: Session) -> list[dict]:
     """Every stream plugin and how its stream is doing: [{id, name, site, enabled, chosen (brought in), live, links,
-    cameras (each one's state while live), viewers, buffer (its delay while live: {seconds, held, filling, holding}),
+    cameras (each one's state while live), viewers, music (while live: {on, playing, track, at}), buffer (its delay while live: {seconds, held, filling, holding}),
     hardware (while live, where its work is done: {encoder, cameras: "gpu" | "cpu" | None, note}),
     following, error, watch_url, reachable (None: switched off, not asked), can_read_design (granted stream:read)}]."""
     return _each(db, _status)
@@ -282,3 +296,32 @@ def all_of(db: Session, action: str) -> list[dict]:
     """Start or stop every switched-on stream plugin brought in, at once: those ones' entries, as they answered."""
     told = _each(db, lambda address, base, legacy=False: _status(address, f"{base}/{action}", "POST", legacy), only_chosen=True)
     return [e for e in told if e["enabled"] and e["chosen"]]
+
+
+def music(db: Session, action: str) -> list[dict]:
+    """Back, Play, Pause or Next on the music each live stream brought into Stream control sends (each stream plugin
+    plays its own, through its own page's API, as its own page's buttons do: every switched-on one brought in is told,
+    those not live say so and are passed over). Every stream plugin's entry, as listed afterwards. ValueError when none
+    could do it, with what they said."""
+    if action not in MUSIC_ACTIONS:
+        raise ValueError(f"\"{action}\" isn't something the music does: back, play, pause or next.")
+    picked = chosen(db)
+    targets = {}
+    for p in _stream_plugins(db):
+        sc = control_of(p)
+        if p.enabled and (picked is None or p.id in picked):
+            targets[p.id] = (registry.connection_of(p).address, sc.get("site") or p.name)
+    if not targets:
+        raise ValueError("No stream is brought into Stream control, so there's no music on a stream to control.")
+    db.commit()  # (let go of the database while the plugins are asked)
+    with ThreadPoolExecutor(max_workers=min(8, len(targets))) as pool:
+        jobs = {pid: pool.submit(_request, address, f"{PAGE_PATH}/music/{action}", "POST") for pid, (address, _) in targets.items()}
+        answers = {pid: job.result() for pid, job in jobs.items()}
+    if not any(code is not None and 200 <= code < 300 for code, _, _ in answers.values()):
+        said = {}
+        for pid, (code, body, problem) in answers.items():
+            said[targets[pid][1]] = problem or (body.get("detail") if isinstance(body.get("detail"), str) else None) or f"The plugin answered {code}."
+        if len(set(said.values())) == 1:  # (all say the same: once)
+            raise ValueError(next(iter(said.values())))
+        raise ValueError(" ".join(f"{site}: {why}" for site, why in said.items()))
+    return listed(db)

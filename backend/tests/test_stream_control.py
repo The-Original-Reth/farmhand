@@ -53,6 +53,7 @@ class FakeStreams:
         self.refuse: dict[str, str] = {}  # host -> why it won't go live
         self.down: set[str] = set()
         self.asked: list[str] = []
+        self.music: dict[str, dict] = {}  # host -> its music going out while live: {on, playing, track, at}
         # the YouTube plugin's own layout, as its own page's API gives it (Copy layout)
         self.own_layout = {
             "cols": 3, "rows": 1, "layout": "cycle", "seconds_each": 15, "title": "Our farm", "font": "roboto",
@@ -67,6 +68,17 @@ class FakeStreams:
         self.asked.append(f"{request.method} {host}{path}")
         if host in self.down:
             raise httpx.ConnectError("Connection refused", request=request)
+        if request.method == "POST" and path.rsplit("/", 1)[0] == "/api/stream/music":  # Back, Play, Pause, Next while live
+            action = path.rsplit("/", 1)[1]
+            if not self.live.get(host):
+                return httpx.Response(422, json={"detail": "The stream isn't live: the music plays on the stream once it is."})
+            music = self.music.setdefault(host, {"on": True, "playing": True, "track": "beat.mp3", "at": 0.0})
+            if not music["on"]:
+                return httpx.Response(422, json={"detail": "The music is off: tick Play music on the stream, and Save."})
+            music["playing"] = action != "pause" if action in ("play", "pause") else True
+            if action in ("back", "next"):
+                music.update(track="drums.mp3" if action == "next" else "beat.mp3", at=0.0)
+            path = "/api/stream"  # (it answers its page)
         if path.startswith(("/api/stream/pictures/", "/api/stream/slideshows/", "/api/stream/music/")):  # its own stream folder
             name = path.rsplit("/", 1)[1]
             return httpx.Response(200, content=b"picture:" + name.encode()) if name != "gone.png" else httpx.Response(404)
@@ -90,6 +102,7 @@ class FakeStreams:
                     "delay": ({"seconds": 60.0, "held": 23.46, "filling": True} if host == "twitch"
                               else {"seconds": 60.0, "held": 61.0, "filling": False}) if live else {"seconds": 60.0, "held": 0.0, "filling": False},
                     "holding": live and host == "twitch",
+                    "music": self.music.get(host) if live else None,
                     # where its work is done: YouTube's all on the card, Twitch's cameras left on the processor
                     "encoder": "nvenc" if live else None,
                     "camera_decoding": ("gpu" if host == "stream" else "cpu") if live else None,
@@ -269,6 +282,51 @@ def test_stream_plugins_are_listed_started_and_stopped(api):
     fake.down.add("stream")
     s = next(s for s in api.get("/stream-control/streams").json()["streams"] if s["id"] == "stream")
     assert s["reachable"] is False and "couldn't reach" in s["error"]
+
+
+def test_the_music_buttons_control_the_music_on_the_live_streams(api):
+    fake = FakeStreams()
+    remote.transport = httpx.MockTransport(fake.handle)
+    switch(api)
+    add_stream_plugin(api, "stream", "YouTube")
+    add_stream_plugin(api, "twitch", "Twitch")
+
+    # none live: nothing to control, and each says why
+    r = api.post("/stream-control/music/pause")
+    assert r.status_code == 422 and r.json()["detail"] == "The stream isn't live: the music plays on the stream once it is."
+    assert all(s["music"] is None for s in api.get("/stream-control/streams").json()["streams"])
+
+    api.post("/stream-control/streams/stream/start")
+    fake.music["stream"] = {"on": True, "playing": True, "track": "beat.mp3", "at": 12.34}
+    listed = {s["id"]: s for s in api.get("/stream-control/streams").json()["streams"]}
+    assert listed["stream"]["music"] == {"on": True, "playing": True, "track": "beat.mp3", "at": 12.3}
+    assert listed["twitch"]["music"] is None  # (not live)
+
+    # one live is enough: it's told, the one not live passed over
+    fake.asked.clear()
+    r = api.post("/stream-control/music/pause")
+    assert r.status_code == 200, r.text
+    assert {"POST stream/api/stream/music/pause", "POST twitch/api/stream/music/pause"} <= set(fake.asked)
+    after = {s["id"]: s for s in r.json()["streams"]}
+    assert after["stream"]["music"]["playing"] is False and "happened" in r.json()
+    youtube = lambda r: next(s for s in r.json()["streams"] if s["id"] == "stream")  # noqa: E731
+    assert youtube(api.post("/stream-control/music/play"))["music"]["playing"] is True
+    assert youtube(api.post("/stream-control/music/next"))["music"]["track"] == "drums.mp3"
+
+    # a stream left out of Stream control isn't told
+    api.put("/stream-control/streams", json={"chosen": ["twitch"]})
+    fake.asked.clear()
+    assert api.post("/stream-control/music/pause").status_code == 422
+    assert not any(a.startswith("POST stream/") for a in fake.asked)
+    api.put("/stream-control/streams", json={"chosen": ["stream", "twitch"]})
+
+    # the music off on the stream: said so
+    fake.music["stream"]["on"] = False
+    r = api.post("/stream-control/music/play")
+    assert r.status_code == 422 and r.json()["detail"] == ("Twitch: The stream isn't live: the music plays on the stream once it is. "
+                                                         "YouTube: The music is off: tick Play music on the stream, and Save.")
+    assert api.post("/stream-control/music/louder").status_code == 404
+    assert change_hooks._what_changed("/stream-control/music/play") is None  # (not in the settings copy)
 
 
 def test_the_youtube_and_twitch_plugins_from_before_stream_control_start_and_stop_through_their_own_page(api):

@@ -108,6 +108,17 @@ def stop_all(db: Session = Depends(get_db)):
     return {"streams": streams.all_of(db, "stop")}
 
 
+@router.post("/music/{action}")
+def music_control(action: str, db: Session = Depends(get_db)):
+    """Back, Play, Pause or Next on the music going out on each live stream brought into Stream control (each stream
+    plugin's own POST /api/stream/music/<action>): {streams, happened}, as afterwards (each one's `music`: {on, playing,
+    track, at}). **422** when no stream could do it (none live, or its music is off), with what each said."""
+    if action not in streams.MUSIC_ACTIONS:
+        raise HTTPException(status_code=404, detail="Not Found")
+    with answer_errors():
+        return _streams_answer(streams.music(db, action))
+
+
 @router.put("/schedule")
 def save_schedule(body: dict = Body(...), db: Session = Depends(get_db)):
     """{on, entries: [{days: [0 (Monday) to 6], start: "HH:MM" | null, stop: "HH:MM" | null, streams: "all" | [ids]}]}."""

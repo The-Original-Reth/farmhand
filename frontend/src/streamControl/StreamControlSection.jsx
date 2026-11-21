@@ -3,7 +3,7 @@ import { c } from "../theme.js";
 import { uiText } from "../styles.js";
 import {
   errorText, reconnectNas, renameSlideshow, saveStreamDesign, saveStreamLayouts, scanStreamFolder,
-  chooseStreamPlugins, copyStreamLayout, startAllStreams, startStreamPlugin, stopAllStreams, stopStreamPlugin,
+  chooseStreamPlugins, controlStreamMusic, copyStreamLayout, startAllStreams, startStreamPlugin, stopAllStreams, stopStreamPlugin,
 } from "../api.js";
 import { useData } from "../data.jsx";
 import { usePhone } from "../hooks/useMediaQuery.js";
@@ -184,6 +184,15 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
     return cell ? { type: "card", cell } : null;
   });
   const anyLive = page.streams.some((s) => s.live);
+  // the music on the streams: while one brought in is live, the music panel's buttons are its (the first one live that
+  // says what it plays is shown; each one live is told)
+  const liveHere = page.streams.filter((s) => s.enabled && s.chosen && s.live);
+  const onAir = liveHere.find((s) => s.music) || null;
+  const controlMusic = (action) =>
+    run("music", async () => {
+      const r = await controlStreamMusic(action);
+      setPage((now) => ({ ...now, streams: r.streams, happened: r.happened }));
+    });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -219,6 +228,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />
         <MusicPanel
           shown={shown} change={change} media={page.media} ask={ask} busy={busy} autoplay={autoplay} onWaiting={setMusicWaits} muted={muted}
+          live={liveHere.length > 0} onAir={onAir?.music ?? null} heardAt={onAir?.heardAt ?? 0} onControl={controlMusic}
           sourceOf={(name) => {
             const from = page.media.musicTracks.find((t) => t.name === name)?.source;
             return page.media.musicSources.find((s) => s.id === from)?.label.replace("'s music folder", "'s") || "";

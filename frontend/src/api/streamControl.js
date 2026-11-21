@@ -56,6 +56,10 @@ export const normalizeStreamPlugin = (s) => ({
   // while live, where its work is done: { encoder (compressing the stream), cameras (unpacking and fitting them):
   // "gpu" | "cpu" | null (not said), note (why something the card did is on the processor now, or null) }, or null
   hardware: s.hardware ? { encoder: s.hardware.encoder || null, cameras: s.hardware.cameras || null, note: s.hardware.note || null } : null,
+  // while live, the music it sends: { on (ticked in the design), playing (false: paused), track (null before the first),
+  // at (seconds into it when heard) }, or null; heardAt: when (Date.now()), so the time into the track can go on
+  music: s.music ? { on: !!s.music.on, playing: !!s.music.playing, track: s.music.track || null, at: Number(s.music.at) || 0 } : null,
+  heardAt: Date.now(),
 });
 
 // What the schedule did lately: [{ at, action: "start" | "stop", streams: "all" | [ids], results: [{ name, live, error }] }]
@@ -113,6 +117,9 @@ export const copyStreamLayout = async (id) => {
 export const startStreamPlugin = async (id) => normalizeStreamPlugin(await post(`/stream-control/streams/${enc(id)}/start`));
 export const stopStreamPlugin = async (id) => normalizeStreamPlugin(await post(`/stream-control/streams/${enc(id)}/stop`));
 // All of them at once: each one's entry as it answered
+// Back, Play, Pause or Next ("back" | "play" | "pause" | "next") on the music each live stream brought in sends:
+// { streams, happened } as afterwards. Fails (422) when no stream could, saying why (none live, or the music off).
+export const controlStreamMusic = async (action) => normalizeStreams(await post(`/stream-control/music/${enc(action)}`));
 export const startAllStreams = async () => (await post("/stream-control/start-all")).streams.map(normalizeStreamPlugin);
 export const stopAllStreams = async () => (await post("/stream-control/stop-all")).streams.map(normalizeStreamPlugin);
 
