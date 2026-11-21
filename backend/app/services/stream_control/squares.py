@@ -57,6 +57,7 @@ def _text_box(raw, old_size=None, old_place=None) -> dict:
 
 
 WORDS_SIZE = (0.02, 0.3)  # the height of a camera's words, as part of its square's, when chosen (none: sized to fit)
+WORDS_PLACE_X, WORDS_PLACE_Y = 0.95, 0.05  # a camera's words start no further right, and stand no higher, than this
 
 
 def _camera_cell(raw: dict) -> dict:
@@ -64,6 +65,8 @@ def _camera_cell(raw: dict) -> dict:
     A camera's square: {"camera"}, and only what differs from the usual: "background" (round its picture; none: the
     stream's), "show_words": False (its printer's name and print not written on it), "words_size" (their height, part
     of the square's, 0.02 to 0.3; none: sized to the square), "words_color" and "words_font" (none: the stream's own, settings()'s color and font),
+    "words_place": where they're written, {x, y}: their left edge and their foot, as parts of the square's width and height
+    (none: low on the left, under the picture when it leaves room),
     "layers": pieces of text written over the camera, each placed on its own (_layer's text ones; pictures are left out).
     """
     out = {"camera": raw["camera"]}
@@ -80,6 +83,9 @@ def _camera_cell(raw: dict) -> dict:
         out["words_color"] = color
     if raw.get("words_font") in FONTS:
         out["words_font"] = raw["words_font"]
+    place = raw.get("words_place")
+    if isinstance(place, dict):
+        out["words_place"] = {"x": _part(place.get("x"), 0, WORDS_PLACE_X, 0), "y": _part(place.get("y"), WORDS_PLACE_Y, 1, 1)}
     layers = [x for x in _layers(raw.get("layers")) if x["type"] == "text"]
     if layers:
         out["layers"] = layers

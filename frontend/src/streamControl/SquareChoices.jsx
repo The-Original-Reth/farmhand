@@ -24,11 +24,11 @@ export function CameraChoice({ cells, i, onCells, cameras, label }) {
 }
 
 // The printer's name and print written on a camera: shown or not, and their font, colour and size (Automatic: sized to the
-// square, as on every camera). Only what differs from the usual is kept on the square.
+// square, as on every camera), and back to their usual place once dragged elsewhere on the canvas. Only what differs from the usual is kept on the square.
 export function CameraWordsChoice({ cell, put, fonts, showStatus, streamText }) {
   const set = (what) => {
     const next = { ...cell, ...what };
-    for (const [k, usual] of [["show_words", true], ["words_size", null], ["words_color", null], ["words_font", null]]) {
+    for (const [k, usual] of [["show_words", true], ["words_size", null], ["words_color", null], ["words_font", null], ["words_place", null]]) {
       if (next[k] === usual || next[k] === undefined) delete next[k];
     }
     put(next);
@@ -66,8 +66,14 @@ export function CameraWordsChoice({ cell, put, fonts, showStatus, streamText }) 
               Automatic size
             </button>
           )}
+          {cell.words_place && (
+            <button type="button" data-testid="stream-camera-words-place" onClick={() => set({ words_place: null })} style={headerButton()} title="Low on the left, as on every camera">
+              Usual place
+            </button>
+          )}
         </div>
       )}
+      {shown && showStatus && <div style={help}>Drag them on the camera above to move them.</div>}
     </div>
   );
 }

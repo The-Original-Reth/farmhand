@@ -161,7 +161,7 @@ export function StreamPreview({ shown, change, squares, showStatus, cycle = null
         <SquareEditor
           cells={cells} i={selected} onCells={(next) => change({ cells: next })} cameras={cameras} media={media} fonts={fonts} label={label} streamBackground={back} streamText={words} inset={inset} slide={slideCtl}
           aspect={(16 * rows) / (9 * cols)} onSave={onSave} dirty={dirty} saving={busy === "save"}
-          showStatus={showStatus} ask={ask} busy={busy} onRenameSlideshow={onRenameSlideshow} onDone={() => setSelected(null)} screen={<Screen sq={squares[selected]} showStatus={showStatus} big media={media} back={back} words={words} cameraText={false} />}
+          showStatus={showStatus} ask={ask} busy={busy} onRenameSlideshow={onRenameSlideshow} onDone={() => setSelected(null)} cameraSquare={squares[selected]} screen={<Screen sq={squares[selected]} showStatus={false} big media={media} back={back} words={words} cameraText={false} />}
         />
       ) : (
         <div style={uiText(12, c.textMuted, { marginTop: 6 })}>
