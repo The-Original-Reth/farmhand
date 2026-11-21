@@ -186,6 +186,13 @@ def check_cells(cols, rows, cells) -> list[dict | None]:
             if cell["camera"] in seen:
                 raise ValueError("A camera can only be in one square.")
             seen.add(cell["camera"])
+            layers = cell.get("layers") or []
+            if len(layers) > MAX_LAYERS:
+                raise ValueError(f"Up to {MAX_LAYERS} pieces of text can go on a camera; there are {len(layers)}.")
+            for layer in layers:
+                layer["text"] = layer["text"].strip()
+                if len(layer["text"]) > TEXT_MAX:
+                    raise ValueError(f"A piece of text on a camera can be up to {TEXT_MAX} characters; one has {len(layer['text'])}.")
         else:
             if raw.get("image") and raw.get("slideshow"):
                 raise ValueError("A square shows a picture or a slideshow, not both.")

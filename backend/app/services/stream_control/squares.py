@@ -63,7 +63,8 @@ def _camera_cell(raw: dict) -> dict:
     """
     A camera's square: {"camera"}, and only what differs from the usual: "background" (round its picture; none: the
     stream's), "show_words": False (its printer's name and print not written on it), "words_size" (their height, part
-    of the square's, 0.02 to 0.3; none: sized to the square), "words_color" and "words_font" (none: the stream's own, settings()'s color and font).
+    of the square's, 0.02 to 0.3; none: sized to the square), "words_color" and "words_font" (none: the stream's own, settings()'s color and font),
+    "layers": pieces of text written over the camera, each placed on its own (_layer's text ones; pictures are left out).
     """
     out = {"camera": raw["camera"]}
     back = _color(raw.get("background"), None)
@@ -79,6 +80,9 @@ def _camera_cell(raw: dict) -> dict:
         out["words_color"] = color
     if raw.get("words_font") in FONTS:
         out["words_font"] = raw["words_font"]
+    layers = [x for x in _layers(raw.get("layers")) if x["type"] == "text"]
+    if layers:
+        out["layers"] = layers
     return out
 
 
