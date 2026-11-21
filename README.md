@@ -716,6 +716,9 @@ takes 4 WebRTC viewers, and its Wi-Fi struggles with several 1080p streams.
 3. Open **Monitor** (or press **Resync**). Stream plugins read it from Farmhand's go2rtc too (port 8554 on Farmhand's
    address), so the printer still sends it only once.
 
+Farmhand's go2rtc reads such a camera through ffmpeg (the video copied as it comes, not re-encoded): go2rtc's own RTSP
+reader gets only a few seconds at a time from the U1's camera server, though the stream itself is steady.
+
 ## Stream
 
 Streaming the printers' cameras live to **YouTube Live** is the **Stream plugin**'s job
