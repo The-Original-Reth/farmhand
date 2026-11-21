@@ -162,6 +162,20 @@ def test_a_camera_moved_from_crowsnest_to_go2rtc_is_played_from_go2rtc(api, moon
     assert (address.kind, address.url) == ("rtsp", "rtsp://10.0.6.21:8554/chamber")
 
 
+def test_a_camera_streamer_camera_is_read_from_its_mjpeg_beside_the_webrtc_page():
+    from app.models import Printer
+    from app.services import camera_streams
+    printer = Printer(name="Snapmaker U1")
+    cam = {"name": "case", "service": "webrtc-camerastreamer", "mjpeg": False, "stream_url": "http://10.0.6.99/webcam/webrtc"}
+    # camera-streamer itself: /stream, beside /snapshot
+    for snapshot in (None, "http://10.0.6.99/webcam/snapshot"):
+        address = camera_streams.stream_address(printer, {**cam, "snapshot_url": snapshot})
+        assert (address.kind, address.url) == ("mjpeg", "http://10.0.6.99/webcam/stream")
+    # the Snapmaker U1's firmware: /stream.mjpg, beside /snapshot.jpg (its /stream is a 404)
+    address = camera_streams.stream_address(printer, {**cam, "snapshot_url": "http://10.0.6.99/webcam/snapshot.jpg"})
+    assert (address.kind, address.url) == ("mjpeg", "http://10.0.6.99/webcam/stream.mjpg")
+
+
 def test_go2rtc_is_only_used_when_it_has_streams(api, moonraker, printer_go2rtc):
     pid = api.post("/printers", json={"name": "VT 1026", "wired_ip": "10.0.6.21"}).json()["id"]
     moonraker.webcams = [_cam(name="Front", service="mjpegstreamer-adaptive")]
