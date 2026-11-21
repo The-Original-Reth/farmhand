@@ -736,3 +736,15 @@ def test_a_camera_square_keeps_its_own_text_over_it(api):
                          ([{**words, "text": "x" * 501}], "up to 500 characters")]:
         r = api.put("/stream-control", json={"cols": 1, "rows": 1, "cells": [{"camera": CAMERA, "layers": layers}]})
         assert r.status_code == 422 and said in r.json()["detail"], r.text
+
+
+def test_a_camera_square_keeps_where_its_printers_words_go(api):
+    switch(api)
+    put = lambda place: api.put("/stream-control", json={"cols": 1, "rows": 1, "cells": [{"camera": CAMERA, "words_place": place}]})
+    r = put({"x": 0.25, "y": 0.4})
+    assert r.status_code == 200, r.text
+    assert r.json()["design"]["cells"][0] == {"camera": CAMERA, "words_place": {"x": 0.25, "y": 0.4}}
+    # kept on the square: never starting off its right edge, nor standing above its top
+    assert put({"x": 3, "y": -1}).json()["design"]["cells"][0]["words_place"] == {"x": 0.95, "y": 0.05}
+    assert put({"x": "left"}).json()["design"]["cells"][0]["words_place"] == {"x": 0, "y": 1}
+    assert "words_place" not in put(None).json()["design"]["cells"][0]  # none: low on the left, as on every camera

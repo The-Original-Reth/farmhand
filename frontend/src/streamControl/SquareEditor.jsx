@@ -8,6 +8,7 @@ import { CARD, cameraTextCard, layersOf } from "./shapes.js";
 import { LayersChoice } from "./LayersChoice.jsx";
 import { CameraChoice, CameraWordsChoice, TextChoice } from "./SquareChoices.jsx";
 import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
+import { CameraWords } from "./PreviewScreen.jsx";
 
 // The editor under the preview for the square clicked: the square as a canvas of its own (its shape in the grid), and
 // what it shows. Camera (with a colour round it, if you like); Text, Picture or Slideshow (a "card": the square's colour,
@@ -19,14 +20,15 @@ import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
 //
 // `cells`, `i`: the grid's squares and the one being edited; `onCells(next)` changes them. `cameras`: [{ key, label }];
 // `media`: { images, slideshows: [{ name, images }], error }; `label(key)`: a camera's name; `screen`: a camera square
-// drawn as the preview draws it; `aspect`: the square's width over its height; `onSave`, `dirty`, `saving`: saving the
+// drawn as the preview draws it, without its printer's name and print (`cameraSquare`, the preview's square, gives
+// those, drawn here to be dragged into place); `aspect`: the square's width over its height; `onSave`, `dirty`, `saving`: saving the
 // page now, whether anything isn't saved yet; `slide`: the slideshow gone through by hand (StreamPreview's); `onDone`
 // closes the editor.
 
 const KINDS = [["camera", "Camera"], ["text", "Text"], ["picture", "Picture"], ["slideshow", "Slideshow"], ["empty", "Empty"]];
 const isCardKind = (k) => ["text", "picture", "slideshow"].includes(k);
 export const kindOf = (cell) => (!cell ? "empty" : cell.camera ? "camera" : cell.slideshow ? "slideshow" : cell.image ? "picture" : "text");
-export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, slide = null, showStatus = true, label, screen, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground, onRenameSlideshow }) {
+export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], streamText = {}, inset = 0, slide = null, showStatus = true, label, screen, cameraSquare = null, aspect = 16 / 9, onDone, onSave, dirty, saving, ask, busy, streamBackground, onRenameSlideshow }) {
   const cell = cells[i];
   const [kind, setKind] = useState(kindOf(cell));
   useEffect(() => setKind(kindOf(cells[i])), [i]); // another square clicked
@@ -93,6 +95,12 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
             {onCamera && (
               <div style={{ position: "absolute", inset: 0 }}>
                 <CardScreen card={cameraTextCard(cell)} media={media} streamBackground="transparent" streamText={streamText} inset={inset} edit onChange={setCameraText} layer={layer} onLayer={setLayer} />
+              </div>
+            )}
+            {/* the printer's name and print, on top of the camera and its text, dragged into place */}
+            {onCamera && showStatus && cell.show_words !== false && cameraSquare?.type === "camera" && (
+              <div style={{ position: "absolute", inset: 0, containerType: "size", pointerEvents: "none" }}>
+                <CameraWords sq={{ ...cameraSquare, cell }} words={streamText} big onPlace={(p) => put({ ...cell, words_place: p })} />
               </div>
             )}
           </div>
