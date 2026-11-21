@@ -9,6 +9,8 @@ export const CARD = { background: null, image: null, slideshow: null, seconds: 1
 // file name, box: { x, y, w, h } } | { type: "text", text, box: { x, y, size }, font, color, band }. A Text or Picture
 // square's are card.layers; a slideshow's are each screen's own, card.slide_layers[the picture's name, or "blank:N"].
 export const MAX_LAYERS = 12;
+// whether a camera square has its printer's name and print written on it: its own tick (show_words), else Defaults'
+export const wordsShown = (cell, showStatus) => (typeof cell?.show_words === "boolean" ? cell.show_words : !!showStatus);
 // a camera square's pieces of text, drawn over the camera as a see-through card of nothing else (CardScreen)
 export const cameraTextCard = (cell) => ({ ...CARD, background: "transparent", layers: cell?.layers || [] });
 export const newPicture = (image) => ({ type: "picture", image, box: { x: 0.3, y: 0.25, w: 0.4, h: 0.5 } });

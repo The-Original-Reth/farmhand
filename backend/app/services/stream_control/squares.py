@@ -63,7 +63,7 @@ WORDS_PLACE_X, WORDS_PLACE_Y = 0.95, 0.05  # a camera's words start no further r
 def _camera_cell(raw: dict) -> dict:
     """
     A camera's square: {"camera"}, and only what differs from the usual: "background" (round its picture; none: the
-    stream's), "show_words": False (its printer's name and print not written on it), "words_size" (their height, part
+    stream's), "show_words" (its printer's name and print written on it or not, whatever the stream's show_status says; none: as that says), "words_size" (their height, part
     of the square's, 0.02 to 0.3; none: sized to the square), "words_color" and "words_font" (none: the stream's own, settings()'s color and font),
     "words_place": where they're written, {x, y}: their left edge and their foot, as parts of the square's width and height
     (none: low on the left, under the picture when it leaves room),
@@ -73,8 +73,8 @@ def _camera_cell(raw: dict) -> dict:
     back = _color(raw.get("background"), None)
     if back:
         out["background"] = back
-    if raw.get("show_words") is False:
-        out["show_words"] = False
+    if isinstance(raw.get("show_words"), bool):
+        out["show_words"] = raw["show_words"]
     size = raw.get("words_size")
     if not isinstance(size, bool) and isinstance(size, (int, float)) and math.isfinite(size):
         out["words_size"] = _part(size, *WORDS_SIZE, 0.06)

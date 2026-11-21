@@ -9,7 +9,7 @@ import { useData } from "../data.jsx";
 import { usePhone } from "../hooks/useMediaQuery.js";
 import { usePrintProgress, usePrinterCameras } from "../monitor/cameras.js";
 import { StreamPreview } from "./StreamPreview.jsx";
-import { cameraOf, followCameras, printerOf } from "./shapes.js";
+import { cameraOf, followCameras, printerOf, wordsShown } from "./shapes.js";
 import { MuteSwitch, WordsPanel } from "./StreamPanels.jsx";
 import { DefaultsPanel } from "./StreamSquares.jsx";
 import { MusicPanel } from "./MusicPanel.jsx";
@@ -44,7 +44,9 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
 
   const draftOrSaved = draft || page?.design;
   const inGrid = (draftOrSaved?.cells || []).filter((x) => x?.camera).map((x) => x.camera);
-  const progress = usePrintProgress(draftOrSaved?.showStatus ? [...new Set(inGrid.map(printerOf))] : []);
+  // the prints of the printers whose cameras have their name and print written on them
+  const worded = (draftOrSaved?.cells || []).filter((x) => x?.camera && wordsShown(x, draftOrSaved.showStatus)).map((x) => x.camera);
+  const progress = usePrintProgress([...new Set(worded.map(printerOf))]);
 
   if (!page) {
     return <div style={uiText(13, loadError ? c.danger : c.textFaint)}>{loadError ? `Couldn't load Stream control: ${loadError}` : "Loading…"}</div>;

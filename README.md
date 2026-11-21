@@ -741,7 +741,7 @@ Its page is the stream plugins' own editor, moved into Farmhand:
 - **The stream**: the grid of squares (1×1 to 5×5), each a camera, a card (its colour, a picture or a slideshow, and
   words, with more pictures and pieces of text placed on it) or nothing; the whole grid or taking turns; the size
   (720p, 1080p or 2K), border, background, the words' font and colour, each printer's name and print on its camera
-  (low on the left, or dragged onto the picture in its square's editor), and pieces of text written over a camera (Add text in its square's editor: each dragged into place, with its own size,
+  (on every camera, or on those whose square's editor ticks it; low on the left, or dragged onto the picture there), and pieces of text written over a camera (Add text in its square's editor: each dragged into place, with its own size,
   font, colour and dark band, shown whenever that camera is, in the grid or on its own turn);
   the music (its volume and shuffling, and which music folders play: Stream control's own, YouTube's own, Twitch's own,
   any or all at once, a stream's tracks played from its own folder, never copied); the holding screen; and saved layouts to switch between. The preview

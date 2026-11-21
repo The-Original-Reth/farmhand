@@ -4,7 +4,7 @@ import { headerButton, panelBox, primaryButton, uiText } from "../styles.js";
 import { help } from "./streamStyles.js";
 import { ColourPick } from "./controls.jsx";
 import { CardScreen } from "./CardScreen.jsx";
-import { CARD, cameraTextCard, layersOf } from "./shapes.js";
+import { CARD, cameraTextCard, layersOf, wordsShown } from "./shapes.js";
 import { LayersChoice } from "./LayersChoice.jsx";
 import { CameraChoice, CameraWordsChoice, TextChoice } from "./SquareChoices.jsx";
 import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
@@ -98,7 +98,7 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
               </div>
             )}
             {/* the printer's name and print, on top of the camera and its text, dragged into place */}
-            {onCamera && showStatus && cell.show_words !== false && cameraSquare?.type === "camera" && (
+            {onCamera && wordsShown(cell, showStatus) && cameraSquare?.type === "camera" && (
               <div style={{ position: "absolute", inset: 0, containerType: "size", pointerEvents: "none" }}>
                 <CameraWords sq={{ ...cameraSquare, cell }} words={streamText} big onPlace={(p) => put({ ...cell, words_place: p })} />
               </div>
