@@ -147,3 +147,55 @@ def test_back_on_the_cable_even_while_it_keeps_being_asked_over_wifi(db_session,
     clock[0] = 1250  # two minutes after the last fall back
     mr.server_info(p)
     assert mr.answered_at(p) == "http://10.0.6.21:7125"  # on the cable again
+
+
+# ------------------------------------------------------------------ the Camera switch: its cameras on its wired or Wi-Fi IP
+
+
+def _cams(api, pid):
+    return [(c["stream_url"], c["snapshot_url"]) for c in api.get(f"/printers/{pid}/webcams").json()["webcams"]]
+
+
+def test_the_camera_switch_puts_its_cameras_on_the_ip_chosen(api, moonraker):
+    pid = api.post("/printers", json={"name": "V2 BOG", "wired_ip": "10.0.6.21", "wireless_ip": "10.0.6.121"}).json()["id"]
+    moonraker.webcams = [{"name": "Bed", "enabled": True, "service": "mjpegstreamer", "stream_url": "/webcam/?action=stream",
+                          "snapshot_url": "/webcam/?action=snapshot"}]
+    p = next(x for x in api.get("/printers").json() if x["id"] == pid)
+    assert (p["camera_network"], p["camera_network_choice"]) == ("wired", None)  # not chosen: shown as wired
+    assert _cams(api, pid) == [("http://10.0.6.21/webcam/?action=stream", "http://10.0.6.21/webcam/?action=snapshot")]
+    r = api.patch(f"/printers/{pid}", json={"camera_network": "wireless"})
+    assert r.status_code == 200 and (r.json()["camera_network"], r.json()["camera_network_choice"]) == ("wireless", "wireless")
+    # its cameras on Wi-Fi, though Moonraker still answers on the cable
+    assert _cams(api, pid) == [("http://10.0.6.121/webcam/?action=stream", "http://10.0.6.121/webcam/?action=snapshot")]
+    assert api.patch(f"/printers/{pid}", json={"camera_network": ""}).json()["camera_network_choice"] is None  # back to the default
+    assert _cams(api, pid)[0][0] == "http://10.0.6.21/webcam/?action=stream"
+
+
+def test_the_camera_switch_cant_choose_an_ip_the_printer_hasnt(api):
+    pid = api.post("/printers", json={"name": "Solo", "wireless_ip": "10.0.6.121"}).json()["id"]
+    p = api.get("/printers").json()[0]
+    assert p["camera_network"] == "wireless"  # the only one there
+    r = api.patch(f"/printers/{pid}", json={"camera_network": "wired"})
+    assert r.status_code == 409 and "no wired IP" in r.json()["detail"]  # (the update route answers a refusal with 409)
+    # chosen together with the IP it needs: fine
+    r = api.patch(f"/printers/{pid}", json={"wired_ip": "10.0.6.21", "camera_network": "wired"})
+    assert r.status_code == 200 and r.json()["camera_network"] == "wired"
+
+
+def test_a_chosen_ip_that_goes_falls_back_to_the_one_there(db_session):
+    p = _on_both(db_session)
+    p = printer_service.update_printer(db_session, p.id, {"camera_network": "wireless"})
+    p = printer_service.update_printer(db_session, p.id, {"wireless_ip": ""})
+    assert (p.camera_network, p.camera_ip) == ("wired", "10.0.6.21")
+
+
+def test_the_camera_address_follows_the_switch(db_session):
+    p = printer_service.update_printer(db_session, _on_both(db_session).id, {"camera_address": "rtsp://10.0.6.21:8554/stream"})
+    assert p.camera_source == "rtsp://10.0.6.21:8554/stream"
+    p = printer_service.update_printer(db_session, p.id, {"camera_network": "wireless"})
+    assert p.camera_source == "rtsp://10.0.6.121:8554/stream"  # the same camera, on the printer's Wi-Fi
+    assert p.camera_address == "rtsp://10.0.6.21:8554/stream"  # as typed: kept
+    p = printer_service.update_printer(db_session, p.id, {"camera_address": "rtsp://10.0.6.99/live"})
+    assert p.camera_source == "rtsp://10.0.6.99/live"  # a camera of its own: left alone
+    p = printer_service.update_printer(db_session, p.id, {"camera_address": "10.0.6.21"})
+    assert p.camera_source == "10.0.6.121"

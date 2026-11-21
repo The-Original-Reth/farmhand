@@ -85,6 +85,9 @@ export function createCore() {
     status_from_name: p.prusalink && p.statusFrom ? (farm.plugins || []).find((x) => x.id === p.statusFrom)?.name || p.statusFrom : null,
     status_link: p.prusalink && p.statusFrom ? "http://192.168.10.93:8080/printers/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" : null,
     camera_address: p.cameraAddress || null,
+    // the Camera switch, as the real API: the choice when its IP is there, else wired, else wireless
+    camera_network: [p.cameraNetwork, "wired", "wireless"].find((n) => n && p[`${n}_ip`]) || null,
+    camera_network_choice: p.cameraNetwork || null,
     sub_printers: farm.subPrinters.filter((s) => s.printer_id === p.id).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, aliases, settings_copy }) => ({ id, name, aliases: aliases || [], settings_copied_from: settings_copy?.copied_from || null })),
     default_sub_printer_id: p.defaultSubPrinterId ?? null,
   });

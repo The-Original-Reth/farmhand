@@ -27,6 +27,10 @@ export const normalizePrinter = (p) => ({
   statusFromName: p.status_from_name || null, // that plugin's name ("Prusa Connect")
   statusLink: p.status_link || null, // the printer's page on the plugin's side (on Prusa Connect), or null
   cameraAddress: p.camera_address || null, // a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
+  // which of its IPs its cameras are reached at: "wired" | "wireless" | null (no IP); cameraNetworkChoice: the Camera
+  // switch as set (null: not chosen, so wired, or the one it has)
+  cameraNetwork: p.camera_network || null,
+  cameraNetworkChoice: p.camera_network_choice || null,
   // its printer presets in the slicer, A to Z: [{ id, name, aliases, settingsCopiedFrom }]; settingsCopiedFrom: a copy's
   // original, whose printer settings it was copied with (null for one that isn't a copy, or got none)
   subPrinters: (p.sub_printers || []).map((s) => ({ ...s, settingsCopiedFrom: s.settings_copied_from || null })),
@@ -72,7 +76,7 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
 // The connection (Klipper's Moonraker, or PrusaLink) can be given straight away, with the same fields as updatePrinter
 export const createPrinter = ({
   name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,
-  cameraAddress, statusFrom,
+  cameraAddress, cameraNetwork, statusFrom,
 }) =>
   request("/printers", jsonBody("POST", {
     name,
@@ -86,17 +90,18 @@ export const createPrinter = ({
     ...(prusalinkUsername ? { prusalink_username: prusalinkUsername } : {}),
     ...(prusalinkPassword ? { prusalink_password: prusalinkPassword } : {}),
     ...(cameraAddress ? { camera_address: cameraAddress } : {}),
+    ...(cameraNetwork ? { camera_network: cameraNetwork } : {}),
     ...(statusFrom ? { status_from: statusFrom } : {}), // connected through a plugin (Prusa Connect)
   }));
 
 // moonrakerUrl: blank = the default (<IP>:7125). moonrakerApiKey: undefined keeps the saved key, "" removes it.
 // connectionType: "moonraker" | "prusalink". prusalinkUrl: blank = http://<IP>. prusalinkPassword works like the API key.
-// cameraAddress: blank removes the camera.
+// cameraAddress: blank removes the camera. cameraNetwork: "wired" | "wireless", or "" for the default.
 export const updatePrinter = (
   id,
   {
     name, kind, wiredIp, wirelessIp, decommissioned, moonrakerUrl, moonrakerApiKey, connectionType, prusalinkUrl, prusalinkUsername,
-    prusalinkPassword, cameraAddress, statusFrom,
+    prusalinkPassword, cameraAddress, cameraNetwork, statusFrom,
   },
 ) =>
   // Blank optional fields are sent as null so they actually clear
@@ -113,6 +118,7 @@ export const updatePrinter = (
     ...(prusalinkUsername !== undefined ? { prusalink_username: prusalinkUsername } : {}),
     ...(prusalinkPassword !== undefined ? { prusalink_password: prusalinkPassword } : {}),
     ...(cameraAddress !== undefined ? { camera_address: cameraAddress || null } : {}),
+    ...(cameraNetwork !== undefined ? { camera_network: cameraNetwork || "" } : {}),
     // a Prusa printer's status from its PrusaLink ("") or a plugin that reports it
     ...(statusFrom !== undefined ? { status_from: statusFrom || "" } : {}),
   }));

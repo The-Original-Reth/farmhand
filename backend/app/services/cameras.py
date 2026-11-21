@@ -23,7 +23,7 @@ def printer_cameras(printer: Printer) -> dict:
             listed = mr.webcams(printer)
             info = mr.system_info(printer)  # only once it has answered: an unreachable one isn't waited for twice
             board = mr.board_of(info)
-            cams += printer_go2rtc.apply(printer_go2rtc.host_of(printer.mainsail_url), listed, info)
+            cams += printer_go2rtc.apply(printer.camera_ip or printer_go2rtc.host_of(printer.mainsail_url), listed, info)
             for cam in cams:  # a camera-streamer WebRTC one is set up through Farmhand's API (see camera_webrtc)
                 if path := camera_webrtc.signal_path(printer.id, cam):
                     cam["signal_url"] = path
@@ -50,7 +50,7 @@ TAKEN_FROM_MAINSAIL = ("name", "snapshot_url", "flip_horizontal", "flip_vertical
 def relayed_camera(printer: Printer) -> dict:
     """The printer's own camera (a Buddy3D's RTSP stream), handed to go2rtc, in the shape mr.webcams gives."""
     name = go2rtc.stream_name(printer.id)
-    source = go2rtc.rtsp_url(printer.camera_address)
+    source = go2rtc.rtsp_url(printer.camera_source)  # on its camera IP (the Camera switch)
     if printer.connection_type == "moonraker":
         # A Klipper printer's RTSP camera is read through ffmpeg (copied, not re-encoded): go2rtc's own RTSP reader gets
         # only ~3.5 s from a Snapmaker U1's (LIVE555) before it stops sending, then starts again, every 10 s

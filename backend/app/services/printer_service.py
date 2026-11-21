@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..errors import NotFound
 from .. import notes as notes_helper
 from ..models import (
-    Bundle, BundleVersion, Printer, PrinterCamera, PrinterConnection, PrinterNote, PrinterServiceReminder,
+    Bundle, BundleVersion, Printer, PrinterCamera, PrinterCameraNetwork, PrinterConnection, PrinterNote, PrinterServiceReminder,
     PrusaLinkConnection, SubPrinter,
 )
 
@@ -16,7 +16,7 @@ from ..models import (
 def list_printers(db: Session) -> list[Printer]:
     rows = (
         Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row, Printer.status_source_row,
-        Printer.camera_row, Printer.web_ui_row,
+        Printer.camera_row, Printer.camera_network_row, Printer.web_ui_row,
     )
     return list(db.scalars(
         select(Printer).order_by(Printer.name).options(
@@ -177,9 +177,26 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
         else:
             printer.camera_row.address = address
 
+    if "camera_network" in changes:
+        choose_camera_network(printer, changes["camera_network"])
+
     db.commit()
     db.refresh(printer)
     return printer
+
+
+def choose_camera_network(printer: Printer, network: str | None) -> None:
+    """The Camera switch: its cameras reached at its wired or wireless IP ("" or None: the default). Its IPs as they
+    are now (already changed, when saved with them)."""
+    if not network:
+        printer.camera_network_row = None
+        return
+    if not (printer.wired_ip if network == "wired" else printer.wireless_ip):
+        raise ValueError(f"{printer.name} has no {network} IP, so its camera can't be reached on it. Add its {network} IP first.")
+    if printer.camera_network_row is None:
+        printer.camera_network_row = PrinterCameraNetwork(printer_id=printer.id, network=network)
+    else:
+        printer.camera_network_row.network = network
 
 
 # ------------------------------------------------------------------ notes about a printer

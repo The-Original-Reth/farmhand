@@ -16,7 +16,7 @@ from .printer_connection import (
     PrintJob,
 )
 from .source_model import SourceFileType, SourceModel, SourceModelVersion
-from .printer_camera import PrinterCamera
+from .printer_camera import PrinterCamera, PrinterCameraNetwork
 from .printer_config_backup import PrinterConfigBackup, PrinterConfigBackupFile, PrinterSshCheck
 from .printer_note import PrinterNote
 from .plugin import Plugin, PluginAsks, PluginBackup, PluginConnection, PluginHandover, PluginToken
@@ -51,6 +51,7 @@ __all__ = [
     "SourceModel",
     "SourceModelVersion",
     "PrinterCamera",
+    "PrinterCameraNetwork",
     "PrinterConfigBackup",
     "PrinterConfigBackupFile",
     "PrinterSshCheck",

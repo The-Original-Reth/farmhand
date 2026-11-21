@@ -81,6 +81,7 @@ export function printersRoutes(ctx) {
       p.apiKey = body.moonraker_api_key || null;
     }
     p.cameraAddress = body.camera_address || null;
+    if (body.camera_network) cameraNetwork(p, body.camera_network);
     if (body.status_from) {
       if (!p.prusalink) throw new HttpError(409, "Only a Prusa printer (one set up for PrusaLink) can take its status from a plugin.");
       if (!statusReporters().some((r) => r.id === body.status_from)) throw new HttpError(409, "That plugin can't report printers' status: it isn't installed and switched on with the \"report your printers' status\" permission. Check it on the Plugins page.");
@@ -99,11 +100,17 @@ export function printersRoutes(ctx) {
     farm.printers = farm.printers.filter((x) => x !== p);
     return [204, null];
   });
+  // The Camera switch, as the real API: "wired" | "wireless", refused when the printer hasn't that IP; "" or null: the default
+  const cameraNetwork = (p, network) => {
+    if (network && !p[`${network}_ip`]) throw new HttpError(409, `${p.name} has no ${network} IP, so its camera can't be reached on it. Add its ${network} IP first.`);
+    p.cameraNetwork = network || null;
+  };
   on("PATCH", "/printers/:id", ({ id }, body) => {
     const p = printer(id);
     for (const k of ["name", "kind", "wired_ip", "wireless_ip", "decommissioned"]) if (k in body && body[k] !== undefined) p[k] = body[k];
     if ("moonraker_url" in body) p.moonraker_url_override = body.moonraker_url || null;
     if ("camera_address" in body) p.cameraAddress = body.camera_address || null;
+    if ("camera_network" in body) cameraNetwork(p, body.camera_network);
     if (body.moonraker_api_key != null) p.apiKey = body.moonraker_api_key || null;
     if (body.connection_type === "moonraker") {
       delete p.prusalink;
