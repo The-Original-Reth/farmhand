@@ -39,8 +39,15 @@ export function printingRoutes(ctx) {
   // (1280x720 at 15 fps; on some, found on the printer rather than set up in Mainsail), and Crowsnest on the rest, whose ustreamer says what it captures (its "state", below)
   const camera = (more) => ({ name: "Bed", mjpeg: false, stream_url: null, flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: "16:9", ...more });
   const crowsnestCapture = (p) => (p.id % 4 === 1 ? { width: 1920, height: 1080, fps: 15 } : { width: 640, height: 480, fps: 10 });
-  on("GET", "/printers/:id/webcams", ({ id }) => {
-    const p = printer(id);
+  // A Klipper printer given a camera address: that camera, played through Farmhand's go2rtc, in place of Mainsail's first
+  const relayed = (p, found) => {
+    if (p.prusalink || !p.cameraAddress) return found;
+    const [first, ...rest] = found.webcams;
+    const cam = camera({ name: first?.name || "Camera", service: "farmhand-go2rtc", snapshot_url: first?.snapshot_url || cameraPicture(1920, 1080), target_fps: 15, rotation: first?.rotation || 0 });
+    return { ...found, webcams: [cam, ...rest], error: first ? found.error : null };
+  };
+  on("GET", "/printers/:id/webcams", ({ id }) => relayed(printer(id), mainsailWebcams(printer(id))));
+  const mainsailWebcams = (p) => {
     if (p.prusalink && p.cameraAddress) return { webcams: [camera({ name: "Camera", service: "farmhand-go2rtc", snapshot_url: cameraPicture(1920, 1080), target_fps: 15 })], error: null, board: null };
     if (p.prusalink) return { webcams: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page", board: null };
     if (!p.moonraker) return { webcams: [], error: NO_MOONRAKER, board: null };
@@ -53,7 +60,7 @@ export function printingRoutes(ctx) {
     const { width, height, fps } = crowsnestCapture(p);
     const stream = `/mock-api/printers/${p.id}/webcam/?action=stream`;
     return { webcams: [camera({ service: "mjpegstreamer-adaptive", stream_url: stream, snapshot_url: cameraPicture(width, height), target_fps: fps, aspect_ratio: width / height > 1.5 ? "16:9" : "4:3" })], error: null, board };
-  });
+  };
   // A camera-streamer WebRTC camera's set-up, passed on to the printer: the sample farm has none (its cameras play as
   // snapshots, the mockup having no video), so it's always the real API's answer for a camera that isn't there
   on("POST", "/printers/:id/webcams/webrtc", ({ id }, _body, q) => {

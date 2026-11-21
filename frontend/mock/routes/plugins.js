@@ -394,6 +394,8 @@ export function pluginsRoutes(ctx) {
         if (!p.cameraAddress) return { ...base, cameras: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page" };
         return { ...base, cameras: [camera("Camera", "rtsp", `rtsp://${p.cameraAddress}/live`)], error: null };
       }
+      const rtsp = (address) => (/^rtsps?:\/\//i.test(address) ? address : `rtsp://${address}/live`);
+      if (p.cameraAddress) return { ...base, cameras: [camera("Bed", "rtsp", rtsp(p.cameraAddress))], error: null }; // played through Farmhand in Mainsail's place
       if (!p.moonraker) return { ...base, cameras: [], error: NO_MOONRAKER };
       if (!p.moonraker.reachable) return { ...base, cameras: [], error: p.moonraker.error };
       const web = mainsailUrl(p);

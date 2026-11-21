@@ -115,6 +115,38 @@ def test_a_buddy3d_camera_is_played_through_go2rtc(api, relay):
     assert api.get(f"/printers/{core['id']}/webcams").json()["webcams"] == []
 
 
+
+def test_a_klipper_printers_camera_address_plays_its_camera_through_go2rtc_in_mainsails_place(api, moonraker, relay):
+    # a Snapmaker U1: Mainsail lists its camera as camera-streamer WebRTC, which takes few viewers; its RTSP is given
+    pid = api.post("/printers", json={"name": "Snapmaker U1", "wired_ip": "10.0.6.21"}).json()["id"]
+    moonraker.webcams = [
+        _cam(name="case", service="webrtc-camerastreamer", stream_url="/webcam/webrtc", snapshot_url="/webcam/snapshot.jpg",
+             rotation=180, aspect_ratio="16:9", target_fps=15),
+        _cam(name="Nozzle"),
+    ]
+    assert api.get(f"/printers/{pid}/webcams").json()["webcams"][0]["service"] == "webrtc-camerastreamer"
+
+    api.patch(f"/printers/{pid}", json={"camera_address": "rtsp://10.0.6.21:8554/stream"}).raise_for_status()
+    r = api.get(f"/printers/{pid}/webcams").json()
+    case, nozzle = r["webcams"]
+    assert (case["name"], case["service"], case["stream_url"]) == ("case", "farmhand-go2rtc", f"/go2rtc/api/ws?src=farmhand_{pid}")
+    assert case["rotation"] == 180 and case["snapshot_url"] == "http://10.0.6.21/webcam/snapshot.jpg" and "signal_url" not in case
+    assert nozzle["name"] == "Nozzle" and nozzle["service"] == "mjpegstreamer"  # its other cameras as they were
+    assert relay.streams == {f"farmhand_{pid}": "rtsp://10.0.6.21:8554/stream"}
+
+    # a stream plugin reads it from the camera's own RTSP, turned as Mainsail shows it
+    from app.models import Printer, PrinterCamera
+    from app.services import camera_streams
+    u1 = Printer(name="Snapmaker U1", camera_row=PrinterCamera(address="rtsp://10.0.6.21:8554/stream"))
+    address = camera_streams.stream_address(u1, case)
+    assert (address.kind, address.url) == ("rtsp", "rtsp://10.0.6.21:8554/stream")
+    assert camera_streams.turn_filters(case) == ["hflip", "vflip"]
+
+    # Moonraker not answering: still its camera, through Farmhand
+    moonraker.down = True
+    r = api.get(f"/printers/{pid}/webcams").json()
+    assert [c["service"] for c in r["webcams"]] == ["farmhand-go2rtc"] and r["error"]
+
 def test_a_camera_address_is_checked(api):
     pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink"}).json()["id"]
     for bad in ("http://192.168.10.131", "192.168.10.131/live; rm", "x" * 300, "exec:ffmpeg -i x"):
