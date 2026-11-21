@@ -748,3 +748,11 @@ def test_a_camera_square_keeps_where_its_printers_words_go(api):
     assert put({"x": 3, "y": -1}).json()["design"]["cells"][0]["words_place"] == {"x": 0.95, "y": 0.05}
     assert put({"x": "left"}).json()["design"]["cells"][0]["words_place"] == {"x": 0, "y": 1}
     assert "words_place" not in put(None).json()["design"]["cells"][0]  # none: low on the left, as on every camera
+
+
+def test_a_camera_square_says_on_its_own_whether_its_printers_words_are_written(api):
+    switch(api)
+    cells = lambda *c: api.put("/stream-control", json={"cols": 2, "rows": 1, "show_status": False, "cells": list(c)}).json()["design"]["cells"]
+    # ticked on one camera while Defaults leaves them off; another follows Defaults
+    assert cells({"camera": CAMERA, "show_words": True}, None)[0] == {"camera": CAMERA, "show_words": True}
+    assert cells({"camera": CAMERA, "show_words": "yes"}, None)[0] == {"camera": CAMERA}

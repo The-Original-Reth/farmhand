@@ -3,7 +3,7 @@ import { c } from "../theme.js";
 import { headerButton, uiText } from "../styles.js";
 import { box, help, label12 } from "./streamStyles.js";
 import { ColourPick, FontPick, fontLabel } from "./controls.jsx";
-import { FULL_BOX, MIDDLE, isBlank, slideLabel } from "./shapes.js";
+import { FULL_BOX, MIDDLE, isBlank, slideLabel, wordsShown } from "./shapes.js";
 
 // What a camera square and a card's words can be set to, in the square editor (SquareEditor.jsx).
 
@@ -23,24 +23,25 @@ export function CameraChoice({ cells, i, onCells, cameras, label }) {
   );
 }
 
-// The printer's name and print written on a camera: shown or not, and their font, colour and size (Automatic: sized to the
+// The printer's name and print written on a camera: shown or not (its own tick, kept once changed here, whatever
+// Defaults says; until then, as Defaults says), and their font, colour and size (Automatic: sized to the
 // square, as on every camera), and back to their usual place once dragged elsewhere on the canvas. Only what differs from the usual is kept on the square.
 export function CameraWordsChoice({ cell, put, fonts, showStatus, streamText }) {
   const set = (what) => {
     const next = { ...cell, ...what };
-    for (const [k, usual] of [["show_words", true], ["words_size", null], ["words_color", null], ["words_font", null], ["words_place", null]]) {
+    for (const [k, usual] of [["words_size", null], ["words_color", null], ["words_font", null], ["words_place", null]]) {
       if (next[k] === usual || next[k] === undefined) delete next[k];
     }
     put(next);
   };
-  const shown = cell.show_words !== false;
+  const shown = wordsShown(cell, showStatus);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${c.border}`, paddingTop: 8 }}>
       <label style={uiText(13, c.textPrimary, { display: "flex", alignItems: "center", gap: 8 })}>
         <input data-testid="stream-camera-words" type="checkbox" checked={shown} onChange={(e) => set({ show_words: e.target.checked })} />
         Write the printer's name and print on this camera
       </label>
-      {!showStatus && <div style={help}>Turned off for every camera in Defaults (on the right): turn it on there to see them.</div>}
+      {typeof cell.show_words !== "boolean" && <div style={help}>As Defaults (on the right) says, until it's ticked or unticked here.</div>}
       {shown && (
         <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           <label style={label12}>
@@ -73,7 +74,7 @@ export function CameraWordsChoice({ cell, put, fonts, showStatus, streamText }) 
           )}
         </div>
       )}
-      {shown && showStatus && <div style={help}>Drag them on the camera above to move them.</div>}
+      {shown && <div style={help}>Drag them on the camera above to move them.</div>}
     </div>
   );
 }
