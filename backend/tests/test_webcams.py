@@ -138,8 +138,9 @@ def test_a_klipper_printers_camera_address_plays_its_camera_through_go2rtc_in_ma
     assert (case["name"], case["service"], case["stream_url"]) == ("case", "farmhand-go2rtc", f"/go2rtc/api/ws?src=farmhand_{pid}")
     assert case["rotation"] == 180 and case["snapshot_url"] == "http://10.0.6.21/webcam/snapshot.jpg" and "signal_url" not in case
     assert nozzle["name"] == "Nozzle" and nozzle["service"] == "mjpegstreamer"  # its other cameras as they were
-    # read through ffmpeg: go2rtc's own RTSP reader gets only a few seconds at a time from a U1's
-    assert relay.streams == {f"farmhand_{pid}": "ffmpeg:rtsp://10.0.6.21:8554/stream#video=copy"}
+    # read by ffmpeg and piped to go2rtc: go2rtc's own RTSP reader gets only a few seconds at a time from a U1's
+    assert relay.streams == {f"farmhand_{pid}": "exec:ffmpeg -hide_banner -v error -rtsp_transport tcp -timeout 5000000 "
+                                                "-i rtsp://10.0.6.21:8554/stream -c:v copy -an -f h264 -"}
 
     # a stream plugin reads it from the camera's own RTSP, turned as Mainsail shows it
     from app.models import Printer, PrinterCamera
@@ -173,7 +174,7 @@ def test_a_stream_go2rtc_already_has_is_left_alone(api, relay):
 
 def test_a_camera_address_is_checked(api):
     pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink"}).json()["id"]
-    for bad in ("http://192.168.10.131", "192.168.10.131/live; rm", "x" * 300, "exec:ffmpeg -i x"):
+    for bad in ("http://192.168.10.131", "192.168.10.131/live; rm", "x" * 300, "exec:ffmpeg -i x", "rtsp://cam/live -f x"):
         assert api.patch(f"/printers/{pid}", json={"camera_address": bad}).status_code == 422, bad
 
 

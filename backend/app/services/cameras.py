@@ -51,10 +51,13 @@ def relayed_camera(printer: Printer) -> dict:
     """The printer's own camera (a Buddy3D's RTSP stream), handed to go2rtc, in the shape mr.webcams gives."""
     name = go2rtc.stream_name(printer.id)
     source = go2rtc.rtsp_url(printer.camera_source)  # on its camera IP (the Camera switch)
-    if printer.connection_type == "moonraker":
-        # A Klipper printer's RTSP camera is read through ffmpeg (copied, not re-encoded): go2rtc's own RTSP reader gets
-        # only ~3.5 s from a Snapmaker U1's (LIVE555) before it stops sending, then starts again, every 10 s
-        source = f"ffmpeg:{source}#video=copy"
+    if printer.connection_type == "moonraker" and not any(c.isspace() for c in source):
+        # A Klipper printer's RTSP camera is read by ffmpeg (copied, not re-encoded) and piped to go2rtc: go2rtc's own
+        # RTSP reader gets only ~3.5 s from a Snapmaker U1's (LIVE555) before it stops sending, every 10 s (1.9.15 too).
+        # Not "ffmpeg:" either: that has ffmpeg push back into go2rtc on a path named after the source, and a start that
+        # times out (the camera restarting) leaves its ffmpeg running, so two readers push into one stream (stalls,
+        # smeared colours) and take two of the camera's few places. A pipe's ffmpeg is stopped with its stream.
+        source = f"exec:ffmpeg -hide_banner -v error -rtsp_transport tcp -timeout 5000000 -i {source} -c:v copy -an -f h264 -"
     go2rtc.register(name, source)
     return {
         "name": "Camera", "service": "farmhand-go2rtc", "mjpeg": False,
