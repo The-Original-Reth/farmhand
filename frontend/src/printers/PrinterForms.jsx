@@ -15,7 +15,7 @@ import { FieldSelect, TextField } from "../components/common/fields.jsx";
 // saying a key or password is already saved; null when adding. ips: the wired and wireless IPs typed above (either may be
 // blank), for the default addresses: Moonraker and PrusaLink are each tried at both, wired first.
 const CONNECTIONS = [
-  { value: "moonraker", label: "Mainsail (Moonraker / Klipper: Voron...)" },
+  { value: "moonraker", label: "Mainsail or Fluidd (Moonraker / Klipper: Voron...)" },
   { value: "prusalink", label: "PrusaLink (Prusa Core One, MK4, XL...)" },
 ];
 // "plugin:<id>": a Prusa printer connected through a plugin that reports printers and starts their prints (the Prusa
@@ -33,7 +33,7 @@ const newConnection = (printer = null) => ({
   cameraAddress: printer?.cameraAddress || "", // the Buddy3D camera's IP: a Prusa's camera has its own
 });
 
-// The Connection choices: Mainsail and PrusaLink, and each plugin printers can be connected through (Prusa Connect)
+// The Connection choices: Mainsail or Fluidd (Klipper) and PrusaLink, and each plugin printers can be connected through (Prusa Connect)
 function useConnections(current) {
   const [reporters, setReporters] = useState([]);
   useEffect(() => {
@@ -140,7 +140,7 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
           <PrusaLinkPassword value={conn.prusalinkPassword} onChange={set("prusalinkPassword")} saved={saved} />
           <div style={uiText(11, c.textFaint, { marginTop: -8, marginBottom: 14, lineHeight: 1.5 })}>
             Optional: with it, Farmhand reads the start of each printed file on the printer (only reads) for its filament
-            price, as Mainsail&apos;s are costed. Nothing else goes to PrusaLink.
+            price, as a Klipper printer&apos;s are costed. Nothing else goes to PrusaLink.
           </div>
           {camera}
         </>

@@ -53,7 +53,7 @@ function PrinterRow({ project, printer: p, threemfs, onOpen }) {
         {[p.kind || (p.decommissioned ? "Decommissioned" : ""), plural(threemfs, "3MF file") + " in this project"].filter(Boolean).join(" · ")}
       </span>
       <HeadingButton testId="printer-open" Icon={ExternalLink} label="Open" title="Open its page" onClick={onOpen} />
-      {/* its own web page in a new tab: Mainsail for a Klipper printer, PrusaLink for a Prusa (nothing without an address) */}
+      {/* its own web page in a new tab: Mainsail or Fluidd for a Klipper printer, PrusaLink for a Prusa (nothing without an address) */}
       <WebUiButton printer={p} orDash={false} style={toolButton(12, { whiteSpace: "nowrap" })} />
       <TakeOutButton
         testId="printer-remove"

@@ -20,6 +20,7 @@ import { RestoreDialog } from "./configBackups/RestoreDialog.jsx";
 import { Schedule } from "./configBackups/Schedule.jsx";
 import { SshDialog } from "./configBackups/SshDialog.jsx";
 import { TRIGGER, changesHint, changesText } from "./configBackups/shared.js";
+import { klipperUi } from "./webUi.js";
 
 // The printer's config backups, below its print history. Folds away (open/onToggle); loads either way, so the heading
 // can say how many are kept.
@@ -174,7 +175,7 @@ export function ConfigBackupsSection({ printer, open = true, onToggle }) {
         >
           Put <b style={{ color: c.heading }}>{dialog.file.path}</b> back on {printer.name} as it was on {fmtWhen(dialog.backup.taken_at)}? It
           replaces the file there now. Farmhand first takes a backup of how things are, so this can be undone the same way.
-          Klipper only reads it after a restart, which is left to you (Restart in Mainsail). Not while the printer is printing.
+          Klipper only reads it after a restart, which is left to you (Restart in {klipperUi(printer)}). Not while the printer is printing.
         </ConfirmDialog>
       )}
       {dialog?.kind === "restoreAll" && (
@@ -204,8 +205,8 @@ export function ConfigBackupsSection({ printer, open = true, onToggle }) {
           }}
         >
           Put Moonraker's whole database on {printer.name} back as it was on {fmtWhen(dialog.backup.taken_at)}? That's its print
-          history, Mainsail's settings, maintenance and everything else Moonraker keeps: anything newer in them is lost. Moonraker
-          restarts itself afterwards and Mainsail reconnects in a few seconds. Farmhand first takes a backup of how things are now,
+          history, {klipperUi(printer)}'s settings, maintenance and everything else Moonraker keeps: anything newer in them is lost. Moonraker
+          restarts itself afterwards and {klipperUi(printer)} reconnects in a few seconds. Farmhand first takes a backup of how things are now,
           so this can be undone the same way. Not while the printer is printing.
         </ConfirmDialog>
       )}

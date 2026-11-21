@@ -10,6 +10,7 @@ from ...models import GcodeFilament, Printer, PrinterEnergyReading, PrintJob
 from ...timeutil import as_utc
 from .. import filament_cost
 from ..printer_service import ensure_connection, record_sync_error, record_sync_ok
+from . import web_ui
 from .client import MoonrakerError, call, gcode_tail, history_totals, meter_reading
 
 PAGE = 100  # history entries asked for per request
@@ -67,6 +68,7 @@ def sync_history(db: Session, printer: Printer) -> dict:
         _record_reading(db, printer, *reading)
     record_sync_ok(printer, totals, dt.datetime.now(dt.timezone.utc))  # the totals are the printer's own
     db.commit()
+    web_ui.refresh(db, printer)  # Mainsail or Fluidd: its buttons and links follow it
     read_gcode_filaments(db, printer, list(known.values()))
     return {"added": added, "updated": updated}
 

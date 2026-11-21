@@ -1,7 +1,7 @@
 """The Moonraker scanner: Klipper (or Kalico) printers, whatever web UI they run (Mainsail, Fluidd)."""
 from __future__ import annotations
 
-from ..moonraker import client
+from ..moonraker import client, web_ui
 
 PORT = 7125
 
@@ -20,6 +20,7 @@ def probe(ip: str) -> dict | None:
         "connection_type": "moonraker",
         "address": base,
         "web_url": f"http://{ip}/",
+        "web_ui": web_ui.detect_at(f"http://{ip}/"),  # Mainsail or Fluidd
         "hostname": info.get("hostname"),
         "firmware": _firmware(info) if "moonraker_version" in info else None,  # one that wants a key won't say
         "version": info.get("moonraker_version"),

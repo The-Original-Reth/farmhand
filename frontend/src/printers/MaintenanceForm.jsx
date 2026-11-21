@@ -5,7 +5,7 @@ import { useAction } from "../hooks/useAction.js";
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { SegmentedToggle, TextField } from "../components/common/fields.jsx";
 
-// ---- maintenance: lives on the printer, shared with Mainsail ----
+// ---- maintenance: lives on the printer, shared with Mainsail (Fluidd has no list of its own) ----
 const REMINDER_PARTS = [
   { key: "printtime", label: "Print time", unit: "hours" },
   { key: "filament", label: "Filament", unit: "metres" },
@@ -19,8 +19,9 @@ const emptyReminder = () => ({
 });
 
 // noFilament: the printer doesn't report filament use (PrusaLink), so a filament reminder isn't offered. kept: the
-// reminders are kept in Farmhand (a Prusa printer), not on the printer
-export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFilament = false, kept = noFilament }) {
+// reminders are kept in Farmhand (a Prusa printer), not on the printer. webUi: the Klipper printer's web page ("Mainsail" |
+// "Fluidd"): Mainsail shows the same list, Fluidd doesn't
+export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFilament = false, kept = noFilament, webUi = "Mainsail" }) {
   const parts = noFilament ? REMINDER_PARTS.filter((p) => p.key !== "filament") : REMINDER_PARTS;
   const [name, setName] = useState(initial?.name || "");
   const [note, setNote] = useState(initial?.note || "");
@@ -96,7 +97,9 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
         {kept
           ? `Kept in Farmhand: this printer has nowhere to keep maintenance itself. Print time counts the prints Farmhand has recorded.${
             noFilament ? "" : " Filament counts the printer's own counter of filament fed, through Prusa Connect."}`
-          : "Saved on the printer, the same way Mainsail keeps its maintenance list, so it shows there too."}
+          : webUi === "Mainsail"
+            ? "Saved on the printer, the same way Mainsail keeps its maintenance list, so it shows there too."
+            : `Saved on the printer, in Moonraker, the way Mainsail keeps its maintenance list. ${webUi} has no maintenance list, so it shows here.`}
       </div>
       <ModalActions onClose={onClose} onSubmit={submit} actionLabel={actionLabel} submitting={submitting} errorMsg={errorMsg} submittingLabel="Saving…" />
     </>
@@ -104,7 +107,7 @@ export function MaintenanceForm({ initial, onSubmit, onClose, actionLabel, noFil
 }
 
 // message: replaces the usual "marks it done on the printer" explanation (the 1500-hour service lives in Farmhand)
-export function PerformMaintenanceForm({ entry, onSubmit, onClose, message }) {
+export function PerformMaintenanceForm({ entry, onSubmit, onClose, message, webUi = "Mainsail" }) {
   const [note, setNote] = useState("");
   const { busy: submitting, error: errorMsg, run } = useAction();
   const submit = () =>
@@ -117,7 +120,7 @@ export function PerformMaintenanceForm({ entry, onSubmit, onClose, message }) {
       <div style={uiText(13, c.textMuted, { lineHeight: 1.6, marginBottom: 12 })}>
         {message || (
           <>
-            Marks <b style={{ color: c.heading }}>{entry.name}</b> as done on the printer, now. Mainsail will show it as done too.
+            Marks <b style={{ color: c.heading }}>{entry.name}</b> as done on the printer, now.{webUi === "Mainsail" && " Mainsail will show it as done too."}
             {entry.reminder?.type === "repeat" && " Its next round starts counting straight away."}
           </>
         )}

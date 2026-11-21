@@ -36,6 +36,7 @@ class FakeMoonraker:
         self.temps = {"extruder": (24.0, 0.0), "heater_bed": (23.0, 0.0)}  # (temperature, target)
         self.uploads: list[dict] = []  # {filename, size, root, print}
         self.webcams: list[dict] = []  # as Mainsail's camera settings save them
+        self.web_ui: str | None = "Mainsail"  # the web page on port 80 ("Mainsail" | "Fluidd"); None = no page there
         # The computer it runs on, as /machine/system_info's cpu_info gives it; None = won't say
         self.cpu_info: dict | None = {"model": "Raspberry Pi 4 Model B Rev 1.5", "processor": "aarch64", "total_memory": 3886824, "memory_units": "kB"}
         # The services Moonraker watches, as /machine/system_info lists them: {name: its active_state}
@@ -99,6 +100,10 @@ class FakeMoonraker:
         if self.api_key and request.headers.get("X-Api-Key") != self.api_key:
             return self._error(401, "Unauthorized")
         path, q = request.url.path, request.url.params
+        if request.url.port in (None, 80):  # the web page on port 80, not Moonraker
+            if path != "/" or self.web_ui is None:
+                return httpx.Response(404, text="Not Found")
+            return httpx.Response(200, text=f"<!DOCTYPE html><html><head><title>{self.web_ui}</title></head><body></body></html>")
         if path == "/server/info":
             return self._ok({"klippy_state": "ready", "moonraker_version": "v0.9.3-fake"})
         if path == "/printer/info":

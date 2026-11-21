@@ -37,6 +37,23 @@ class PrinterConnection(Base):
     printer: Mapped["Printer"] = relationship(back_populates="connection_row")  # noqa: F821
 
 
+class PrinterWebUi(Base):
+    """
+    Which web page a Klipper printer serves on port 80, as Farmhand last found it there: "Mainsail" or "Fluidd"
+    (services/moonraker/web_ui.py). Its buttons, links and wording follow it. No row = not checked yet: Mainsail.
+
+    Its own table, not a column on printer_connections: create_all never alters an existing table.
+    """
+
+    __tablename__ = "printer_web_ui"
+
+    printer_id: Mapped[int] = mapped_column(ForeignKey("printers.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(String(20), nullable=False)  # "Mainsail" | "Fluidd"
+    checked_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    printer: Mapped["Printer"] = relationship(back_populates="web_ui_row")  # noqa: F821
+
+
 SERVICE_INTERVAL_HOURS = 1500
 
 

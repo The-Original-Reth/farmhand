@@ -16,6 +16,7 @@ import { fmtUnix } from "../lib/format.js";
 
 import { MaintenanceForm, PerformMaintenanceForm } from "./MaintenanceForm.jsx";
 import { ServiceReminder } from "./ServiceReminder.jsx";
+import { klipperUi } from "./webUi.js";
 
 // "12 / 50 hours printed", "3.4 / 10 m of filament", "8 / 30 days"
 const checkText = (ch) => {
@@ -92,6 +93,8 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
   const inFarmhand = printer.connectionType === "prusalink";
   // a Prusa printer counts no filament, unless it's connected through Prusa Connect (its extruder's own counter)
   const noFilament = inFarmhand && !printer.statusFrom;
+  const webUi = klipperUi(printer); // Mainsail keeps the same list; Fluidd has none of its own (it shows only here)
+  const shared = webUi === "Mainsail" ? "shared with Mainsail" : "in Moonraker, as Mainsail keeps it";
   const [data, setData] = useState(null); // { entries, totals }
   const [error, setError] = useState(null);
   const [dialog, setDialog] = useState(null); // { kind: "add" | "edit" | "done" | "delete", entry }
@@ -152,7 +155,7 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
         <div style={{ borderTop: `1px solid ${c.border}` }}>
         {!reachable ? (
           <div style={uiText(13, c.textMuted, { padding: 14, lineHeight: 1.6 })}>
-            The rest of the maintenance is kept on the printer (shared with Mainsail), so it shows once the printer can be reached.
+            The rest of the maintenance is kept on the printer ({shared}), so it shows once the printer can be reached.
           </div>
         ) : error ? (
           <div style={uiText(13, c.amber, { padding: 14 })}>Couldn't load maintenance: {error}</div>
@@ -190,7 +193,7 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
 
       {dialog?.kind === "add" && (
         <Modal title="Add maintenance" onClose={close} width={480}>
-          <MaintenanceForm actionLabel="Add" noFilament={noFilament} kept={inFarmhand} onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
+          <MaintenanceForm actionLabel="Add" noFilament={noFilament} kept={inFarmhand} webUi={webUi} onClose={close} onSubmit={async (v) => setData(await addMaintenance(printer.id, v))} />
         </Modal>
       )}
       {dialog?.kind === "edit" && (
@@ -200,6 +203,7 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
             actionLabel="Save"
             noFilament={noFilament}
             kept={inFarmhand}
+            webUi={webUi}
             onClose={close}
             onSubmit={async (v) => setData(await updateMaintenance(printer.id, dialog.entry.id, v))}
           />
@@ -209,6 +213,7 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
         <Modal title="Maintenance done" onClose={close} width={440}>
           <PerformMaintenanceForm
             entry={dialog.entry}
+            webUi={webUi}
             message={inFarmhand ? <>Marks <b style={{ color: c.heading }}>{dialog.entry.name}</b> as done, now. It's kept in Farmhand.</> : undefined}
             onClose={close}
             onSubmit={async (v) => setData(await performMaintenance(printer.id, dialog.entry.id, v))}
@@ -220,7 +225,7 @@ export function MaintenanceSection({ printer, reachable, open: unfolded = true, 
           {inFarmhand ? (
             <>Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b>? This can't be undone.</>
           ) : (
-            <>Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b> from the printer? It's removed from Mainsail too. This can't be undone.</>
+            <>Delete <b style={{ color: c.heading }}>{dialog.entry.name}</b> from the printer?{webUi === "Mainsail" ? " It's removed from Mainsail too." : ""} This can't be undone.</>
           )}
         </ConfirmDialog>
       )}

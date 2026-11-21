@@ -7,6 +7,7 @@ import { monoText, uiText } from "../../styles.js";
 import { Badge } from "../../components/common/ui.jsx";
 import { formatBytes, plural } from "../../lib/format.js";
 import { smallButton } from "./shared.js";
+import { klipperUi } from "../webUi.js";
 
 export function BackupFiles({ printer, backup, onRestore, onOpen }) {
   const [detail, setDetail] = useState(null);
@@ -52,7 +53,7 @@ export function BackupFiles({ printer, backup, onRestore, onOpen }) {
     <div style={{ paddingBottom: 8 }}>
       <div style={uiText(11, c.textFaint, { padding: "6px 14px 2px 34px" })}>Config folder</div>
       {config.map(row)}
-      {database.length > 0 && <div style={uiText(11, c.textFaint, { padding: "8px 14px 2px 34px" })}>From Moonraker's database (print history, Mainsail's settings, maintenance…)</div>}
+      {database.length > 0 && <div style={uiText(11, c.textFaint, { padding: "8px 14px 2px 34px" })}>From Moonraker's database (print history, {klipperUi(printer)}'s settings, maintenance…)</div>}
       {database.map(row)}
       {detail.changes?.removed.length > 0 && (
         <div style={uiText(12, c.textMuted, { padding: "6px 14px 0 34px" })}>Gone since the backup before: {detail.changes.removed.join(", ")}</div>

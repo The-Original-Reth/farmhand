@@ -60,6 +60,7 @@ export function buildFarm() {
     {
       id: 2, name: "V2 BOG", kind: "Voron 2.4 (Klipper / Moonraker)", wired_ip: "192.168.10.123", wireless_ip: null,
       decommissioned: false, created_at: iso(NOW - 600 * DAY),
+      webUi: "Fluidd", // the web page it serves (the others run Mainsail)
       moonraker: { reachable: true, klippy_state: "ready", version: "v0.10.0-31-mock", meterSensor: "powermeter", idleKwhPerDay: 0.7 },
       notes: "",
       serviceHoursSince: 1533, serviceHistory: [],
