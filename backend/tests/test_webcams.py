@@ -138,7 +138,8 @@ def test_a_klipper_printers_camera_address_plays_its_camera_through_go2rtc_in_ma
     assert (case["name"], case["service"], case["stream_url"]) == ("case", "farmhand-go2rtc", f"/go2rtc/api/ws?src=farmhand_{pid}")
     assert case["rotation"] == 180 and case["snapshot_url"] == "http://10.0.6.21/webcam/snapshot.jpg" and "signal_url" not in case
     assert nozzle["name"] == "Nozzle" and nozzle["service"] == "mjpegstreamer"  # its other cameras as they were
-    assert relay.streams == {f"farmhand_{pid}": "rtsp://10.0.6.21:8554/stream"}
+    # read through ffmpeg: go2rtc's own RTSP reader gets only a few seconds at a time from a U1's
+    assert relay.streams == {f"farmhand_{pid}": "ffmpeg:rtsp://10.0.6.21:8554/stream#video=copy"}
 
     # a stream plugin reads it from the camera's own RTSP, turned as Mainsail shows it
     from app.models import Printer, PrinterCamera

@@ -5,6 +5,8 @@ address, which only lets Farmhand's own streams through (see frontend/nginx.conf
 """
 from __future__ import annotations
 
+import threading
+
 import httpx
 
 from ..config import settings
@@ -32,6 +34,7 @@ def rtsp_url(address: str) -> str:
 
 # What Farmhand last gave go2rtc for each stream: {name: source}. Forgotten when Farmhand restarts.
 _given: dict[str, str] = {}
+_registering = threading.Lock()  # two asks at once (a plugin and a page) would each PUT: two streams, two readers
 
 
 def register(name: str, source: str) -> None:
@@ -43,7 +46,7 @@ def register(name: str, source: str) -> None:
     watching, and they lose the picture every few seconds.
     """
     try:
-        with httpx.Client(timeout=TIMEOUT, transport=transport) as client:
+        with _registering, httpx.Client(timeout=TIMEOUT, transport=transport) as client:
             if _given.get(name) == source:
                 r = client.get(f"{settings.go2rtc_url}/api/streams")
                 if r.status_code == 200 and name in (r.json() or {}):

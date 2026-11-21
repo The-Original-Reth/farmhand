@@ -50,7 +50,12 @@ TAKEN_FROM_MAINSAIL = ("name", "snapshot_url", "flip_horizontal", "flip_vertical
 def relayed_camera(printer: Printer) -> dict:
     """The printer's own camera (a Buddy3D's RTSP stream), handed to go2rtc, in the shape mr.webcams gives."""
     name = go2rtc.stream_name(printer.id)
-    go2rtc.register(name, go2rtc.rtsp_url(printer.camera_address))
+    source = go2rtc.rtsp_url(printer.camera_address)
+    if printer.connection_type == "moonraker":
+        # A Klipper printer's RTSP camera is read through ffmpeg (copied, not re-encoded): go2rtc's own RTSP reader gets
+        # only ~3.5 s from a Snapmaker U1's (LIVE555) before it stops sending, then starts again, every 10 s
+        source = f"ffmpeg:{source}#video=copy"
+    go2rtc.register(name, source)
     return {
         "name": "Camera", "service": "farmhand-go2rtc", "mjpeg": False,
         "stream_url": f"/go2rtc/api/ws?src={name}",  # on the web server the page came from
