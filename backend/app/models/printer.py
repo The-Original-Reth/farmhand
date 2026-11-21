@@ -43,6 +43,10 @@ class Printer(HasNotes, Base):
     connection_row: Mapped["PrinterConnection | None"] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan", uselist=False
     )
+    # The web page it serves, Mainsail or Fluidd, as last found (see PrinterWebUi)
+    web_ui_row: Mapped["PrinterWebUi | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
     print_jobs: Mapped[list["PrintJob"]] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan"
     )
@@ -219,8 +223,19 @@ class Printer(HasNotes, Base):
 
     @property
     def mainsail_url(self) -> str | None:
-        """Mainsail is served on port 80 of the same machine as Moonraker (at the IP Moonraker answers at)."""
+        """Its web page (Mainsail or Fluidd: see web_ui) is served on port 80 of the same machine as Moonraker (at the IP
+        Moonraker answers at). Named for Mainsail, the first one Farmhand knew; kept so for the API and plugins."""
         return mainsail_for(self.moonraker_url)
+
+    @property
+    def web_ui(self) -> str | None:
+        """
+        The web page a Klipper printer serves at its mainsail_url (port 80): "Mainsail" or "Fluidd", as Farmhand last
+        found it (services/moonraker/web_ui.py); Mainsail until it has looked. None for a PrusaLink printer.
+        """
+        if self.connection_type != "moonraker":
+            return None
+        return self.web_ui_row.name if self.web_ui_row else "Mainsail"
 
     @property
     def has_moonraker_api_key(self) -> bool:

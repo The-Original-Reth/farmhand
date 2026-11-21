@@ -180,7 +180,8 @@ class PrinterOut(BaseModel):
     notes_updated_at: dt.datetime | None = None
     moonraker_url: str | None = None  # where Farmhand reaches its Moonraker (the override, else <IP>:7125)
     moonraker_url_override: str | None = None  # what was set for it, if anything
-    mainsail_url: str | None = None
+    mainsail_url: str | None = None  # its web page on port 80: Mainsail or Fluidd, as web_ui says
+    web_ui: str | None = None  # "Mainsail" | "Fluidd" for a Klipper printer (Mainsail until found); null for a Prusa
     has_moonraker_api_key: bool = False  # the key itself is never returned
     connection_type: str = "moonraker"  # "moonraker" | "prusalink"
     prusalink_url: str | None = None  # where Farmhand reaches its PrusaLink (the override, else http://<IP>)
@@ -208,6 +209,7 @@ class DiscoveredPrinterOut(BaseModel):
     connection_type: str  # what POST /printers is given for it: "moonraker" | "prusalink"
     address: str  # where Farmhand would reach it, e.g. http://10.0.6.21:7125
     web_url: str | None = None  # its own web page (Mainsail / Fluidd)
+    web_ui: str | None = None  # which: "Mainsail" | "Fluidd"; None when the page didn't say (or a Prusa)
     hostname: str | None = None  # the machine's own name, a suggestion for the printer's
     firmware: str | None = None  # "Klipper" | "Kalico" | "Prusa"; None when it wouldn't say (it wants an API key)
     version: str | None = None  # of the API it answered on (Moonraker's version)

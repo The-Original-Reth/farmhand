@@ -5,6 +5,7 @@ import { errorText, getConfigBackupRestorePreview, restoreConfigBackup } from ".
 import { cancelButton, monoText, primaryButton, uiText } from "../../styles.js";
 import { Modal } from "../../components/common/dialogs.jsx";
 import { fmtWhen, plural } from "../../lib/format.js";
+import { klipperUi } from "../webUi.js";
 
 // A list of paths under a heading, kept short: the first few, then how many more
 function PathList({ title, paths, tone = c.textMuted }) {
@@ -76,7 +77,7 @@ export function RestoreDialog({ printer, backup, onClose, onDone }) {
                 Restore puts {[plan.files.put_back.length + overSsh && plural(plan.files.put_back.length + overSsh, "config file"), settingsKeys && plural(settingsKeys, "Moonraker setting")].filter(Boolean).join(" and ")} back
                 on {printer.name} as {plan.files.put_back.length + overSsh + settingsKeys === 1 ? "it was" : "they were"} in this backup ({plural(plan.files.same, "file")} already the same).
                 Nothing is deleted. Farmhand first takes a backup of how things are now, so this can be undone by restoring that one.
-                Klipper only reads its config after a restart, which is left to you (Restart in Mainsail). Not while the printer is printing.
+                Klipper only reads its config after a restart, which is left to you (Restart in {klipperUi(printer)}). Not while the printer is printing.
               </div>
             )}
             <PathList title="Config files put back" paths={plan.files.put_back} tone={c.text} />

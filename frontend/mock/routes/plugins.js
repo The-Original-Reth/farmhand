@@ -184,7 +184,7 @@ const messagePage = (title, text) => `<!doctype html><html><head><meta charset="
 <body><div class="box"><h1>${title}</h1><p>${text}</p></div></body></html>`;
 
 export function pluginsRoutes(ctx) {
-  const { farm, on, printer, requireConfirm, mainsailUrl, moonrakerUrl, prusalinkUrl, progressOf } = ctx;
+  const { farm, on, printer, requireConfirm, mainsailUrl, moonrakerUrl, webUiOf, prusalinkUrl, progressOf } = ctx;
   const now = () => new Date().toISOString();
   const newToken = (p) => Object.assign(p, { token: randomBytes(32).toString("base64url"), tokenCreatedAt: now(), tokenLastUsedAt: null, needsToken: false });
   const answered = (address) => (ON_THE_NETWORK[address]
@@ -374,6 +374,7 @@ export function pluginsRoutes(ctx) {
     needs(h, "printers:read");
     return { printers: active().map((p) => ({
       id: p.id, name: p.name, kind: p.kind ?? null, connection_type: kindOf(p), status_from: (p.prusalink && p.statusFrom) || null,
+      web_ui: webUiOf(p),
       addresses: {
         wired_ip: p.wired_ip ?? null, wireless_ip: p.wireless_ip ?? null,
         moonraker_url: p.prusalink ? null : moonrakerUrl(p), mainsail_url: p.prusalink ? null : mainsailUrl(p),

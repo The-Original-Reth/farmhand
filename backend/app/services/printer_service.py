@@ -16,7 +16,7 @@ from ..models import (
 def list_printers(db: Session) -> list[Printer]:
     rows = (
         Printer.note_row, Printer.connection_row, Printer.service_row, Printer.service_note_row, Printer.prusalink_row, Printer.status_source_row,
-        Printer.camera_row,
+        Printer.camera_row, Printer.web_ui_row,
     )
     return list(db.scalars(
         select(Printer).order_by(Printer.name).options(

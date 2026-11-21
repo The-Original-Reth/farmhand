@@ -8,6 +8,7 @@ import { SectionToggle, StatTile } from "../components/common/ui.jsx";
 import { fmtDuration, fmtMetres, fmtWhen } from "../lib/format.js";
 import { ArchiveSummary, ConnectionLine, useLiveStatus } from "./connectionCard.jsx";
 import { JobProgress } from "./JobProgress.jsx";
+import { klipperUi } from "./webUi.js";
 
 const MOONRAKER_LOOK_MS = 10000; // how often the open printer page looks at the printer (connection and the print running)
 
@@ -85,7 +86,7 @@ export function useMoonraker(printerId, key, onSynced) {
   return { status, stats, syncing, syncError, syncTick, sync: () => sync() };
 }
 
-// Connection + the printer's own lifetime statistics, with "Open Mainsail" and "Sync now". Folds away (open/onToggle).
+// Connection + the printer's own lifetime statistics, with "Open Mainsail" (or Fluidd) and "Sync now". Folds away (open/onToggle).
 export function MoonrakerCard({ printer, mr, summary, open = true, onToggle }) {
   const { status, stats, syncing, syncError } = mr;
   const totals = stats?.totals;
@@ -103,6 +104,7 @@ export function MoonrakerCard({ printer, mr, summary, open = true, onToggle }) {
     }
   }
   const lastSync = stats?.last_sync_at || status?.last_sync_at;
+  const ui = status?.web_ui || klipperUi(printer); // Mainsail or Fluidd, as found on the printer (the status is newest)
   const lastSyncError = syncError || stats?.last_sync_error;
 
   return (
@@ -117,9 +119,9 @@ export function MoonrakerCard({ printer, mr, summary, open = true, onToggle }) {
         {open && (
         <div style={{ display: "flex", gap: 8 }}>
           {printer.mainsailUrl && (
-            <a data-testid="open-mainsail" href={printer.mainsailUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.mainsailUrl}>
+            <a data-testid={`open-${ui.toLowerCase()}`} href={printer.mainsailUrl} target="_blank" rel="noreferrer" style={headerButton()} title={printer.mainsailUrl}>
               <ExternalLink size={12} />
-              Open Mainsail
+              Open {ui}
             </a>
           )}
           <button

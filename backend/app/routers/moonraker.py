@@ -11,6 +11,7 @@ from ..schemas.printer import PrinterOut
 from ..services import cameras, print_history, printer_service
 from ..services import energy as energy_service
 from ..services import moonraker as mr
+from ..services.moonraker import web_ui
 from .common import require_confirm, require_printer, sync_state
 
 # A printer's connection to Moonraker, and what every printer has whichever way it's connected: its print history
@@ -24,7 +25,10 @@ router = APIRouter(prefix="/printers", tags=["moonraker"])
 def connection_status(printer_id: int, db: Session = Depends(get_db)):
     """Can Farmhand reach this printer's Moonraker right now, what state is Klipper in, and what is it printing? Never fails: says why."""
     printer = require_printer(db, printer_id)
-    return {**mr.connection_status(printer), **sync_state(printer)}
+    status = mr.connection_status(printer)
+    if status["reachable"]:  # Mainsail or Fluidd: looked at again now and then, so its buttons follow a change
+        status["web_ui"] = web_ui.refresh_if_due(db, printer)
+    return {**status, **sync_state(printer)}
 
 
 @router.get("/{printer_id}/webcams")

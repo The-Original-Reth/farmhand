@@ -14,7 +14,9 @@ export const normalizePrinter = (p) => ({
   notesUpdatedAt: p.notes_updated_at || null,
   moonrakerUrl: p.moonraker_url || null, // where Farmhand reaches its Moonraker (set, else <IP>:7125)
   moonrakerUrlOverride: p.moonraker_url_override || null, // only what was set for it
-  mainsailUrl: p.mainsail_url || null,
+  mainsailUrl: p.mainsail_url || null, // its web page on port 80: Mainsail or Fluidd (webUi)
+  // which a Klipper printer serves, as Farmhand found it on the printer: "Mainsail" | "Fluidd"; null for a Prusa
+  webUi: p.web_ui || ((p.connection_type || "moonraker") === "moonraker" ? "Mainsail" : null),
   hasMoonrakerApiKey: !!p.has_moonraker_api_key, // the key itself never comes back
   connectionType: p.connection_type || "moonraker", // "moonraker" (Klipper) | "prusalink" (Prusa Core One, MK4, XL...)
   prusalinkUrl: p.prusalink_url || null, // where Farmhand reaches its PrusaLink (set, else http://<IP>)
@@ -54,6 +56,7 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
     connectionType: f.connection_type,
     address: f.address,
     webUrl: f.web_url || null,
+    webUi: f.web_ui || null, // which page that is: "Mainsail" | "Fluidd"; null when it didn't say
     firmware: f.firmware || null, // "Klipper" | "Kalico" | "Prusa"; null when it wouldn't say
     version: f.version || null,
     state: f.state || null,
@@ -66,7 +69,7 @@ export const discoverPrinters = async (cidr, { signal } = {}) =>
     decommissionedName: f.decommissioned_name || null,
   }));
 
-// The connection (Mainsail / Moonraker or PrusaLink) can be given straight away, with the same fields as updatePrinter
+// The connection (Klipper's Moonraker, or PrusaLink) can be given straight away, with the same fields as updatePrinter
 export const createPrinter = ({
   name, kind, wiredIp, wirelessIp, connectionType, moonrakerUrl, moonrakerApiKey, prusalinkUrl, prusalinkUsername, prusalinkPassword,
   cameraAddress, statusFrom,

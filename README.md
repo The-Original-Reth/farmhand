@@ -115,7 +115,8 @@ The first things to do, in this order. Everything is done in the web page; there
    reach it on the network (`\\server\share\folder`, ready to paste into File Explorer; point at it for the path inside
    Farmhand's container), with its own **Change…**, for a farm that keeps one of them somewhere else.
 3. **Printers › Add printer**, for each printer: its name, its IP, and how Farmhand reaches it:
-   - **Mainsail (Moonraker / Klipper)**: usually just the IP. If Moonraker refuses Farmhand, either give its API
+   - **Mainsail or Fluidd (Moonraker / Klipper)**: usually just the IP. Farmhand sees which of the two the printer
+     runs and names its buttons and links after it. If Moonraker refuses Farmhand, either give its API
      key, or add Farmhand's computer to `[authorization] trusted_clients` in the printer's `moonraker.conf`.
    - **PrusaLink (Prusa Core One, MK4, XL…)**: the IP, and the PrusaLink password shown on the printer
      (Settings › Network › PrusaLink). The username is usually `maker`. A Buddy3D camera's IP goes here too
@@ -356,7 +357,7 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
     first, since printing starts straight away, and is refused while the printer is busy). A project-only 3MF's
     G-code is kept next to it in the project files folder.
 - **Printers** lists the printers the project uses (brought by its 3MFs, or **Add printer**), each with how many of
-  the project's 3MFs are for it, **Open** (its page), **Mainsail** (or **PrusaLink** for a Prusa: its own page in a
+  the project's 3MFs are for it, **Open** (its page), **Mainsail** or **Fluidd** (or **PrusaLink** for a Prusa: its own page in a
   new tab) and **Remove**, which asks first (the printer and the 3MFs for it stay). Deleting a printer
   takes it out of every project.
 - **BOM** (bill of materials): the parts the project needs that aren't printed, each with its name, have / need, a link
@@ -378,7 +379,7 @@ files, BOM, 3MF files, Printers), each folding away with the arrow by its headin
 - Sortable by name, type, wired IP or wireless IP (remembered); add, edit and decommission. A decommissioned printer
   can be deleted (**Delete** on its page) once it has no 3MF files left; its print history, notes and maintenance go
   with it
-- A **Mainsail** or **PrusaLink** button on each, opening the printer's own page in a new tab
+- A **Mainsail**, **Fluidd** or **PrusaLink** button on each, opening the printer's own page in a new tab
 - Each printer page: its details and notes, then its **Moonraker** (or **PrusaLink**), **Energy** and **Maintenance**
   sections, its 3MF files (with a search), its print history and its config **Backups** — each folds away
 - **Moonraker (Klipper)**: connection, lifetime statistics, print history, energy, maintenance shared with
@@ -475,7 +476,7 @@ entry on the page at once, on both the model page and the printer page.
 
 The **Printers** list sorts by **Name**, **Type**, **Wired IP** or **Wireless IP**: click a heading's arrow, and
 again to reverse it (IPs sort as numbers; printers without that IP go last). The choice is remembered in this
-browser. Its **Mainsail** or **PrusaLink** button opens the printer's own page in a new tab. A printer with notes
+browser. Its **Mainsail**, **Fluidd** or **PrusaLink** button opens the printer's own page in a new tab. A printer with notes
 has a note icon, and one whose 1500-hour service is due says so. Each printer page has its details
 and notes, then sections that each fold away: **Moonraker** (or **PrusaLink** for a Prusa; folded, it still shows
 whether the printer is connected or printing), **Energy** (Moonraker printers only) and **Maintenance** (folded, it
@@ -520,12 +521,14 @@ you close the Printer Settings window after saving changes to its parts, Farmhan
 it (only if it's different). Rename the preset in PrusaSlicer to match, or 3MFs sliced with the old name will add a
 printer profile by the old name again. Parts are kept in the settings copy on the NAS as well.
 
-**Connection.** In **Add printer** or **Edit**, choose **Mainsail (Moonraker / Klipper)** or **PrusaLink
-(Prusa Core One, MK4, XL…)**. A printer on both a cable and Wi-Fi answers at both its IPs: give its **Wired IP**
+**Connection.** In **Add printer** or **Edit**, choose **Mainsail or Fluidd (Moonraker / Klipper)** or **PrusaLink
+(Prusa Core One, MK4, XL…)**. Whether a Klipper printer runs Mainsail or Fluidd isn't asked: Farmhand reads the
+title of the page on its port 80 at each sync (and when the Printers page has it open, every 15 minutes), and its
+buttons, links and wording follow. It counts as Mainsail until that page has been read. A printer on both a cable and Wi-Fi answers at both its IPs: give its **Wired IP**
 and **Wireless IP** and leave the address below blank, and everything Farmhand does with it goes over the cable, and
 over Wi-Fi only when the wired IP can't be reached: its status, prints, history and maintenance, its cameras on
 **Monitor** (and in Mainsail, a camera written out with the printer's wired IP is moved to its Wi-Fi one too), and its
-**Mainsail** / **PrusaLink** button. Farmhand remembers which IP answered, so a dead one isn't waited on each time, and
+**Mainsail** / **Fluidd** / **PrusaLink** button. Farmhand remembers which IP answered, so a dead one isn't waited on each time, and
 after two minutes on Wi-Fi it tries the cable first again, so it's back on the cable soon after it's plugged back in.
 It only switches when a request never got through: one the printer took and then went quiet on is never sent twice,
 so a print can't start twice. An address typed in is the only one used. (A Prusa's Buddy3D camera has one IP of its
@@ -566,7 +569,8 @@ browser only when **Show** asks for it; a Moonraker API key never is.
   (idle included, from meter readings Farmhand takes) and each print's own energy, **by month or by year**,
   each with its cost: **Prints cost** and **Electrical cost** (whole printer), each month at its price per kWh from
   the **Power** page, a year being its months added up.
-- **Maintenance:** kept in Moonraker's own database in Mainsail's format, so Mainsail shows the same list.
+- **Maintenance:** kept in Moonraker's own database in Mainsail's format, so Mainsail shows the same list (Fluidd
+  has no maintenance list of its own, so on a Fluidd printer it shows only in Farmhand).
   Reminders by print time, filament and/or days, once or repeating; **Done** closes one (a repeating one starts
   its next round). Each item says when it was added (date and time) and at how many of the printer's print
   hours; a done one also says when it was done, at how many print hours, and how many it printed in between.
@@ -640,7 +644,8 @@ list is checked again every five minutes while the page is open.
 
 **Monitor** (in the left-hand menu) shows every printer's camera on one screen.
 
-- **Which cameras:** a Klipper printer's cameras are the ones set up in Mainsail (Settings › Webcams), played
+- **Which cameras:** a Klipper printer's cameras are the ones set up in Mainsail (Settings › Webcams) or Fluidd
+  (Settings › Cameras): both keep them in Moonraker. They're played
   the way Mainsail plays them (MJPEG, WebRTC through go2rtc or camera-streamer, snapshots at the frame rate set
   there). A Prusa's **Buddy3D camera** is added by its IP (below). Printers without a camera are listed
   underneath; point at a name to see why.
@@ -663,8 +668,8 @@ list is checked again every five minutes while the page is open.
 - **Picture-in-picture:** the button in a camera's top left corner floats it in a small window that stays on top
   of every other window, for any kind of camera; its tile says so while it's out there. Click the button again,
   or close the small window, to bring it back. Chrome and Edge only (Firefox and Safari don't show the button).
-- **Mainsail / PrusaLink:** the link in a camera's bottom right corner opens its printer's own web page in a new
-  tab: Mainsail, or PrusaLink for a Prusa reached that way. The bottom left corner names the printer as it's named
+- **Mainsail / Fluidd / PrusaLink:** the link in a camera's bottom right corner opens its printer's own web page in a
+  new tab: Mainsail or Fluidd, or PrusaLink for a Prusa reached that way. The bottom left corner names the printer as it's named
   in Printers.
 - **Resync** asks every printer for its cameras again and connects to each anew: for a frozen picture, or after
   changing a camera in Mainsail.

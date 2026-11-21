@@ -337,7 +337,7 @@ export function ScanPrintersDialog({ onClose }) {
                 )}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-                <span style={uiText(12, c.textMuted)}>{f.firmware || "Unknown"}</span>
+                <span style={uiText(12, c.textMuted)}>{f.firmware || "Unknown"}{f.webUi ? ` · ${f.webUi}` : ""}</span>
                 {f.needsApiKey && <Badge tone="amber">{f.connectionType === "prusalink" ? "needs password" : "needs API key"}</Badge>}
               </div>
             </div>

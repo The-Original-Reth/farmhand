@@ -54,7 +54,7 @@ function useFloating(label) {
 // A camera's own picture, turned and flipped as Mainsail is set to show it. Scroll over it to zoom in (up to maxZoom)
 // or out; drag a zoomed one to look around; the badge in the corner goes back to the whole picture. The button in the
 // top left corner floats it in a picture-in-picture window (where the browser can). `link`: the printer's own web page,
-// { url, name, printer } (Mainsail or PrusaLink), opened in a new tab from the bottom right corner. `board`: the
+// { url, name, printer } (Mainsail, Fluidd or PrusaLink), opened in a new tab from the bottom right corner. `board`: the
 // computer the printer runs on ({ name: "Pi 4", model, memory_gb }), named in the top right corner. `print`: the print
 // under way ({ state: "printing" | "paused", progress, file }), its percentage shown left of the board. In the top left corner, beside the
 // picture-in-picture button, what the camera runs on and the size and frame rate it is sending, measured live (liveInfo.js).

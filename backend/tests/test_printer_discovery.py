@@ -13,7 +13,7 @@ from .fake_prusalink import FakePrusaLink
 @pytest.fixture()
 def network(monkeypatch):
     """
-    A stand-in network: {ip: FakeMoonraker (answering on port 7125) or FakePrusaLink (port 80), or a web page of
+    A stand-in network: {ip: FakeMoonraker (answering on port 7125, and its web page on 80) or FakePrusaLink (port 80), or a web page of
     something else (an httpx.Response handler, port 80)}. Every other address and port refuses the connection.
     """
     hosts: dict = {}
@@ -22,7 +22,7 @@ def network(monkeypatch):
     def handle(request: httpx.Request) -> httpx.Response:
         asked.append(request.url.host)
         fake, port = hosts.get(request.url.host), request.url.port or 80
-        if isinstance(fake, FakeMoonraker) and port == 7125 or isinstance(fake, FakePrusaLink) and port == 80:
+        if isinstance(fake, FakeMoonraker) and port in (7125, 80) or isinstance(fake, FakePrusaLink) and port == 80:
             return fake.handle(request)
         if callable(fake) and port == 80:
             return fake(request)
@@ -46,7 +46,7 @@ def test_finds_the_moonrakers_in_the_range_and_skips_known_printers(api, network
     assert r.status_code == 200
     assert r.json() == [{
         "ip": "10.0.6.40", "connection_type": "moonraker", "address": "http://10.0.6.40:7125",
-        "web_url": "http://10.0.6.40/", "hostname": "trident", "firmware": "Klipper", "version": "v0.9.3-fake",
+        "web_url": "http://10.0.6.40/", "web_ui": "Mainsail", "hostname": "trident", "firmware": "Klipper", "version": "v0.9.3-fake",
         "state": "ready", "needs_api_key": False, "link": None, "wired_ip": None, "wireless_ip": None,
         "decommissioned_id": None, "decommissioned_name": None,
     }]

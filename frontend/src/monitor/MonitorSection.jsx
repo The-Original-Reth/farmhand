@@ -4,14 +4,14 @@ import { c } from "../theme.js";
 import { cancelButton, headerButton, primaryButton, uiText } from "../styles.js";
 import { errorText } from "../api.js";
 import { useData } from "../data.jsx";
-import { webUiOf, prusaVia } from "../printers/webUi.js";
+import { klipperUi, webUiOf, prusaVia } from "../printers/webUi.js";
 import { usePrintProgress, usePrinterCameras } from "./cameras.js";
 import { CameraTile } from "./CameraTile.jsx";
 import { fit, GAP, useRoom } from "./wall.js";
 import { arranged, moved } from "../lib/order.js";
 import { useMediaQuery } from "../hooks/useMediaQuery.js";
 
-// Every printer's cameras, as set up in Mainsail and played the way Mainsail plays them, in one grid: the pictures
+// Every printer's cameras, as set up in Mainsail or Fluidd and played the way Mainsail plays them, in one grid: the pictures
 // only, all the same size, each named in its corner. The tiles are as large as they can be while all of them fit in the
 // window, and change with it. Click one to see it on its own, filling the window; click again (or Esc) to go back.
 // Drag a camera onto another to move it there, then Save layout to keep the new order on the server (order: "printer
@@ -58,7 +58,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
   // one tile per camera; a printer with two cameras gets two, named "VT 1190 · Nozzle"
   const tiles = active.flatMap((p) => {
     const list = cams[p.id]?.webcams || [];
-    // the printer's own web page (Mainsail, or PrusaLink), linked from the corner of its tiles
+    // the printer's own web page (Mainsail or Fluidd, or PrusaLink), linked from the corner of its tiles
     const web = webUiOf(p);
     const link = web && { ...web, printer: p.name };
     // the computer it runs on, named in the tiles' top right corner; a Prusa says nothing of its own, so it's "Prusa"
@@ -106,7 +106,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
         <div style={uiText(13, c.textFaint)}>Finding the printers' cameras…</div>
       ) : tiles.length === 0 ? (
         <div style={uiText(13, c.textMuted, { lineHeight: 1.6 })}>
-          No cameras yet. A printer's camera shows here once it's set up in Mainsail (Settings → Webcams).
+          No cameras yet. A printer's camera shows here once it's set up in Mainsail (Settings → Webcams) or Fluidd (Settings → Cameras).
         </div>
       ) : (
         !big && (
@@ -141,7 +141,7 @@ export function MonitorSection({ order = [], onSave, maxZoom = 4, onMaxZoom }) {
         <div data-testid="monitor-without" style={uiText(12, c.textFaint, { lineHeight: 1.7 })}>
           No camera:{" "}
           {without.map((p, i) => (
-            <span key={p.id} title={cams[p.id]?.error || "No camera set up in Mainsail"}>
+            <span key={p.id} title={cams[p.id]?.error || `No camera set up in ${klipperUi(p)}`}>
               {i > 0 && ", "}
               {p.name}
             </span>

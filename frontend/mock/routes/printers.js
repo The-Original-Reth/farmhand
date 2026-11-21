@@ -37,6 +37,7 @@ export function printersRoutes(ctx) {
     const was = (f) => [f.ip, f.wired_ip, f.wireless_ip].map((h) => h && retired.get(h)).find(Boolean);
     const sample = [ // [offset, hostname, firmware, needs a key, link, the other link's offset]
       [31, "mainsailos", "Klipper", false, "wired", null],
+      [35, "fluiddpi", "Klipper", false, "wired", null], // runs Fluidd (by its name, here)
       [32, "mainsailos", "Klipper", false, "wireless", null],
       [40, "trident-300", "Kalico", false, "wired", 41],
       [77, null, null, true, null, null],
@@ -50,12 +51,13 @@ export function printersRoutes(ctx) {
         const otherIp = other != null && inRange(other) ? ipAt(start + other) : null;
         if (firmware === "Prusa") {
           return {
-            ip, connection_type: "prusalink", address: `http://${ip}`, web_url: `http://${ip}/`, hostname, firmware,
+            ip, connection_type: "prusalink", address: `http://${ip}`, web_url: `http://${ip}/`, web_ui: null, hostname, firmware,
             version: null, state: null, needs_api_key: needsKey, link: null, wired_ip: null, wireless_ip: null,
           };
         }
         return {
           ip, connection_type: "moonraker", address: `http://${ip}:7125`, web_url: `http://${ip}/`, hostname, firmware,
+          web_ui: hostname?.includes("fluidd") ? "Fluidd" : "Mainsail", // the page on port 80, which answers without a key
           version: needsKey ? null : "v0.9.3", state: needsKey ? null : "ready", needs_api_key: needsKey, link,
           wired_ip: link === "wired" ? ip : null, wireless_ip: link === "wireless" ? ip : otherIp,
         };

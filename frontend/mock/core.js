@@ -71,11 +71,13 @@ export function createCore() {
     };
   };
 
+  const webUiOf = (p) => (p.prusalink ? null : p.webUi || "Mainsail");
   const printerOut = (p) => ({
     id: p.id, name: p.name, kind: p.kind, wired_ip: p.wired_ip, wireless_ip: p.wireless_ip, decommissioned: p.decommissioned,
     created_at: p.created_at, notes: p.notes || "", notes_revision: p.notesRevision ?? 0,
     notes_updated_at: p.notesUpdatedAt ?? null,
     moonraker_url: moonrakerUrl(p), moonraker_url_override: p.moonraker_url_override || null, mainsail_url: mainsailUrl(p),
+    web_ui: webUiOf(p), // "Mainsail" | "Fluidd" for a Klipper printer, as found on it; null for a Prusa
     has_moonraker_api_key: !!p.apiKey, service: service(p),
     connection_type: p.prusalink ? "prusalink" : "moonraker", prusalink_url: prusalinkUrl(p),
     prusalink_url_override: p.prusalink?.url || null, prusalink_username: p.prusalink?.username || null,
@@ -153,5 +155,5 @@ export function createCore() {
     for (const key of Object.keys(farm)) delete farm[key];
     Object.assign(farm, buildFarm());
   };
-  return { farm, routes, on, printer, model, bundle, version, requireConfirm, fail404, totalsFor, synced, syncedTotals, ipOf, moonrakerUrl, mainsailUrl, prusalinkUrl, service, printerOut, modelOut, versionOut, versionDetail, bundleOut, saveNotes, liveJob, runningJob, reachMoonraker, location, projectsDefault, capability, png, resetFarm };
+  return { farm, routes, on, printer, model, bundle, version, requireConfirm, fail404, totalsFor, synced, syncedTotals, ipOf, moonrakerUrl, mainsailUrl, webUiOf, prusalinkUrl, service, printerOut, modelOut, versionOut, versionDetail, bundleOut, saveNotes, liveJob, runningJob, reachMoonraker, location, projectsDefault, capability, png, resetFarm };
 }

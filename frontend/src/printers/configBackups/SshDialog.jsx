@@ -4,6 +4,7 @@ import { c } from "../../theme.js";
 import { errorText, getSshKey, testSsh } from "../../api.js";
 import { cancelButton, monoText, primaryButton, uiText } from "../../styles.js";
 import { Modal } from "../../components/common/dialogs.jsx";
+import { klipperUi } from "../webUi.js";
 
 // Set up SSH: Farmhand's key, how to add it on the printer's Pi, and a test
 export function SshDialog({ printer, onClose, onTested }) {
@@ -29,8 +30,8 @@ export function SshDialog({ printer, onClose, onTested }) {
   return (
     <Modal title={`Set up SSH for ${printer.name}`} onClose={onClose} width={640}>
       <div style={uiText(13, c.textMuted, { lineHeight: 1.6 })}>
-        With SSH, each backup also holds Moonraker's database file (print history, Mainsail's settings, maintenance:
-        everything), which Restore database can put back, and Restore can put back mainsail.cfg. Farmhand logs in with
+        With SSH, each backup also holds Moonraker's database file (print history, {klipperUi(printer)}'s settings, maintenance:
+        everything), which Restore database can put back, and Restore can put back {klipperUi(printer) === "Fluidd" ? "fluidd.cfg" : "mainsail.cfg"}. Farmhand logs in with
         its own key, never a password. Add the key once on {printer.name}'s Pi: log in to it (as the user Klipper runs as,
         usually pi) and run:
       </div>

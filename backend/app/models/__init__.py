@@ -12,6 +12,7 @@ from .printer_connection import (
     PrinterEnergyReading,
     PrinterServiceNote,
     PrinterServiceReminder,
+    PrinterWebUi,
     PrintJob,
 )
 from .source_model import SourceFileType, SourceModel, SourceModelVersion
@@ -39,6 +40,7 @@ __all__ = [
     "PrinterConnection",
     "PrinterServiceReminder",
     "PrinterServiceNote",
+    "PrinterWebUi",
     "PrinterEnergyReading",
     "PrintJob",
     "GcodeFilament",

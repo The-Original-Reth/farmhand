@@ -9,7 +9,8 @@ from .client import MoonrakerError, live_print, server_info
 def connection_status(printer: Printer) -> dict:
     out = {
         "moonraker_url": printer.moonraker_url,
-        "mainsail_url": printer.mainsail_url,
+        "mainsail_url": printer.mainsail_url,  # its web page, Mainsail or Fluidd (web_ui)
+        "web_ui": printer.web_ui,
         "has_api_key": printer.has_moonraker_api_key,
         "reachable": False,
         "klippy_state": None,

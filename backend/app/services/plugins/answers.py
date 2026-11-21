@@ -40,6 +40,7 @@ def _printer(p: Printer) -> dict:
     return {
         "id": p.id, "name": p.name, "kind": p.kind, "connection_type": p.connection_type,
         "status_from": p.status_from,  # the plugin (its id) reporting its status, or null: Farmhand asks it itself
+        "web_ui": p.web_ui,  # a Klipper printer's web page at mainsail_url: "Mainsail" | "Fluidd"; null for a Prusa
         "addresses": {
             "wired_ip": p.wired_ip, "wireless_ip": p.wireless_ip,
             "moonraker_url": p.moonraker_url if p.connection_type == "moonraker" else None,

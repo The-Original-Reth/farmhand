@@ -68,7 +68,7 @@ export function Schedule({ data, onSaved, onSsh }) {
       </div>
       <div style={uiText(12, c.textFaint, { lineHeight: 1.5 })}>
         Each backup holds the printer's config folder and what its Moonraker keeps in its database (the whole print history,
-        Mainsail's settings, maintenance). The newest {data.keep} are kept, in <span style={monoText(12, c.textMuted)}>{data.folder}</span> (the
+        Mainsail's or Fluidd's settings, maintenance). The newest {data.keep} are kept, in <span style={monoText(12, c.textMuted)}>{data.folder}</span> (the
         printer backups folder: change it on the Settings page). Never taken while the printer is printing.
       </div>
       {error && <div style={uiText(12, c.amber)}>{error}</div>}
