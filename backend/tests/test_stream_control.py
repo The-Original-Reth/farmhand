@@ -721,3 +721,18 @@ def test_saving_the_design_reads_the_stream_folder_again_in_the_background(api, 
     assert api.get("/stream-control").json()["media"]["images"] == ["logo.png"] and len(later) == 1  # one re-read at a time
     later[0]()
     assert api.get("/stream-control").json()["media"]["images"] == ["dropped.png", "logo.png"]
+
+
+def test_a_camera_square_keeps_its_own_text_over_it(api):
+    switch(api)
+    words = {"type": "text", "text": "  Toys for kids  ", "box": {"x": 0.5, "y": 0.2, "size": 0.1}, "color": "#ff0000", "band": True}
+    picture = {"type": "picture", "image": "logo.png", "box": {"x": 0, "y": 0, "w": 0.5, "h": 0.5}}
+    r = api.put("/stream-control", json={"cols": 1, "rows": 1, "cells": [{"camera": CAMERA, "layers": [words, picture]}]})
+    assert r.status_code == 200, r.text
+    # its words trimmed, in their place, colour and band; a picture isn't something a camera takes
+    assert r.json()["design"]["cells"][0] == {"camera": CAMERA, "layers": [
+        {"type": "text", "text": "Toys for kids", "box": {"x": 0.5, "y": 0.2, "size": 0.1}, "font": None, "color": "#FF0000", "band": True}]}
+    for layers, said in [([words] * 13, "Up to 12 pieces of text can go on a camera"),
+                         ([{**words, "text": "x" * 501}], "up to 500 characters")]:
+        r = api.put("/stream-control", json={"cols": 1, "rows": 1, "cells": [{"camera": CAMERA, "layers": layers}]})
+        assert r.status_code == 422 and said in r.json()["detail"], r.text

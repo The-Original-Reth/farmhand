@@ -4,7 +4,7 @@ import { headerButton, panelBox, primaryButton, uiText } from "../styles.js";
 import { help } from "./streamStyles.js";
 import { ColourPick } from "./controls.jsx";
 import { CardScreen } from "./CardScreen.jsx";
-import { CARD, layersOf } from "./shapes.js";
+import { CARD, cameraTextCard, layersOf } from "./shapes.js";
 import { LayersChoice } from "./LayersChoice.jsx";
 import { CameraChoice, CameraWordsChoice, TextChoice } from "./SquareChoices.jsx";
 import { PictureChoice, SlideshowChoice } from "./MediaChoices.jsx";
@@ -51,8 +51,20 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
   const layered = isCardKind(kind) && layersOf(card, slideName) !== null;
   // the canvas: the square's own shape, no taller than 420 px
   const canvas = { position: "relative", width: "100%", maxWidth: Math.min(640, 420 * aspect), aspectRatio: String(aspect), background: fixed.camera, border: `1px solid ${c.border}`, overflow: "hidden", display: "flex" };
+  // a camera's pieces of text, written over it: dragged on the canvas, chosen and changed under it
+  const onCamera = kind === "camera" && !!cell?.camera;
+  const setCameraText = (what) => {
+    const next = { ...cell, ...(what.layers ? { layers: what.layers } : {}) };
+    if (!next.layers?.length) delete next.layers;
+    put(next);
+  };
   const ownColour = isCard ? card.background : cell?.camera ? cell.background || null : null;
-  const setColour = (v) => (isCard ? setCard({ background: v }) : put(v ? { ...cell, background: v } : { camera: cell.camera }));
+  const setColour = (v) => {
+    if (isCard) return setCard({ background: v });
+    const next = { ...cell, background: v };
+    if (!v) delete next.background;
+    return put(next);
+  };
   return (
     <div data-testid="stream-square-editor" style={panelBox({ padding: 12, marginTop: 10, display: "flex", flexDirection: "column", gap: 10 })}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -78,9 +90,20 @@ export function SquareEditor({ cells, i, onCells, cameras, media, fonts = [], st
         <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
           <div data-testid="stream-square-canvas" style={canvas}>
             {isCard ? <CardScreen card={card} media={media} streamBackground={streamBackground} streamText={streamText} inset={inset} edit onChange={setCard} slide={kind === "slideshow" ? slide : null} layer={layer} onLayer={setLayer} /> : screen}
+            {onCamera && (
+              <div style={{ position: "absolute", inset: 0 }}>
+                <CardScreen card={cameraTextCard(cell)} media={media} streamBackground="transparent" streamText={streamText} inset={inset} edit onChange={setCameraText} layer={layer} onLayer={setLayer} />
+              </div>
+            )}
           </div>
           {isCard && (card.text.trim() || card.image || card.slideshow) && (
             <div style={uiText(11, c.textFaint)}>Drag the {card.image || card.slideshow ? "picture or words" : "words"} to move them; drag a corner to make them bigger or smaller.</div>
+          )}
+          {onCamera && (
+            <LayersChoice
+              camera card={cameraTextCard(cell)} setCard={setCameraText} media={media} slideName={null} fonts={fonts} streamText={streamText} ask={ask} busy={busy}
+              layer={layer} setLayer={setLayer}
+            />
           )}
           {layered && (
             <LayersChoice

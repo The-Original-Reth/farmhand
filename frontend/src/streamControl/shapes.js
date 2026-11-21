@@ -9,6 +9,8 @@ export const CARD = { background: null, image: null, slideshow: null, seconds: 1
 // file name, box: { x, y, w, h } } | { type: "text", text, box: { x, y, size }, font, color, band }. A Text or Picture
 // square's are card.layers; a slideshow's are each screen's own, card.slide_layers[the picture's name, or "blank:N"].
 export const MAX_LAYERS = 12;
+// a camera square's pieces of text, drawn over the camera as a see-through card of nothing else (CardScreen)
+export const cameraTextCard = (cell) => ({ ...CARD, background: "transparent", layers: cell?.layers || [] });
 export const newPicture = (image) => ({ type: "picture", image, box: { x: 0.3, y: 0.25, w: 0.4, h: 0.5 } });
 export const newText = () => ({ type: "text", text: "New text", box: { x: 0.5, y: 0.5, size: 0.1 }, font: null, color: null, band: false });
 // the extra pictures and words on what a card shows now (`slideName`: the slideshow's screen on show), and how to change them

@@ -11,8 +11,9 @@ import { MAX_LAYERS, isBlank, layersChange, layersOf, newPicture, newText, slide
 // show, `slideName`, each screen keeping its own). Each is placed on its own on the canvas (dragged to move, by its corner to resize). Add picture
 // (one of the stream folder's pictures, or a new one uploaded), Add text, the list of what's there (click one to
 // choose it, here or on the canvas), and the chosen one's own choices; Delete takes one off. Saved with Save.
-// `layer`, `setLayer`: the one chosen (its place in the list).
-export function LayersChoice({ card, setCard, media, slideName, fonts, streamText, ask, busy, layer, setLayer }) {
+// `layer`, `setLayer`: the one chosen (its place in the list). `camera`: the square is a camera's, which takes pieces of
+// text only (written over the camera).
+export function LayersChoice({ card, setCard, media, slideName, fonts, streamText, ask, busy, layer, setLayer, camera = false }) {
   const input = useRef(null);
   const [adding, setAdding] = useState(false); // choosing the picture to add
   const layers = layersOf(card, slideName) || [];
@@ -38,17 +39,19 @@ export function LayersChoice({ card, setCard, media, slideName, fonts, streamTex
   };
   const chosen = layer !== null ? layers[layer] : null;
   const usual = fontLabel(fonts, streamText.font);
-  const where = card.slideshow ? (isBlank(slideName) ? slideLabel(slideName).toLowerCase() : `this picture (${slideName})`) : "this square";
+  const where = camera ? "this camera" : card.slideshow ? (isBlank(slideName) ? slideLabel(slideName).toLowerCase() : `this picture (${slideName})`) : "this square";
 
   return (
     <div data-testid="stream-layers" style={{ display: "flex", flexDirection: "column", gap: 6, border: `1px solid ${c.border}`, borderRadius: 4, padding: 8, marginTop: 4 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         <span style={uiText(12, c.heading, { fontWeight: 600, marginRight: 4 })}>
-          Pictures and text on {where} <span style={uiText(11, c.textFaint, { fontWeight: 400 })}>({layers.length}/{MAX_LAYERS})</span>
+          {camera ? "Text" : "Pictures and text"} on {where} <span style={uiText(11, c.textFaint, { fontWeight: 400 })}>({layers.length}/{MAX_LAYERS})</span>
         </span>
-        <button type="button" data-testid="stream-layer-add-picture" onClick={() => setAdding(!adding)} disabled={full} style={{ ...headerButton(), color: adding ? c.amber : c.textMuted }}>
-          <Image size={13} /> Add picture
-        </button>
+        {!camera && (
+          <button type="button" data-testid="stream-layer-add-picture" onClick={() => setAdding(!adding)} disabled={full} style={{ ...headerButton(), color: adding ? c.amber : c.textMuted }}>
+            <Image size={13} /> Add picture
+          </button>
+        )}
         <button type="button" data-testid="stream-layer-add-text" onClick={() => add(newText())} disabled={full} style={headerButton()}>
           <Type size={13} /> Add text
         </button>
@@ -136,7 +139,9 @@ export function LayersChoice({ card, setCard, media, slideName, fonts, streamTex
       <div style={help}>
         {layers.length
           ? "Click one to change it (here or on the canvas); drag it on the canvas to move it, and by its corner to resize it."
-          : "Add as many pictures and pieces of text as you like, each placed where you want it."}
+          : camera
+            ? "Add words to write over the camera, as many pieces as you like, each placed where you want it. They show on the stream whenever this camera does."
+            : "Add as many pictures and pieces of text as you like, each placed where you want it."}
       </div>
     </div>
   );

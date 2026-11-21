@@ -2,18 +2,23 @@ import { useState } from "react";
 import { fixed, fs, ui } from "../theme.js";
 import { CameraPicture } from "../monitor/players.jsx";
 import { CardScreen } from "./CardScreen.jsx";
-import { fontFamily, statusLine } from "./shapes.js";
+import { cameraTextCard, fontFamily, statusLine } from "./shapes.js";
 
 // One square of the preview, and the square editor's own copy of it.
 
 // What a square shows: a camera, or a card (its colour, picture or slideshow, and words); nothing (the stream's colour)
-// when null
-export function Screen({ sq, showStatus, big, media, back, words = {}, clock = null, inset = 0, edit = false, onChange, slide = null, still = false }) {
+// when null. `cameraText`: a camera's pieces of text drawn over it (not on the square editor's canvas, which draws its own)
+export function Screen({ sq, showStatus, big, media, back, words = {}, clock = null, inset = 0, edit = false, onChange, slide = null, still = false, cameraText = true }) {
   if (!sq) return null;
   if (sq.type === "camera") {
     return (
       <div style={{ position: "relative", width: "100%", height: "100%", background: sq.background || back, display: "flex", containerType: "size" }}>
         <CameraSquare sq={sq} showStatus={showStatus} big={big} words={words} inset={inset} />
+        {cameraText && sq.cell?.layers?.length > 0 && (
+          <div data-testid="stream-preview-camera-text" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            <CardScreen card={cameraTextCard(sq.cell)} media={media} streamBackground="transparent" streamText={words} inset={inset} />
+          </div>
+        )}
       </div>
     );
   }
