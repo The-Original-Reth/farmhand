@@ -10,6 +10,7 @@ import httpx
 from ..config import settings
 
 TIMEOUT = httpx.Timeout(4.0, connect=2.0)
+RTSP_PORT = 8554  # where go2rtc gives its streams over RTSP: the plugins read Farmhand's relayed cameras there
 
 # Tests swap this for an httpx.MockTransport that plays a fake go2rtc
 transport: httpx.BaseTransport | None = None

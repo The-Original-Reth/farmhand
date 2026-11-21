@@ -25,7 +25,7 @@ Farmhand is made of four parts, each in its own Docker container, which are alwa
 | `web` | The web page, on port 3636 |
 | `api` | The server: the archive, the printers, the files, the settings. Port 4545 |
 | `db` | The database (PostgreSQL) everything is kept in |
-| `go2rtc` | The video relay for cameras that only stream over RTSP (a Prusa's Buddy3D). Opens no ports of its own |
+| `go2rtc` | The video relay for cameras Farmhand plays itself (a Prusa's Buddy3D, a Klipper printer's RTSP camera). Opens RTSP on port 8554, where stream plugins read those cameras, so each camera sends its video once; its API stays closed |
 
 ### 1. Install Docker and git
 
@@ -700,8 +700,9 @@ through **go2rtc** (its fourth container), and the page reaches that through the
    **Buddy3D camera IP**, e.g. `192.168.10.131`. A whole `rtsp://…` address works too, for another RTSP camera.
 3. Open **Monitor** (or press **Resync**).
 
-Anyone on your network can watch a Buddy3D's stream: the camera itself has no password on it. Farmhand's web
-page only passes through its own camera streams, never the rest of go2rtc.
+Anyone on your network can watch a Buddy3D's stream: the camera itself has no password on it, and nor has go2rtc's
+RTSP on port 8554, where the stream plugins read Farmhand's relayed cameras. Farmhand's web page only passes through
+its own camera streams, never the rest of go2rtc.
 
 ### A Klipper printer's camera over RTSP (a Snapmaker U1's)
 
@@ -712,7 +713,8 @@ takes 4 WebRTC viewers, and its Wi-Fi struggles with several 1080p streams.
 1. Turn RTSP on at the printer (the U1's firmware-config page, Camera section). The U1's internal camera is then at
    `rtsp://<printer IP>:8554/stream`.
 2. In Farmhand, open the printer's **Edit** and put that address in **Camera RTSP address**.
-3. Open **Monitor** (or press **Resync**). Stream plugins read it from the same RTSP address.
+3. Open **Monitor** (or press **Resync**). Stream plugins read it from Farmhand's go2rtc too (port 8554 on Farmhand's
+   address), so the printer still sends it only once.
 
 ## Stream
 

@@ -183,6 +183,9 @@ ffmpeg can read: `kind` is `mjpeg` or `rtsp`, `url` the address, and `ffmpeg_inp
 `ffmpeg_filters` turns the picture that way (add them to your filter graph). A camera that can't be streamed (one
 that only plays in a browser, over WebRTC) has `kind`, `url` and `ffmpeg_input` `null` and says why in `error`. A
 printer whose cameras couldn't be asked (it's off) has no cameras and says why in its own `error`.
+A camera Farmhand plays itself (a Buddy3D, or a Klipper printer's given by its RTSP address) is read from Farmhand's
+own go2rtc, `rtsp://<the address you reached Farmhand at>:8554/farmhand_<printer id>`, so the camera sends its video
+once however many plugins and pages show it.
 
 ```json
 {

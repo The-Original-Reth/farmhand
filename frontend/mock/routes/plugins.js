@@ -384,6 +384,8 @@ export function pluginsRoutes(ctx) {
   });
   on("GET", api("/cameras"), (_p, _b, _q, h) => {
     needs(h, "cameras:read");
+    // a camera Farmhand relays is read from its go2rtc, at the address the plugin reached Farmhand at
+    const relayed = (p) => `rtsp://${new URL(h.host ? `http://${h.host}` : "http://localhost").hostname}:8554/farmhand_${p.id}`;
     const camera = (name, kind, url, snapshot = null) => ({
       name, kind, url, ffmpeg_input: [...(kind === "mjpeg" ? MJPEG : RTSP), "-i", url], rotation: 0, flip_horizontal: false,
       flip_vertical: false, ffmpeg_filters: [], aspect_ratio: "16:9", target_fps: 15, snapshot_url: snapshot, error: null,
@@ -392,10 +394,9 @@ export function pluginsRoutes(ctx) {
       const base = { printer_id: p.id, printer_name: p.name };
       if (p.prusalink) {
         if (!p.cameraAddress) return { ...base, cameras: [], error: "No camera address set. Add the Buddy3D camera's IP on the printer's Edit page" };
-        return { ...base, cameras: [camera("Camera", "rtsp", `rtsp://${p.cameraAddress}/live`)], error: null };
+        return { ...base, cameras: [camera("Camera", "rtsp", relayed(p))], error: null };
       }
-      const rtsp = (address) => (/^rtsps?:\/\//i.test(address) ? address : `rtsp://${address}/live`);
-      if (p.cameraAddress) return { ...base, cameras: [camera("Bed", "rtsp", rtsp(p.cameraAddress))], error: null }; // played through Farmhand in Mainsail's place
+      if (p.cameraAddress) return { ...base, cameras: [camera("Bed", "rtsp", relayed(p))], error: null }; // played through Farmhand in Mainsail's place
       if (!p.moonraker) return { ...base, cameras: [], error: NO_MOONRAKER };
       if (!p.moonraker.reachable) return { ...base, cameras: [], error: p.moonraker.error };
       const web = mainsailUrl(p);
