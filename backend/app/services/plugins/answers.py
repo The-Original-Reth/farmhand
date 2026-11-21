@@ -51,12 +51,16 @@ def _printer(p: Printer) -> dict:
     }
 
 
-def cameras_of_farm(db: Session) -> dict:
-    """Every printer in service with its cameras, each with where ffmpeg reads it, or why it can't be streamed."""
-    return {"printers": [kept(("cameras", p.id), CAMERAS_SECONDS, lambda p=p: _cameras(p)) for p in _active(db)]}
+def cameras_of_farm(db: Session, relay_host: str | None = None) -> dict:
+    """
+    Every printer in service with its cameras, each with where ffmpeg reads it, or why it can't be streamed.
+    relay_host: the address the plugin reached Farmhand at, where it reads the cameras Farmhand relays.
+    """
+    return {"printers": [kept(("cameras", p.id, relay_host), CAMERAS_SECONDS, lambda p=p: _cameras(p, relay_host))
+                         for p in _active(db)]}
 
 
-def _cameras(printer: Printer) -> dict:
+def _cameras(printer: Printer, relay_host: str | None = None) -> dict:
     found = cameras.printer_cameras(printer)
     out = []
     for cam in found["webcams"]:
@@ -68,7 +72,7 @@ def _cameras(printer: Printer) -> dict:
             "snapshot_url": cam.get("snapshot_url"), "error": None,
         }
         try:
-            address = stream_address(printer, cam)
+            address = stream_address(printer, cam, relay_host)
             entry.update(kind=address.kind, url=address.url, ffmpeg_input=address.input_args)
         except ValueError as e:
             entry["error"] = str(e)

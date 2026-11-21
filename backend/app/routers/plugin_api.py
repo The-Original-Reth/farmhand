@@ -117,8 +117,11 @@ def printers(db: Session = Depends(get_db)):
 
 
 @router.get("/cameras", dependencies=[Depends(needs("cameras:read"))])
-def cameras(db: Session = Depends(get_db)):
-    return answers.cameras_of_farm(db)
+def cameras(request: Request, db: Session = Depends(get_db)):
+    # a camera Farmhand relays is read from its go2rtc, at the address this plugin reached Farmhand at (a plugin beside
+    # Farmhand in its docker compose reaches it as "api", and go2rtc as "go2rtc")
+    host = request.url.hostname
+    return answers.cameras_of_farm(db, "go2rtc" if host == "api" else host)
 
 
 @router.get("/printers/{printer_id}/print", dependencies=[Depends(needs("prints:read"))])

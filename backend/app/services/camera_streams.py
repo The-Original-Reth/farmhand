@@ -39,10 +39,18 @@ def camera_label(printer: Printer, cam: dict) -> str:
     return f"{printer.name}'s camera" if cam.get("name") in (None, "Camera") else f"{printer.name}'s {cam['name']} camera"
 
 
-def stream_address(printer: Printer, cam: dict) -> StreamAddress:
-    """Where ffmpeg reads this camera (one of cameras.printer_cameras' webcams), or ValueError saying why it can't."""
-    if cam.get("service") == "farmhand-go2rtc":  # a Buddy3D: its RTSP stream, straight from the camera
-        return StreamAddress("rtsp", go2rtc.rtsp_url(printer.camera_address))
+def stream_address(printer: Printer, cam: dict, relay_host: str | None = None) -> StreamAddress:
+    """
+    Where ffmpeg reads this camera (one of cameras.printer_cameras' webcams), or ValueError saying why it can't.
+    relay_host: the address the plugin reached Farmhand at. A camera Farmhand relays (a Buddy3D's, a Klipper printer's
+    given by its RTSP address) is then read from Farmhand's go2rtc, so the camera sends its video once, to Farmhand,
+    however many plugins and pages show it (a Snapmaker U1's takes few readers and cuts one off when another comes).
+    """
+    if cam.get("service") == "farmhand-go2rtc":
+        if relay_host:
+            host = f"[{relay_host}]" if ":" in relay_host else relay_host
+            return StreamAddress("rtsp", f"rtsp://{host}:{go2rtc.RTSP_PORT}/{go2rtc.stream_name(printer.id)}")
+        return StreamAddress("rtsp", go2rtc.rtsp_url(printer.camera_address))  # straight from the camera
     stream = cam.get("stream_url")
     # an MJPEG stream; Mainsail's "adaptive" service shows snapshots in the browser, but its address is the same stream
     if stream and (cam.get("mjpeg") or cam.get("service") == "mjpegstreamer-adaptive" or "action=stream" in stream):

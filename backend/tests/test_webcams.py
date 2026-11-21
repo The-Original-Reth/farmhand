@@ -146,6 +146,10 @@ def test_a_klipper_printers_camera_address_plays_its_camera_through_go2rtc_in_ma
     u1 = Printer(name="Snapmaker U1", camera_row=PrinterCamera(address="rtsp://10.0.6.21:8554/stream"))
     address = camera_streams.stream_address(u1, case)
     assert (address.kind, address.url) == ("rtsp", "rtsp://10.0.6.21:8554/stream")
+    # ... or, given where the plugin reached Farmhand, from Farmhand's go2rtc: the U1 sends its video only once
+    u1.id = pid
+    assert camera_streams.stream_address(u1, case, "192.168.10.90").url == f"rtsp://192.168.10.90:8554/farmhand_{pid}"
+    assert camera_streams.stream_address(u1, case, "fd00::5").url == f"rtsp://[fd00::5]:8554/farmhand_{pid}"
     assert camera_streams.turn_filters(case) == ["hflip", "vflip"]
 
     # Moonraker not answering: still its camera, through Farmhand

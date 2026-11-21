@@ -238,11 +238,14 @@ def test_cameras_with_a_stream_address_for_ffmpeg(api, moonraker, monkeypatch):
     assert r.status_code == 200
     core, voron = r.json()["printers"]
     assert core["printer_name"] == "Core One" and core["error"] is None
+    # the Buddy3D, which Farmhand relays: read from Farmhand's go2rtc, at the address the plugin reached Farmhand at
+    # ("testserver" here), so the camera sends its video once however many read it
+    relayed = f"rtsp://testserver:8554/farmhand_{core['printer_id']}"
     assert core["cameras"][0] | {"ffmpeg_input": None} == {
-        "name": "Camera", "kind": "rtsp", "url": "rtsp://10.0.6.40/live", "ffmpeg_input": None, "rotation": 0,
+        "name": "Camera", "kind": "rtsp", "url": relayed, "ffmpeg_input": None, "rotation": 0,
         "flip_horizontal": False, "flip_vertical": False, "ffmpeg_filters": [], "aspect_ratio": "16:9", "target_fps": 15,
         "snapshot_url": None, "error": None}
-    assert core["cameras"][0]["ffmpeg_input"][-2:] == ["-i", "rtsp://10.0.6.40/live"]
+    assert core["cameras"][0]["ffmpeg_input"][-2:] == ["-i", relayed]
     bed, nozzle, odd = voron["cameras"]
     assert (bed["kind"], bed["url"]) == ("mjpeg", "http://10.0.6.21/webcam/?action=stream")
     assert bed["ffmpeg_input"][-4:] == ["-f", "mpjpeg", "-i", "http://10.0.6.21/webcam/?action=stream"]
