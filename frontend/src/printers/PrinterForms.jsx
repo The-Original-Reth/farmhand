@@ -30,7 +30,7 @@ const newConnection = (printer = null) => ({
   prusalinkUrl: printer?.prusalinkUrlOverride || "",
   prusalinkUsername: printer?.prusalinkUsername || "maker",
   prusalinkPassword: "", // blank = keep whatever is saved
-  cameraAddress: printer?.cameraAddress || "", // the Buddy3D camera's IP: a Prusa's camera has its own
+  cameraAddress: printer?.cameraAddress || "", // a Buddy3D camera's IP, or a Klipper printer's camera's rtsp:// address
 });
 
 // The Connection choices: Mainsail or Fluidd (Klipper) and PrusaLink, and each plugin printers can be connected through (Prusa Connect)
@@ -112,7 +112,10 @@ const connectionFields = (conn) =>
         prusalinkPassword: conn.prusalinkPassword || undefined,
         cameraAddress: conn.cameraAddress.trim(),
       }
-    : { connectionType: "moonraker", moonrakerUrl: conn.moonrakerUrl.trim(), moonrakerApiKey: conn.removeKey ? "" : conn.apiKey.trim() || undefined };
+    : {
+        connectionType: "moonraker", moonrakerUrl: conn.moonrakerUrl.trim(),
+        moonrakerApiKey: conn.removeKey ? "" : conn.apiKey.trim() || undefined, cameraAddress: conn.cameraAddress.trim(),
+      };
 
 function ConnectionFields({ conn, setConn, ips, saved = null }) {
   const set = (key) => (value) => setConn((c) => ({ ...c, [key]: value }));
@@ -186,6 +189,17 @@ function ConnectionFields({ conn, setConn, ips, saved = null }) {
               Remove the saved API key
             </label>
           )}
+          <TextField
+            label="Camera RTSP address (optional)"
+            value={conn.cameraAddress}
+            onChange={set("cameraAddress")}
+            placeholder="e.g. rtsp://192.168.10.134:8554/stream. Leave blank to show Mainsail's camera"
+          />
+          <div style={uiText(11, c.textFaint, { marginTop: -8, marginBottom: 14, lineHeight: 1.5 })}>
+            With it, Farmhand plays this camera itself, in place of Mainsail&apos;s first camera: the printer sends its video
+            once, to Farmhand, however many pages show it. For a camera that takes few viewers or a busy Wi-Fi link (a
+            Snapmaker U1&apos;s).
+          </div>
         </>
       )}
     </>

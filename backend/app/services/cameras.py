@@ -1,7 +1,9 @@
 """
 A printer's cameras for the Monitor page: as set up in Mainsail (those Crowsnest no longer serves played from go2rtc on
-the printer, when it has it: see printer_go2rtc), plus one Farmhand plays itself through go2rtc (a Buddy3D's). Never
-fails: says why there are none.
+the printer, when it has it: see printer_go2rtc), plus one Farmhand plays itself through go2rtc (a Buddy3D's). A Klipper
+printer given a camera address has that camera played through Farmhand's go2rtc in place of Mainsail's first camera (a
+Snapmaker U1's RTSP stream): the printer then sends its video once, to Farmhand, however many pages show it. Never fails:
+says why there are none.
 """
 from __future__ import annotations
 
@@ -29,12 +31,20 @@ def printer_cameras(printer: Printer) -> dict:
             errors.append(str(e))
     if printer.camera_address:
         try:
-            cams.append(relayed_camera(printer))
+            relayed = relayed_camera(printer)
+            if cams:  # a Klipper printer: its camera, as Mainsail names and turns it, played through Farmhand instead
+                first = cams.pop(0)
+                relayed.update({k: first[k] for k in TAKEN_FROM_MAINSAIL if first.get(k) is not None})
+            cams.insert(0, relayed)
         except go2rtc.Go2rtcError as e:
             errors.append(str(e))
     elif printer.connection_type == "prusalink":
         errors.append("No camera address set. Add the Buddy3D camera's IP on the printer's Edit page")
     return {"webcams": cams, "error": "; ".join(errors) or None, "board": board}
+
+
+# What the relayed camera keeps of the Mainsail camera it stands in for
+TAKEN_FROM_MAINSAIL = ("name", "snapshot_url", "flip_horizontal", "flip_vertical", "rotation", "aspect_ratio", "target_fps")
 
 
 def relayed_camera(printer: Printer) -> dict:

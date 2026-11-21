@@ -649,7 +649,7 @@ list is checked again every five minutes while the page is open.
   the way Mainsail plays them (MJPEG, WebRTC through go2rtc or camera-streamer, snapshots at the frame rate set
   there). A camera-streamer WebRTC camera is set up through Farmhand, so one whose printer won't take that from
   another page (a Snapmaker U1's) plays too; its video still comes straight from the printer. A Prusa's **Buddy3D
-  camera** is added by its IP (below). Printers without a camera are listed
+  camera** is added by its IP, and a Klipper printer's camera can be given by its RTSP address instead (both below). Printers without a camera are listed
   underneath; point at a name to see why.
 - **Moved to go2rtc, found by itself:** a printer whose Crowsnest is stopped (as Moonraker reports it) while go2rtc runs
   on it (port 1984) has its camera played from go2rtc, with nothing to change in Mainsail. The camera keeps the
@@ -702,6 +702,17 @@ through **go2rtc** (its fourth container), and the page reaches that through the
 
 Anyone on your network can watch a Buddy3D's stream: the camera itself has no password on it. Farmhand's web
 page only passes through its own camera streams, never the rest of go2rtc.
+
+### A Klipper printer's camera over RTSP (a Snapmaker U1's)
+
+A Klipper printer's camera that offers RTSP can be played through Farmhand's go2rtc too, in place of the first camera
+set up in Mainsail (keeping its name and turn). The printer then sends its video once, to Farmhand, however many pages
+show it: for a camera that takes few viewers, or a printer on a busy Wi-Fi link. A Snapmaker U1 on the extended firmware
+takes 4 WebRTC viewers, and its Wi-Fi struggles with several 1080p streams.
+1. Turn RTSP on at the printer (the U1's firmware-config page, Camera section). The U1's internal camera is then at
+   `rtsp://<printer IP>:8554/stream`.
+2. In Farmhand, open the printer's **Edit** and put that address in **Camera RTSP address**.
+3. Open **Monitor** (or press **Resync**). Stream plugins read it from the same RTSP address.
 
 ## Stream
 
