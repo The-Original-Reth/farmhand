@@ -719,6 +719,14 @@ takes 4 WebRTC viewers, and its Wi-Fi struggles with several 1080p streams.
 Farmhand's go2rtc reads such a camera through ffmpeg (the video copied as it comes, not re-encoded): go2rtc's own RTSP
 reader gets only a few seconds at a time from the U1's camera server, though the stream itself is steady.
 
+### Which IP a printer's camera is reached at
+
+A printer with both a wired and a wireless IP has a **Camera** switch on its **Edit** form, under the two IPs: **Wired**
+on the left, **Wireless** on the right. A side whose IP isn't filled in is greyed out and can't be chosen. Not chosen, it
+shows Wired (or the one IP there), and the cameras follow the IP the printer answers at: the cable, or its Wi-Fi while
+the cable is out. Choosing a side keeps every camera there: Mainsail's cameras, its own go2rtc, and its Camera RTSP
+address when that is on one of its IPs. Monitor, Stream control and the stream plugins all get the camera on that IP.
+
 ## Stream
 
 Streaming the printers' cameras live to **YouTube Live** is the **Stream plugin**'s job

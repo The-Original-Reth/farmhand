@@ -8,6 +8,7 @@ import { useAction } from "../hooks/useAction.js";
 
 import { ModalActions } from "../components/common/dialogs.jsx";
 import { FieldSelect, TextField } from "../components/common/fields.jsx";
+import { CameraNetworkSwitch, savedNetwork } from "./CameraNetworkSwitch.jsx";
 
 // How Farmhand reaches a printer, as both printer forms ask it. conn: { type: "moonraker" | "prusalink" | "plugin:<id>",
 // moonrakerUrl,
@@ -212,6 +213,7 @@ export function AddPrinterForm({ onClose }) {
   const [kind, setKind] = useState("");
   const [wiredIp, setWiredIp] = useState("");
   const [wirelessIp, setWirelessIp] = useState("");
+  const [cameraNetwork, setCameraNetwork] = useState(null); // the Camera switch (null: not chosen)
   const [conn, setConn] = useState(() => newConnection());
   const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
 
@@ -219,7 +221,10 @@ export function AddPrinterForm({ onClose }) {
     setErrorMsg(null);
     if (!name.trim()) return setErrorMsg("A printer needs a name.");
     await run(async () => {
-      putPrinter(await createPrinter({ name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim(), ...connectionFields(conn) }));
+      putPrinter(await createPrinter({
+        name: name.trim(), kind: kind.trim(), wiredIp: wiredIp.trim(), wirelessIp: wirelessIp.trim(), ...connectionFields(conn),
+        cameraNetwork: savedNetwork(cameraNetwork, wiredIp.trim(), wirelessIp.trim()) || undefined,
+      }));
       onClose();
     });
   };
@@ -230,6 +235,7 @@ export function AddPrinterForm({ onClose }) {
       <TextField label="Type (optional)" value={kind} onChange={setKind} placeholder="e.g. Prusa Core One" />
       <TextField label="Wired IP (optional)" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP (optional)" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
+      <CameraNetworkSwitch value={cameraNetwork} onChange={setCameraNetwork} wiredIp={wiredIp.trim()} wirelessIp={wirelessIp.trim()} />
       <ConnectionFields conn={conn} setConn={setConn} ips={[wiredIp.trim(), wirelessIp.trim()]} />
       <div style={uiText(11, c.textFaint, { marginBottom: 14, lineHeight: 1.5 })}>
         The name is the printer's unique key, and it's what a 3MF upload is matched against — it has to be spelled exactly like the printer profile your slicer put in the file (including capitalization and spaces).
@@ -245,6 +251,7 @@ export function EditPrinterForm({ printer, onClose }) {
   const [kind, setKind] = useState(printer.kind || "");
   const [wiredIp, setWiredIp] = useState(printer.wired || "");
   const [wirelessIp, setWirelessIp] = useState(printer.wireless || "");
+  const [cameraNetwork, setCameraNetwork] = useState(printer.cameraNetworkChoice || null); // the Camera switch (null: not chosen)
   const [decommissioned, setDecommissioned] = useState(!!printer.decommissioned);
   const [conn, setConn] = useState(() => newConnection(printer));
   const { busy: submitting, error: errorMsg, setError: setErrorMsg, run } = useAction();
@@ -261,6 +268,7 @@ export function EditPrinterForm({ printer, onClose }) {
         wirelessIp: wirelessIp.trim(),
         decommissioned,
         ...connectionFields(conn),
+        cameraNetwork: savedNetwork(cameraNetwork, wiredIp.trim(), wirelessIp.trim()), // "" when not chosen, or its IP has gone
         // back to its own PrusaLink from a plugin
         ...(conn.type === "prusalink" && printer.statusFrom ? { statusFrom: "" } : {}),
       }));
@@ -274,6 +282,7 @@ export function EditPrinterForm({ printer, onClose }) {
       <TextField label="Type" value={kind} onChange={setKind} placeholder="e.g. Prusa Core One" />
       <TextField label="Wired IP" value={wiredIp} onChange={setWiredIp} placeholder="e.g. 10.0.6.21" />
       <TextField label="Wireless IP" value={wirelessIp} onChange={setWirelessIp} placeholder="e.g. 10.0.6.121" />
+      <CameraNetworkSwitch value={cameraNetwork} onChange={setCameraNetwork} wiredIp={wiredIp.trim()} wirelessIp={wirelessIp.trim()} />
       <ConnectionFields conn={conn} setConn={setConn} ips={[wiredIp.trim(), wirelessIp.trim()]} saved={printer} />
       <label style={{ display: "flex", alignItems: "center", gap: 8, ...ui, fontSize: fs(13), color: c.textMuted, marginBottom: 14, cursor: "pointer" }}>
         <input

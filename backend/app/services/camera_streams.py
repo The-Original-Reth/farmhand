@@ -50,7 +50,7 @@ def stream_address(printer: Printer, cam: dict, relay_host: str | None = None) -
         if relay_host:
             host = f"[{relay_host}]" if ":" in relay_host else relay_host
             return StreamAddress("rtsp", f"rtsp://{host}:{go2rtc.RTSP_PORT}/{go2rtc.stream_name(printer.id)}")
-        return StreamAddress("rtsp", go2rtc.rtsp_url(printer.camera_address))  # straight from the camera
+        return StreamAddress("rtsp", go2rtc.rtsp_url(printer.camera_source))  # straight from the camera, on its camera IP
     stream = cam.get("stream_url")
     # an MJPEG stream; Mainsail's "adaptive" service shows snapshots in the browser, but its address is the same stream
     if stream and (cam.get("mjpeg") or cam.get("service") == "mjpegstreamer-adaptive" or "action=stream" in stream):

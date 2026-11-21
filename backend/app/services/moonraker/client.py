@@ -338,20 +338,6 @@ def live_print(printer: Printer) -> dict | None:
 MJPEG_SERVICES = {"mjpegstreamer", "uv4l-mjpeg", "ipstream"}
 
 
-def _on_answering_ip(printer: Printer, url: str) -> str:
-    """
-    A camera address written out whole in Mainsail with one of the printer's own IPs in it, moved to the IP the printer
-    answers at now (its Wi-Fi one when its cable is out). One at any other address (a camera of its own) is left alone.
-    """
-    parts = urlsplit(url)
-    now = urlsplit(printer.moonraker_url or "").hostname
-    own = {ip for ip in (printer.wired_ip, printer.wireless_ip) if ip}
-    if not now or parts.hostname not in own or parts.hostname == now:
-        return url
-    host = f"[{now}]" if ":" in now else now
-    return urlunsplit(parts._replace(netloc=host + (f":{parts.port}" if parts.port else "")))
-
-
 def system_info(printer: Printer) -> dict | None:
     """/machine/system_info's system_info (the board, the services Moonraker watches and their state), or None when it
     won't say (an older Moonraker, or one that can't be reached)."""
@@ -402,8 +388,8 @@ def board_name(model: str) -> str | None:
 def webcams(printer: Printer) -> list[dict]:
     """
     The cameras set up in the printer's Mainsail / Moonraker (enabled ones only), with their stream and snapshot
-    addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is
-    (on whichever of its IPs it answered at).
+    addresses made whole: a relative one ("/webcam/?action=stream") is on port 80 of the printer, where Mainsail is,
+    and one on either of the printer's IPs is moved to the IP its cameras are reached at (Printer.camera_network).
     """
     listed = call(printer, "GET", "/server/webcams/list").get("webcams") or []
     base = printer.mainsail_url or ""  # at the IP Moonraker just answered at
@@ -411,8 +397,8 @@ def webcams(printer: Printer) -> list[dict]:
     for cam in listed:
         if cam.get("enabled") is False:
             continue
-        stream = _on_answering_ip(printer, urljoin(base, cam["stream_url"])) if cam.get("stream_url") else None
-        snapshot = _on_answering_ip(printer, urljoin(base, cam["snapshot_url"])) if cam.get("snapshot_url") else None
+        stream = printer.on_camera_ip(urljoin(base, cam["stream_url"])) if cam.get("stream_url") else None
+        snapshot = printer.on_camera_ip(urljoin(base, cam["snapshot_url"])) if cam.get("snapshot_url") else None
         if not stream and not snapshot:
             continue
         service = cam.get("service") or "mjpegstreamer"

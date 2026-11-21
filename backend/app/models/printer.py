@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 
+from urllib.parse import urlsplit, urlunsplit
+
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -84,6 +86,10 @@ class Printer(HasNotes, Base):
     camera_row: Mapped["PrinterCamera | None"] = relationship(  # noqa: F821
         back_populates="printer", cascade="all, delete-orphan", uselist=False
     )
+    # Which of its IPs its cameras are reached at, when chosen (see PrinterCameraNetwork and camera_network)
+    camera_network_row: Mapped["PrinterCameraNetwork | None"] = relationship(  # noqa: F821
+        back_populates="printer", cascade="all, delete-orphan", uselist=False
+    )
 
     # Backups of its Klipper config folder (see PrinterConfigBackup): the rows go with it, the files on the NAS stay
     config_backups: Mapped[list["PrinterConfigBackup"]] = relationship(  # noqa: F821
@@ -110,6 +116,63 @@ class Printer(HasNotes, Base):
     @property
     def camera_address(self) -> str | None:
         return self.camera_row.address if self.camera_row else None
+
+    @property
+    def camera_network_choice(self) -> str | None:
+        """The Camera switch as set on its Edit page ("wired" | "wireless"), or None: not chosen."""
+        return self.camera_network_row.network if self.camera_network_row else None
+
+    @property
+    def camera_network(self) -> str | None:
+        """
+        What the Camera switch shows: the one chosen when it has that IP, else its wired one when it has one, else its
+        wireless one. None: no IP at all. (Not chosen, its cameras follow the IP it answers at: see camera_ip.)
+        """
+        have = {"wired": self.wired_ip, "wireless": self.wireless_ip}
+        for network in (self.camera_network_choice, "wired", "wireless"):
+            if network and have.get(network):
+                return network
+        return None
+
+    @property
+    def camera_ip(self) -> str | None:
+        """
+        The IP its cameras are reached at: the chosen one (the Camera switch), when it has it. Not chosen: the IP its
+        Moonraker answers at (its wired one, or its Wi-Fi one while its cable is out), else camera_network's.
+        """
+        have = {"wired": self.wired_ip, "wireless": self.wireless_ip}
+        if have.get(self.camera_network_choice or ""):
+            return have[self.camera_network_choice]
+        now = urlsplit(self.moonraker_url or "").hostname if self.connection_type == "moonraker" else None
+        if now and now in {ip for ip in have.values() if ip}:
+            return now
+        return have.get(self.camera_network or "")
+
+    def on_camera_ip(self, url: str) -> str:
+        """
+        A camera address with one of its own IPs in it, moved to its camera IP (camera_network's: a camera on its
+        cable, or on its Wi-Fi, as chosen). One at any other address (a camera of its own) is left as it is.
+        """
+        parts = urlsplit(url)
+        to = self.camera_ip
+        own = {ip for ip in (self.wired_ip, self.wireless_ip) if ip}
+        if not to or parts.hostname not in own or parts.hostname == to:
+            return url
+        host = f"[{to}]" if ":" in to else to
+        userinfo = parts.netloc.rpartition("@")[0]
+        netloc = (userinfo + "@" if userinfo else "") + host + (f":{parts.port}" if parts.port else "")
+        return urlunsplit(parts._replace(netloc=netloc))
+
+    @property
+    def camera_source(self) -> str | None:
+        """Its camera address (camera_address: an IP, or an rtsp:// URL) on its camera IP, when it names one of its own IPs."""
+        address = self.camera_address
+        if not address:
+            return None
+        if "://" in address:
+            return self.on_camera_ip(address)
+        own = {ip for ip in (self.wired_ip, self.wireless_ip) if ip}
+        return self.camera_ip if address in own and self.camera_ip else address
 
     @property
     def service(self) -> dict:

@@ -30,6 +30,7 @@ from ..models import (
     MaintenanceEntry,
     Printer,
     PrinterCamera,
+    PrinterCameraNetwork,
     PrinterConnection,
     PrinterEnergyReading,
     PrinterNote,
@@ -98,6 +99,7 @@ def printer_documents(db: Session, only: set[int] | None = None) -> dict[str, di
                 "prusalink_url": p.prusalink_url_override, "prusalink_username": p.prusalink_username,
                 "status_from": p.status_from,  # a plugin reporting its status in place of its PrusaLink, or null
                 "camera_address": p.camera_address,
+                "camera_network": p.camera_network_choice,  # the Camera switch, or null: the default
                 "moonraker_api_key": conn.api_key if conn else None,
                 "prusalink_password": p.prusalink_row.password if p.prusalink_row else None,
             },
@@ -240,6 +242,8 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
             camera = _text(cfg.get("camera_address"), 255)
             if camera:
                 printer.camera_row = PrinterCamera(printer_id=printer.id, address=camera)
+            if cfg.get("camera_network") in ("wired", "wireless"):
+                printer.camera_network_row = PrinterCameraNetwork(printer_id=printer.id, network=cfg["camera_network"])
         filled = _fill_secrets(printer, cfg)
 
         filled |= _fill_note(printer.note_row, lambda t: setattr(printer, "note_row", PrinterNote(printer_id=printer.id, body=t, revision=1)), rec.get("notes"))

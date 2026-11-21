@@ -56,6 +56,7 @@ class PrinterCreate(BaseModel):
     prusalink_username: str | None = None
     prusalink_password: str | None = None
     camera_address: str | None = None
+    camera_network: Literal["wired", "wireless", ""] | None = None  # the Camera switch (see PrinterUpdate)
     status_from: str | None = None  # a Prusa printer connected through a plugin (Prusa Connect) instead of PrusaLink
 
     @field_validator("moonraker_url", "prusalink_url")
@@ -195,6 +196,10 @@ class PrinterOut(BaseModel):
     status_from_name: str | None = None
     status_link: str | None = None
     camera_address: str | None = None  # a camera Farmhand plays itself (a Buddy3D's): its IP, or an rtsp:// URL
+    # Which of its IPs its cameras are reached at: "wired" | "wireless" | null (no IP). camera_network_choice: the Camera
+    # switch as set (null: not chosen, so its wired IP when it has one, else its wireless one).
+    camera_network: str | None = None
+    camera_network_choice: str | None = None
     # The 1500-hour service reminder Farmhand keeps: {state: waiting | off | ok | due, enabled, interval_hours,
     # hours_since, started_at, last_done: {done_at, hours, note} | null}
     service: dict | None = None
@@ -251,6 +256,9 @@ class PrinterUpdate(BaseModel):
     status_from: str | None = None
     # A camera Farmhand plays itself (a Buddy3D's): its IP or an rtsp:// URL. Blank (or null) removes it.
     camera_address: str | None = None
+    # The Camera switch: its cameras reached at its "wired" or "wireless" IP. "" (or null) goes back to the default (its
+    # wired IP when it has one, else its wireless one). Refused when the printer has no IP of that kind.
+    camera_network: Literal["wired", "wireless", ""] | None = None
 
     @field_validator("moonraker_url", "prusalink_url")
     @classmethod
