@@ -82,4 +82,9 @@ def signal(printer: Printer, name: str, body: bytes) -> dict:
         answer = r.json()
     except ValueError:
         raise WebrtcError(502, f"{printer.name}'s camera didn't answer its WebRTC set-up like camera-streamer does.") from None
+    if isinstance(answer, dict) and answer.get("error"):  # camera-streamer says no with a 200 and {"error": ...}
+        if "max clients" in str(answer["error"]):
+            raise WebrtcError(503, f"{printer.name}'s camera already has as many viewers as it takes. Close another page "
+                                   "showing it, or wait a minute for one that's gone to be let go.")
+        raise WebrtcError(502, f"{printer.name}'s camera turned down its WebRTC set-up: {answer['error']}")
     return answer if isinstance(answer, dict) else {"answer": answer}

@@ -53,3 +53,12 @@ def test_a_camera_that_cant_be_reached_says_so(klipper, moonraker):
     moonraker.down = True
     r = c.post(f"/printers/{pid}/webcams/webrtc", params={"name": "case"}, json={"type": "request"})
     assert r.status_code == 502 and "can't be reached" in r.json()["detail"]
+
+
+def test_a_camera_with_all_the_viewers_it_takes_says_so(klipper, moonraker):
+    c, pid = klipper
+    moonraker.webcams = [_cam()]
+    moonraker.webrtc_full = True  # a Snapmaker U1's camera takes 4
+    r = c.post(f"/printers/{pid}/webcams/webrtc", params={"name": "case"}, json={"type": "request", "keepAlive": True})
+    assert r.status_code == 503 and "as many viewers as it takes" in r.json()["detail"]
+    assert moonraker.webrtc_asked == [{"type": "request", "keepAlive": True}]  # keepAlive passed on as it came
