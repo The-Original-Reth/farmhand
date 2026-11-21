@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "../api.js";
 import { fixed, fs, ui } from "../theme.js";
 import { frameCounter, useMeasuredVideo } from "./liveInfo.js";
 
 // The camera played by the service Mainsail has it set to:
 //   mjpegstreamer, uv4l-mjpeg, ipstream   the MJPEG stream itself, in an <img>
 //   webrtc-go2rtc                         WebRTC, set up over go2rtc's websocket
-//   webrtc-camerastreamer                 WebRTC, set up with camera-streamer's POSTs
+//   webrtc-camerastreamer                 WebRTC, set up with camera-streamer's POSTs, sent through Farmhand's API
+//                                         (signal_url): a printer's web server may refuse them from this page
 //   iframe                                the stream address in a frame
 //   anything else (the adaptive MJPEG one, HLS, ...)  its snapshots, at the frame rate set in Mainsail
 // and a camera Farmhand plays itself (a Buddy3D's, "farmhand-go2rtc"): video sent over go2rtc's websocket.
@@ -92,7 +94,8 @@ function WebrtcVideo({ cam, connect, style, onState, onMeasure }) {
         if (video.current) video.current.srcObject = e.streams[0] || new MediaStream([e.track]);
       };
       pc.onconnectionstatechange = () => ["failed", "disconnected"].includes(pc.connectionState) && fail();
-      const hangUp = connect(pc, cam.stream_url, fail);
+      // camera-streamer's set-up goes through Farmhand's API when it gives one; the video still comes from the printer
+      const hangUp = connect(pc, cam.signal_url ? `${API_BASE}${cam.signal_url}` : cam.stream_url, fail);
       stop = () => {
         hangUp?.();
         pc.close();
@@ -148,8 +151,8 @@ function go2rtc(pc, streamUrl, fail) {
   return () => ws.close();
 }
 
-// camera-streamer: the stream address answers a POSTed request with its offer; the answer and this side's candidates
-// are POSTed back to it.
+// camera-streamer: the stream address (or Farmhand's API passing it on: signal_url) answers a POSTed request with its
+// offer; the answer and this side's candidates are POSTed back to it.
 function cameraStreamer(pc, streamUrl, fail) {
   const post = (body) =>
     fetch(streamUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

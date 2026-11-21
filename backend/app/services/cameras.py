@@ -6,7 +6,7 @@ fails: says why there are none.
 from __future__ import annotations
 
 from ..models import Printer
-from . import go2rtc, printer_go2rtc
+from . import camera_webrtc, go2rtc, printer_go2rtc
 from . import moonraker as mr
 
 
@@ -22,6 +22,9 @@ def printer_cameras(printer: Printer) -> dict:
             info = mr.system_info(printer)  # only once it has answered: an unreachable one isn't waited for twice
             board = mr.board_of(info)
             cams += printer_go2rtc.apply(printer_go2rtc.host_of(printer.mainsail_url), listed, info)
+            for cam in cams:  # a camera-streamer WebRTC one is set up through Farmhand's API (see camera_webrtc)
+                if path := camera_webrtc.signal_path(printer.id, cam):
+                    cam["signal_url"] = path
         except mr.MoonrakerError as e:
             errors.append(str(e))
     if printer.camera_address:

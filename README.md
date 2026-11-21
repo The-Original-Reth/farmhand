@@ -647,7 +647,9 @@ list is checked again every five minutes while the page is open.
 - **Which cameras:** a Klipper printer's cameras are the ones set up in Mainsail (Settings › Webcams) or Fluidd
   (Settings › Cameras): both keep them in Moonraker. They're played
   the way Mainsail plays them (MJPEG, WebRTC through go2rtc or camera-streamer, snapshots at the frame rate set
-  there). A Prusa's **Buddy3D camera** is added by its IP (below). Printers without a camera are listed
+  there). A camera-streamer WebRTC camera is set up through Farmhand, so one whose printer won't take that from
+  another page (a Snapmaker U1's) plays too; its video still comes straight from the printer. A Prusa's **Buddy3D
+  camera** is added by its IP (below). Printers without a camera are listed
   underneath; point at a name to see why.
 - **Moved to go2rtc, found by itself:** a printer whose Crowsnest is stopped (as Moonraker reports it) while go2rtc runs
   on it (port 1984) has its camera played from go2rtc, with nothing to change in Mainsail. The camera keeps the

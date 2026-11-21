@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -8,7 +9,7 @@ from ..errors import answer_errors
 from ..schemas.maintenance import MaintenanceIn, MaintenanceUpdate, PerformIn, ServiceDone, ServiceUpdate
 from ..schemas.notes import NotesConflictOut, NotesUpdate
 from ..schemas.printer import PrinterOut
-from ..services import cameras, print_history, printer_service
+from ..services import camera_webrtc, cameras, print_history, printer_service
 from ..services import energy as energy_service
 from ..services import moonraker as mr
 from ..services.moonraker import web_ui
@@ -39,6 +40,21 @@ def webcams(printer_id: int, db: Session = Depends(get_db)):
     corner of its cameras ({name: "Pi 4", model, memory_gb}, see moonraker.board), or null.
     """
     return cameras.printer_cameras(require_printer(db, printer_id))
+
+
+@router.post("/{printer_id}/webcams/webrtc")
+async def webcam_webrtc(printer_id: int, request: Request, name: str = Query(..., max_length=200), db: Session = Depends(get_db)):
+    """
+    One message of a camera-streamer WebRTC camera's set-up (its request, answer or ICE candidates), passed on to the
+    camera Moonraker lists under `name`, with its answer back: for a printer whose web server won't take it from
+    Farmhand's page (a Snapmaker U1's). The video goes straight from the printer to the browser.
+    """
+    printer = require_printer(db, printer_id)
+    body = await request.body()
+    try:
+        return await run_in_threadpool(camera_webrtc.signal, printer, name, body)  # it waits on the printer
+    except camera_webrtc.WebrtcError as e:
+        raise HTTPException(e.status, str(e)) from None
 
 
 @router.post("/{printer_id}/moonraker/sync")
