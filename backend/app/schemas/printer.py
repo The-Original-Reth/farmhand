@@ -36,6 +36,8 @@ def _camera_address(v: str | None) -> str | None:
     if len(v) > 255:
         raise ValueError("That camera address is too long")
     if "://" in v:
+        if any(c.isspace() for c in v):
+            raise ValueError("A camera address has no spaces in it")
         if not v.lower().startswith(("rtsp://", "rtsps://")):
             raise ValueError("A camera address is an IP address, or a whole address starting with rtsp://")
     elif not re.fullmatch(r"[A-Za-z0-9.\-]+(:\d{1,5})?", v):
