@@ -29,12 +29,27 @@ def rtsp_url(address: str) -> str:
     return address if address.lower().startswith(("rtsp://", "rtsps://")) else f"rtsp://{address}/live"
 
 
+# What Farmhand last gave go2rtc for each stream: {name: source}. Forgotten when Farmhand restarts.
+_given: dict[str, str] = {}
+
+
 def register(name: str, source: str) -> None:
-    """Add the stream to go2rtc, or point it at a new source. Done each time the Monitor page asks for cameras."""
+    """
+    Add the stream to go2rtc, or point it at a new source. Asked each time the cameras are (by Monitor, Stream control
+    and each stream plugin, every 15 s), but only sent when go2rtc doesn't already have it from that source: go2rtc
+    (1.9) makes a new stream on every PUT, even with the same source, so the next viewer opens another connection to
+    the camera. A camera that takes few (a Snapmaker U1's RTSP takes 4) then drops its oldest, the one the pages are
+    watching, and they lose the picture every few seconds.
+    """
     try:
         with httpx.Client(timeout=TIMEOUT, transport=transport) as client:
+            if _given.get(name) == source:
+                r = client.get(f"{settings.go2rtc_url}/api/streams")
+                if r.status_code == 200 and name in (r.json() or {}):
+                    return  # still there (gone only when go2rtc restarted: then it's given again)
             r = client.put(f"{settings.go2rtc_url}/api/streams", params={"name": name, "src": source})
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, ValueError) as e:
         raise Go2rtcError(f"Farmhand's video relay (go2rtc) isn't answering ({type(e).__name__}). Is its container running?") from None
     if r.status_code >= 400:
         raise Go2rtcError(f"Farmhand's video relay (go2rtc) refused the camera: {r.status_code} {r.text[:200]}")
+    _given[name] = source

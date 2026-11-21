@@ -74,16 +74,21 @@ def test_board_names(model, name):
 
 
 class FakeGo2rtc:
-    """go2rtc's stream API, as far as Farmhand uses it: PUT /api/streams?name=&src="""
+    """go2rtc's stream API, as far as Farmhand uses it: PUT /api/streams?name=&src=, and GET /api/streams"""
 
     def __init__(self):
         self.streams: dict[str, str] = {}
+        self.puts = 0  # each PUT makes a new stream in go2rtc, cutting off the camera's oldest connection
         self.down = False
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if self.down:
             raise httpx.ConnectError("refused")
-        assert request.method == "PUT" and request.url.path == "/api/streams"
+        assert request.url.path == "/api/streams"
+        if request.method == "GET":
+            return httpx.Response(200, json={name: {"producers": [{"url": src}], "consumers": []} for name, src in self.streams.items()})
+        assert request.method == "PUT"
+        self.puts += 1
         self.streams[request.url.params["name"]] = request.url.params["src"]
         return httpx.Response(200)
 
@@ -94,6 +99,7 @@ def relay(monkeypatch):
 
     f = FakeGo2rtc()
     monkeypatch.setattr(go2rtc, "transport", httpx.MockTransport(f.handle))
+    monkeypatch.setattr(go2rtc, "_given", {})
     return f
 
 
@@ -146,6 +152,19 @@ def test_a_klipper_printers_camera_address_plays_its_camera_through_go2rtc_in_ma
     moonraker.down = True
     r = api.get(f"/printers/{pid}/webcams").json()
     assert [c["service"] for c in r["webcams"]] == ["farmhand-go2rtc"] and r["error"]
+
+
+def test_a_stream_go2rtc_already_has_is_left_alone(api, relay):
+    pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink", "camera_address": "192.168.10.131"}).json()["id"]
+    for _ in range(3):  # Monitor, Stream control and the stream plugins all ask
+        api.get(f"/printers/{pid}/webcams").raise_for_status()
+    assert relay.puts == 1
+    relay.streams.clear()  # go2rtc restarted: given again
+    api.get(f"/printers/{pid}/webcams")
+    assert relay.puts == 2 and relay.streams == {f"farmhand_{pid}": "rtsp://192.168.10.131/live"}
+    api.patch(f"/printers/{pid}", json={"camera_address": "rtsp://cam.local:8554/front"})  # a new source: given
+    api.get(f"/printers/{pid}/webcams")
+    assert relay.puts == 3 and relay.streams[f"farmhand_{pid}"] == "rtsp://cam.local:8554/front"
 
 def test_a_camera_address_is_checked(api):
     pid = api.post("/printers", json={"name": "Core One", "connection_type": "prusalink"}).json()["id"]
