@@ -93,10 +93,18 @@ function WebrtcVideo({ cam, connect, style, onState, onMeasure }) {
       pc.ontrack = (e) => {
         if (video.current) video.current.srcObject = e.streams[0] || new MediaStream([e.track]);
       };
-      pc.onconnectionstatechange = () => ["failed", "disconnected"].includes(pc.connectionState) && fail();
+      // "disconnected" often comes back by itself on a busy Wi-Fi link: only a dropped connection that stays down counts,
+      // as each new try takes one of the camera's few viewer places (a Snapmaker U1's camera has 4)
+      let down;
+      pc.onconnectionstatechange = () => {
+        clearTimeout(down);
+        if (pc.connectionState === "failed") fail();
+        else if (pc.connectionState === "disconnected") down = setTimeout(fail, 10000);
+      };
       // camera-streamer's set-up goes through Farmhand's API when it gives one; the video still comes from the printer
       const hangUp = connect(pc, cam.signal_url ? `${API_BASE}${cam.signal_url}` : cam.stream_url, fail);
       stop = () => {
+        clearTimeout(down);
         hangUp?.();
         pc.close();
       };
@@ -153,11 +161,21 @@ function go2rtc(pc, streamUrl, fail) {
 
 // camera-streamer: the stream address (or Farmhand's API passing it on: signal_url) answers a POSTed request with its
 // offer; the answer and this side's candidates are POSTed back to it.
+// keepAlive, as the camera's own player asks: the camera pings over a "keepalive" data channel and this side answers, so
+// a viewer that's gone (a closed tab, a page reloaded, a try given up) is dropped within 30 s. Without it the camera
+// keeps sending it the video for up to 15 minutes, and a few of those fill all its viewer places and its Wi-Fi.
 function cameraStreamer(pc, streamUrl, fail) {
-  const post = (body) =>
-    fetch(streamUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const post = async (body) => {
+    const r = await fetch(streamUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r;
+  };
+  pc.ondatachannel = (e) => {
+    if (e.channel.label === "keepalive") e.channel.onmessage = () => e.channel.readyState === "open" && e.channel.send("pong");
+  };
   (async () => {
-    const offer = await (await post({ type: "request", res: null })).json();
+    const offer = await (await post({ type: "request", res: null, keepAlive: true })).json();
+    if (offer.error || !offer.sdp) throw new Error(offer.error || "no offer"); // e.g. "max clients reached"
     pc.onicecandidate = (e) => e.candidate && post({ type: "remote_candidate", id: offer.id, candidates: [e.candidate] });
     await pc.setRemoteDescription(offer);
     const answer = await pc.createAnswer();
