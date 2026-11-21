@@ -54,8 +54,11 @@ def stream_address(printer: Printer, cam: dict) -> StreamAddress:
         if parts.hostname and src:
             return StreamAddress("rtsp", f"rtsp://{parts.hostname}:8554/{quote(src, safe='')}")
     if stream and cam.get("service") == "webrtc-camerastreamer" and stream.rstrip("/").endswith("/webrtc"):
-        # camera-streamer serves the same camera as MJPEG beside its WebRTC page
-        return StreamAddress("mjpeg", stream.rstrip("/")[: -len("webrtc")] + "stream")
+        # camera-streamer serves the same camera as MJPEG beside its WebRTC page, at /stream (its snapshot /snapshot);
+        # a camera that names its snapshot snapshot.jpg (the Snapmaker U1's firmware) names its MJPEG stream.mjpg
+        base = stream.rstrip("/")[: -len("webrtc")]
+        jpg = urlsplit(cam.get("snapshot_url") or "").path.endswith("/snapshot.jpg")
+        return StreamAddress("mjpeg", base + ("stream.mjpg" if jpg else "stream"))
     raise ValueError(
         f"{camera_label(printer, cam)} only plays in a browser (WebRTC), which Farmhand can't send to a stream. "
         "In Mainsail (Settings → Webcams) give it the MJPEG streamer service, or leave it out of the stream."
