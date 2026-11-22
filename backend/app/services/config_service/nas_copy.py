@@ -20,7 +20,7 @@ from ..plugins import backups as plugin_backups
 from ..plugins import registry as plugin_registry
 from ..stream_control import settings_copy as stream_control_copy
 
-from .settings import get_config
+from ..farm_settings import get_config
 
 log = logging.getLogger("farmhand.settings")
 
@@ -120,6 +120,14 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
         error = f"Couldn't write the settings file: {e}"
     _last_mirror.update(ok=error is None, error=error, at=record_files.stamp())
     return {"ok": error is None, "skipped": False, "path": path, "error": error}
+
+
+def save_now(db: Session) -> dict:
+    """The Settings page's Save now: the copy written again right away (after a share has come back). ValueError while
+    no settings folder is chosen."""
+    if not location_path(db):
+        raise ValueError("Choose a settings folder first.")
+    return mirror(db)
 
 
 def mirror_quietly(db: Session) -> None:

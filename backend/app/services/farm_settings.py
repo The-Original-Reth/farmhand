@@ -1,4 +1,8 @@
-"""The settings themselves (appearance and preferences), as the server holds them."""
+"""
+The settings themselves (appearance and preferences), as the server holds them. On its own, outside config_service
+(which copies them to the settings folder and loads them back), so that what config_service copies, like Stream
+control's schedule, can read them without importing config_service: config_service re-exports what's here.
+"""
 from __future__ import annotations
 
 import datetime as dt
@@ -7,8 +11,8 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from ... import config_store
-from .. import app_settings
+from .. import config_store
+from . import app_settings
 
 
 log = logging.getLogger("farmhand.settings")

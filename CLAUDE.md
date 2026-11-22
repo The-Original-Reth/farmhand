@@ -22,6 +22,8 @@ cd frontend && npm run mock               # real UI on a fake in-memory backend,
 cd frontend && VITE_API_BASE=http://localhost:4545 npm run dev   # UI against a local API
 cd frontend && npm run build              # the only frontend "test"; there is no linter or unit test suite
 cd frontend && npm run check:themes       # WCAG AA contrast check of every palette in src/palettes.js
+cd frontend && npm run check:mock         # the mock answers every real route (mock/api-routes.json)
+cd backend && python -m app.api_routes    # after adding/changing a route: rewrite mock/api-routes.json
 cd frontend && npm run export:palettes    # after changing a palette: the backend's copy plugins are given
 ```
 
@@ -113,7 +115,7 @@ contrast check stops covering them (ones no scheme changes, like the white behin
 **Mock backend** (`frontend/mock/`: `server.js` the Vite plugin, `core.js` the in-memory farm and shared helpers,
 `routes/<area>.js` the routes, `data.js` the sample farm): serves `/mock-api` in exactly the real API's shapes. Each
 `routes/` file gets the helpers of `core.js` and of the files before it from `ctx`, and returns its own. It is never
-built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there**, and Moonraker/PrusaLink
+built into the image (`.dockerignore`). **A new or changed endpoint must be mirrored there** (`python -m app.api_routes`, then `npm run check:mock`), and Moonraker/PrusaLink
 behaviour in the backend test stand-ins (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`). A typical feature
 commit touches router → service → test → `src/api/` → mock → UI.
 

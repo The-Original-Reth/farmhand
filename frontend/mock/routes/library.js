@@ -3,7 +3,7 @@ import { HttpError, notInMockup, nowUnix } from "../core.js";
 import { HOUR, iso } from "../data.js";
 
 export function libraryRoutes(ctx) {
-  const { bundle, bundleOut, farm, liveJob, model, modelOut, on, printer, printerOut, reachMoonraker, requireConfirm, runningJob, saveNotes, subPrinterFor, version, versionDetail } = ctx;
+  const { bundle, bundleOut, farm, liveJob, model, modelOut, modelVersion, on, printer, printerOut, reachMoonraker, requireConfirm, runningJob, saveNotes, subPrinterFor, version, versionDetail } = ctx;
 
   on("GET", "/source-models", () => farm.models.map(modelOut));
   on("GET", "/source-models/:id", ({ id }) => modelOut(model(id)));
@@ -50,10 +50,16 @@ export function libraryRoutes(ctx) {
   on("DELETE", "/source-models/:id/versions/:v", ({ id, v }, _b, q) => {
     requireConfirm(q);
     const m = model(id);
+    modelVersion(id, v);
     m.versions = m.versions.filter((x) => x.version !== Number(v));
     return [204, null];
   });
-  on("POST", "/source-models/:id/versions/:v/thumbnail", () => ({ updated: true }));
+  // a redraw: a new preview, so a new thumbnail_rev (and a new address for it)
+  on("POST", "/source-models/:id/versions/:v/thumbnail", ({ id, v }) => {
+    const ver = modelVersion(id, v);
+    if (ver.thumbnail_path) ver.thumbnail_rev = (ver.thumbnail_rev ?? 1) + 1;
+    return { updated: true };
+  });
   on("POST", "/source-models", () => { throw notInMockup("Uploading model files"); });
   on("POST", "/source-models/:id/versions", () => { throw notInMockup("Uploading model files"); });
   on("POST", "/source-models/scan", () => ({

@@ -16,12 +16,12 @@ from sqlalchemy.orm import Session
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition, ProjectDocVersion,
-    ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfGcode, ProjectThreemfVersion,
+    Project, ProjectCadFile, ProjectCadFilePosition, ProjectCadVersion, ProjectDocFile, ProjectDocFilePosition, ProjectDocVersion,
+    ProjectFolder, ProjectStlFile, ProjectStlVersion, ProjectThreemfFile, ProjectThreemfGcode, ProjectThreemfVersion,
 )
 from ..names import with_version
 from ..thumbnails.cad_preview import render_cad_preview
-from .project_service import link_printer, project_folder, require_printer_exists, require_project
+from .project_base import link_printer, require_printer_exists, require_project
 
 MAX_NOTE_LENGTH = 2000
 
@@ -176,6 +176,30 @@ def files_of_project(db: Session, project_id: int) -> list[str | None]:
         versions = db.scalars(select(kind.version_cls).join(kind.file_cls).where(kind.file_cls.project_id == project_id))
         paths += [p for v in versions for p in files_of(v)]
     return paths
+
+
+def project_folder(db: Session, project_id: int) -> str:
+    """
+    The project's folder in the project files folder, for its files: the one recorded, else its id, recorded now. When
+    another Farmhand sharing the folder already has files in a folder of that name, the next free "12-2", "12-3"...
+    StorageUnavailableError while the project files folder isn't there.
+    """
+    project = require_project(db, project_id)
+    if project.folder_row:
+        return project.folder_row.folder
+    root = storage.ready_root("project")
+    name, k = str(project.id), 2
+    while (root / name).exists() and not _files_already_in(db, project, root / name):
+        name, k = f"{project.id}-{k}", k + 1
+    project.folder_row = ProjectFolder(project_id=project.id, folder=name)
+    db.flush()
+    return name
+
+
+def _files_already_in(db: Session, project: Project, folder) -> bool:
+    """Has this project files of its own in that folder already (one from before folders were recorded)?"""
+    inside = str(folder) + os.sep
+    return any(p and os.path.abspath(p).startswith(os.path.abspath(inside)) for p in files_of_project(db, project.id))
 
 
 # ---- a project 3MF version's G-code: uploaded, downloaded, sent to its printer ----

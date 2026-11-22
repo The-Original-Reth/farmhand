@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -42,11 +42,8 @@ def scan_folder(path: str = Query(..., description="The folder whose subfolders 
 def import_folder(payload: FolderIn, db: Session = Depends(get_db)):
     """Make a project from one folder, its files copied in by kind: {project_id, name, files, warnings}. 409 when a
     project of that name is here already; 503 if the project files folder isn't there."""
-    with answer_errors():
-        try:
-            return project_scan.import_folder(db, payload.path)
-        except project_scan.ProjectExists as e:  # a ValueError: answered here, before it would be a 422
-            raise HTTPException(status_code=409, detail=str(e)) from None
+    with answer_errors(codes={project_scan.ProjectExists: 409}):
+        return project_scan.import_folder(db, payload.path)
 
 
 @router.post("/scan-projects-folder")

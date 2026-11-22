@@ -19,8 +19,8 @@ from .. import record_files, storage
 from ..models import Project
 from ..record_files import iso_or_none, relative_to
 from .app_settings import instance_id
-from .project_files import CAD, DOC, STL, THREEMF
-from .project_service import project_folder, require_project
+from .project_base import require_project
+from .project_files import CAD, DOC, STL, THREEMF, project_folder
 
 log = logging.getLogger("farmhand.project_records")
 

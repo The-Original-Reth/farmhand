@@ -6,38 +6,26 @@ And its parts list (project_parts.py).
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from .. import storage
 from ..errors import NotFound
 from ..models import (
-    Bundle, Printer, Project, ProjectBundle, ProjectCadFile, ProjectDocFile, ProjectFolder, ProjectModelComponent, ProjectPrinter,
-    ProjectSourceModel, ProjectStlFile, ProjectStlFileComponent, ProjectThreemfFile, ProjectThreemfVersion, SourceFileType,
-    SourceModel,
+    Bundle, Project, ProjectBundle, ProjectModelComponent, ProjectPrinter, ProjectSourceModel, ProjectStlFile,
+    ProjectStlFileComponent, ProjectThreemfFile, SourceFileType, SourceModel,
 )
+from . import source_model_service
+from .project_base import _LOAD, link_printer, require_printer_exists, require_project
+from .project_files import STL, check_type, files_of_project, project_folder
+from .project_parts import clean_have, clean_need
+from .project_records import record_path
 
 MAX_NAME_LENGTH = 200
 MAX_COMPONENT_LENGTH = 200
 KEEP = object()  # set_counts: leave the sub-component as it is
-
-_LOAD = (
-    selectinload(Project.doc_files).selectinload(ProjectDocFile.versions),
-    selectinload(Project.doc_files).selectinload(ProjectDocFile.position_row),
-    selectinload(Project.cad_files).selectinload(ProjectCadFile.versions),
-    selectinload(Project.cad_files).selectinload(ProjectCadFile.position_row),
-    selectinload(Project.stl_files).selectinload(ProjectStlFile.versions),
-    selectinload(Project.stl_files).selectinload(ProjectStlFile.component_row),
-    selectinload(Project.threemf_files).selectinload(ProjectThreemfFile.versions).selectinload(ProjectThreemfVersion.gcode),
-    selectinload(Project.model_links).selectinload(ProjectSourceModel.component_row),
-    selectinload(Project.bundle_links),
-    selectinload(Project.printer_links),
-    selectinload(Project.parts),
-)
-
 
 def arranged(files) -> list:
     """Documents or CAD files in the order they were arranged; those never arranged (just uploaded) after them, oldest first"""
@@ -96,14 +84,6 @@ def list_projects(db: Session) -> list[Project]:
     return list(db.scalars(select(Project).options(*_LOAD).order_by(func.lower(Project.name))))
 
 
-def require_project(db: Session, project_id: int) -> Project:
-    db.expire_all()  # files and links just added or removed are read fresh
-    project = db.scalar(select(Project).options(*_LOAD).where(Project.id == project_id))
-    if project is None:
-        raise NotFound("Project not found")
-    return project
-
-
 def _clean_name(db: Session, name: str, except_id: int | None = None) -> str:
     """Spaces tidied; never empty, too long, or another project's name (in any case)."""
     name = " ".join((name or "").split())
@@ -139,9 +119,6 @@ def rename_project(db: Session, project_id: int, name: str) -> Project:
 def delete_project(db: Session, project_id: int) -> None:
     """Delete the project and its own files (rows first, then files, then this Farmhand's record of it, then its folder if
     that's left empty). The models, 3MFs and printers it used stay where they are."""
-    from .project_files import files_of_project  # (it imports this module)
-    from .project_records import record_path  # (it imports this module)
-
     project = require_project(db, project_id)
     folder = project.folder
     paths = files_of_project(db, project_id)
@@ -150,32 +127,6 @@ def delete_project(db: Session, project_id: int) -> None:
     storage.delete_files(paths)
     storage.delete_files([str(record_path(db, folder))], prune=False)
     storage.tidy_project_folder(folder)
-
-
-def project_folder(db: Session, project_id: int) -> str:
-    """
-    The project's folder in the project files folder, for its files: the one recorded, else its id, recorded now. When
-    another Farmhand sharing the folder already has files in a folder of that name, the next free "12-2", "12-3"...
-    StorageUnavailableError while the project files folder isn't there.
-    """
-    project = require_project(db, project_id)
-    if project.folder_row:
-        return project.folder_row.folder
-    root = storage.ready_root("project")
-    name, k = str(project.id), 2
-    while (root / name).exists() and not _files_already_in(db, project, root / name):
-        name, k = f"{project.id}-{k}", k + 1
-    project.folder_row = ProjectFolder(project_id=project.id, folder=name)
-    db.flush()
-    return name
-
-
-def _files_already_in(db: Session, project: Project, folder) -> bool:
-    """Has this project files of its own in that folder already (one from before folders were recorded)?"""
-    from .project_files import files_of_project
-
-    inside = str(folder) + os.sep
-    return any(p and os.path.abspath(p).startswith(os.path.abspath(inside)) for p in files_of_project(db, project.id))
 
 
 # ---- models from the Models page ----
@@ -207,9 +158,6 @@ def upload_to_models(
 ) -> Project:
     """An STL uploaded on a project's page and also put in Models: a new model there (in the STL folder), which the
     project then uses (in `component`, if one is given)."""
-    from . import source_model_service
-    from .project_files import STL, check_type
-
     require_project(db, project_id)
     check_type(STL, filename)
     name = Path(filename or "").name
@@ -220,13 +168,6 @@ def upload_to_models(
 
 
 # ---- 3MFs from the rest of Farmhand, and printers ----
-
-
-def link_printer(db: Session, project_id: int, printer_id: int) -> None:
-    """The project uses this printer (already does: nothing changes). Committed."""
-    if db.get(ProjectPrinter, (project_id, printer_id)) is None:
-        db.add(ProjectPrinter(project_id=project_id, printer_id=printer_id))
-        db.commit()
 
 
 def add_bundle(db: Session, project_id: int, bundle_id: int) -> Project:
@@ -250,11 +191,6 @@ def remove_bundle(db: Session, project_id: int, bundle_id: int) -> Project:
         db.delete(link)
         db.commit()
     return require_project(db, project_id)
-
-
-def require_printer_exists(db: Session, printer_id: int) -> None:
-    if db.get(Printer, printer_id) is None:
-        raise NotFound("Printer not found")
 
 
 def add_printer(db: Session, project_id: int, printer_id: int) -> Project:
@@ -294,8 +230,6 @@ def set_counts(db: Session, project_id: int, kind: str, thing_id: int, need=None
     How many of a model from Models (kind "model") or of one of the project's own STLs (kind "stl") the project needs
     and has, and the sub-component it's in (None: in none). Only what's given changes.
     """
-    from .project_parts import clean_have, clean_need
-
     require_project(db, project_id)
     if kind == "model":
         row = db.get(ProjectSourceModel, (project_id, thing_id))

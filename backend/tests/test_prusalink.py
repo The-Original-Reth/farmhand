@@ -260,6 +260,18 @@ def test_only_a_sliced_file_can_be_sent(client, prusalink):
     assert prusalink.uploads == []
 
 
+def test_an_empty_or_too_large_file_is_not_sent(client, prusalink, monkeypatch):
+    from app.services import send_print
+
+    c, pid = client
+    r = c.post(f"/printers/{pid}/prusalink/print", files={"file": ("empty.bgcode", b"")})
+    assert r.status_code == 422 and r.json()["detail"] == "That file is empty."
+    monkeypatch.setattr(send_print, "MAX_UPLOAD_BYTES", 10)
+    r = c.post(f"/printers/{pid}/prusalink/print", files={"file": ("big.bgcode", b"GCDE" + b"x" * 10)})
+    assert r.status_code == 413 and r.json()["detail"] == "That file is too large to send."
+    assert prusalink.uploads == []
+
+
 def test_a_busy_printer_is_not_sent_a_print(client, prusalink):
     c, pid = client
     prusalink.start_job(1, "running.bgcode", progress=30, time_printing=100)

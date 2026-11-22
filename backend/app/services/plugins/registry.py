@@ -113,6 +113,22 @@ def register(
     return plugin, token
 
 
+def install(
+    db: Session, granted, *, address: str | None = None, manifest=None, image: str | None = None,
+    only_from_address: bool | None = None,
+) -> tuple[Plugin, str]:
+    """
+    The Plugins page's Add: the plugin at an address (register_by_address; its token taken only from there unless
+    only_from_address says otherwise), else one given by its manifest (register, a container beside Farmhand). (plugin,
+    token); ValueError with neither, AlreadyInstalled for an id that's taken.
+    """
+    if address is not None:
+        return register_by_address(db, address, granted, True if only_from_address is None else only_from_address)
+    if manifest is not None:
+        return register(db, manifest, granted, image, only_from_address=only_from_address)
+    raise ValueError("Give the plugin's address, like http://192.168.10.215:8080.")
+
+
 def update(db: Session, plugin_id: str, enabled=None, only_from_address=None, address=None) -> Plugin:
     """
     Switch a plugin off or on (off: its token is refused and its page leaves the menu), whether the plugin API takes

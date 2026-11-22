@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from .. import config_service
+from .. import farm_settings
 from . import design, fonts, layouts, media, music_sources, schedule, streams
 
 
@@ -27,7 +27,7 @@ def page(db: Session, with_streams: bool = True) -> dict:
         "layouts": layouts.layouts(db),
         "schedule": schedule.schedule(db),
         "happened": schedule.happened(),
-        "time_zone": config_service.get_config(db)["preferences"].get("time_zone"),
+        "time_zone": farm_settings.get_config(db)["preferences"].get("time_zone"),
     }
     if with_streams:
         out["streams"] = streams.listed(db)

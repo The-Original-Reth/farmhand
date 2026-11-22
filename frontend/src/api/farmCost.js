@@ -14,10 +14,8 @@ export const getFarmCost = async () => {
   };
 };
 
-// Where each month's Farm cost record is saved (Settings): { path, isDefault, defaultPath, status: { exists,
-// writable, markerOk, ready } }. setFarmCostLocation(null) goes back to the default; a folder that can't be used is
-// refused with the reason.
-export const getFarmCostLocation = async () => normalizeFolderLocation(await request("/farm-cost/location"));
-
+// Choose where each month's Farm cost record is saved (Settings); resolves to { path, isDefault, defaultPath, status:
+// { exists, writable, markerOk, ready } }. null goes back to the default; a folder that can't be used is refused with
+// the reason.
 export const setFarmCostLocation = async (path) =>
   normalizeFolderLocation(await request("/farm-cost/location", jsonBody("PUT", { path })));

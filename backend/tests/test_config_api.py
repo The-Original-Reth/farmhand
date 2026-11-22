@@ -32,6 +32,13 @@ def test_settings_round_trip_over_the_api(client):
     assert c.get("/settings/config").json()["config"]["appearance"] == {"scheme": "violet", "contrast": 55, "font": "play", "size": "large", "file_name_color": "auto"}
 
 
+def test_the_printer_backup_schedule_is_in_the_settings_answer(client):
+    c, _ = client
+    assert c.get("/settings/config").json()["config"]["preferences"]["config_backup_days"] == 30
+    r = c.put("/settings/config", json={"preferences": {"config_backup_days": 7}})
+    assert r.json()["config"]["preferences"]["config_backup_days"] == 7
+
+
 def test_the_whole_network_folder_flow(client):
     c, nas = client
     folder = nas / "settings"

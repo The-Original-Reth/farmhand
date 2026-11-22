@@ -12,16 +12,22 @@ from typing import BinaryIO, Callable, ContextManager, Iterator
 from sqlalchemy.orm import Session
 
 from ..models import Printer
+from ..parsers.gcode import GCODE_EXTENSIONS
 from . import bundle_service
 from . import moonraker as mr
 from . import prusalink as pl
 
 PRUSALINK_FREE = ("IDLE", "READY", "FINISHED", "STOPPED")  # states a Prusa printer takes a new print in
 KLIPPER_BUSY = ("printing", "paused")
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024  # a G-code sent from the page
 
 
 class PrinterBusy(Exception):
     """The printer is printing (or waiting for someone at it): nothing was sent."""
+
+
+class FileTooLarge(ValueError):
+    """A G-code sent from the page that's over MAX_UPLOAD_BYTES (413)."""
 
 
 def send_gcode(db: Session, version_id: int) -> dict:
@@ -66,6 +72,30 @@ def send_to_prusalink(
     except pl.PrusaLinkError:
         pass  # it was sent; the next look will pick it up
     return where
+
+
+def send_upload_to_prusalink(db: Session, printer: Printer, filename: str | None, file: BinaryIO) -> str:
+    """
+    A sliced file (.bgcode or .gcode) sent from the page to a PrusaLink printer and started (send_to_prusalink): it goes
+    on the printer's USB drive, replacing a file of the same name, streamed from where it was received. ValueError for
+    a file it can't print or an empty one, FileTooLarge, PrinterBusy while the printer is busy (also when it said it was
+    ready, then turned the print down). Returns where it went.
+    """
+    name = os.path.basename((filename or "").replace("\\", "/")).strip()
+    if not name.lower().endswith(GCODE_EXTENSIONS):  # a sliced file, not a 3MF project
+        raise ValueError("The printer can only print a sliced .bgcode or .gcode file. Slice the 3MF first.")
+    size = file.seek(0, os.SEEK_END)
+    file.seek(0)
+    if size > MAX_UPLOAD_BYTES:
+        raise FileTooLarge("That file is too large to send.")
+    if not size:
+        raise ValueError("That file is empty.")
+    try:
+        return send_to_prusalink(db, printer, name, lambda: contextlib.nullcontext((file, size)), who="The printer")
+    except pl.PrusaLinkError as e:
+        if e.kind == "busy":
+            raise PrinterBusy(str(e)) from None
+        raise
 
 
 @contextlib.contextmanager

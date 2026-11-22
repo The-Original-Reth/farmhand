@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ... import storage
 from ...models import Printer
-from .. import app_settings
+from .. import app_settings, chosen_folder
 from .common import DEFAULT_FOLDER, KEY_LOCATION, _safe_name
 
 
@@ -39,32 +39,15 @@ def backups_folder(db: Session) -> Path:
 
 def location_info(db: Session) -> dict:
     """For Settings: {path, is_default, default_path, status: {exists, writable, marker_ok, ready}}."""
-    chosen = _chosen(db)
-    default = default_folder()
-    if chosen:
-        return {"path": chosen, "is_default": False, "default_path": str(default), "status": storage.folder_status(Path(chosen))}
-    try:
-        storage.ready_root("stl")
-        ready = True
-    except storage.StorageUnavailableError:
-        ready = False
-    status = {"exists": default.is_dir(), "writable": ready, "marker_ok": ready, "ready": ready}  # made when first used
-    return {"path": str(default), "is_default": True, "default_path": str(default), "status": status}
+    return chosen_folder.info(_chosen(db), default_folder())
 
 
 def set_location(db: Session, raw: str | None) -> dict:
     """
-    Choose the printer backups folder (None or "" = back to the default). A chosen folder must be one that lasts (on a
-    connected share or in Farmhand's own storage) and can be written; it gets Farmhand's marker. ValueError says why
-    one can't be used. Backups already taken stay where they are (each knows its own folder).
+    Choose the printer backups folder (None or "" = back to the default); ValueError says why one can't be used (see
+    chosen_folder.choose). Backups already taken stay where they are (each knows its own folder).
     """
-    if raw and raw.strip():
-        real = storage.validate_location(raw.strip())
-        storage.mark_location(real)
-        app_settings.put(db, KEY_LOCATION, str(real))
-    else:
-        app_settings.put(db, KEY_LOCATION, None)
-    db.commit()
+    chosen_folder.choose(db, KEY_LOCATION, raw)
     return location_info(db)
 
 

@@ -21,9 +21,9 @@ export function projectsRoutes(ctx) {
   const filesOut = (files) =>
     files.map((f) => ({
       id: f.id, name: f.versions[0].filename, created_at: f.created_at,
-      ...("printer_id" in f ? { printer_id: f.printer_id } : {}),
-      ...("need" in f ? { need: f.need, have: f.have, component: f.component || null } : {}),
-      versions: f.versions.map(({ thumb, gcode, ...v }) => ({ ...v, has_preview: !!thumb, ...("printer_id" in f ? { gcode_name: gcode || null } : {}) })),
+      // every key always there, null where it doesn't apply, as the real schema sends them
+      printer_id: f.printer_id ?? null, need: f.need ?? null, have: f.have ?? null, component: f.component || null,
+      versions: f.versions.map(({ thumb, gcode, ...v }) => ({ ...v, has_preview: !!thumb, gcode_name: gcode || null })),
     }));
   const projectOut = (p) => ({
     id: p.id, name: p.name, created_at: p.created_at,

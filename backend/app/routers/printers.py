@@ -11,7 +11,7 @@ from ..schemas.printer import (
     DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, PrinterOut, PrinterUpdate, SubPrinterCopyIn,
     SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow, SubPrinterSettingsCopyOut,
 )
-from ..services import bundle_service, print_progress, printer_discovery, printer_service, sub_printer_service
+from ..services import bundle_service, print_progress, printer_discovery, printer_reports, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -28,12 +28,10 @@ def create_printer(payload: PrinterCreate, db: Session = Depends(get_db)):
     and login can be given at once."""
     base = payload.model_dump(include={"name", "kind", "wired_ip", "wireless_ip"})
     link = payload.model_dump(exclude=set(base), exclude_none=True)
-    with answer_errors(409):
-        printer = printer_service.create_printer(db, **base)
     if link.get("connection_type") == "moonraker" and len(link) == 1:
-        return printer  # the default: nothing more to set
+        link = None  # the default: nothing more to set
     with answer_errors(409):
-        return printer_service.update_printer(db, printer.id, link)
+        return printer_service.create_printer(db, **base, link=link)
 
 
 # Before /{printer_id}, or "discover" would be taken for a printer id. A GET, since it changes nothing.
@@ -54,8 +52,6 @@ def discover_range(db: Session = Depends(get_db)):
 def status_reporters(db: Session = Depends(get_db)):
     """The plugins a Prusa printer can take its status from instead of its PrusaLink: [{id, name}], those installed,
     switched on and granted printers:report (the Prusa Connect plugin, say)."""
-    from ..services import printer_reports
-
     return printer_reports.reporters(db)
 
 

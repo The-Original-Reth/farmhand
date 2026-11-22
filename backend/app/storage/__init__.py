@@ -66,6 +66,7 @@ from .writing import (
     save_upload,
     write_bytes_atomically,
     write_text_atomically,
+    written_whole,
 )
 from .deleting import (
     delete_files,
@@ -138,6 +139,7 @@ __all__ = [
     "validate_location",
     "write_bytes_atomically",
     "write_text_atomically",
+    "written_whole",
     "deleting",
     "locations",
     "roots",

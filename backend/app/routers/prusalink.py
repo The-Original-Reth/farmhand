@@ -1,24 +1,19 @@
 from __future__ import annotations
 
-import contextlib
-import os
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..errors import answer_errors
 from ..models import Printer
 from ..services import prusalink as pl
-from ..parsers.gcode import GCODE_EXTENSIONS
-from ..services.send_print import send_to_prusalink
+from ..services.send_print import FileTooLarge, send_upload_to_prusalink
 from .common import require_printer, sync_state
 
 # A PrusaLink printer (Prusa Core One, MK4, XL...): its live status and sending it a print. Its print history,
 # statistics, 1500-hour service and maintenance use the same routes as a Moonraker printer's (routers/moonraker.py).
 # A PrusaLinkError becomes a 502 with {"detail", "kind"} (see main.py).
 router = APIRouter(prefix="/printers", tags=["prusalink"])
-
-MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 
 def _printer(db: Session, printer_id: int) -> Printer:
@@ -55,21 +50,5 @@ def send_print(printer_id: int, file: UploadFile = File(...), db: Session = Depe
     holding up every other request. The upload is streamed from where it was received, never held in memory whole.
     """
     printer = _printer(db, printer_id)
-    name = os.path.basename((file.filename or "").replace("\\", "/")).strip()
-    if not name.lower().endswith(GCODE_EXTENSIONS):  # a sliced file, not a 3MF project
-        raise HTTPException(status_code=422, detail="The printer can only print a sliced .bgcode or .gcode file. Slice the 3MF first.")
-    size = file.file.seek(0, os.SEEK_END)
-    file.file.seek(0)
-    if size > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="That file is too large to send.")
-    if not size:
-        raise HTTPException(status_code=422, detail="That file is empty.")
-    try:
-        where = send_to_prusalink(
-            db, printer, name, lambda: contextlib.nullcontext((file.file, size)), who="The printer"
-        )
-    except pl.PrusaLinkError as e:
-        if e.kind == "busy":  # it said it was ready, then turned the print down
-            raise HTTPException(status_code=409, detail=str(e)) from None
-        raise
-    return {"sent": where}
+    with answer_errors(codes={FileTooLarge: 413}):
+        return {"sent": send_upload_to_prusalink(db, printer, file.filename, file.file)}

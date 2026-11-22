@@ -8,7 +8,7 @@ import httpx
 
 from ... import printer_links
 from ...models import Printer
-from .. import printer_http
+from .. import printer_http, printer_reports
 from ..printer_http import PROBE_TIMEOUT, TIMEOUT, UPLOAD_TIMEOUT
 
 
@@ -71,8 +71,6 @@ def _reported(printer: Printer):
     own PrusaLink being asked; else None. Sending it a print always goes to its PrusaLink."""
     if not printer.status_from:
         return None
-    from .. import printer_reports
-
     return printer_reports
 
 
@@ -217,8 +215,6 @@ def upload_and_print(printer: Printer, filename: str, data: bytes | BinaryIO, si
     G-code is never held in memory whole.
     """
     if printer.status_from:  # connected through a plugin (Prusa Connect): it starts the print, not PrusaLink
-        from .. import printer_reports
-
         return printer_reports.hand_over(printer, filename, data, size, PrusaLinkError)
     storage = _storage(printer)
     path = f"/api/v1/files/{quote(storage)}/{quote(filename)}"

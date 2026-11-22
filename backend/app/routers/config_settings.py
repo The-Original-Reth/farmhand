@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -47,9 +47,8 @@ def choose_location(payload: LocationUpdate, db: Session = Depends(get_db)):
 @router.post("/save-now", response_model=MirrorOut)
 def save_now(db: Session = Depends(get_db)):
     """Write the copy again right now (for after a share has come back)."""
-    if not config_service.location_path(db):
-        raise HTTPException(status_code=422, detail="Choose a settings folder first.")
-    return config_service.mirror(db)
+    with answer_errors():
+        return config_service.save_now(db)
 
 
 @router.post("/save-all", response_model=SaveAllOut)

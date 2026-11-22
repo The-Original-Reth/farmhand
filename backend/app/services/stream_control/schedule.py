@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from ...database import SessionLocal
 from ...periodic import PeriodicWorker
 from ...timeutil import utc_iso, utc_now
-from .. import app_settings, config_service
+from .. import app_settings, farm_settings
 from ..energy import zone
 from . import enabled, streams
 
@@ -93,7 +93,7 @@ def save(db: Session, raw) -> dict:
 
 
 def farm_zone(db: Session):
-    return zone(config_service.get_config(db)["preferences"].get("time_zone"))
+    return zone(farm_settings.get_config(db)["preferences"].get("time_zone"))
 
 
 def due(entries: list[dict], since: dt.datetime, now: dt.datetime, tz) -> list[tuple[str, dict]]:

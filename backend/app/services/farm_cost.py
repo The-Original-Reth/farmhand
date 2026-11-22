@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from .. import config_store, storage
 from ..models import Bundle, BundleVersion, GcodeFilament, Printer, PrintJob
 from ..timeutil import as_utc
-from . import app_settings, config_service, energy, filament_cost
+from . import app_settings, chosen_folder, config_service, energy, filament_cost
 from .energy import zone
 
 CHUNK = 500  # prints costed at a time, so a long history isn't all held at once
@@ -183,32 +183,15 @@ def records_folder(db: Session) -> Path:
 
 def location_info(db: Session) -> dict:
     """For Settings: {path, is_default, default_path, status: {exists, writable, marker_ok, ready}}."""
-    chosen = _chosen(db)
-    default = default_folder()
-    if chosen:
-        return {"path": chosen, "is_default": False, "default_path": str(default), "status": storage.folder_status(Path(chosen))}
-    try:
-        storage.ready_root("stl")
-        ready = True
-    except storage.StorageUnavailableError:
-        ready = False
-    status = {"exists": default.is_dir(), "writable": ready, "marker_ok": ready, "ready": ready}  # made when first used
-    return {"path": str(default), "is_default": True, "default_path": str(default), "status": status}
+    return chosen_folder.info(_chosen(db), default_folder())
 
 
 def set_location(db: Session, raw: str | None) -> dict:
     """
-    Choose the farm cost folder (None or "" = back to the default). A chosen folder must be one that lasts (on a
-    connected share or in Farmhand's own storage) and can be written; it gets Farmhand's marker, so records are only
-    written while it's really there. ValueError says why one can't be used. Records already saved stay where they are.
+    Choose the farm cost folder (None or "" = back to the default); ValueError says why one can't be used (see
+    chosen_folder.choose). Records already saved stay where they are.
     """
-    if raw and raw.strip():
-        real = storage.validate_location(raw.strip())
-        storage.mark_location(real)
-        app_settings.put(db, KEY_LOCATION, str(real))
-    else:
-        app_settings.put(db, KEY_LOCATION, None)
-    db.commit()
+    chosen_folder.choose(db, KEY_LOCATION, raw)
     return location_info(db)
 
 
