@@ -173,6 +173,33 @@ export function printingRoutes(ctx) {
     const d = new Date(unix * 1000);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   };
+  const dayOf = (unix) => `${monthOf(unix)}-${String(new Date(unix * 1000).getDate()).padStart(2, "0")}`;
+  // A printer's electricity totalled by month or day (keyOf) as the real server does (services/energy.py), in this
+  // machine's time zone (the browser's), newest first
+  const energyBy = (p, keyOf) => {
+    const rows = {};
+    const row = (t) => {
+      const key = keyOf(t);
+      return (rows[key] ??= { key, prints: 0, print_count: 0, whole: null, partial: false });
+    };
+    (farm.jobs[p.id] || []).filter((j) => j.kwh != null).forEach((j) => {
+      const r = row(j.start);
+      r.prints += j.kwh;
+      r.print_count += 1;
+    });
+    const readings = farm.meterReadings[p.id] || [];
+    readings.forEach(([t, k], i) => {
+      const r = row(t);
+      if (i === 0) {
+        r.partial = true;
+        r.whole ??= 0;
+      } else {
+        const before = readings[i - 1][1];
+        r.whole = (r.whole ?? 0) + (k >= before ? k - before : k);
+      }
+    });
+    return Object.values(rows).sort((a, b) => (a.key < b.key ? 1 : -1));
+  };
   const jobOut = (p) => (raw, i) => {
     const est = estimate(p, raw);
     const j = est ? { ...raw, filamentMm: Math.round(est.mm * 100) / 100 } : raw;
@@ -204,23 +231,28 @@ export function printingRoutes(ctx) {
     const offset = Number(q.get("offset") || 0);
     return { total: list.length, energy_price_per_kwh: kwhPrice(), jobs: list.slice(offset, offset + limit) };
   });
-  // The Farm cost page's filament, as the server adds it up: every print that used filament, in the month it started
+  // The Farm cost page's filament, as the server adds it up: every print that used filament, in the month (and the day)
+  // it started, with the printer's electricity per day beside it (services/farm_cost.py)
+  const filamentBy = (p, keyOf) => {
+    const rows = {};
+    (farm.jobs[p.id] || []).map(jobOut(p)).filter((j) => j.filament_used > 0).forEach((j) => {
+      const key = keyOf(Date.parse(j.start_time) / 1000);
+      const m = (rows[key] ??= { key, prints: 0, grams: 0, filament_cost: 0, unweighed: 0, uncosted: 0, estimated: 0 });
+      m.prints += 1;
+      if (j.filament_estimated && (j.filament_grams != null || j.filament_cost != null)) m.estimated += 1;
+      if (j.filament_grams == null) m.unweighed += 1;
+      else m.grams += j.filament_grams;
+      if (j.filament_cost == null) m.uncosted += 1;
+      else m.filament_cost += j.filament_cost;
+    });
+    const list = Object.values(rows).map((m) => ({ ...m, grams: Math.round(m.grams * 10) / 10, filament_cost: Math.round(m.filament_cost * 100) / 100 }));
+    return list.sort((a, b) => (a.key < b.key ? 1 : -1));
+  };
   on("GET", "/farm-cost", () => ({
-    printers: farm.printers.map((p) => {
-      const months = {};
-      (farm.jobs[p.id] || []).map(jobOut(p)).filter((j) => j.filament_used > 0).forEach((j) => {
-        const key = monthOf(Date.parse(j.start_time) / 1000);
-        const m = (months[key] ??= { key, prints: 0, grams: 0, filament_cost: 0, unweighed: 0, uncosted: 0, estimated: 0 });
-        m.prints += 1;
-        if (j.filament_estimated && (j.filament_grams != null || j.filament_cost != null)) m.estimated += 1;
-        if (j.filament_grams == null) m.unweighed += 1;
-        else m.grams += j.filament_grams;
-        if (j.filament_cost == null) m.uncosted += 1;
-        else m.filament_cost += j.filament_cost;
-      });
-      const list = Object.values(months).map((m) => ({ ...m, grams: Math.round(m.grams * 10) / 10, filament_cost: Math.round(m.filament_cost * 100) / 100 }));
-      return { printer_id: p.id, months: list.sort((a, b) => (a.key < b.key ? 1 : -1)) };
-    }),
+    printers: farm.printers.map((p) => ({
+      printer_id: p.id, months: filamentBy(p, monthOf), days: filamentBy(p, dayOf),
+      energy_days: energyBy(p, dayOf).map(({ key, whole, partial }) => ({ key, whole, partial })),
+    })),
     // where the server keeps each month's record: the folder chosen in Settings, else "farm-cost" above the STL folder
     records: {
       folder: farm.farmCostFolder || FARM_COST_DEFAULT, problem: null,
@@ -298,33 +330,12 @@ export function printingRoutes(ctx) {
     const withEnergy = (farm.jobs[p.id] || []).filter((j) => j.kwh != null);
     const readings = farm.meterReadings[p.id] || [];
     const last = readings[readings.length - 1];
-    // totalled by month as the real server does (services/energy.py), in this machine's time zone (the browser's)
-    const months = {};
-    const month = (t) => {
-      const key = monthOf(t);
-      return (months[key] ??= { key, prints: 0, print_count: 0, whole: null, partial: false });
-    };
-    withEnergy.forEach((j) => {
-      const m = month(j.start);
-      m.prints += j.kwh;
-      m.print_count += 1;
-    });
-    readings.forEach(([t, k], i) => {
-      const m = month(t);
-      if (i === 0) {
-        m.partial = true;
-        m.whole ??= 0;
-      } else {
-        const before = readings[i - 1][1];
-        m.whole = (m.whole ?? 0) + (k >= before ? k - before : k);
-      }
-    });
     const jobsKwh = withEnergy.reduce((s, j) => s + j.kwh, 0);
     return {
       meter: last ? { sensor: p.moonraker.meterSensor, energy_kwh: last[1], taken_at: iso(last[0]), first_reading_at: iso(readings[0][0]) } : null,
       print_total_kwh: withEnergy.length ? jobsKwh : null,
       print_jobs_kwh: jobsKwh,
-      months: Object.values(months).sort((a, b) => (a.key < b.key ? 1 : -1)),
+      months: energyBy(p, monthOf),
     };
   });
 
@@ -497,5 +508,5 @@ export function printingRoutes(ctx) {
     });
     return { sent: `usb/${name}` };
   });
-  return { reach, syncState, progressOf, cameraPicture, stemOf, keyOf, baseOf, firstNumber, priced, filamentCost, kwhPrice, prices, monthOf, jobOut, FARM_COST_DEFAULT, farmCostLocation, saveLocationShare, saveLocationOut, servicedPrinter, maintenanceList, cleanReminder, freshEntry, noFilament, reachablePrinter, entryFor, prusaPrinter };
+  return { reach, syncState, progressOf, cameraPicture, stemOf, keyOf, baseOf, firstNumber, priced, filamentCost, kwhPrice, prices, monthOf, dayOf, energyBy, jobOut, FARM_COST_DEFAULT, farmCostLocation, saveLocationShare, saveLocationOut, servicedPrinter, maintenanceList, cleanReminder, freshEntry, noFilament, reachablePrinter, entryFor, prusaPrinter };
 }
