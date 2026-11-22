@@ -18,10 +18,10 @@ const PERMISSIONS = {
   "cameras:read": "see your printers' cameras and the addresses to stream them from",
   "prints:read": "see what each printer is printing and how far along it is, and hear when a print starts, pauses or ends",
   "farm:read": "see Farmhand's colours and the farm's time zone",
-  "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
-  "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
   "printers:report": "report what your Prusa printers are doing (their state, temperatures and prints), in place of Farmhand asking their PrusaLink, for the printers you connect through it",
   "printers:print": "start the prints you send from Farmhand to the Prusa printers you connect through it (it is handed each G-code to send on)",
+  "stream:migrate": "take, once, a copy of the Stream page set-up this Farmhand saved before Stream became a plugin: its settings and saved layouts, the stream key and the YouTube sign-in (Farmhand keeps its copy)",
+  "stream:read": "see the stream designed in Stream control (its layout, words, pictures and music) to send it to its site",
   "stream:backup": "keep a copy of its own settings with Farmhand's (in the settings folder), the stream key and the sign-in included, so they can be given back to it if it's set up again",
 };
 const describe = (perms) => perms.filter((p) => p in PERMISSIONS).map((p) => ({ permission: p, means: PERMISSIONS[p] }));
@@ -65,7 +65,28 @@ function checkManifest(m) {
     author: text(m, "author", 120), homepage: text(m, "homepage", 300), permissions: [...new Set(perms)],
     page, settings_page: path(m.settings_page, "settings_page"), health: path(m.health, "health"),
     stream_control: m.stream_control == null ? null : { path: path(m.stream_control.path, "stream_control path"), site: text(m.stream_control, "site", 40, "stream_control site") },
+    print: printOf(m.print, perms, bad, path), backup: backupOf(m.backup, perms, bad, path),
   };
+}
+
+// A plugin printers are connected through, which starts the prints sent them (manifest.py _print)
+function printOf(raw, perms, bad, path) {
+  if (raw == null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) bad("The plugin's print must be an object, like {\"path\": \"/farmhand/print\"}.");
+  const p = path(raw.path, "print path");
+  if (p == null) bad("The plugin's print needs a path, like \"/farmhand/print\".");
+  if (!perms.includes("printers:print")) bad("The plugin's print needs the printers:print permission in its manifest's permissions.");
+  return { path: p };
+}
+
+// A plugin keeping a copy of its settings with Farmhand's (manifest.py _backup)
+function backupOf(raw, perms, bad, path) {
+  if (raw == null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) bad("The plugin's backup must be an object, like {\"restore\": \"/api/farmhand-backup/restore\"}.");
+  const p = path(raw.restore, "backup restore");
+  if (p == null) bad("The plugin's backup needs a restore path, like \"/api/farmhand-backup/restore\".");
+  if (!perms.includes("stream:backup")) bad("The plugin's backup needs the stream:backup permission in its manifest's permissions.");
+  return { restore: p };
 }
 
 // The pretend plugins on the farm's network, by address: what GET <address>/manifest answers
