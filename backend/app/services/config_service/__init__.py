@@ -26,6 +26,7 @@ from .nas_copy import (
     mirror,
     mirror_quietly,
     request_mirror,
+    save_now,
 )
 from .loading import (
     DEFAULT_FOLDER,
@@ -55,6 +56,7 @@ __all__ = [
     "request_mirror",
     "restore",
     "save_all",
+    "save_now",
     "write_records",
     "save_config",
     "set_location",

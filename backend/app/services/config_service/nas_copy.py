@@ -122,6 +122,14 @@ def mirror(db: Session, scope: MirrorScope | None = None) -> dict:
     return {"ok": error is None, "skipped": False, "path": path, "error": error}
 
 
+def save_now(db: Session) -> dict:
+    """The Settings page's Save now: the copy written again right away (after a share has come back). ValueError while
+    no settings folder is chosen."""
+    if not location_path(db):
+        raise ValueError("Choose a settings folder first.")
+    return mirror(db)
+
+
 def mirror_quietly(db: Session) -> None:
     """For use after some other change (a share added, a folder chosen): keep the copy current, ignore trouble."""
     try:
