@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { c } from "../theme.js";
 import { foldHeading, monoText, panelBox, uiText } from "../styles.js";
-import { errorText, getEnergy } from "../api.js";
+import { getEnergy } from "../api.js";
+import { useLoad } from "../hooks/useLoad.js";
 
 import { SectionToggle, StatTile } from "../components/common/ui.jsx";
 import { fmtCost, fmtKwh, fmtWhen } from "../lib/format.js";
@@ -12,20 +13,9 @@ import { energyByPeriod, monthIn, PeriodButtons, periodKey, periodLabel, ShowAll
 // is its months added up).
 export function EnergyPanel({ printer, syncTick, open = true, onToggle }) {
   const prices = useEnergyPrices();
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
+  const { data, error } = useLoad(() => getEnergy(printer.id), [printer.id, syncTick]);
   const [by, setBy] = useState("month");
   const [showAll, setShowAll] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    getEnergy(printer.id)
-      .then((d) => live && (setData(d), setError(null)))
-      .catch((e) => live && setError(errorText(e)));
-    return () => {
-      live = false;
-    };
-  }, [printer.id, syncTick]);
 
   const hasAny = data && (data.meter || data.months.length > 0);
   const periods = useMemo(() => (hasAny ? energyByPeriod(data, by) : []), [data, by, hasAny]);
