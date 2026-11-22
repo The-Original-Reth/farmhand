@@ -35,12 +35,24 @@ def find_by_name(db: Session, name: str) -> Printer | None:
 
 
 def create_printer(
-    db: Session, *, name: str, kind: str | None, wired_ip: str | None, wireless_ip: str | None
+    db: Session, *, name: str, kind: str | None, wired_ip: str | None, wireless_ip: str | None, link: dict | None = None,
 ) -> Printer:
+    """
+    A new printer, with its connection and login (`link`: what update_printer takes, e.g. connection_type,
+    prusalink_password, status_from) set at once. All or nothing: if any of it can't be used (ValueError), no printer is
+    added.
+    """
     if find_by_name(db, name):
         raise ValueError(f"A printer named {name!r} already exists — name is the unique key, not IP")
     printer = Printer(name=name, kind=kind, wired_ip=wired_ip, wireless_ip=wireless_ip)
     db.add(printer)
+    if link:
+        try:
+            db.flush()  # its id, for the rows its connection adds
+            _apply_changes(db, printer, link)
+        except BaseException:
+            db.rollback()
+            raise
     db.commit()
     db.refresh(printer)
     return printer
@@ -124,7 +136,14 @@ def record_sync_error(db: Session, printer: Printer, error: Exception) -> None:
 
 def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
     printer = require_printer(db, printer_id)
+    _apply_changes(db, printer, changes)
+    db.commit()
+    db.refresh(printer)
+    return printer
 
+
+def _apply_changes(db: Session, printer: Printer, changes: dict) -> None:
+    """The changes update_printer saves, made to the printer (not committed). ValueError for one that can't be made."""
     new_name = changes.get("name")
     if new_name is not None and new_name != printer.name:
         if find_by_name(db, new_name):
@@ -179,10 +198,6 @@ def update_printer(db: Session, printer_id: int, changes: dict) -> Printer:
 
     if "camera_network" in changes:
         choose_camera_network(printer, changes["camera_network"])
-
-    db.commit()
-    db.refresh(printer)
-    return printer
 
 
 def choose_camera_network(printer: Printer, network: str | None) -> None:

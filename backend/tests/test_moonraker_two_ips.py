@@ -182,6 +182,14 @@ def test_the_camera_switch_cant_choose_an_ip_the_printer_hasnt(api):
     assert r.status_code == 200 and r.json()["camera_network"] == "wired"
 
 
+def test_a_printer_added_with_settings_it_cant_have_isnt_added_at_all(api):
+    r = api.post("/printers", json={"name": "Solo", "wireless_ip": "10.0.6.121", "camera_network": "wired"})
+    assert r.status_code == 409 and "no wired IP" in r.json()["detail"]
+    assert api.get("/printers").json() == []  # not half made: nothing was added
+    r = api.post("/printers", json={"name": "Solo", "wireless_ip": "10.0.6.121", "camera_network": "wireless"})
+    assert r.status_code == 201 and r.json()["camera_network_choice"] == "wireless"
+
+
 def test_a_chosen_ip_that_goes_falls_back_to_the_one_there(db_session):
     p = _on_both(db_session)
     p = printer_service.update_printer(db_session, p.id, {"camera_network": "wireless"})
