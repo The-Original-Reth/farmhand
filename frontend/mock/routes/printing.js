@@ -408,7 +408,7 @@ export function printingRoutes(ctx) {
     reach(p);
     return p;
   };
-  const entryFor = (p, key) => farm.maintenance[p.id]?.[decodeURIComponent(key)] || fail404("That maintenance entry isn't on the printer any more. It may have been deleted in Mainsail.");
+  const entryFor = (p, key) => farm.maintenance[p.id]?.[key] || fail404("That maintenance entry isn't on the printer any more. It may have been deleted in Mainsail.");
   on("GET", "/printers/:id/maintenance", ({ id }) => maintenanceList(printer(id)));
   on("POST", "/printers/:id/maintenance", ({ id }, body) => {
     const p = reachablePrinter(id);
@@ -434,7 +434,7 @@ export function printingRoutes(ctx) {
     let nextId = null;
     if (e.reminder?.type === "repeat") {
       nextId = crypto.randomUUID();
-      farm.maintenance[p.id][nextId] = freshEntry(p, e.name, e.note, { ...e.reminder }, decodeURIComponent(key));
+      farm.maintenance[p.id][nextId] = freshEntry(p, e.name, e.note, { ...e.reminder }, key);
     }
     return { next_id: nextId, ...maintenanceList(p) };
   });
@@ -443,7 +443,7 @@ export function printingRoutes(ctx) {
     const p = printer(id);
     reach(p);
     entryFor(p, key);
-    delete farm.maintenance[p.id][decodeURIComponent(key)];
+    delete farm.maintenance[p.id][key];
     return maintenanceList(p);
   });
 

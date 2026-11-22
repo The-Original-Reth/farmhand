@@ -266,7 +266,7 @@ export function streamControlRoutes(ctx) {
   });
   on("DELETE", "/stream-control/pictures/:name", ({ name }, _b, q) => {
     requireConfirm(q);
-    m().images = m().images.filter((x) => x !== decodeURIComponent(name));
+    m().images = m().images.filter((x) => x !== name);
     return page(false);
   });
   on("POST", "/stream-control/slideshows", (_p, body) => {
@@ -277,7 +277,7 @@ export function streamControlRoutes(ctx) {
     return [201, page(false)];
   });
   on("PUT", "/stream-control/slideshows/:name", ({ name }, body) => {
-    const s = show(decodeURIComponent(name));
+    const s = show(name);
     const old = s.name;
     s.name = (body.name || "").trim() || old;
     const follow = (cells) => cells.forEach((c) => c && !c.camera && c.slideshow === old && (c.slideshow = s.name));
@@ -287,30 +287,30 @@ export function streamControlRoutes(ctx) {
   });
   on("DELETE", "/stream-control/slideshows/:name", ({ name }, _b, q) => {
     requireConfirm(q);
-    show(decodeURIComponent(name));
-    m().slideshows = m().slideshows.filter((x) => x.name !== decodeURIComponent(name));
+    show(name);
+    m().slideshows = m().slideshows.filter((x) => x.name !== name);
     return page(false);
   });
   on("POST", "/stream-control/slideshows/:name/pictures", ({ name }, body) => {
-    const s = show(decodeURIComponent(name));
+    const s = show(name);
     s.images = [...new Set([...s.images, ...pictures(body)])];
     return [201, page(false)];
   });
   on("POST", "/stream-control/slideshows/:name/blanks", ({ name }) => {
-    const s = show(decodeURIComponent(name));
+    const s = show(name);
     const n = Math.max(0, ...s.images.filter((x) => x.startsWith("blank:")).map((x) => Number(x.slice(6)))) + 1;
     s.images.push(`blank:${n}`);
     return [201, page(false)];
   });
   on("PUT", "/stream-control/slideshows/:name/order", ({ name }, body) => {
-    const s = show(decodeURIComponent(name));
+    const s = show(name);
     s.images = [...new Set([...body.order, ...s.images])].filter((x) => s.images.includes(x));
     return page(false);
   });
   on("DELETE", "/stream-control/slideshows/:name/pictures/:picture", ({ name, picture }, _b, q) => {
     requireConfirm(q);
-    const s = show(decodeURIComponent(name));
-    s.images = s.images.filter((x) => x !== decodeURIComponent(picture));
+    const s = show(name);
+    s.images = s.images.filter((x) => x !== picture);
     return page(false);
   });
   on("POST", "/stream-control/music", (_p, body) => {
@@ -320,7 +320,7 @@ export function streamControlRoutes(ctx) {
   });
   on("DELETE", "/stream-control/music/:name", ({ name }, _b, q) => {
     requireConfirm(q);
-    m().music = m().music.filter((x) => x !== decodeURIComponent(name));
+    m().music = m().music.filter((x) => x !== name);
     return page(false);
   });
   // ------------------------------------------------------------------ the plugin API: what a stream plugin reads (stream:read)
@@ -331,10 +331,11 @@ export function streamControlRoutes(ctx) {
     return { enabled: true, design: design(), media: files };
   });
 
-  // the pictures, as stand-ins (no fonts or tracks: the page falls back to its kind of font, and a track won't play)
+  // the pictures, as stand-ins (no fonts or tracks: the page falls back to its kind of font, and a track won't play);
+  // like every /stream-control route, 404 while Stream control is switched off (sc)
   fileRoutes.push(
-    [/^\/stream-control\/pictures\/([^/]+)$/, (x) => standIn(decodeURIComponent(x[1]))],
-    [/^\/stream-control\/slideshows\/([^/]+)\/pictures\/([^/]+)$/, (x) => standIn(decodeURIComponent(x[2]))],
+    [/^\/stream-control\/pictures\/([^/]+)$/, (x) => (sc(), standIn(decodeURIComponent(x[1])))],
+    [/^\/stream-control\/slideshows\/([^/]+)\/pictures\/([^/]+)$/, (x) => (sc(), standIn(decodeURIComponent(x[2])))],
   );
   return {};
 }

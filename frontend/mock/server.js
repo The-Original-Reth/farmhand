@@ -83,7 +83,7 @@ export function mockApi() {
             if (r.method !== req.method) continue;
             const m = url.pathname.match(r.re);
             if (!m) continue;
-            const params = Object.fromEntries(r.keys.map((k, i) => [k, m[i + 1]]));
+            const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])); // decoded, as FastAPI does
             await new Promise((done) => setTimeout(done, 120 + Math.random() * 180)); // feels like a real network
             const out = await r.handler(params, body, url.searchParams, req.headers);
             if (typeof out?.stream === "function") return out.stream(req, res); // server-sent events (the plugin API's /events)
