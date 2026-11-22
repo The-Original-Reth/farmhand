@@ -41,6 +41,7 @@ class PreferencesData(BaseModel):
     energy_price_history: list[EnergyPriceData] = []  # each time it was set: counts from that month on
     energy_price_months: dict[str, float] = {}  # {"2026-03": 0.14}: months given a price of their own
     time_zone: str | None = None  # the farm's, as its browser last said: when a month ends for the Farm cost record
+    config_backup_days: int = 30  # how often each Klipper printer's config folder is backed up on its own; 0 = never
 
 
 class ConfigData(BaseModel):
