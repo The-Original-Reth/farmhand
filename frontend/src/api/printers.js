@@ -189,10 +189,6 @@ export const getPrusaLinkStatus = (printerId) => request(`/printers/${printerId}
 // on and granted printers:report, like the Prusa Connect plugin)
 export const getStatusReporters = () => request("/printers/status-reporters");
 
-// Take a Prusa printer's status from that plugin, or (null) from its own PrusaLink again. Resolves to the printer.
-export const setPrinterStatusFrom = (printerId, pluginId) =>
-  request(`/printers/${printerId}`, jsonBody("PATCH", { status_from: pluginId || "" }));
-
 // The PrusaLink password saved for it (null when none is): asked for only when it's to be shown
 export const getPrusaLinkPassword = async (printerId) => (await request(`/printers/${printerId}/prusalink/password`)).password;
 
@@ -314,9 +310,8 @@ export const restoreConfigBackup = (printerId, backupId) => post(`${backupsPath(
 
 export const deleteConfigBackup = (printerId, backupId) => del(`${backupsPath(printerId)}/${backupId}`);
 
-// Where new backups go: { path, isDefault, defaultPath, status } ("backup" in the Farmhand folder unless one is chosen).
-// setConfigBackupLocation(null) goes back to the default; a folder that can't be used is refused with the reason.
-export const getConfigBackupLocation = async () => normalizeFolderLocation(await request("/printers/config-backups/location"));
+// Choose where new backups go; resolves to { path, isDefault, defaultPath, status } ("backup" in the Farmhand folder
+// unless one is chosen). null goes back to the default; a folder that can't be used is refused with the reason.
 export const setConfigBackupLocation = async (path) =>
   normalizeFolderLocation(await request("/printers/config-backups/location", jsonBody("PUT", { path })));
 

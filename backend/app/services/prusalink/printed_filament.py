@@ -93,17 +93,6 @@ def _start(db: Session, printer: Printer, row: PrintJob, price: bool) -> None:
     run_in_background(lambda: _read(bind, printer.id, row.filename, path, price))
 
 
-def read_now(db: Session, printer: Printer, row: PrintJob) -> PrintedFileEstimate | None:
-    """The slicer's estimate for a print's file, read through PrusaLink now if Farmhand hasn't it (the backfill's
-    way: it waits for the answer). None when the file can't be read now."""
-    path = (row.job_metadata or {}).get("path")
-    if not path or not row.filename.lower().endswith(gcode.GCODE_EXTENSIONS):
-        return None
-    if not _estimated(db, printer.id, row.filename):
-        _read(db.get_bind(), printer.id, row.filename, path, price=False)
-    return estimate_for(db, printer.id, row)
-
-
 def estimate_for(db: Session, printer_id: int, row: PrintJob) -> PrintedFileEstimate | None:
     """The slicer's estimate read from the file a print printed, with a figure: of several copies of it (sliced again
     under the same name), the newest written before the print started, else the newest."""
