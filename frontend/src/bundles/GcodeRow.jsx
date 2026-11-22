@@ -4,15 +4,18 @@ import { c } from "../theme.js";
 import { bundleGcodeUrl, sendGcode } from "../api.js";
 import { headerButton, monoText, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
+import { usePhone } from "../hooks/useMediaQuery.js";
 
 import { ConfirmDialog } from "../components/common/dialogs.jsx";
 import { DownloadButton } from "../components/common/ui.jsx";
 
-// A library 3MF version's G-code, sent to the printer the 3MF is locked to
-export function GcodeRow({ ver, bundle }) {
+// A library 3MF version's G-code, sent to the printer the 3MF is locked to. Lined up under the version's file name,
+// except on a phone or in a card too narrow for the version's columns (compact), where the version wraps too.
+export function GcodeRow({ ver, bundle, compact = false }) {
   const { printers } = useData();
+  const phone = usePhone();
   const printer = printers.find((p) => p.id === bundle.printerId);
-  return <GcodeLine ver={ver} href={bundleGcodeUrl(ver.id)} printer={printer} send={() => sendGcode(ver.id)} indent={128} />;
+  return <GcodeLine ver={ver} href={bundleGcodeUrl(ver.id)} printer={printer} send={() => sendGcode(ver.id)} indent={phone || compact ? 16 : 128} />;
 }
 
 // A 3MF version's G-code, on a line under the version (a library 3MF's or a project's): its name, Download, and Send to
