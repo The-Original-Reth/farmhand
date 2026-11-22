@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import select
@@ -154,6 +155,135 @@ def restore_locations(
     return applied, warnings
 
 
+def _relocate(old: str | None, root: Path, dest_dir_fn, copies: list[str]) -> tuple[str | None, str | None]:
+    """
+    Copy `old` into its new home. Returns (new_path, old_path_to_delete), or (None, None)
+    if nothing needed moving. Each new copy is recorded in `copies` so a later failure
+    for the same version can remove the copies it already made.
+    """
+    if not old or storage.is_inside(old, root):
+        return None, None
+    if not os.path.exists(old):
+        return None, None
+    new = storage.copy_verified(old, dest_dir_fn())
+    copies.append(new)
+    return new, old
+
+
+def _move_preview(v, old_file: str, new_file: str, copies: list[str]) -> str | None:
+    """The preview kept beside a moved file moves with it. Returns the old preview, to delete, or None if it had none."""
+    old_preview = storage.preview_beside(old_file)
+    if not os.path.isfile(old_preview):
+        return None
+    new_preview = storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png")
+    copies.append(new_preview)
+    if v.thumbnail_path == old_preview:
+        v.thumbnail_path = new_preview
+    return old_preview
+
+
+def _note_missing(path: str | None, root: Path, label: str, result: dict) -> None:
+    """A recorded file outside the location that isn't there any more is reported, not failed."""
+    if path and not storage.is_inside(path, root) and not os.path.exists(path):
+        result["missing"].append(label)
+
+
+@contextmanager
+def _moving(db: Session, label: str, result: dict):
+    """
+    One version's move: yields the list its new copies are recorded in. On a failure the database is rolled back and
+    those copies removed, so the originals stay readable at their recorded paths; a folder that isn't there stops the
+    whole move, any other failure is reported and the next version goes on.
+    """
+    copies: list[str] = []
+    try:
+        yield copies
+    except storage.StorageUnavailableError:
+        db.rollback()
+        storage.delete_files(copies)
+        raise
+    except OSError as e:
+        db.rollback()
+        storage.delete_files(copies)  # originals are untouched; drop the copies made so far
+        result["failed"].append({"name": label, "error": str(e)})
+
+
+def _migrate_stl(db: Session, v: SourceModelVersion, stl_root: Path, result: dict) -> None:
+    label = f"{v.source_model.name} v{v.version}"
+    sid, ver = v.source_model_id, v.version
+    with _moving(db, label, result) as copies:
+        _note_missing(v.file_path, stl_root, label, result)
+        managed_before = storage.is_managed_layout(v.file_path, sid, ver)
+        new_file, old_file = _relocate(v.file_path, stl_root, lambda: storage.source_model_version_dir(sid, ver), copies)
+        if not new_file:
+            return
+        v.file_path = new_file
+        stale = [old_file]
+        old_preview = _move_preview(v, old_file, new_file, copies)
+        if old_preview:
+            stale.append(old_preview)
+        db.commit()
+        for stale_path in stale:
+            storage.delete_files([stale_path], prune=managed_before)  # its emptied folders tidied if Farmhand laid them out
+        result["moved_stl"] += 1
+
+
+def _migrate_bundle(db: Session, v: BundleVersion, threemf_root: Path, thumbs_root: Path, result: dict) -> None:
+    label = f"{v.filename} v{v.version}"
+    bid, ver = v.bundle_id, v.version
+    dest = lambda: storage.bundle_version_dir(bid, ver)  # noqa: E731
+    with _moving(db, label, result) as copies:
+        stale: list[str] = []
+        moved_any = False
+        if v.full_files_retained:
+            _note_missing(v.threemf_path, threemf_root, label, result)
+            new_3mf, old_3mf = _relocate(v.threemf_path, threemf_root, dest, copies)
+            if new_3mf:
+                v.threemf_path = new_3mf
+                stale.append(old_3mf)
+                moved_any = True
+                old_preview = _move_preview(v, old_3mf, new_3mf, copies)
+                if old_preview:
+                    stale.append(old_preview)
+            new_gcode, old_gcode = _relocate(v.gcode_path, threemf_root, dest, copies)
+            if new_gcode:
+                v.gcode_path = new_gcode
+                stale.append(old_gcode)
+                moved_any = True
+        elif v.thumbnail_path and not storage.is_inside(v.thumbnail_path, thumbs_root):
+            # pruned: its preview stayed where the 3MF was, and moves into the 3MF folder
+            new_thumb, old_thumb = _relocate(v.thumbnail_path, threemf_root, dest, copies)
+            if new_thumb:
+                v.thumbnail_path = new_thumb
+                stale.append(old_thumb)
+        if stale:
+            db.commit()
+            storage.delete_files(stale)
+            if moved_any:
+                result["moved_threemf"] += 1
+
+
+def _migrate_project_file(db: Session, v, project_root: Path, result: dict) -> None:
+    label = f"{v.filename} v{v.version}"
+    folder = next(k.folder for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
+    pfolder, cid, ver = project_service.project_folder(db, v.file.project_id), v.file.id, v.version
+    with _moving(db, label, result) as copies:
+        _note_missing(v.file_path, project_root, label, result)
+        new_file, old_file = _relocate(
+            v.file_path, project_root, lambda: storage.project_file_dir(pfolder, folder, cid, ver), copies
+        )
+        if not new_file:
+            return
+        v.file_path = new_file
+        stale = [old_file]
+        old_preview = _move_preview(v, old_file, new_file, copies)
+        if old_preview:
+            stale.append(old_preview)
+        db.commit()
+        storage.delete_files(stale)
+        result["moved_project"] += 1
+
+
 def migrate(db: Session) -> dict:
     """
     Move files that live outside the currently selected locations into them.
@@ -168,141 +298,10 @@ def migrate(db: Session) -> dict:
     threemf_root = storage.effective_root("threemf")
     project_root = storage.effective_root("project")
     result: dict = {"moved_stl": 0, "moved_threemf": 0, "moved_project": 0, "missing": [], "failed": []}
-
-    def relocate(old: str | None, root: Path, dest_dir_fn, copies: list[str]) -> tuple[str | None, str | None]:
-        """
-        Copy `old` into its new home. Returns (new_path, old_path_to_delete), or (None, None)
-        if nothing needed moving. Each new copy is recorded in `copies` so a later failure
-        for the same version can remove the copies it already made.
-        """
-        if not old or storage.is_inside(old, root):
-            return None, None
-        if not os.path.exists(old):
-            return None, None
-        new = storage.copy_verified(old, dest_dir_fn())
-        copies.append(new)
-        return new, old
-
     for v in list(db.scalars(select(SourceModelVersion))):
-        label = f"{v.source_model.name} v{v.version}"
-        sid, ver = v.source_model_id, v.version
-        copies: list[str] = []
-        try:
-            if v.file_path and not storage.is_inside(v.file_path, stl_root) and not os.path.exists(v.file_path):
-                result["missing"].append(label)
-            stale: list[tuple[str, bool]] = []  # (file, may its emptied folders be tidied?)
-            managed_before = storage.is_managed_layout(v.file_path, sid, ver)
-            new_file, old_file = relocate(
-                v.file_path, stl_root, lambda: storage.source_model_version_dir(sid, ver), copies
-            )
-            if new_file:
-                v.file_path = new_file
-                stale.append((old_file, managed_before))
-                old_preview = storage.preview_beside(old_file)
-                if os.path.isfile(old_preview):  # the preview kept with the file moves with it
-                    new_preview = storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png")
-                    copies.append(new_preview)
-                    stale.append((old_preview, managed_before))
-                    if v.thumbnail_path == old_preview:
-                        v.thumbnail_path = new_preview
-            if stale:
-                db.commit()
-                for stale_path, prune in stale:
-                    storage.delete_files([stale_path], prune=prune)
-                if new_file:
-                    result["moved_stl"] += 1
-        except storage.StorageUnavailableError:
-            db.rollback()
-            storage.delete_files(copies)
-            raise
-        except OSError as e:
-            db.rollback()
-            storage.delete_files(copies)  # originals are untouched; drop the copies made so far
-            result["failed"].append({"name": label, "error": str(e)})
-
+        _migrate_stl(db, v, stl_root, result)
     for v in list(db.scalars(select(BundleVersion))):
-        label = f"{v.filename} v{v.version}"
-        bid, ver = v.bundle_id, v.version
-        copies = []
-        try:
-            stale = []
-            moved_any = False
-            if v.full_files_retained:
-                if v.threemf_path and not storage.is_inside(v.threemf_path, threemf_root) and not os.path.exists(v.threemf_path):
-                    result["missing"].append(label)
-                new_3mf, old_3mf = relocate(
-                    v.threemf_path, threemf_root, lambda: storage.bundle_version_dir(bid, ver), copies
-                )
-                if new_3mf:
-                    v.threemf_path = new_3mf
-                    stale.append(old_3mf)
-                    moved_any = True
-                    old_preview = storage.preview_beside(old_3mf)
-                    if os.path.isfile(old_preview):  # the preview kept with the 3MF moves with it
-                        new_preview = storage.copy_verified(old_preview, Path(new_3mf).parent, name=Path(new_3mf).name + ".png")
-                        copies.append(new_preview)
-                        stale.append(old_preview)
-                        if v.thumbnail_path == old_preview:
-                            v.thumbnail_path = new_preview
-                new_gcode, old_gcode = relocate(
-                    v.gcode_path, threemf_root, lambda: storage.bundle_version_dir(bid, ver), copies
-                )
-                if new_gcode:
-                    v.gcode_path = new_gcode
-                    stale.append(old_gcode)
-                    moved_any = True
-            elif v.thumbnail_path and not storage.is_inside(v.thumbnail_path, thumbs_root):
-                # pruned: its preview stayed where the 3MF was, and moves into the 3MF folder
-                new_thumb, old_thumb = relocate(
-                    v.thumbnail_path, threemf_root, lambda: storage.bundle_version_dir(bid, ver), copies
-                )
-                if new_thumb:
-                    v.thumbnail_path = new_thumb
-                    stale.append(old_thumb)
-            if stale:
-                db.commit()
-                storage.delete_files(stale)
-                if moved_any:
-                    result["moved_threemf"] += 1
-        except storage.StorageUnavailableError:
-            db.rollback()
-            storage.delete_files(copies)
-            raise
-        except OSError as e:
-            db.rollback()
-            storage.delete_files(copies)  # originals are untouched; drop the copies made so far
-            result["failed"].append({"name": label, "error": str(e)})
-
-    # project files: each version of a project's own CAD files and STLs, with its preview
-    for v in list(project_files.all_versions(db)):
-        label = f"{v.filename} v{v.version}"
-        folder = next(k.folder for k in project_files.KINDS.values() if isinstance(v, k.version_cls))
-        pfolder, cid, ver = project_service.project_folder(db, v.file.project_id), v.file.id, v.version
-        copies = []
-        try:
-            if v.file_path and not storage.is_inside(v.file_path, project_root) and not os.path.exists(v.file_path):
-                result["missing"].append(label)
-            new_file, old_file = relocate(v.file_path, project_root, lambda: storage.project_file_dir(pfolder, folder, cid, ver), copies)
-            if new_file:
-                v.file_path = new_file
-                stale = [old_file]
-                old_preview = storage.preview_beside(old_file)
-                if os.path.isfile(old_preview):  # the preview kept with the file moves with it
-                    new_preview = storage.copy_verified(old_preview, Path(new_file).parent, name=Path(new_file).name + ".png")
-                    copies.append(new_preview)
-                    stale.append(old_preview)
-                    if v.thumbnail_path == old_preview:
-                        v.thumbnail_path = new_preview
-                db.commit()
-                storage.delete_files(stale)
-                result["moved_project"] += 1
-        except storage.StorageUnavailableError:
-            db.rollback()
-            storage.delete_files(copies)
-            raise
-        except OSError as e:
-            db.rollback()
-            storage.delete_files(copies)  # originals are untouched; drop the copies made so far
-            result["failed"].append({"name": label, "error": str(e)})
-
+        _migrate_bundle(db, v, threemf_root, thumbs_root, result)
+    for v in list(project_files.all_versions(db)):  # each version of a project's own CAD files and STLs
+        _migrate_project_file(db, v, project_root, result)
     return result
