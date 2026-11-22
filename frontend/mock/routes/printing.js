@@ -15,7 +15,7 @@ export function printingRoutes(ctx) {
   const syncState = (p) => ({ last_sync_at: synced(p).last_sync_at ?? null, last_sync_error: synced(p).last_sync_error ?? null, totals: syncedTotals(p) });
   on("GET", "/printers/:id/moonraker", ({ id }) => {
     const p = printer(id);
-    const out = { moonraker_url: moonrakerUrl(p), mainsail_url: mainsailUrl(p), web_ui: webUiOf(p), has_api_key: !!p.apiKey, reachable: false, klippy_state: null, moonraker_version: null, error: null, error_kind: null, ...syncState(p) };
+    const out = { moonraker_url: moonrakerUrl(p), mainsail_url: mainsailUrl(p), web_ui: webUiOf(p), has_api_key: !!p.apiKey, reachable: false, klippy_state: null, moonraker_version: null, error: null, error_kind: null, print: null, ...syncState(p) };
     if (!p.moonraker) return { ...out, error: NO_MOONRAKER, error_kind: "no_address" };
     if (!p.moonraker.reachable) return { ...out, error: p.moonraker.error, error_kind: p.moonraker.error_kind };
     // A job still in progress is the print running now; it carries on from where the sample data left it
