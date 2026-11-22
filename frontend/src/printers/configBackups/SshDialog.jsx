@@ -1,20 +1,17 @@
 // Setting up SSH to a printer, so its backups also hold Moonraker's database
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { c } from "../../theme.js";
 import { errorText, getSshKey, testSsh } from "../../api.js";
+import { useLoad } from "../../hooks/useLoad.js";
 import { cancelButton, monoText, primaryButton, uiText } from "../../styles.js";
 import { Modal } from "../../components/common/dialogs.jsx";
 import { klipperUi } from "../webUi.js";
 
 // Set up SSH: Farmhand's key, how to add it on the printer's Pi, and a test
 export function SshDialog({ printer, onClose, onTested }) {
-  const [key, setKey] = useState(null);
-  const [error, setError] = useState(null);
+  const { data: key, error } = useLoad(getSshKey, []);
   const [test, setTest] = useState(null);
   const [testing, setTesting] = useState(false);
-  useEffect(() => {
-    getSshKey().then(setKey, (e) => setError(errorText(e)));
-  }, []);
   const runTest = async () => {
     setTesting(true);
     try {

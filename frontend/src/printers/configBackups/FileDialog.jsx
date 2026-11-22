@@ -1,7 +1,7 @@
 // One file of a backup, shown as text or as what changed since the backup before
-import { useEffect, useState } from "react";
 import { c } from "../../theme.js";
-import { errorText, getConfigBackupDiff, getConfigBackupFile } from "../../api.js";
+import { getConfigBackupDiff, getConfigBackupFile } from "../../api.js";
+import { useLoad } from "../../hooks/useLoad.js";
 import { monoText, uiText } from "../../styles.js";
 import { Modal } from "../../components/common/dialogs.jsx";
 import { fmtWhen } from "../../lib/format.js";
@@ -24,12 +24,7 @@ function TextView({ text, diff }) {
 }
 
 export function FileDialog({ printer, backup, file, mode, onClose }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  useEffect(() => {
-    const ask = mode === "diff" ? getConfigBackupDiff : getConfigBackupFile;
-    ask(printer.id, backup.id, file.path).then(setData, (e) => setError(errorText(e)));
-  }, []);
+  const { data, error } = useLoad(() => (mode === "diff" ? getConfigBackupDiff : getConfigBackupFile)(printer.id, backup.id, file.path), []);
   let body;
   if (error) body = <div style={uiText(13, c.amber)}>{error}</div>;
   else if (!data) body = <div style={uiText(13, c.textFaint)}>Loading…</div>;
