@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..errors import NotFound
 from ..models import ProjectPart
-from .project_service import require_project
+from .project_base import require_project
 
 MAX_NAME_LENGTH = 200
 MAX_NOTE_LENGTH = 1000
