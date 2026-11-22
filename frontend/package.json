@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:themes": "node scripts/check-themes.mjs",
+    "check:mock": "node scripts/check-mock.mjs",
     "export:palettes": "node scripts/export-palettes.mjs"
   },
   "dependencies": {

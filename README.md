@@ -1274,7 +1274,9 @@ a Core One, models, 3MF files with versions and G-code, print history, energy, m
 database or Docker is needed, and changes to the code show up live. Changes you make in the page (notes, stars,
 maintenance…) last until the mockup restarts; **Reset sample data** (in the sidebar) starts afresh. Things that
 need real files or hardware (uploading, mounting a NAS) answer "not available in the mockup". The fake backend
-lives in `frontend/mock/` and is never part of a build or the Docker image.
+lives in `frontend/mock/` and is never part of a build or the Docker image. `npm run check:mock` checks it answers
+every route the real API has (listed in `frontend/mock/api-routes.json`, which `python -m app.api_routes` in
+`backend/` rewrites, and a backend test keeps current).
 
 ### Project layout
 
@@ -1307,7 +1309,8 @@ backend at all, use mockup mode (above).
   file permissions, symlinks, real mounts); on Windows they're skipped, saying why, and they run in the API's
   Docker image (Linux). Printers are tested against stand-ins for Moonraker and PrusaLink
   (`tests/fake_moonraker.py`, `tests/fake_prusalink.py`).
-- **Frontend:** `npm run build` builds it; `npm run check:themes` checks every colour scheme's contrast.
+- **Frontend:** `npm run build` builds it; `npm run check:themes` checks every colour scheme's contrast;
+  `npm run check:mock` checks the mockup answers every route of the real API.
 - **Real hardware:** NAS mounting (SMB and NFS), Moonraker history/maintenance, Mainsail cameras (MJPEG and
   WebRTC through go2rtc) and a Buddy3D camera through Farmhand's go2rtc have been used against real devices. The PrusaLink connection and sending G-code to a Klipper printer follow the printers' published APIs
   but haven't been tried against a real printer yet; if one fails, its message on the page is the printer's own

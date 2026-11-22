@@ -24,7 +24,7 @@ export function createCore() {
   const on = (method, pattern, handler) => {
     const keys = [];
     const re = new RegExp(`^${pattern.replace(/:(\w+)/g, (_, k) => (keys.push(k), "([^/]+)"))}$`);
-    routes.push({ method, re, keys, handler });
+    routes.push({ method, pattern, re, keys, handler });
   };
 
   // ------------------------------------------------------------------ helpers shaping data like the real API
