@@ -7,7 +7,7 @@ Everything is used as config_service.<name>, as before.
 """
 from __future__ import annotations
 
-from .settings import (
+from ..farm_settings import (
     KEY_CONFIG,
     get_config,
     save_config,
@@ -35,7 +35,8 @@ from .loading import (
     write_records,
     set_location,
 )
-from . import loading, nas_copy, settings
+from . import loading, nas_copy
+from .. import farm_settings as settings
 
 __all__ = [
     "DEFAULT_FOLDER",

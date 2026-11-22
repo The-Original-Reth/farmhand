@@ -20,7 +20,7 @@ from ..plugins import backups as plugin_backups
 from ..plugins import registry as plugin_registry
 from ..stream_control import settings_copy as stream_control_copy
 
-from .settings import get_config
+from ..farm_settings import get_config
 
 log = logging.getLogger("farmhand.settings")
 

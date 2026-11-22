@@ -18,7 +18,7 @@ from ..stream_control import settings_copy as stream_control_copy
 from .. import app_settings, library_records, network_shares_service, project_records, project_scan, records_service, storage_settings_service
 
 from .nas_copy import BACKUPS_LOCATION, FARM_COST_LOCATION, KEY_LOCATION, _orders_here, describe, inspect_location, location_path, mirror
-from .settings import save_config
+from ..farm_settings import save_config
 
 log = logging.getLogger("farmhand.settings")
 
