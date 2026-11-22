@@ -139,15 +139,10 @@ def _copy(source: Path, target: Path) -> None:
     """A file copied whole or not at all (under a temporary name, then renamed), keeping its modified time, so the
     stream plugins' stamps of it stay the same whichever copy they're read from."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    part = target.with_name(target.name + ".part")
-    try:
+    with storage.written_whole(target) as part:
         shutil.copyfile(source, part)
         st = source.stat()
         os.utime(part, ns=(st.st_atime_ns, st.st_mtime_ns))
-        os.replace(part, target)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
 
 
 def _take_out(root: Path, rel: str) -> None:

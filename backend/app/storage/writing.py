@@ -29,7 +29,7 @@ def preview_cache_headers(request_query: dict) -> dict:
 
 
 @contextmanager
-def _written_whole(dest: Path) -> Iterator[Path]:
+def written_whole(dest: Path) -> Iterator[Path]:
     """
     Write `dest` whole or not at all: the block writes the temporary file it's given ("<name>.part"), which then
     replaces `dest`. If anything goes wrong part-way (a share dropping mid-write), the temporary file is removed and
@@ -51,7 +51,7 @@ def save_upload(dest_dir: Path, filename: str, file_obj) -> str:
     mid-write) never leaves a truncated file that looks real.
     """
     dest = Path(dest_dir) / _safe_name(filename)
-    with _written_whole(dest) as part, open(part, "wb") as out:
+    with written_whole(dest) as part, open(part, "wb") as out:
         shutil.copyfileobj(file_obj, out)
     return str(dest)
 
@@ -61,13 +61,13 @@ def write_text_atomically(target: str | os.PathLike, text: str) -> None:
     Write a UTF-8 text file whole or not at all: under a temporary name, then renamed over the old one, so a share
     dropping mid-write never leaves a half-written file behind (the settings file, the printer and model files).
     """
-    with _written_whole(Path(target)) as part:
+    with written_whole(Path(target)) as part:
         part.write_text(text, encoding="utf-8")
 
 
 def write_bytes_atomically(target: str | os.PathLike, data: bytes) -> None:
     """write_text_atomically for bytes: written exactly as given (a CSV's \\r\\n line ends stay as they are)."""
-    with _written_whole(Path(target)) as part:
+    with written_whole(Path(target)) as part:
         part.write_bytes(data)
 
 
@@ -95,7 +95,7 @@ def copy_verified(src: str | os.PathLike, dest_dir: str | os.PathLike, name: str
     """Copy a file into dest_dir and confirm the size matches before it counts. Returns the new path."""
     src = Path(src)
     dest = Path(dest_dir) / _safe_name(name or src.name)
-    with _written_whole(dest) as part:
+    with written_whole(dest) as part:
         shutil.copy2(src, part)
         if part.stat().st_size != src.stat().st_size:
             raise OSError(f"Copy of {src.name} came out the wrong size — it was not used")

@@ -123,14 +123,11 @@ def run(t: Target, command: str) -> str:
 
 def fetch(t: Target, remote: str, local: Path) -> None:
     """Copy a file from the printer to `local` (written whole or not at all)."""
-    part = local.with_name(local.name + ".part")
     try:
-        _check(runner.run(["scp", "-q", *_options(), f"{t.login}:{remote}", str(part)], COPY_TIMEOUT), t)
-        os.replace(part, local)
+        with storage.written_whole(local) as part:
+            _check(runner.run(["scp", "-q", *_options(), f"{t.login}:{remote}", str(part)], COPY_TIMEOUT), t)
     except FileNotFoundError:
         raise SshError("no_ssh", "This Farmhand has no SSH program (openssh-client): rebuild it with the current image.") from None
-    finally:
-        part.unlink(missing_ok=True)
 
 
 def send(t: Target, local: Path, remote: str) -> None:
