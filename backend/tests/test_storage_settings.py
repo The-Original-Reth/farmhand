@@ -188,3 +188,78 @@ def test_moving_a_3mf_moves_the_preview_next_to_it(db_session, share, sample_3mf
     new = bundle_service.get_bundle(db_session, bundle.id).versions[0].threemf_path
     assert storage.is_inside(new + ".png", threemf) and os.path.exists(new + ".png")  # it moved with its 3MF
     assert not os.path.exists(old + ".png") and not os.path.exists(old)
+
+
+def _copy_failing_on(monkeypatch, call: int, error: Exception):
+    """storage.copy_verified, failing on its `call`-th use (counting from 1) with `error`."""
+    real, calls = storage.copy_verified, []
+
+    def copy(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == call:
+            raise error
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(storage, "copy_verified", copy)
+
+
+def test_a_failed_move_keeps_the_original_and_removes_the_copies_already_made(db_session, share, monkeypatch):
+    from .test_redraw_previews import _cube_stl_bytes
+
+    model = make.model(db_session, data=_cube_stl_bytes())
+    old = model.versions[0].file_path
+    stl = _folder(share, "stl")
+    svc.save(db_session, {"stl_path": str(stl)})
+    _copy_failing_on(monkeypatch, 2, OSError("the share went away"))  # the file copies, its preview doesn't
+
+    result = svc.migrate(db_session)
+
+    assert result["moved_stl"] == 0
+    assert result["failed"] == [{"name": "Model.stl v1", "error": "the share went away"}]
+    db_session.expire_all()
+    assert source_model_service.get_source_model(db_session, model.id).versions[0].file_path == old  # rolled back
+    assert os.path.exists(old) and os.path.exists(old + ".png")  # the originals are untouched
+    assert [p for p in stl.rglob("*") if p.is_file() and p.name != storage.MARKER_NAME] == []  # the copy was removed
+
+
+def test_a_folder_dropping_during_a_move_stops_it_and_removes_the_copies(db_session, share, monkeypatch):
+    from .test_redraw_previews import _cube_stl_bytes
+
+    model = make.model(db_session, data=_cube_stl_bytes())
+    old = model.versions[0].file_path
+    stl = _folder(share, "stl")
+    svc.save(db_session, {"stl_path": str(stl)})
+    _copy_failing_on(monkeypatch, 2, storage.StorageUnavailableError("The STL folder isn't there"))
+
+    with pytest.raises(storage.StorageUnavailableError):
+        svc.migrate(db_session)
+
+    db_session.expire_all()
+    assert source_model_service.get_source_model(db_session, model.id).versions[0].file_path == old
+    assert os.path.exists(old)
+    assert [p for p in stl.rglob("*") if p.is_file() and p.name != storage.MARKER_NAME] == []
+
+
+def test_migrate_moves_a_projects_own_files_with_their_previews(db_session, share):
+    from app.services import project_files
+    from app.services.project_service import create_project
+
+    from .test_redraw_previews import _cube_stl_bytes
+
+    p = create_project(db_session, "Shark")
+    fin = project_files.upload(db_session, project_files.STL, p.id, "Fin.stl", io.BytesIO(_cube_stl_bytes()))
+    old = fin.versions[0].file_path
+    project = _folder(share, "projects")
+    svc.save(db_session, {"project_path": str(project)})
+    assert svc.describe(db_session)["outside"]["project"] == 1
+
+    result = svc.migrate(db_session)
+
+    assert result["moved_project"] == 1 and result["failed"] == [] and result["missing"] == []
+    db_session.expire_all()
+    new = next(project_files.all_versions(db_session)).file_path
+    assert storage.is_inside(new, project) and os.path.exists(new)
+    if os.path.exists(new + ".png") or os.path.exists(old + ".png"):  # (a preview only when one could be drawn)
+        assert os.path.exists(new + ".png") and not os.path.exists(old + ".png")
+    assert not os.path.exists(old)
+    assert svc.describe(db_session)["outside"]["project"] == 0

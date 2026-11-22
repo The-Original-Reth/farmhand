@@ -316,3 +316,47 @@ def test_the_camera_switch_comes_back_with_its_printer(db_session, tmp_path):
     db = _fresh_session()
     records_service.restore_all(db, tmp_path)
     assert db.query(Printer).one().camera_network_choice == "wireless"
+
+
+def test_restoring_a_printer_record_by_hand_keeps_what_is_sound_and_skips_the_rest(db_session):
+    rec = {
+        "name": "  Core One  ",
+        "printer": {
+            "kind": "Prusa Core One", "connection_type": "prusalink", "prusalink_url": "ftp://not-a-web-address",
+            "moonraker_url": "not a url", "camera_address": "rtsp://10.0.0.9/cam", "camera_network": "wired",
+        },
+        "moonraker_totals": {"total_jobs": 12},
+        "maintenance": [
+            {"key": "nozzle", "entry": {"note": "new nozzle"}},
+            {"key": "nozzle", "entry": {"note": "the same key again"}},
+            {"key": 7, "entry": {}},
+        ],
+        "print_jobs": [
+            {"job_id": "A1", "filename": "frog.gcode", "status": "completed", "print_duration": 60},
+            {"job_id": "A1", "filename": "again.gcode"},
+            {"filename": "no id.gcode"},
+            "not a job",
+        ],
+        "energy_readings": [
+            ["2026-11-01T10:00:00+00:00", "meter", 5.5],
+            ["2026-11-01T10:00:00+00:00", "meter", 6.0],
+            ["not a time", "meter", 1.0],
+            ["2026-11-01T11:00:00+00:00", 3, 1.0],
+            [1, 2],
+        ],
+    }
+    out = records_service.restore_printers(db_session, [rec])
+
+    assert out["printers_added"] == ["Core One"] and out["prints_added"] == 1 and out["readings_added"] == 1
+    p = db_session.query(Printer).one()
+    assert p.kind == "Prusa Core One" and not p.moonraker_url  # "not a url" isn't kept
+    assert p.prusalink_row.url is None and p.prusalink_row.username == "maker"
+    assert p.camera_row.address == "rtsp://10.0.0.9/cam" and p.camera_network_row.network == "wired"
+    assert p.connection_row.totals == {"total_jobs": 12}
+    assert [(m.key, m.entry) for m in p.maintenance_rows] == [("nozzle", {"note": "new nozzle"})]
+    assert db_session.query(PrintJob).one().filename == "frog.gcode"
+    assert db_session.query(PrinterEnergyReading).one().energy_kwh == 5.5
+
+    again = records_service.restore_printers(db_session, [rec])  # all of it is here now: nothing is added or filled
+    assert again["printers_added"] == [] and again["printers_filled"] == []
+    assert again["prints_added"] == 0 and again["readings_added"] == 0

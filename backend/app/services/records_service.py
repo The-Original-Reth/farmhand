@@ -212,7 +212,123 @@ def _restore_status_from(db: Session, printer: Printer, cfg: dict) -> None:
         printer_reports.choose(db, printer, plugin_id)
 
 
+def _new_printer(db: Session, name: str, cfg: dict) -> Printer:
+    """A printer the settings file has and this farm doesn't, with its connection and camera."""
+    printer = Printer(
+        name=name, kind=_text(cfg.get("kind"), 200) or None,
+        wired_ip=_text(cfg.get("wired_ip"), 45) or None, wireless_ip=_text(cfg.get("wireless_ip"), 45) or None,
+        decommissioned=bool(cfg.get("decommissioned")),
+    )
+    db.add(printer)
+    db.flush()
+    url = _text(cfg.get("moonraker_url"), 255)
+    if url.lower().startswith(("http://", "https://")):
+        printer.connection_row = PrinterConnection(printer_id=printer.id, moonraker_url=url)
+    if cfg.get("connection_type") == "prusalink":
+        pl_url = _text(cfg.get("prusalink_url"), 255)
+        printer.prusalink_row = PrusaLinkConnection(
+            printer_id=printer.id, url=pl_url if pl_url.lower().startswith(("http://", "https://")) else None,
+            username=_text(cfg.get("prusalink_username"), 120) or "maker",
+        )
+        _restore_status_from(db, printer, cfg)
+    camera = _text(cfg.get("camera_address"), 255)
+    if camera:
+        printer.camera_row = PrinterCamera(printer_id=printer.id, address=camera)
+    if cfg.get("camera_network") in ("wired", "wireless"):
+        printer.camera_network_row = PrinterCameraNetwork(printer_id=printer.id, network=cfg["camera_network"])
+    return printer
+
+
+def _restore_notes(printer: Printer, rec: dict) -> bool:
+    filled = _fill_note(printer.note_row, lambda t: setattr(printer, "note_row", PrinterNote(printer_id=printer.id, body=t, revision=1)), rec.get("notes"))
+    filled |= _fill_note(
+        printer.service_note_row,
+        lambda t: setattr(printer, "service_note_row", PrinterServiceNote(printer_id=printer.id, body=t, revision=1)),
+        rec.get("service_notes"),
+    )
+    return filled
+
+
+def _restore_service(printer: Printer, svc) -> bool:
+    """The service reminder, if the printer has none yet."""
+    if printer.service_row is not None or not isinstance(svc, dict) or _num(svc.get("start_printtime")) is None:
+        return False
+    printer.service_row = PrinterServiceReminder(
+        printer_id=printer.id, enabled=bool(svc.get("enabled", True)),
+        interval_hours=_num(svc.get("interval_hours"), 1500.0), start_printtime=_num(svc.get("start_printtime")),
+        started_at=_when(svc.get("started_at")) or dt.datetime.now(dt.timezone.utc),
+        history=[h for h in (svc.get("history") or []) if isinstance(h, dict)][:1000],
+    )
+    return True
+
+
+def _restore_totals(printer: Printer, rec: dict) -> bool:
+    """Moonraker's print totals, if the printer has none yet."""
+    if not isinstance(rec.get("moonraker_totals"), dict):
+        return False
+    if printer.connection_row is not None and printer.connection_row.totals is not None:
+        return False
+    conn = ensure_connection(printer)
+    conn.totals = rec["moonraker_totals"]
+    conn.auxiliary_totals = rec.get("auxiliary_totals") if isinstance(rec.get("auxiliary_totals"), list) else None
+    return True
+
+
+def _restore_maintenance(printer: Printer, entries) -> bool:
+    """The maintenance entries the printer doesn't have yet (by key)."""
+    filled = False
+    keys = {r.key for r in printer.maintenance_rows}
+    for m in entries or []:
+        if isinstance(m, dict) and isinstance(m.get("key"), str) and isinstance(m.get("entry"), dict) and m["key"] not in keys:
+            keys.add(m["key"])
+            printer.maintenance_rows.append(MaintenanceEntry(key=m["key"][:64], entry=m["entry"]))
+            filled = True
+    return filled
+
+
+def _restore_print_jobs(db: Session, printer: Printer, jobs) -> int:
+    """The prints the printer's history doesn't have yet (by job id). Returns how many were added."""
+    added = 0
+    known = set(db.scalars(select(PrintJob.job_id).where(PrintJob.printer_id == printer.id)))
+    for j in jobs or []:
+        if not isinstance(j, dict) or not isinstance(j.get("job_id"), str) or j["job_id"] in known:
+            continue
+        known.add(j["job_id"])
+        db.add(PrintJob(
+            printer_id=printer.id, job_id=j["job_id"][:64], filename=_text(j.get("filename"), 500),
+            status=_text(j.get("status"), 32) or "unknown",
+            start_time=_when(j.get("start_time")), end_time=_when(j.get("end_time")),
+            print_duration=_num(j.get("print_duration"), 0.0), total_duration=_num(j.get("total_duration"), 0.0),
+            filament_used=_num(j.get("filament_used"), 0.0), energy_kwh=_num(j.get("energy_kwh")),
+            avg_power_w=_num(j.get("avg_power_w")), max_power_w=_num(j.get("max_power_w")),
+            job_metadata=j.get("metadata") if isinstance(j.get("metadata"), dict) else {},
+            auxiliary=j.get("auxiliary") if isinstance(j.get("auxiliary"), list) else [],
+        ))
+        added += 1
+    return added
+
+
+def _restore_energy_readings(db: Session, printer: Printer, readings) -> int:
+    """The energy meter readings the printer doesn't have yet (by when they were taken). Returns how many were added."""
+    added = 0
+    have = {utc_iso(t) for t in db.scalars(select(PrinterEnergyReading.taken_at).where(PrinterEnergyReading.printer_id == printer.id))}
+    for r in readings or []:
+        if not (isinstance(r, list) and len(r) == 3):
+            continue
+        at, sensor, kwh = _when(r[0]), r[1], _num(r[2])
+        if at is None or kwh is None or not isinstance(sensor, str) or at.isoformat() in have:
+            continue
+        have.add(at.isoformat())
+        db.add(PrinterEnergyReading(printer_id=printer.id, taken_at=at, sensor=sensor[:120], energy_kwh=kwh))
+        added += 1
+    return added
+
+
 def restore_printers(db: Session, records: list[dict]) -> dict:
+    """
+    Printers from a settings copy: one this farm doesn't have is added; one it has (by name) only gains what it's
+    missing (its secrets, notes, service reminder, totals, maintenance, prints, energy readings and filament prices).
+    """
     out = {"printers_added": [], "printers_filled": [], "prints_added": 0, "readings_added": 0, "prices_added": 0, "warnings": []}
     for rec in records:
         name = rec["name"].strip()[:120]
@@ -220,95 +336,21 @@ def restore_printers(db: Session, records: list[dict]) -> dict:
         printer = db.scalar(select(Printer).where(Printer.name == name))
         added = printer is None
         if added:
-            printer = Printer(
-                name=name, kind=_text(cfg.get("kind"), 200) or None,
-                wired_ip=_text(cfg.get("wired_ip"), 45) or None, wireless_ip=_text(cfg.get("wireless_ip"), 45) or None,
-                decommissioned=bool(cfg.get("decommissioned")),
-            )
-            db.add(printer)
-            db.flush()
-            url = _text(cfg.get("moonraker_url"), 255)
-            if url.lower().startswith(("http://", "https://")):
-                printer.connection_row = PrinterConnection(printer_id=printer.id, moonraker_url=url)
-            if cfg.get("connection_type") == "prusalink":
-                pl_url = _text(cfg.get("prusalink_url"), 255)
-                printer.prusalink_row = PrusaLinkConnection(
-                    printer_id=printer.id, url=pl_url if pl_url.lower().startswith(("http://", "https://")) else None,
-                    username=_text(cfg.get("prusalink_username"), 120) or "maker",
-                )
-                _restore_status_from(db, printer, cfg)
-            camera = _text(cfg.get("camera_address"), 255)
-            if camera:
-                printer.camera_row = PrinterCamera(printer_id=printer.id, address=camera)
-            if cfg.get("camera_network") in ("wired", "wireless"):
-                printer.camera_network_row = PrinterCameraNetwork(printer_id=printer.id, network=cfg["camera_network"])
+            printer = _new_printer(db, name, cfg)
         filled = _fill_secrets(printer, cfg)
-
-        filled |= _fill_note(printer.note_row, lambda t: setattr(printer, "note_row", PrinterNote(printer_id=printer.id, body=t, revision=1)), rec.get("notes"))
-        filled |= _fill_note(
-            printer.service_note_row,
-            lambda t: setattr(printer, "service_note_row", PrinterServiceNote(printer_id=printer.id, body=t, revision=1)),
-            rec.get("service_notes"),
-        )
-
-        svc = rec.get("service")
-        if printer.service_row is None and isinstance(svc, dict) and _num(svc.get("start_printtime")) is not None:
-            printer.service_row = PrinterServiceReminder(
-                printer_id=printer.id, enabled=bool(svc.get("enabled", True)),
-                interval_hours=_num(svc.get("interval_hours"), 1500.0), start_printtime=_num(svc.get("start_printtime")),
-                started_at=_when(svc.get("started_at")) or dt.datetime.now(dt.timezone.utc),
-                history=[h for h in (svc.get("history") or []) if isinstance(h, dict)][:1000],
-            )
-            filled = True
-
-        if isinstance(rec.get("moonraker_totals"), dict) and (printer.connection_row is None or printer.connection_row.totals is None):
-            conn = ensure_connection(printer)
-            conn.totals = rec["moonraker_totals"]
-            conn.auxiliary_totals = rec.get("auxiliary_totals") if isinstance(rec.get("auxiliary_totals"), list) else None
-            filled = True
-
+        filled |= _restore_notes(printer, rec)
+        filled |= _restore_service(printer, rec.get("service"))
+        filled |= _restore_totals(printer, rec)
         filled |= sub_printer_service.restore(db, printer, rec.get("sub_printers"))
+        filled |= _restore_maintenance(printer, rec.get("maintenance"))
 
-        keys = {r.key for r in printer.maintenance_rows}
-        for m in rec.get("maintenance") or []:
-            if isinstance(m, dict) and isinstance(m.get("key"), str) and isinstance(m.get("entry"), dict) and m["key"] not in keys:
-                keys.add(m["key"])
-                printer.maintenance_rows.append(MaintenanceEntry(key=m["key"][:64], entry=m["entry"]))
-                filled = True
-
-        known = set(db.scalars(select(PrintJob.job_id).where(PrintJob.printer_id == printer.id)))
-        for j in rec.get("print_jobs") or []:
-            if not isinstance(j, dict) or not isinstance(j.get("job_id"), str) or j["job_id"] in known:
-                continue
-            known.add(j["job_id"])
-            db.add(PrintJob(
-                printer_id=printer.id, job_id=j["job_id"][:64], filename=_text(j.get("filename"), 500),
-                status=_text(j.get("status"), 32) or "unknown",
-                start_time=_when(j.get("start_time")), end_time=_when(j.get("end_time")),
-                print_duration=_num(j.get("print_duration"), 0.0), total_duration=_num(j.get("total_duration"), 0.0),
-                filament_used=_num(j.get("filament_used"), 0.0), energy_kwh=_num(j.get("energy_kwh")),
-                avg_power_w=_num(j.get("avg_power_w")), max_power_w=_num(j.get("max_power_w")),
-                job_metadata=j.get("metadata") if isinstance(j.get("metadata"), dict) else {},
-                auxiliary=j.get("auxiliary") if isinstance(j.get("auxiliary"), list) else [],
-            ))
-            out["prints_added"] += 1
-            filled = True
-
-        have = {utc_iso(t) for t in db.scalars(select(PrinterEnergyReading.taken_at).where(PrinterEnergyReading.printer_id == printer.id))}
-        for r in rec.get("energy_readings") or []:
-            if not (isinstance(r, list) and len(r) == 3):
-                continue
-            at, sensor, kwh = _when(r[0]), r[1], _num(r[2])
-            if at is None or kwh is None or not isinstance(sensor, str) or at.isoformat() in have:
-                continue
-            have.add(at.isoformat())
-            db.add(PrinterEnergyReading(printer_id=printer.id, taken_at=at, sensor=sensor[:120], energy_kwh=kwh))
-            out["readings_added"] += 1
-            filled = True
-
+        prints = _restore_print_jobs(db, printer, rec.get("print_jobs"))
+        out["prints_added"] += prints
+        readings = _restore_energy_readings(db, printer, rec.get("energy_readings"))
+        out["readings_added"] += readings
         prices = _restore_gcode_filaments(db, printer, rec.get("gcode_filaments"))
         out["prices_added"] += prices
-        filled |= bool(prices)
+        filled |= bool(prints or readings or prices)
 
         db.commit()
         if added:

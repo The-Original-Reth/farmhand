@@ -234,3 +234,56 @@ def test_mixed_plate_bundle_links_multiple_source_models(db_session, sample_3mf_
 
     linked_ids = {m.id for m in bundle.source_models}
     assert linked_ids == {frog_v.id, frog_h.id}
+
+
+@pytest.fixture()
+def scratch(tmp_path, monkeypatch):
+    """Where an upload's scratch copy is spooled, so a test can see none is left behind."""
+    import tempfile
+
+    folder = tmp_path / "scratch"
+    folder.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(folder))
+    return folder
+
+
+def _upload(db, path, **kwargs):
+    with open(path, "rb") as f:
+        return bundle_service.create_bundle(
+            db, threemf_file_obj=f, threemf_filename="shark.3mf", gcode_file_obj=_fake_gcode(),
+            gcode_filename="shark.gcode", **kwargs,
+        )
+
+
+def test_no_upload_leaves_its_scratch_copy_behind_stored_or_refused(db_session, sample_3mf_paths, scratch):
+    printer, model = _setup_printer_and_model(db_session, "VT 1190")
+
+    bundle = _upload(db_session, sample_3mf_paths["shark_vt1190"], source_model_ids=[model.id])
+    assert list(scratch.iterdir()) == []  # stored: copied into place, then removed
+
+    with pytest.raises(ValueError, match="no printer with that exact name"):  # sliced for a printer not registered
+        _upload(db_session, sample_3mf_paths["shark_v2bog"], source_model_ids=[model.id])
+    assert list(scratch.iterdir()) == []
+
+    with pytest.raises(ValueError, match="No printer with id"):
+        _upload(db_session, sample_3mf_paths["shark_vt1190"], source_model_ids=[model.id], printer_id=999)
+    assert list(scratch.iterdir()) == []
+
+    with pytest.raises(ValueError, match="don't exist"):
+        _upload(db_session, sample_3mf_paths["shark_vt1190"], source_model_ids=[model.id, 999])
+    assert list(scratch.iterdir()) == []
+
+    with open(sample_3mf_paths["shark_v2bog"], "rb") as f, pytest.raises(ValueError, match="Wrong printer"):
+        bundle_service.add_bundle_version(
+            db_session, bundle_id=bundle.id, threemf_file_obj=f, threemf_filename="shark.3mf",
+        )
+    assert list(scratch.iterdir()) == []
+
+
+def test_a_new_3mf_is_for_the_printer_picked_or_else_the_one_it_was_sliced_for(db_session, sample_3mf_paths):
+    vt, model = _setup_printer_and_model(db_session, "VT 1190")
+    other = printer_service.create_printer(db_session, name="Spare", kind=None, wired_ip=None, wireless_ip=None)
+
+    assert _upload(db_session, sample_3mf_paths["shark_vt1190"], source_model_ids=[model.id]).printer_id == vt.id
+    picked = _upload(db_session, sample_3mf_paths["frog_vt1190"], source_model_ids=[model.id], printer_id=other.id)
+    assert picked.printer_id == other.id  # the one picked wins over the file's own
