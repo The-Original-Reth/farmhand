@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from ...models import Printer
+from .. import printer_reports
 from .client import PrusaLinkError, job_file_name, version
 from .tracking import poll
 
@@ -52,8 +53,6 @@ def live_status(db: Session, printer: Printer) -> dict:
         out.update(error=str(e), error_kind=e.kind)
     out["prusalink_url"] = printer.prusalink_url  # the one of its IPs it answered at just now
     if printer.status_from:
-        from .. import printer_reports
-
         out["status_from"] = {
             "id": printer.status_from, "name": printer_reports.plugin_name(db, printer.status_from),
             "link": printer_reports.link(printer),

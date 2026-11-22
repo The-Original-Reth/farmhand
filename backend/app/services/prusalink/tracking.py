@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from ...models import Printer, PrintJob
 from ...timeutil import as_utc
+from .. import printer_reports
 from ..printer_service import record_sync_error, record_sync_ok
 from . import client, filament_estimate, printed_filament
 from .client import PrusaLinkError, job_file_name
@@ -71,16 +72,12 @@ def _recent(printer: Printer) -> list[dict]:
     reported them; [] otherwise."""
     if not printer.status_from:
         return []
-    from .. import printer_reports
-
     return printer_reports.recent_prints(printer)
 
 
 def _odometer(printer: Printer) -> float | None:
     if not printer.status_from:
         return None
-    from .. import printer_reports
-
     return printer_reports.odometer(printer)
 
 
@@ -96,8 +93,6 @@ def _material(printer: Printer) -> str | None:
     """The filament loaded (PETG, PLA...), as a printer connected through Prusa Connect says; None otherwise."""
     if not printer.status_from:
         return None
-    from .. import printer_reports
-
     found = (printer_reports.extras(printer) or {}).get("material")
     return str(found) if found else None
 

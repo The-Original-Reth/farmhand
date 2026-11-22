@@ -11,7 +11,7 @@ from ..schemas.printer import (
     DefaultSubPrinterIn, DiscoveredPrinterOut, PrinterCreate, PrinterOut, PrinterUpdate, SubPrinterCopyIn,
     SubPrinterIn, SubPrinterPartIn, SubPrinterPartOut, SubPrinterPartRow, SubPrinterSettingsCopyOut,
 )
-from ..services import bundle_service, print_progress, printer_discovery, printer_service, sub_printer_service
+from ..services import bundle_service, print_progress, printer_discovery, printer_reports, printer_service, sub_printer_service
 from .common import require_confirm, require_printer
 
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -52,8 +52,6 @@ def discover_range(db: Session = Depends(get_db)):
 def status_reporters(db: Session = Depends(get_db)):
     """The plugins a Prusa printer can take its status from instead of its PrusaLink: [{id, name}], those installed,
     switched on and granted printers:report (the Prusa Connect plugin, say)."""
-    from ..services import printer_reports
-
     return printer_reports.reporters(db)
 
 

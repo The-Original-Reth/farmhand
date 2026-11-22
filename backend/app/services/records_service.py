@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import record_files, records_store
 from ..timeutil import as_utc, utc_iso
-from . import sub_printer_service
+from . import printer_reports, sub_printer_service
 from .printer_service import ensure_connection
 
 if TYPE_CHECKING:
@@ -207,8 +207,6 @@ def _fill_secrets(printer: Printer, cfg: dict) -> bool:
 def _restore_status_from(db: Session, printer: Printer, cfg: dict) -> None:
     """A Prusa printer whose status came from a plugin does again, if that plugin is here and may report it; else it
     starts on its own PrusaLink."""
-    from . import printer_reports
-
     plugin_id = _text(cfg.get("status_from"), 40)
     if plugin_id and plugin_id in {r["id"] for r in printer_reports.reporters(db)}:
         printer_reports.choose(db, printer, plugin_id)

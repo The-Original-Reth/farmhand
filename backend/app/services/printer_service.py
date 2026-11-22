@@ -11,6 +11,7 @@ from ..models import (
     Bundle, BundleVersion, Printer, PrinterCamera, PrinterCameraNetwork, PrinterConnection, PrinterNote, PrinterServiceReminder,
     PrusaLinkConnection, SubPrinter,
 )
+from . import printer_reports
 
 
 def list_printers(db: Session) -> list[Printer]:
@@ -183,8 +184,6 @@ def _apply_changes(db: Session, printer: Printer, changes: dict) -> None:
             link.password = changes["prusalink_password"] or None
 
     if changes.get("status_from") is not None:
-        from . import printer_reports
-
         printer_reports.choose(db, printer, changes["status_from"].strip() or None)
 
     if "camera_address" in changes:
