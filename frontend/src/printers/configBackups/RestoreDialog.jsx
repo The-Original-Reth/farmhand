@@ -1,7 +1,9 @@
 // Restore a whole backup: what it would change on the printer, then putting it back
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { c } from "../../theme.js";
-import { errorText, getConfigBackupRestorePreview, restoreConfigBackup } from "../../api.js";
+import { getConfigBackupRestorePreview, restoreConfigBackup } from "../../api.js";
+import { useAction } from "../../hooks/useAction.js";
+import { useLoad } from "../../hooks/useLoad.js";
 import { cancelButton, monoText, primaryButton, uiText } from "../../styles.js";
 import { Modal } from "../../components/common/dialogs.jsx";
 import { fmtWhen, plural } from "../../lib/format.js";
@@ -31,26 +33,18 @@ function PathList({ title, paths, tone = c.textMuted }) {
 
 // Restore: first what it would change (read from the printer, nothing written), then, on Restore, the whole backup back
 export function RestoreDialog({ printer, backup, onClose, onDone }) {
-  const [plan, setPlan] = useState(null);
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const preview = useLoad(() => getConfigBackupRestorePreview(printer.id, backup.id), []);
+  const plan = preview.data;
+  const restore = useAction();
+  const busy = restore.busy;
+  const error = restore.error || preview.error; // (Restore is only offered once the preview came)
   const [result, setResult] = useState(null);
-  useEffect(() => {
-    getConfigBackupRestorePreview(printer.id, backup.id).then(setPlan, (e) => setError(errorText(e)));
-  }, []);
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const run = () =>
+    restore.run(async () => {
       const d = await restoreConfigBackup(printer.id, backup.id);
       setResult(d);
       onDone(d);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const settingsKeys = plan ? plan.settings.reduce((n, s) => n + s.keys.length, 0) : 0;
   const overSsh = plan ? (plan.files.over_ssh || []).length : 0;
   const nothing = plan && plan.files.put_back.length === 0 && overSsh === 0 && settingsKeys === 0;
