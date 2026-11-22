@@ -6,7 +6,7 @@ browser's /plugins/<id>/ here), and /plugins/farmhand-plugin.js for those pages.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -38,10 +38,6 @@ class PluginChange(BaseModel):
     address: str | None = None  # it moved: the plugin there must be the same one
 
 
-def _already(e: registry.AlreadyInstalled):
-    raise HTTPException(status_code=409, detail=str(e)) from None
-
-
 @router.get("")
 def list_plugins(db: Session = Depends(get_db)):
     return {
@@ -62,20 +58,11 @@ def preview_plugin(body: PluginAddress, db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def install_plugin(body: PluginInstall, db: Session = Depends(get_db)):
-    with answer_errors():
-        try:
-            if body.address is not None:
-                plugin, token = registry.register_by_address(
-                    db, body.address, body.permissions, True if body.only_from_address is None else body.only_from_address,
-                )
-            elif body.manifest is not None:
-                plugin, token = registry.register(
-                    db, body.manifest, body.permissions, body.image, only_from_address=body.only_from_address,
-                )
-            else:
-                raise ValueError("Give the plugin's address, like http://192.168.10.215:8080.")
-        except registry.AlreadyInstalled as e:
-            _already(e)
+    with answer_errors(codes={registry.AlreadyInstalled: 409}):
+        plugin, token = registry.install(
+            db, body.permissions, address=body.address, manifest=body.manifest, image=body.image,
+            only_from_address=body.only_from_address,
+        )
     return {"plugin": registry.out(plugin), "token": token}
 
 
