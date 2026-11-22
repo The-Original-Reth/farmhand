@@ -1,21 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { c, fs, mono, ui } from "../theme.js";
-import { errorText } from "../api.js";
 import { toneColor, toolButton, uiText } from "../styles.js";
-import { useData } from "../data.jsx";
 
-import { readStored, readStoredObject, writeStored } from "../lib/storage.js";
+import { readStoredObject, writeStored } from "../lib/storage.js";
 import { NOTE_KINDS } from "./noteKinds.js";
 import { fmtWhen } from "../lib/format.js";
+import { useNoteDraft } from "./useNoteDraft.js";
 
 const NOTES_MAX = 20000;
-const draftKey = (kind, id) => `${NOTE_KINDS[kind].storage.draft}.${id}`;
-function readDraft(kind, id) {
-  const d = readStored(draftKey(kind, id));
-  return d && typeof d.text === "string" && Number.isInteger(d.base) ? d : null;
-}
-const writeDraft = (kind, id, draft) => writeStored(draftKey(kind, id), draft); // null forgets it
 
 // Whether a model's, printer's or 3MF's notes are folded down to their first line. Every one STARTS folded; opening
 // or closing one is remembered for that model/printer/3MF, in this browser. Anything unreadable means folded.
@@ -34,26 +27,11 @@ function writeNotesCollapsed(kind, id, collapsed) {
 // or reload, the browser asks before a tab with unsaved notes is closed, and a save that would overwrite what
 // someone else saved meanwhile is stopped. One component serves every kind, so they all behave identically.
 export function NotesSection({ kind, owner }) {
-  const data = useData();
-  const { refresh } = data;
   const k = NOTE_KINDS[kind];
   const ownerId = owner.id;
-  const { saved, rev, updatedAt } = k.read(owner);
-  const onSave = ({ notes, baseRevision }) => k.save(ownerId, notes, baseRevision);
   const description = k.description(owner);
   const placeholder = k.placeholder;
-
-  const [startDraft] = useState(() => {
-    const d = readDraft(kind, ownerId);
-    return d && d.text !== saved ? d : null; // a draft identical to what's saved is no draft
-  });
-  const [text, setText] = useState(startDraft ? startDraft.text : saved);
-  const [base, setBase] = useState(startDraft ? startDraft.base : rev); // the revision this text was written from
-  const [restored, setRestored] = useState(!!startDraft);
-  const [phase, setPhase] = useState("idle"); // idle | saving | error
-  const [error, setError] = useState(null);
-  const [conflict, setConflict] = useState(null); // { notes, revision, updatedAt }: what someone else saved meanwhile
-  const synced = useRef(saved); // the saved text this editor last matched
+  const { text, setText, phase, setPhase, conflict, dirty, busy, status, save, discard, useTheirs } = useNoteDraft(kind, owner);
   const areaRef = useRef(null);
   const [collapsed, setCollapsedState] = useState(() => readNotesCollapsed(kind, ownerId));
   const focusOnExpand = useRef(false);
@@ -62,34 +40,6 @@ export function NotesSection({ kind, owner }) {
     writeNotesCollapsed(kind, ownerId, next);
   };
   const bodyId = `notes-body-${kind}-${ownerId}`;
-
-  const dirty = text !== saved;
-  const effectiveBase = dirty ? base : rev;
-
-  // The saved notes changed underneath us (a refresh after something else): follow them, unless there are edits
-  useEffect(() => {
-    if (text === synced.current && saved !== synced.current) {
-      setText(saved);
-      setBase(rev);
-    }
-    synced.current = saved;
-  }, [saved, rev]);
-
-  // Keep what's typed as a draft, so leaving the page or a reload doesn't lose it
-  useEffect(() => {
-    writeDraft(kind, ownerId, dirty ? { text, base: effectiveBase } : null);
-  }, [text, base, saved, rev]);
-
-  // The browser asks before closing or reloading with unsaved notes
-  useEffect(() => {
-    if (!dirty) return undefined;
-    const warn = (e) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
 
   // The box grows with what's typed (up to a point, then scrolls)
   useLayoutEffect(() => {
@@ -102,66 +52,6 @@ export function NotesSection({ kind, owner }) {
       el.focus();
     }
   }, [text, collapsed]);
-
-  const save = async (overrideBase) => {
-    setPhase("saving");
-    setError(null);
-    try {
-      const out = await onSave({ notes: text, baseRevision: overrideBase ?? effectiveBase });
-      synced.current = out.notes; // what the server kept (it tidies the ends), so this isn't seen as an edit
-      setText(out.notes);
-      setBase(out.notes_revision);
-      setConflict(null);
-      setRestored(false);
-      writeDraft(kind, ownerId, null);
-      k.apply(out, data); // just this one changed
-      setPhase("idle");
-    } catch (e) {
-      if (e.status === 409 && e.body?.current) {
-        setConflict({ notes: e.body.current.notes, revision: e.body.current.notes_revision, updatedAt: e.body.current.notes_updated_at });
-        setPhase("idle");
-      } else {
-        setError(errorText(e));
-        setPhase("error");
-      }
-    }
-  };
-  const discard = () => {
-    setText(saved);
-    setBase(rev);
-    setConflict(null);
-    setRestored(false);
-    setError(null);
-    writeDraft(kind, ownerId, null);
-  };
-  const useTheirs = async () => {
-    // Bring the page's copy of the saved notes up to date FIRST, then swap the text: doing it the other way round
-    // would show "Unsaved changes" for a moment, because their text would briefly differ from what the page holds.
-    const theirs = conflict;
-    setPhase("saving");
-    await refresh();
-    synced.current = theirs.notes;
-    setText(theirs.notes);
-    setBase(theirs.revision);
-    setConflict(null);
-    setRestored(false);
-    setPhase("idle");
-    writeDraft(kind, ownerId, null);
-  };
-
-  const busy = phase === "saving";
-  let status;
-  if (busy) status = { tone: "faint", text: "Saving…" };
-  else if (phase === "error") status = { tone: "warn", text: `Couldn't save: ${error}` };
-  else if (conflict) status = { tone: "warn", text: "Not saved: someone else saved these notes while you were editing." };
-  else if (dirty) {
-    status = {
-      tone: "warn",
-      text: `${restored ? "Restored your unsaved draft. " : ""}Unsaved changes. A draft is kept in this browser until you save.`,
-    };
-  } else if (rev > 0 && saved) status = { tone: "good", text: `Saved. Last edited ${fmtWhen(updatedAt, "")}.` };
-  else if (rev > 0) status = { tone: "faint", text: `Notes cleared ${fmtWhen(updatedAt, "")}.` };
-  else status = { tone: "faint", text: "" }; // never had notes: nothing to say
 
   // Folded with nothing written (and nothing to warn about), the section is just its heading and the Expand button
   const showBody = !collapsed || !!text || busy || status.tone === "warn";
@@ -251,28 +141,7 @@ export function NotesSection({ kind, owner }) {
           }}
         />
 
-        {conflict && (
-          <div data-testid="notes-conflict" style={{ marginTop: 12, border: `1px solid ${c.amber}`, borderRadius: 4, padding: 12, background: c.panelAlt }}>
-            <div style={uiText(13, c.heading, { marginBottom: 4 })}>Someone else saved these notes while you were editing.</div>
-            <div style={uiText(12, c.textMuted, { lineHeight: 1.6, marginBottom: 8 })}>
-              Nothing was overwritten. Their version{conflict.updatedAt ? ` (saved ${fmtWhen(conflict.updatedAt, "")})` : ""} is below, and yours is still in the box above.
-            </div>
-            <pre
-              data-testid="notes-theirs"
-              style={uiText(13, c.textPrimary, { background: c.panel, border: `1px solid ${c.border}`, borderRadius: 3, padding: "8px 10px", margin: "0 0 10px", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflow: "auto" })}
-            >
-              {conflict.notes || "(they cleared the notes)"}
-            </pre>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button data-testid="notes-use-theirs" onClick={useTheirs} style={{ ...button, background: "none", color: c.textPrimary, border: `1px solid ${c.borderStrong}`, cursor: "pointer" }}>
-                Use their version (discard mine)
-              </button>
-              <button data-testid="notes-overwrite" onClick={() => save(conflict.revision)} disabled={busy} style={{ ...button, background: "none", color: c.amber, border: `1px solid ${c.amber}`, cursor: "pointer" }}>
-                Keep mine and overwrite theirs
-              </button>
-            </div>
-          </div>
-        )}
+        {conflict && <NotesConflict conflict={conflict} useTheirs={useTheirs} save={save} busy={busy} button={button} />}
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
           <div
@@ -310,6 +179,32 @@ export function NotesSection({ kind, owner }) {
         )}
       </div>
       )}
+    </div>
+  );
+}
+
+// Someone else saved the notes while they were being edited: their version, and which to keep
+function NotesConflict({ conflict, useTheirs, save, busy, button }) {
+  return (
+    <div data-testid="notes-conflict" style={{ marginTop: 12, border: `1px solid ${c.amber}`, borderRadius: 4, padding: 12, background: c.panelAlt }}>
+      <div style={uiText(13, c.heading, { marginBottom: 4 })}>Someone else saved these notes while you were editing.</div>
+      <div style={uiText(12, c.textMuted, { lineHeight: 1.6, marginBottom: 8 })}>
+        Nothing was overwritten. Their version{conflict.updatedAt ? ` (saved ${fmtWhen(conflict.updatedAt, "")})` : ""} is below, and yours is still in the box above.
+      </div>
+      <pre
+        data-testid="notes-theirs"
+        style={uiText(13, c.textPrimary, { background: c.panel, border: `1px solid ${c.border}`, borderRadius: 3, padding: "8px 10px", margin: "0 0 10px", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflow: "auto" })}
+      >
+        {conflict.notes || "(they cleared the notes)"}
+      </pre>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button data-testid="notes-use-theirs" onClick={useTheirs} style={{ ...button, background: "none", color: c.textPrimary, border: `1px solid ${c.borderStrong}`, cursor: "pointer" }}>
+          Use their version (discard mine)
+        </button>
+        <button data-testid="notes-overwrite" onClick={() => save(conflict.revision)} disabled={busy} style={{ ...button, background: "none", color: c.amber, border: `1px solid ${c.amber}`, cursor: "pointer" }}>
+          Keep mine and overwrite theirs
+        </button>
+      </div>
     </div>
   );
 }
