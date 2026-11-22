@@ -3,6 +3,7 @@ import { FolderOpen } from "lucide-react";
 import { checkProjectFiles, errorText, importProjectFolder, scanProjectFolder, scanProjectsFolder } from "../api.js";
 import { c, fs, ui } from "../theme.js";
 import { useData } from "../data.jsx";
+import { useAction } from "../hooks/useAction.js";
 import { readStored, writeStored } from "../lib/storage.js";
 import { Modal } from "../components/common/dialogs.jsx";
 import { SegmentedToggle } from "../components/common/fields.jsx";
@@ -40,22 +41,15 @@ export function ScanProjectsDialog({ onClose }) {
 // Farmhand's projects comes in, its files used where they are. (It's also scanned on its own every few minutes.)
 function ProjectsFolder() {
   const { refresh } = useData();
-  const [busy, setBusy] = useState(false);
+  const action = useAction();
+  const { busy, error } = action;
   const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const run = () =>
+    action.run(async () => {
       const r = await scanProjectsFolder();
       setResult(r);
       if (r.imported.length) await refresh();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const started = useRef(false); // once, when the dialog opens (React runs this twice in development)
   useEffect(() => {
     if (started.current) return;
@@ -254,19 +248,10 @@ function ImportFolders() {
 // Every project file Farmhand keeps, against the disk: missing, or changed outside Farmhand, and files in the project
 // files folder no project has on record. Nothing is changed.
 function CheckProjects() {
-  const [busy, setBusy] = useState(false);
+  const action = useAction();
+  const { busy, error } = action;
   const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setResult(await checkProjectFiles());
-    } catch (e) {
-      setError(errorText(e));
-    }
-    setBusy(false);
-  };
+  const run = () => action.run(async () => setResult(await checkProjectFiles()));
   // the problems, project by project
   const byProject = [];
   for (const p of result?.problems || []) {

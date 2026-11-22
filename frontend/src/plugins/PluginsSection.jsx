@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { Check, Copy, ExternalLink, KeyRound, Pencil, Puzzle } from "lucide-react";
-import { c, fs, mono, ui } from "../theme.js";
+import { Check, ExternalLink, KeyRound, Pencil, Puzzle } from "lucide-react";
+import { c, mono } from "../theme.js";
 import {
-  addPlugin, allowPlugin, changePlugin, errorText, newPluginToken, pluginApiUrl, previewPlugin, removePlugin, restorePluginSettings, switchBuiltinPlugin,
+  addPlugin, allowPlugin, changePlugin, newPluginToken, pluginApiUrl, previewPlugin, removePlugin, restorePluginSettings, switchBuiltinPlugin,
 } from "../api.js";
 import { cancelButton, fieldBox, monoText, panelBox, primaryButton, toolButton, uiText } from "../styles.js";
 import { useAction } from "../hooks/useAction.js";
 import { ConfirmDialog, Modal } from "../components/common/dialogs.jsx";
 import { Badge } from "../components/common/ui.jsx";
+import { CopyButton, useCopy } from "../components/common/CopyButton.jsx";
 import { fmtWhen } from "../lib/format.js";
 import { GUIDED_PLUGINS, RunPluginGuide } from "./RunPluginGuide.jsx";
 
@@ -464,7 +465,7 @@ function TokenDialog({ plugin, token, onClose }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0 6px" }}>
         <div style={uiText(12, c.textFaint, { flex: 1 })}>{envFile ? `In ${envFile}:` : "In its env file:"}</div>
-        <CopyButton value={lines} testId="plugin-env-copy" />
+        <CopyValue value={lines} testId="plugin-env-copy" />
       </div>
       <pre data-testid="plugin-env-lines" style={monoText(12, c.textPrimary, { background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, padding: 10, margin: "0 0 12px", overflowX: "auto" })}>
         {lines}
@@ -482,40 +483,20 @@ function TokenDialog({ plugin, token, onClose }) {
   );
 }
 
-function CopyButton({ value, testId }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState(null);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      setError(`Couldn't copy it (${errorText(e)}): select it and copy it by hand.`);
-    }
-  };
+// Copy, with why it couldn't copy before it
+function CopyValue({ value, testId }) {
+  const copying = useCopy();
   return (
     <>
-      {error && <span style={uiText(12, c.amber)}>{error}</span>}
-      <button data-testid={testId} onClick={copy} style={{ ...toolButton(12), ...ui, fontSize: fs(12) }}>
-        {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
-      </button>
+      {copying.error && <span style={uiText(12, c.amber)}>{copying.error}</span>}
+      <CopyButton copying={copying} text={value} testId={testId} />
     </>
   );
 }
 
 function Copyable({ label, value, testId }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState(null);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      setError(`Couldn't copy it (${errorText(e)}): select it and copy it by hand.`);
-    }
-  };
+  const copying = useCopy();
+  const { error } = copying;
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={uiText(12, c.textFaint, { marginBottom: 4 })}>{label}</div>
@@ -523,9 +504,7 @@ function Copyable({ label, value, testId }) {
         <div data-testid={testId} style={monoText(12, c.heading, { flex: 1, background: c.panelAlt, border: `1px solid ${c.border}`, borderRadius: 4, padding: "7px 10px", wordBreak: "break-all", userSelect: "all" })}>
           {value}
         </div>
-        <button onClick={copy} style={{ ...toolButton(12), ...ui, fontSize: fs(12) }}>
-          {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
-        </button>
+        <CopyButton copying={copying} text={value} />
       </div>
       {error && <div style={uiText(12, c.amber, { marginTop: 4 })}>{error}</div>}
     </div>

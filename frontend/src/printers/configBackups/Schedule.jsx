@@ -2,30 +2,23 @@
 import { useEffect, useState } from "react";
 import { Check, KeyRound, Save } from "lucide-react";
 import { c } from "../../theme.js";
-import { errorText, setConfigBackupSchedule } from "../../api.js";
+import { setConfigBackupSchedule } from "../../api.js";
+import { useAction } from "../../hooks/useAction.js";
 import { fieldBox, monoText, uiText } from "../../styles.js";
 import { fmtWhen } from "../../lib/format.js";
 import { smallButton } from "./shared.js";
 
 export function Schedule({ data, onSaved, onSsh }) {
   const [days, setDays] = useState(String(data.every_days));
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, error, run } = useAction();
   useEffect(() => setDays(String(data.every_days)), [data.every_days]);
   const n = Number(days);
   const valid = days.trim() !== "" && Number.isInteger(n) && n >= 0 && n <= 365;
-  const save = async () => {
-    setBusy(true);
-    try {
+  const save = () =>
+    run(async () => {
       await setConfigBackupSchedule(n);
-      setError(null);
       onSaved();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   return (
     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", ...uiText(13, c.textMuted) }}>

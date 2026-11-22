@@ -1,8 +1,9 @@
 // The files of one backup, opened under its row: view, changes, download and put back each one
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Download, Eye, FileDiff, RotateCcw } from "lucide-react";
 import { c, ui } from "../../theme.js";
-import { configBackupFileUrl, errorText, getConfigBackup } from "../../api.js";
+import { configBackupFileUrl, getConfigBackup } from "../../api.js";
+import { useLoad } from "../../hooks/useLoad.js";
 import { monoText, uiText } from "../../styles.js";
 import { Badge } from "../../components/common/ui.jsx";
 import { formatBytes, plural } from "../../lib/format.js";
@@ -10,12 +11,8 @@ import { smallButton } from "./shared.js";
 import { klipperUi } from "../webUi.js";
 
 export function BackupFiles({ printer, backup, onRestore, onOpen }) {
-  const [detail, setDetail] = useState(null);
-  const [error, setError] = useState(null);
+  const { data: detail, error } = useLoad(() => getConfigBackup(printer.id, backup.id), [backup.id]);
   const [showSkipped, setShowSkipped] = useState(false);
-  useEffect(() => {
-    getConfigBackup(printer.id, backup.id).then(setDetail, (e) => setError(errorText(e)));
-  }, [backup.id]);
   if (error) return <div style={uiText(12, c.amber, { padding: "8px 14px 10px 34px" })}>{error}</div>;
   if (!detail) return <div style={uiText(12, c.textFaint, { padding: "8px 14px 10px 34px" })}>Loading…</div>;
   const config = detail.files.filter((f) => !f.database);

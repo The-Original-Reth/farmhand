@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronRight, Copy, Download } from "lucide-react";
+import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
-import { errorText } from "../api.js";
+import { CopyButton, useCopy } from "../components/common/CopyButton.jsx";
 import { foldHeading, monoText, panelBox, toolButton, uiText } from "../styles.js";
 // The plugins' own compose files, the same as plugins/<id>/docker-compose.yml (each plugin's tests check they match)
 import streamCompose from "./compose/stream.yml?raw";
@@ -114,24 +114,13 @@ const code = () => monoText(12, c.heading, {
 });
 const step = uiText(13, c.textPrimary, { lineHeight: 1.5 });
 
-function CopyButton({ text, testId }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState(null);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text); // only on https or this computer's own address
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      setError(`Couldn't copy it (${errorText(e)}): select it and copy it by hand.`);
-    }
-  };
+// Copy, with why it couldn't copy after it
+function CopyText({ text, testId }) {
+  const copying = useCopy();
   return (
     <>
-      <button type="button" data-testid={testId} onClick={copy} style={{ ...toolButton(12), ...ui, fontSize: fs(12) }}>
-        {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
-      </button>
-      {error && <span style={uiText(12, c.amber)}>{error}</span>}
+      <CopyButton copying={copying} text={text} testId={testId} />
+      {copying.error && <span style={uiText(12, c.amber)}>{copying.error}</span>}
     </>
   );
 }
@@ -141,7 +130,7 @@ function Command({ text }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
       <pre style={{ ...code(), flex: 1, minWidth: 0 }}>{text}</pre>
-      <CopyButton text={text} />
+      <CopyText text={text} />
     </div>
   );
 }
@@ -242,7 +231,7 @@ export function RunPluginGuide() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <div style={uiText(13, c.heading, { fontWeight: 600, flex: 1 })}>{plugin.name}'s docker-compose.yml</div>
-                <CopyButton text={plugin.compose} testId="run-plugin-compose-copy" />
+                <CopyText text={plugin.compose} testId="run-plugin-compose-copy" />
                 <button
                   type="button" data-testid="run-plugin-compose-download" onClick={() => download(plugin.compose)}
                   style={{ ...toolButton(12), ...ui, fontSize: fs(12) }}
