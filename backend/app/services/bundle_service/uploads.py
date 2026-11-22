@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,6 +45,40 @@ def _remove_quietly(path: str) -> None:
         os.remove(path)
     except FileNotFoundError:
         pass
+
+
+@contextmanager
+def _spooled_3mf(threemf_file_obj):
+    """
+    The upload spooled to a scratch copy and parsed: yields (the copy's path, what the 3MF says). A rejected upload's
+    copy is removed here; a stored one's by _store_version, once it has been copied into place.
+    """
+    tmp_path, parsed = _parse_upload_to_tempfile(threemf_file_obj)
+    try:
+        yield tmp_path, parsed
+    except BaseException:
+        _remove_quietly(tmp_path)  # a rejected upload must not leave its scratch copy behind
+        raise
+
+
+def _printer_for(db: Session, printer_id: int | None, parsed) -> Printer:
+    """The printer a new 3MF is for: the one picked, else the registered printer its embedded profile names."""
+    if printer_id is not None:
+        printer = db.get(Printer, printer_id)
+        if printer is None:
+            raise ValueError(f"No printer with id {printer_id}")
+        return printer
+    if not parsed.printer_profile_name:
+        raise ValueError(
+            "This 3MF has no printer profile embedded in it — a printer must be selected manually"
+        )
+    printer = printer_service.find_by_profile_name(db, parsed.printer_profile_name)
+    if printer is None:
+        raise ValueError(
+            f"3MF was sliced for printer {parsed.printer_profile_name!r}, but no printer with "
+            "that exact name is registered yet — add it to the printer registry first"
+        )
+    return printer
 
 
 def inspect_3mf(db: Session, threemf_file_obj) -> dict:
@@ -100,26 +135,8 @@ def create_bundle(
     if gcode_file_obj is not None:
         check_gcode_name(gcode_filename)
 
-    tmp_path, parsed = _parse_upload_to_tempfile(threemf_file_obj)
-    try:
-
-        printer = None
-        if printer_id is not None:
-            printer = db.get(Printer, printer_id)
-            if printer is None:
-                raise ValueError(f"No printer with id {printer_id}")
-        else:
-            if not parsed.printer_profile_name:
-                raise ValueError(
-                    "This 3MF has no printer profile embedded in it — a printer must be selected manually"
-                )
-            printer = printer_service.find_by_profile_name(db, parsed.printer_profile_name)
-            if printer is None:
-                raise ValueError(
-                    f"3MF was sliced for printer {parsed.printer_profile_name!r}, but no printer with "
-                    "that exact name is registered yet — add it to the printer registry first"
-                )
-
+    with _spooled_3mf(threemf_file_obj) as (tmp_path, parsed):
+        printer = _printer_for(db, printer_id, parsed)
         if gcode_file_obj is not None:
             # the G-code goes with this 3MF: sliced for the same printer as it, or for the printer picked for it
             allowed = {printer.name} | ({parsed.printer_profile_name} if parsed.printer_profile_name else set())
@@ -154,9 +171,6 @@ def create_bundle(
         db.commit()
         db.refresh(bundle)
         return bundle
-    except BaseException:
-        _remove_quietly(tmp_path)  # a rejected upload must not leave its scratch copy behind
-        raise
 
 
 def add_bundle_version(
@@ -180,9 +194,7 @@ def add_bundle_version(
     if gcode_file_obj is not None:
         check_gcode_name(gcode_filename)
 
-    tmp_path, parsed = _parse_upload_to_tempfile(threemf_file_obj)
-    try:
-
+    with _spooled_3mf(threemf_file_obj) as (tmp_path, parsed):
         # The printer may have been renamed since this bundle was created, so
         # accept its current name OR any profile name this bundle's earlier
         # versions were sliced under.
@@ -215,9 +227,6 @@ def add_bundle_version(
         db.commit()
         db.refresh(version)
         return version
-    except BaseException:
-        _remove_quietly(tmp_path)  # a rejected upload must not leave its scratch copy behind
-        raise
 
 
 def _store_version(
@@ -238,24 +247,9 @@ def _store_version(
     threemf_filename = with_version(threemf_filename, version_number)  # "Goldfish ver 2.3mf"
     written: list[str] = []  # everything put on disk so far, to undo if a later step fails
     try:
-        # May raise StorageUnavailableError if the chosen 3MF folder looks unmounted
-        dest_dir = storage.bundle_version_dir(bundle.id, version_number, fresh=True)
-
-        threemf_path = storage.copy_verified(tmp_threemf_path, dest_dir, name=threemf_filename)
-        written.append(threemf_path)
-
-        gcode_path = None
-        if gcode_file_obj is not None:
-            gcode_path = storage.save_upload(dest_dir, gcode_filename, gcode_file_obj)
-            written.append(gcode_path)
-
-        thumbnail_path = None
-        if parsed.thumbnail_bytes:
-            # with the 3MF, on the NAS if it's there: the only copy, kept even when the 3MF is pruned
-            thumbnail_path = storage.save_preview_beside(threemf_path, parsed.thumbnail_bytes)
-            if thumbnail_path:
-                written.append(thumbnail_path)
-
+        threemf_path, gcode_path, thumbnail_path = _write_version_files(
+            bundle.id, version_number, parsed, tmp_threemf_path, threemf_filename, gcode_file_obj, gcode_filename, written
+        )
         version = BundleVersion(
             bundle_id=bundle.id,
             version=version_number,
@@ -284,3 +278,31 @@ def _store_version(
         raise
     finally:
         _remove_quietly(tmp_threemf_path)  # the parsed upload's scratch copy
+
+
+def _write_version_files(
+    bundle_id: int, version_number: int, parsed, tmp_threemf_path: str, threemf_filename: str,
+    gcode_file_obj, gcode_filename: str | None, written: list[str],
+) -> tuple[str, str | None, str | None]:
+    """
+    A new version's 3MF, G-code and preview, put in its own fresh folder: returns their paths (threemf, gcode, preview),
+    each recorded in `written` as soon as it's on disk, so a later failure can remove them.
+    """
+    # May raise StorageUnavailableError if the chosen 3MF folder looks unmounted
+    dest_dir = storage.bundle_version_dir(bundle_id, version_number, fresh=True)
+
+    threemf_path = storage.copy_verified(tmp_threemf_path, dest_dir, name=threemf_filename)
+    written.append(threemf_path)
+
+    gcode_path = None
+    if gcode_file_obj is not None:
+        gcode_path = storage.save_upload(dest_dir, gcode_filename, gcode_file_obj)
+        written.append(gcode_path)
+
+    thumbnail_path = None
+    if parsed.thumbnail_bytes:
+        # with the 3MF, on the NAS if it's there: the only copy, kept even when the 3MF is pruned
+        thumbnail_path = storage.save_preview_beside(threemf_path, parsed.thumbnail_bytes)
+        if thumbnail_path:
+            written.append(thumbnail_path)
+    return threemf_path, gcode_path, thumbnail_path
