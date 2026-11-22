@@ -21,14 +21,14 @@ import { Schedule } from "./configBackups/Schedule.jsx";
 import { SshDialog } from "./configBackups/SshDialog.jsx";
 import { TRIGGER, changesHint, changesText } from "./configBackups/shared.js";
 import { klipperUi } from "./webUi.js";
+import { useAction } from "../hooks/useAction.js";
 
 // The printer's config backups, below its print history. Folds away (open/onToggle); loads either way, so the heading
 // can say how many are kept.
 export function ConfigBackupsSection({ printer, open = true, onToggle }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState(null);
+  const { busy, error: actionError, setError: setActionError, run } = useAction(); // Back up now
   const [message, setMessage] = useState(null);
   const [expanded, setExpanded] = useState(null); // the backup whose files show
   const [dialog, setDialog] = useState(null); // { kind: "file" | "restore" | "delete", backup, file, mode }
@@ -54,20 +54,14 @@ export function ConfigBackupsSection({ printer, open = true, onToggle }) {
     load();
   }, [printer.id]);
 
-  const backUpNow = async () => {
-    setBusy(true);
-    setActionError(null);
+  const backUpNow = () => {
     setMessage(null);
-    try {
+    return run(async () => {
       const d = await takeConfigBackup(printer.id);
       ask.current++;
       setData(d);
       setExpanded(d.id);
-    } catch (e) {
-      setActionError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const backups = data?.backups || [];
