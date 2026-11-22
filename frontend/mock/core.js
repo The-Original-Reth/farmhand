@@ -94,8 +94,13 @@ export function createCore() {
   const modelOut = (m) => ({
     id: m.id, name: m.name, file_type: m.file_type, created_at: m.created_at, notes: m.notes, notes_revision: m.notes_revision,
     notes_updated_at: m.notes_updated_at,
-    versions: m.versions.map((v) => ({ id: v.id, version: v.version, file_path: v.file_path, thumbnail_path: v.thumbnail_path, note: v.note, uploaded_at: v.uploaded_at })),
+    versions: m.versions.map((v) => ({
+      id: v.id, version: v.version, file_path: v.file_path, thumbnail_path: v.thumbnail_path, note: v.note, uploaded_at: v.uploaded_at,
+      // as the real one: changes when the preview is redrawn (its file's time there), 0 with no preview
+      thumbnail_rev: v.thumbnail_path ? v.thumbnail_rev ?? 1 : 0,
+    })),
   });
+  const modelVersion = (id, v) => model(id).versions.find((x) => x.version === Number(v)) || fail404("Source model version not found");
   const versionOut = (v) => {
     const { thumb, ...rest } = v;
     const sub = farm.subPrinters.find((s) => s.id === v.sub_printer_id);
@@ -158,5 +163,5 @@ export function createCore() {
     for (const key of Object.keys(farm)) delete farm[key];
     Object.assign(farm, buildFarm());
   };
-  return { farm, routes, on, printer, model, bundle, version, requireConfirm, fail404, totalsFor, synced, syncedTotals, ipOf, moonrakerUrl, mainsailUrl, webUiOf, prusalinkUrl, service, printerOut, modelOut, versionOut, versionDetail, bundleOut, saveNotes, liveJob, runningJob, reachMoonraker, location, projectsDefault, capability, png, resetFarm };
+  return { farm, routes, on, printer, model, bundle, version, requireConfirm, fail404, totalsFor, synced, syncedTotals, ipOf, moonrakerUrl, mainsailUrl, webUiOf, prusalinkUrl, service, printerOut, modelOut, modelVersion, versionOut, versionDetail, bundleOut, saveNotes, liveJob, runningJob, reachMoonraker, location, projectsDefault, capability, png, resetFarm };
 }
