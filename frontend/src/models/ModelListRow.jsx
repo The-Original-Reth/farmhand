@@ -7,8 +7,21 @@ import { Badge, Thumb } from "../components/common/ui.jsx";
 import { Highlighted } from "../lib/search.jsx";
 import { notesHint, plural } from "../lib/format.js";
 
-export function ModelListRow({ model, bundleCount, printerCount, borderBottom, borderRight, onOpen, words = [], reasons = [] }) {
+// stacked: too narrow for the name beside the badges, so the badges go on a line under it
+export function ModelListRow({ model, bundleCount, printerCount, borderBottom, borderRight, onOpen, words = [], reasons = [], stacked = false }) {
   const [hover, setHover] = useState(false);
+  const badges = (
+    <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center", ...(stacked && { flexWrap: "wrap", marginTop: 6 }) }}>
+      {model.notes && (
+        <span data-testid="has-notes" title={notesHint(model.notes)} style={{ display: "flex" }}>
+          <StickyNote size={14} color={c.textFaint} />
+        </span>
+      )}
+      <Badge>{model.type}</Badge>
+      <Badge tone="teal">{bundleCount} 3MF</Badge>
+      <Badge tone="teal">{plural(printerCount, "Printer")}</Badge>
+    </div>
+  );
   return (
     <div
       data-testid="model-row"
@@ -47,17 +60,9 @@ export function ModelListRow({ model, bundleCount, printerCount, borderBottom, b
             {reasons.length > 2 ? "…" : ""}
           </div>
         )}
+        {stacked && badges}
       </div>
-      <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
-        {model.notes && (
-          <span data-testid="has-notes" title={notesHint(model.notes)} style={{ display: "flex" }}>
-            <StickyNote size={14} color={c.textFaint} />
-          </span>
-        )}
-        <Badge>{model.type}</Badge>
-        <Badge tone="teal">{bundleCount} 3MF</Badge>
-        <Badge tone="teal">{plural(printerCount, "Printer")}</Badge>
-      </div>
+      {!stacked && badges}
     </div>
   );
 }
