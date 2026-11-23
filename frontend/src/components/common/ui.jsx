@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, Download, FileBox, Trash2 } from "lucide-react";
 import { c, fixed, fs, ui } from "../../theme.js";
 import { monoText, uiText } from "../../styles.js";
@@ -110,10 +111,22 @@ export function DownloadButton({ disabled, href }) {
 }
 
 // Square preview tile. Renders a real embedded/rendered image when given one;
-// falls back to a quiet placeholder otherwise.
-export function Thumb({ src, size = 36, plateGrid = false, background, placeholderIcon = false }) {
+// falls back to a quiet placeholder otherwise. zoom: pointing at it with a mouse shows the picture bigger in a box
+// floating over the page (touch screens have no hover, so there nothing changes)
+export function Thumb({ src, size = 36, plateGrid = false, background, placeholderIcon = false, zoom = false }) {
+  const tileRef = useRef(null);
+  const [zoomAt, setZoomAt] = useState(null); // the tile's place on screen while the mouse is on it
+  const canZoom = zoom && !!src;
+  const show = (e) => {
+    if (canZoom && e.pointerType === "mouse" && tileRef.current) setZoomAt(tileRef.current.getBoundingClientRect());
+  };
+  const hide = useCallback(() => setZoomAt(null), []);
   return (
     <div
+      ref={tileRef}
+      data-testid={canZoom ? "thumb-zoomable" : undefined}
+      onPointerEnter={canZoom ? show : undefined}
+      onPointerLeave={canZoom ? hide : undefined}
       style={{
         width: size,
         height: size,
@@ -146,7 +159,61 @@ export function Thumb({ src, size = 36, plateGrid = false, background, placehold
           }}
         />
       )}
+      {zoomAt && <ThumbZoom src={src} background={background} tile={zoomAt} onGone={hide} />}
     </div>
+  );
+}
+
+// The bigger picture: on top of everything (a portal to <body>, fixed), beside the tile where there's room, kept inside
+// the window, and never in the mouse's way. Scrolling or resizing closes it, since it would no longer sit by the tile.
+const ZOOM_SIZE = 256;
+const ZOOM_GAP = 10;
+const ZOOM_EDGE = 8;
+function ThumbZoom({ src, background, tile, onGone }) {
+  useEffect(() => {
+    window.addEventListener("scroll", onGone, true);
+    window.addEventListener("resize", onGone);
+    return () => {
+      window.removeEventListener("scroll", onGone, true);
+      window.removeEventListener("resize", onGone);
+    };
+  }, [onGone]);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const size = Math.max(0, Math.min(ZOOM_SIZE, vw - 2 * ZOOM_EDGE, vh - 2 * ZOOM_EDGE));
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  let left;
+  if (tile.right + ZOOM_GAP + size <= vw - ZOOM_EDGE) left = tile.right + ZOOM_GAP; // to its right
+  else if (tile.left - ZOOM_GAP - size >= ZOOM_EDGE) left = tile.left - ZOOM_GAP - size; // to its left
+  else left = clamp(tile.left + tile.width / 2 - size / 2, ZOOM_EDGE, vw - ZOOM_EDGE - size); // a narrow window
+  // beside the tile it's centred on it; in a narrow window it goes below the tile (above when there's no room below)
+  const beside = left >= tile.right || left + size <= tile.left;
+  let top;
+  if (beside) top = clamp(tile.top + tile.height / 2 - size / 2, ZOOM_EDGE, vh - ZOOM_EDGE - size);
+  else if (tile.bottom + ZOOM_GAP + size <= vh - ZOOM_EDGE) top = tile.bottom + ZOOM_GAP;
+  else top = clamp(tile.top - ZOOM_GAP - size, ZOOM_EDGE, vh - ZOOM_EDGE - size);
+  return createPortal(
+    <div
+      data-testid="thumb-zoom"
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        left,
+        top,
+        width: size,
+        height: size,
+        zIndex: 70,
+        pointerEvents: "none",
+        borderRadius: 4,
+        border: `1px solid ${c.borderStrong}`,
+        background: background || c.panelAlt,
+        boxShadow: `0 8px 24px ${fixed.shadow}`,
+        overflow: "hidden",
+      }}
+    >
+      <img src={src} alt="" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+    </div>,
+    document.body,
   );
 }
 
