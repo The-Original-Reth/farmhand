@@ -48,7 +48,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         borderTop: isLatest ? "none" : `1px solid ${c.border}`,
       }}
     >
-      {showFileStatus && <Thumb src={ver.thumb} size={36} plateGrid />}
+      {showFileStatus && <Thumb src={ver.thumb} size={36} plateGrid zoom />}
       <div>{isBundleRow && <VersionStar bundle={bundle} ver={ver} />}</div>
       <div style={monoText(13, isLatest ? c.heading : c.textPrimary)}>
         v{ver.v}
