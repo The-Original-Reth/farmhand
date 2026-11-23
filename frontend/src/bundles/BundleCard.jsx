@@ -9,6 +9,11 @@ import { GcodeRow } from "./GcodeRow.jsx";
 import { VersionRow } from "./VersionRow.jsx";
 import { VersionsToggle } from "./versions.jsx";
 import { plural } from "../lib/format.js";
+import { useElementWidth } from "../hooks/useElementWidth.js";
+
+// A version row's columns need about this much room; a card narrower than it (a narrow window, or a phone) lays each
+// row out as wrapping lines instead, so the note isn't squeezed into a sliver
+const ROW_COLUMNS_WIDTH = 900;
 
 // One 3MF file as a card: a heading (`title` on the left, which also shows/hides the older versions when clicked; the
 // version count, that toggle, New version and Delete on the right), its newest version, the older ones when shown,
@@ -20,8 +25,11 @@ export function BundleCard({ bundle: b, versions: vlist, title, grow = false, ex
   const rest = vlist.slice(1);
   const isExpanded = expansion.isExpanded(b.id, vlist.length);
   const isSelected = vlist.some((v) => compareSelection.includes(v.id)); // any of its versions picked
+  const [cardRef, cardWidth] = useElementWidth();
+  const compact = cardWidth > 0 && cardWidth < ROW_COLUMNS_WIDTH;
   return (
     <div
+      ref={cardRef}
       data-testid="bundle-card"
       data-bundle-id={b.id}
       style={{
@@ -59,14 +67,14 @@ export function BundleCard({ bundle: b, versions: vlist, title, grow = false, ex
           <DeleteBundleButton bundle={b} />
         </div>
       </div>
-      {latest && <VersionRow ver={latest} isLatest showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />}
-      {latest?.gcodeName && <GcodeRow ver={latest} bundle={b} />}
+      {latest && <VersionRow ver={latest} isLatest showFileStatus bundle={b} compact={compact} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />}
+      {latest?.gcodeName && <GcodeRow ver={latest} bundle={b} compact={compact} />}
       <div id={`versions-${b.id}`}>
         {isExpanded &&
           rest.map((v) => (
             <Fragment key={v.v}>
-              <VersionRow ver={v} showFileStatus bundle={b} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />
-              {v.gcodeName && <GcodeRow ver={v} bundle={b} />}
+              <VersionRow ver={v} showFileStatus bundle={b} compact={compact} compareSelection={compareSelection} onToggleCompare={onToggleCompare} />
+              {v.gcodeName && <GcodeRow ver={v} bundle={b} compact={compact} />}
             </Fragment>
           ))}
       </div>

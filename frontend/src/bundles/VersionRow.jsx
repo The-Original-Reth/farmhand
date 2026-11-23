@@ -14,12 +14,14 @@ import { ConfirmDialog, DeleteWarning, Modal } from "../components/common/dialog
 import { Badge, DownloadButton, Thumb, TrashButton } from "../components/common/ui.jsx";
 import { AddToProjectButton } from "../projects/AddToProject.jsx";
 
-export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compareSelection = [], onToggleCompare }) {
+// compact: the 3MF card it is in is too narrow for its columns, so it wraps as it does on a phone
+export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compact = false, compareSelection = [], onToggleCompare }) {
   const { refresh, printers } = useData();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const subPrinter = showFileStatus && bundle ? subPrinterName(printers, bundle, ver) : null;
   const [deleteOpen, setDeleteOpen] = useState(false);
   const phone = usePhone();
+  const wrap = phone || compact;
 
   const isBundleRow = showFileStatus && !!bundle; // a 3MF version
   const isModelRow = !showFileStatus && !!model; // an STL/OBJ/STEP version
@@ -30,8 +32,9 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
       data-testid="version-row"
       data-version={ver.v}
       style={{
-        // on a phone, a wrapping line instead of columns: the picture, star, version and date, then the note, then the rest
-        ...(phone
+        // on a phone (or a narrow card), a wrapping line instead of columns: the picture, star, version and date, then the
+        // note, then the rest
+        ...(wrap
           ? { display: "flex", flexWrap: "wrap", columnGap: 10, rowGap: 6 }
           : {
               display: "grid",
@@ -51,7 +54,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
         v{ver.v}
       </div>
       <div style={monoText(12, c.textMuted)}>{ver.date}</div>
-      <div style={{ minWidth: 0, ...(phone && { flexBasis: "100%" }) }}>
+      <div style={{ minWidth: 0, ...(wrap && { flexBasis: "100%" }) }}>
         <div style={uiText(13, ver.note ? c.textMuted : c.textFaint)}>
           {ver.note || "—"}
         </div>
@@ -72,7 +75,7 @@ export function VersionRow({ ver, isLatest, showFileStatus, bundle, model, compa
           )}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, ...(phone && { marginLeft: "auto" }) }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, ...(wrap && { marginLeft: "auto" }) }}>
         {isBundleRow && (
           <button
             onClick={(e) => {

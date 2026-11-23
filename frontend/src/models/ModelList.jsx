@@ -8,7 +8,7 @@ import { Upload3mfForm } from "../bundles/Upload3mfForm.jsx";
 import { UploadGcodeForm } from "../bundles/UploadGcodeForm.jsx";
 import { Modal } from "../components/common/dialogs.jsx";
 import { SearchBox } from "../components/common/fields.jsx";
-import { useMediaQuery } from "../hooks/useMediaQuery.js";
+import { useElementWidth } from "../hooks/useElementWidth.js";
 import { matchModel, searchWords } from "../lib/search.jsx";
 import { ModelListRow } from "./ModelListRow.jsx";
 import { RedrawPreviewsDialog } from "./RedrawPreviewsDialog.jsx";
@@ -59,9 +59,14 @@ function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleL
   );
 }
 
+// The list is two columns when it is at least this wide (each row then has the room for its name beside its badges),
+// else one; a row narrower than STACKED_ROW_WIDTH (a phone) puts its badges on a line under the name.
+const TWO_COLUMNS_WIDTH = 960;
+const STACKED_ROW_WIDTH = 420;
+
 export function ModelList({ query, setQuery, uploadModal, setUploadModal, sort, onSortChange, setPath }) {
   const { sourceModels, bundles, bundlesForModel, searchIndex } = useData();
-  const narrow = useMediaQuery("(max-width: 760px)"); // two columns, or one on a narrow screen
+  const [listRef, listWidth] = useElementWidth(); // two columns when there is room for two rows side by side, else one
   const searchRef = useRef(null);
 
   // "/" jumps to the search box (unless you're already typing somewhere)
@@ -99,13 +104,14 @@ export function ModelList({ query, setQuery, uploadModal, setUploadModal, sort, 
   }, [rows, words, searchIndex, sort]);
 
   const searching = words.length > 0;
-  const columns = narrow ? 1 : 2;
+  const columns = listWidth >= TWO_COLUMNS_WIDTH ? 2 : 1;
+  const rowWidth = listWidth / columns;
   const lastRow = Math.floor((sorted.length - 1) / columns);
   const chooseSort = onSortChange; // kept with the other settings, so every browser shows the same order
   const control = fieldBox();
 
   return (
-    <div>
+    <div ref={listRef}>
       <SearchBox
         value={query}
         onChange={setQuery}
@@ -201,6 +207,7 @@ export function ModelList({ query, setQuery, uploadModal, setUploadModal, sort, 
               printerCount={printerCount}
               borderBottom={Math.floor(i / columns) < lastRow}
               borderRight={columns === 2 && i % 2 === 0}
+              stacked={listWidth > 0 && rowWidth < STACKED_ROW_WIDTH}
               onOpen={() => setPath([{ label: "Models" }, { modelId: m.id }])}
             />
           ))}
