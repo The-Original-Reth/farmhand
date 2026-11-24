@@ -17,12 +17,14 @@ import { MusicFolders } from "./MusicFolders.jsx";
 import { HoldingScreenPanel } from "./HoldingScreen.jsx";
 import { SaveRow, SavedLayoutsPanel, shownOf } from "./SavedLayouts.jsx";
 import { StreamsPanel } from "./StreamsPanel.jsx";
+import { ClipsPanel } from "./ClipsPanel.jsx";
 import { SchedulePanel } from "./SchedulePanel.jsx";
 import { useStoredSwitch, useStreamControlPage } from "./useStreamControl.js";
 
 // Stream control, the plugin built into Farmhand: one stream designed here, sent to YouTube and Twitch by their stream
 // plugins. Left: the stream as it will look (StreamPreview, the stream plugins' own editor: drag squares about, click
-// one to change it). Right: the stream plugins with Go live and Stop (each, or all at once), what the sites are told,
+// one to change it). Right: the stream plugins with Go live and Stop (each, or all at once), clips of a stream or a
+// camera (each stream plugin's own), what the sites are told,
 // the holding screen, the defaults, the music, saved layouts, Save, and the schedule. A camera is named as on Monitor
 // ("printer id:camera name"). Saving changes the stream as it goes out: each plugin following it picks it up.
 export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
@@ -225,6 +227,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
             {problem}
           </div>
         )}
+        <ClipsPanel streams={page.streams} />
         <WordsPanel shown={shown} change={change} />
         <HoldingScreenPanel shown={shown} change={change} media={page.media} fonts={page.fonts} saved={saved.holding} onSave={saveHolding} busy={busy} />
         <DefaultsPanel shown={shown} change={change} cameras={cameras} finding={finding && !cameras.length} count={inGrid.length} fonts={page.fonts} />

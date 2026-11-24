@@ -111,6 +111,8 @@
   ["GET", "/stream-control/pictures/{name}"],
   ["GET", "/stream-control/slideshows/{name}/pictures/{picture}"],
   ["GET", "/stream-control/streams"],
+  ["GET", "/stream-control/streams/{plugin_id}/clips"],
+  ["GET", "/stream-control/streams/{plugin_id}/clips/{name}"],
   ["PATCH", "/bundles/versions/{version_id}"],
   ["PATCH", "/plugins/{plugin_id}"],
   ["PATCH", "/printers/{printer_id}"],
@@ -183,6 +185,7 @@
   ["POST", "/stream-control/slideshows/{name}/pictures"],
   ["POST", "/stream-control/start-all"],
   ["POST", "/stream-control/stop-all"],
+  ["POST", "/stream-control/streams/{plugin_id}/clips"],
   ["POST", "/stream-control/streams/{plugin_id}/copy-layout"],
   ["POST", "/stream-control/streams/{plugin_id}/{action}"],
   ["PUT", "/bundles/versions/{version_id}/gcode"],
@@ -215,5 +218,6 @@
   ["PUT", "/stream-control/schedule"],
   ["PUT", "/stream-control/slideshows/{name}"],
   ["PUT", "/stream-control/slideshows/{name}/order"],
-  ["PUT", "/stream-control/streams"]
+  ["PUT", "/stream-control/streams"],
+  ["PUT", "/stream-control/streams/{plugin_id}/clips"]
 ]

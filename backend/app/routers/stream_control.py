@@ -7,7 +7,7 @@ Changes answer the whole page (GET /stream-control) except where said.
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,7 @@ from .. import storage
 from ..database import get_db
 from ..errors import answer_errors
 from ..services import network_shares_service, stream_control
-from ..services.stream_control import copy_layout, design, fonts, layouts, media, music_sources, schedule, streams
+from ..services.stream_control import clips, copy_layout, design, fonts, layouts, media, music_sources, schedule, streams
 from ..services.stream_control.page import page
 from .common import require_confirm, stream_picture_response, stream_track_response
 
@@ -86,6 +86,51 @@ def copy_layout_of(plugin_id: str, db: Session = Depends(get_db)):
     with answer_errors():
         done = copy_layout.copy_from(db, plugin_id)
     return {**page(db), "copied": done["copied"], "problems": done["problems"]}
+
+
+# ------------------------------------------------------------------ clips (each stream plugin's own, asked through here)
+
+
+class ClipLengthIn(BaseModel):
+    seconds: int = Field(..., ge=1, le=3600)  # (the plugin checks its own range and says so)
+
+
+class ClipIn(BaseModel):
+    source: str = Field("stream", max_length=200)  # "stream", or a camera: "printer id:camera name"
+    seconds: int | None = Field(None, ge=1, le=3600)  # (none: as set on the plugin)
+    tz: str | None = Field(None, max_length=64)  # the page's time zone, for the clip's name
+
+
+@router.get("/streams/{plugin_id}/clips")
+def stream_clips(plugin_id: str, db: Session = Depends(get_db)):
+    """A stream plugin's clips: {plugin, site, seconds, least, most, held, sources, recording, ended, folder, clips}
+    (its own GET /api/clips). **422** when it can't be asked or doesn't take clips."""
+    with answer_errors():
+        return clips.state(db, plugin_id)
+
+
+@router.put("/streams/{plugin_id}/clips")
+def set_clip_length(plugin_id: str, body: ClipLengthIn, db: Session = Depends(get_db)):
+    """How long that plugin's clips are: its clips, as GET. **422** with the plugin's own word when it won't."""
+    with answer_errors():
+        return clips.set_length(db, plugin_id, body.seconds)
+
+
+@router.post("/streams/{plugin_id}/clips", status_code=201)
+def take_clip(plugin_id: str, body: ClipIn, db: Session = Depends(get_db)):
+    """Take a clip with that plugin: the stream (the last stretch of what went to its site, saved now: `saved`) or a
+    camera (the next stretch, recorded in the background: `recording`), with `clips` as afterwards. **422** with the
+    plugin's own word when it can't (not live yet, already recording that camera, its folder away...)."""
+    with answer_errors():
+        return clips.take(db, plugin_id, body.source, body.seconds, body.tz)
+
+
+@router.get("/streams/{plugin_id}/clips/{name}")
+def download_clip(plugin_id: str, name: str, db: Session = Depends(get_db)):
+    """One of that plugin's clips, the MP4, passed on from it. **404** when it hasn't got it."""
+    with answer_errors():
+        chunks, headers = clips.download(db, plugin_id, name)
+    return StreamingResponse(chunks, media_type="video/mp4", headers=headers)
 
 
 @router.post("/streams/{plugin_id}/{action}")

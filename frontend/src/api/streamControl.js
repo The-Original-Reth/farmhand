@@ -123,6 +123,28 @@ export const controlStreamMusic = async (action) => normalizeStreams(await post(
 export const startAllStreams = async () => (await post("/stream-control/start-all")).streams.map(normalizeStreamPlugin);
 export const stopAllStreams = async () => (await post("/stream-control/stop-all")).streams.map(normalizeStreamPlugin);
 
+// Clips: each stream plugin's own (its page's clips, asked through Farmhand). { plugin, site, seconds (how long a clip
+// is), least, most, held (seconds of its stream it holds to clip), sources: [{ key: "stream" | "printer id:camera name",
+// label }], recording: [{ source, label, until (ms) }] (cameras being recorded), ended: [{ source, label, ok, text, name }],
+// folder: { path, shownAs, problem }, clips: [{ name, size, made }] (the newest first) }
+const normalizeJob = (j) => ({ source: j.source, label: j.label, until: (j.until || 0) * 1000, ok: !!j.ok, text: j.text, name: j.name });
+export const normalizeClips = (k) => ({
+  plugin: k.plugin, site: k.site, seconds: k.seconds, least: k.least, most: k.most, held: k.held, sources: k.sources,
+  recording: (k.recording || []).map(normalizeJob), ended: (k.ended || []).map(normalizeJob),
+  folder: { path: k.folder?.path || null, shownAs: k.folder?.shown_as || null, problem: k.folder?.problem || null },
+  clips: k.clips || [],
+});
+export const getStreamClips = async (id) => normalizeClips(await request(`/stream-control/streams/${enc(id)}/clips`));
+export const setStreamClipLength = async (id, seconds) =>
+  normalizeClips(await request(`/stream-control/streams/${enc(id)}/clips`, jsonBody("PUT", { seconds })));
+// Take a clip: source "stream" saves the last stretch now ({ saved: { name, seconds, size } }); a camera starts recording
+// the next stretch ({ recording }). Either way with `clips` as afterwards. Fails (422) with the plugin's own word.
+export const takeStreamClip = async (id, source, tz) => {
+  const r = await request(`/stream-control/streams/${enc(id)}/clips`, jsonBody("POST", { source, tz }));
+  return { saved: r.saved || null, recording: r.recording ? normalizeJob(r.recording) : null, clips: normalizeClips(r.clips) };
+};
+export const streamClipUrl = (id, name) => `${API_BASE}/stream-control/streams/${enc(id)}/clips/${enc(name)}`;
+
 export const saveStreamSchedule = async (schedule) => normalizePage(await request("/stream-control/schedule", jsonBody("PUT", schedule)));
 export const saveStreamLayouts = async (layouts) => normalizePage(await request("/stream-control/layouts", jsonBody("PUT", layouts))).layouts;
 
