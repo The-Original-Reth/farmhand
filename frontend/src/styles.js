@@ -23,6 +23,11 @@ export const toolButton = (size = 12, extra) => ({
   display: "flex", alignItems: "center", gap: 6, ...ui, fontSize: fs(size), background: "none", color: c.textMuted,
   border: `1px solid ${c.border}`, borderRadius: 4, padding: size === 13 ? "7px 12px" : "5px 10px", cursor: "pointer", ...extra,
 });
+// A tool button in a buttonRow: its words stay on one line (the row wraps instead)
+export const rowButton = (size = 12, extra) => toolButton(size, { whiteSpace: "nowrap", ...extra });
+// A row of tool buttons (Upload STL, Upload 3MF…) that goes onto a second line in a narrow window (a phone) rather than
+// squeezing each button's words onto two or three lines
+export const buttonRow = (extra) => ({ display: "flex", gap: 8, flexWrap: "wrap", ...extra });
 
 // A dialog's buttons: Cancel, and the amber one that does it (dimmed while it can't)
 export const cancelButton = (busy = false) => ({

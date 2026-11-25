@@ -4,7 +4,7 @@ import { API_BASE, removeProjectModel, setProjectStlCounts } from "../api.js";
 import { c } from "../theme.js";
 import { useData } from "../data.jsx";
 import { Modal } from "../components/common/dialogs.jsx";
-import { toolButton } from "../styles.js";
+import { buttonRow, rowButton } from "../styles.js";
 import { FILE_KINDS, FileCard, HaveNeed, UploadDialog } from "./ProjectFiles.jsx";
 import { EmptyBox, InModelsTag, ProjectOnlyTag, TakeOutButton } from "./pieces.jsx";
 import { inComponents } from "./stlComponents.js";
@@ -19,12 +19,12 @@ const STL = FILE_KINDS.stl;
 // The STL section's buttons: Add from Models, and Upload STL
 export function StlActions({ onAdd, onUpload }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <button data-testid="stl-add-from-models" onClick={onAdd} style={toolButton(12)}>
+    <div style={buttonRow()}>
+      <button data-testid="stl-add-from-models" onClick={onAdd} style={rowButton(12)}>
         <Plus size={12} />
         Add from Models
       </button>
-      <button data-testid="stl-upload" onClick={onUpload} style={toolButton(12)}>
+      <button data-testid="stl-upload" onClick={onUpload} style={rowButton(12)}>
         <Upload size={12} />
         Upload STL
       </button>
