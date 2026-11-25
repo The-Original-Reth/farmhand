@@ -37,10 +37,15 @@ LATE_MOST = dt.timedelta(minutes=5)  # a start or stop missed by more than this 
 KEPT_HAPPENINGS = 20
 
 
+def revision(db: Session) -> str:
+    """Names the schedule as it is now (it changes with every save), for save()'s base_revision."""
+    return app_settings.stamp(app_settings.fresh(db, SCHEDULE_KEY))
+
+
 def schedule(db: Session) -> dict:
     """{on, entries: [{days, start, stop, streams}]} as kept (anything unusable left out)."""
     try:
-        raw = json.loads(app_settings.get(db, SCHEDULE_KEY) or "{}")
+        raw = json.loads(app_settings.fresh(db, SCHEDULE_KEY) or "{}")
     except ValueError:
         raw = {}
     raw = raw if isinstance(raw, dict) else {}
@@ -81,14 +86,26 @@ def _entry(raw) -> dict:
 
 
 def save(db: Session, raw) -> dict:
-    """Keep this schedule ({on, entries}); ValueError says what's wrong with it."""
+    """Keep this schedule ({on, entries}); ValueError says what's wrong with it. With `base_revision` (revision() as the
+    page sending it read it), one saved since (another tab, another person) isn't overwritten: design.Changed (409)."""
+    from .design import Changed
+
     if not isinstance(raw, dict) or not isinstance(raw.get("entries", []), list):
         raise ValueError("The schedule didn't come through.")
     if len(raw.get("entries") or []) > MAX_ENTRIES:
         raise ValueError(f"The schedule can have up to {MAX_ENTRIES} times.")
+    base = raw.get("base_revision")
+    if base is not None and not isinstance(base, str):
+        raise ValueError("The schedule's revision didn't come through.")
     kept = {"on": raw.get("on") is True, "entries": [_entry(e) for e in raw.get("entries") or []]}
-    app_settings.put(db, SCHEDULE_KEY, json.dumps(kept))
-    db.commit()
+    was = app_settings.fresh(db, SCHEDULE_KEY)
+    if base is not None and app_settings.stamp(was) != base:
+        raise Changed("The schedule was")
+    if not app_settings.swap(db, SCHEDULE_KEY, was, json.dumps(kept)):
+        if base is not None:
+            raise Changed("The schedule was")
+        app_settings.put(db, SCHEDULE_KEY, json.dumps(kept))  # (a whole schedule, nothing of the other kept: the last wins)
+        db.commit()
     return schedule(db)
 
 

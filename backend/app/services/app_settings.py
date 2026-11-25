@@ -2,6 +2,10 @@
 folder, the appearance...). Writing doesn't commit: the caller does, with whatever else it changed."""
 from __future__ import annotations
 
+import hashlib
+
+from sqlalchemy import insert, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..models import AppSetting
@@ -10,6 +14,39 @@ from ..models import AppSetting
 def get(db: Session, key: str) -> str | None:
     row = db.get(AppSetting, key)
     return row.value if row else None
+
+
+def fresh(db: Session, key: str) -> str | None:
+    """The value as stored right now (not a copy this session read earlier), for swap()."""
+    return db.execute(select(AppSetting.value).where(AppSetting.key == key)).scalar_one_or_none()
+
+
+def swap(db: Session, key: str, was: str | None, value: str) -> bool:
+    """
+    Set the value only if it's still `was` (as fresh() read it; None: there was no row), and commit. False when someone
+    else changed it in between: nothing is written (and the session is rolled back). The database lets exactly one of
+    two writes based on the same value through, so a read-change-write can't silently lose the other one's change.
+    """
+    try:
+        if was is None:
+            db.execute(insert(AppSetting).values(key=key, value=value))
+            done = True
+        else:
+            done = db.execute(update(AppSetting).where(AppSetting.key == key, AppSetting.value == was)
+                              .values(value=value)).rowcount == 1
+    except IntegrityError:  # a row was added in between
+        done = False
+    if done:
+        db.commit()
+    else:
+        db.rollback()
+    db.expire_all()
+    return done
+
+
+def stamp(value: str | None) -> str:
+    """A short name for one exact stored value (a revision for a setting that keeps none of its own)."""
+    return hashlib.sha1((value or "").encode()).hexdigest()[:12]
 
 
 def put(db: Session, key: str, value: str | None) -> None:

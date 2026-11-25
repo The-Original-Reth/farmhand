@@ -8,11 +8,12 @@ import { box, heading, help, label12, panel } from "./streamStyles.js";
 // The schedule: times the stream plugins go live and stop on their own, on the days ticked, in the farm's time zone.
 // Each time can be for every stream or only some. Saved with its own Save (not the design's). `schedule`: { on, entries:
 // [{ days: [0 (Monday) to 6], start: "HH:MM" | null, stop, streams: "all" | [ids]}] } as saved; `streams`: the stream
-// plugins; `timeZone`: the farm's; `onSaved(page)`.
+// plugins; `timeZone`: the farm's; `onSaved(page)`; `revision`: the schedule's as the page read it (a schedule saved
+// elsewhere since isn't overwritten); `onRefused(error)`: true when it said why it wasn't saved (saved elsewhere since).
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const NEW_ENTRY = { days: [0, 1, 2, 3, 4], start: "08:00", stop: "18:00", streams: "all" };
 
-export function SchedulePanel({ schedule, streams, timeZone, onSaved }) {
+export function SchedulePanel({ schedule, revision, streams, timeZone, onSaved, onRefused }) {
   const [draft, setDraft] = useState(schedule);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -25,11 +26,11 @@ export function SchedulePanel({ schedule, streams, timeZone, onSaved }) {
     setBusy(true);
     setError(null);
     try {
-      const p = await saveStreamSchedule(draft);
+      const p = await saveStreamSchedule(draft, revision);
       onSaved(p);
       setSaid("Saved.");
     } catch (e) {
-      setError(errorText(e));
+      if (!onRefused?.(e)) setError(errorText(e));
     } finally {
       setBusy(false);
     }

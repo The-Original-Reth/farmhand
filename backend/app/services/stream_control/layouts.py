@@ -21,23 +21,57 @@ STREAM_SECONDS = {"seconds_all": (0, 3600, 30), "seconds_each": (3, 3600, 20)}  
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
-def layouts(db: Session) -> list[dict]:
-    """The saved layouts, in the order saved."""
+TRIES = 5
+
+
+def _read(db: Session) -> tuple[str | None, list[dict]]:
+    """(the row's text as stored right now, the saved layouts kept in it)."""
+    text = app_settings.fresh(db, LAYOUTS_KEY)
     try:
-        raw = json.loads(app_settings.get(db, LAYOUTS_KEY) or "[]")
+        raw = json.loads(text or "[]")
     except ValueError:
         raw = []
-    return _stream_layouts(raw)
+    return text, _stream_layouts(raw)
 
 
-def save(db: Session, raw) -> list[dict]:
-    """Keep these as the saved layouts (checked: anything that can't be a layout is left out)."""
+def layouts(db: Session) -> list[dict]:
+    """The saved layouts, in the order saved."""
+    return _read(db)[1]
+
+
+def revision(db: Session) -> str:
+    """Names the saved layouts as they are now (it changes with every save), for save()'s base_revision."""
+    return app_settings.stamp(app_settings.fresh(db, LAYOUTS_KEY))
+
+
+def save(db: Session, raw, base_revision: str | None = None) -> list[dict]:
+    """
+    Keep these as the saved layouts (checked: anything that can't be a layout is left out). `base_revision`, when given,
+    is revision() as the page sending them read it: if they've been saved since (another tab, another person),
+    nothing is saved and design.Changed says so (409), rather than putting back what that save changed.
+    """
+    from .design import Changed
+
     if not isinstance(raw, list):
         raise ValueError("The saved layouts must be a list.")
     kept = _stream_layouts(raw)
-    app_settings.put(db, LAYOUTS_KEY, json.dumps(kept))
-    db.commit()
-    return kept
+    for _ in range(TRIES):
+        was, _now = _read(db)
+        if base_revision is not None and app_settings.stamp(was) != base_revision:
+            raise Changed("The saved layouts were")
+        if app_settings.swap(db, LAYOUTS_KEY, was, json.dumps(kept)):
+            return kept
+    raise Changed("The saved layouts were")
+
+
+def change(db: Session, how) -> None:
+    """Change the saved layouts as they are now: how(layouts) answers them changed, or None to leave them. Done again
+    on what's saved if another save got there in between, so neither change is lost."""
+    for _ in range(TRIES):
+        was, now = _read(db)
+        changed = how(now)
+        if changed is None or app_settings.swap(db, LAYOUTS_KEY, was, json.dumps(_stream_layouts(changed))):
+            return
 
 
 def _camera_keys(raw) -> list[str]:

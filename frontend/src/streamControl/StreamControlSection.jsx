@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { c } from "../theme.js";
-import { uiText } from "../styles.js";
+import { headerButton, uiText } from "../styles.js";
 import {
   errorText, reconnectNas, renameSlideshow, saveStreamDesign, saveStreamLayouts, scanStreamFolder,
   chooseStreamPlugins, controlStreamMusic, copyStreamLayout, startAllStreams, startStreamPlugin, stopAllStreams, stopStreamPlugin,
@@ -21,6 +21,15 @@ import { ClipsPanel } from "./ClipsPanel.jsx";
 import { SchedulePanel } from "./SchedulePanel.jsx";
 import { useStoredSwitch, useStreamControlPage } from "./useStreamControl.js";
 
+// What Save sends when it's changed: the grid (columns, rows and squares, always together), and the rest one by one
+const GRID = ["cols", "rows", "cells"];
+const FIELDS = [
+  "showStatus", "layout", "resolution", "secondsAll", "secondsEach", "borderColor", "background", "font", "color", "music",
+  "musicVolume", "musicShuffle", "musicFrom", "delay", "holding", "title", "description",
+];
+const NUMBERS = ["secondsAll", "secondsEach", "delay"];
+const differs = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
+
 // Stream control, the plugin built into Farmhand: one stream designed here, sent to YouTube and Twitch by their stream
 // plugins. Left: the stream as it will look (StreamPreview, the stream plugins' own editor: drag squares about, click
 // one to change it). Right: the stream plugins with Go live and Stop (each, or all at once), clips of a stream or a
@@ -32,10 +41,11 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const phone = usePhone();
   const active = printers.filter((p) => !p.decommissioned);
   const { cams } = usePrinterCameras(active);
-  const { page, loadError, take, setPage } = useStreamControlPage();
+  const { page, loadError, take, setPage, reload } = useStreamControlPage();
   const [draft, setDraft] = useState(null); // the design as changed here, not saved yet (null = as saved)
   const [busy, setBusy] = useState(null); // what's being asked: "save", "picture", "start:<id>", "start-all"...
   const [problem, setProblem] = useState(null);
+  const [conflict, setConflict] = useState(null); // saved elsewhere (another tab) since this page read it: why, with Reload
   const [choosing, setChoosing] = useState(false); // Save asking: a new layout, or over one there is
   const [fromLayout, setFromLayout] = useState(null);
   // Mute: the music silent on this page only (the streams keep it). Autoplay music: this page plays the stream's music
@@ -71,6 +81,8 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   const cameras = active.flatMap((p) => (cams[p.id]?.webcams || []).map((cam) => ({ key: `${p.id}:${cam.name}` }))).map((x) => ({ ...x, label: label(x.key) }));
   const finding = active.some((p) => !cams[p.id] || cams[p.id].kept);
 
+  // a save refused because it was saved elsewhere since (409): said at the top of the panels, with Reload
+  const refused = (e) => e?.status === 409 && (setConflict(errorText(e)), true);
   // ask the server (busy as `what`): what `work` answers, or null when it couldn't (and the problem is shown)
   const run = async (what, work) => {
     setBusy(what);
@@ -78,7 +90,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
     try {
       return await work();
     } catch (e) {
-      setProblem(errorText(e));
+      if (!refused(e)) setProblem(errorText(e));
       return null;
     } finally {
       setBusy(null);
@@ -97,15 +109,15 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
     setDraft((d) => d && { ...d, cells: d.cells.map((x) => (x && !x.camera && x.slideshow === old ? { ...x, slideshow: name } : x)) });
     return p;
   };
-  // everything Save saves (a blank number box is sent as it is, for the server to say why not)
-  const sendAll = () =>
-    saveStreamDesign({
-      cols: shown.cols, rows: shown.rows, cells: shown.cells, showStatus: shown.showStatus, layout: shown.layout, resolution: shown.resolution,
-      secondsAll: shown.secondsAll === "" ? -1 : shown.secondsAll, secondsEach: shown.secondsEach === "" ? -1 : shown.secondsEach,
-      borderColor: shown.borderColor, background: shown.background, font: shown.font, color: shown.color,
-      music: shown.music, musicVolume: shown.musicVolume, musicShuffle: shown.musicShuffle, musicFrom: shown.musicFrom, delay: shown.delay === "" ? -1 : shown.delay,
-      holding: shown.holding, title: shown.title, description: shown.description,
-    });
+  // what Save saves: only what's changed here (the grid's columns, rows and squares together), with the revision this
+  // page has, so a save made elsewhere since (another tab) is refused rather than put back (a blank number box is sent
+  // as it is, for the server to say why not)
+  const sendAll = () => {
+    const sent = { baseRevision: saved.revision };
+    if (GRID.some((k) => differs(shown[k], saved[k]))) Object.assign(sent, { cols: shown.cols, rows: shown.rows, cells: shown.cells });
+    for (const k of FIELDS) if (differs(shown[k], saved[k])) sent[k] = NUMBERS.includes(k) && shown[k] === "" ? -1 : shown[k];
+    return saveStreamDesign(sent);
+  };
   const saveAll = async () => {
     const p = await ask("save", sendAll);
     if (p) setDraft(null);
@@ -113,9 +125,33 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   };
   const discard = () => (setDraft(null), setProblem(null));
   const saveLayouts = async (list) => {
-    const layouts = await saveStreamLayouts(list);
-    setPage((now) => ({ ...now, layouts }));
-    return layouts;
+    try {
+      const got = await saveStreamLayouts(list, page.layoutsRevision);
+      setPage((now) => ({ ...now, ...got }));
+      return got.layouts;
+    } catch (e) {
+      refused(e);
+      throw e;
+    }
+  };
+  // Reload, after a save was refused: the page as saved now. What's changed here and not saved yet stays changed,
+  // except what was saved elsewhere meanwhile (that shows as it was saved there: change it again if need be).
+  const reloadPage = async () => {
+    const before = saved;
+    const mine = draft;
+    const p = await run("reload", reload);
+    if (!p) return;
+    setConflict(null);
+    if (!mine) return;
+    const unit = (k) => (GRID.includes(k) ? GRID : [k]);
+    const ours = [...GRID, ...FIELDS].filter((k) => differs(mine[k], before[k]));
+    const kept = ours.filter((k) => !unit(k).some((u) => differs(p.design[u], before[u])));
+    const next = { ...p.design };
+    for (const k of kept) for (const u of unit(k)) next[u] = mine[u];
+    setDraft(kept.length ? next : null);
+    if (kept.length < ours.length) {
+      setProblem("Some of what you changed here was also changed elsewhere: it now shows as saved there. Change it again if you still want to.");
+    }
   };
   const saveWithLayout = async ({ name, list }) => {
     if (!(await saveAll())) return false;
@@ -131,7 +167,7 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
   };
   // Save just `fields`: anything else changed here and not saved yet stays so
   const savePart = async (what, fields) => {
-    const p = await ask(what, () => saveStreamDesign(fields));
+    const p = await ask(what, () => saveStreamDesign({ ...fields, baseRevision: saved.revision }));
     if (p && draft) {
       const next = { ...shown };
       for (const k of Object.keys(fields)) next[k] = p.design[k] ?? fields[k];
@@ -222,6 +258,14 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
           onCopy={copyLayout}
           media={page.media} onReconnect={() => ask("reconnect", reconnectNas)}
         />
+        {conflict && (
+          <div data-testid="stream-control-conflict" style={uiText(13, c.danger, { lineHeight: 1.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" })}>
+            <span style={{ flex: "1 1 220px" }}>{conflict}</span>
+            <button type="button" data-testid="stream-control-reload" onClick={reloadPage} disabled={!!busy} style={headerButton()}>
+              {busy === "reload" ? "Reloading…" : "Reload"}
+            </button>
+          </div>
+        )}
         {problem && (
           <div data-testid="stream-control-problem" style={uiText(13, c.danger, { lineHeight: 1.5 })}>
             {problem}
@@ -265,7 +309,10 @@ export function StreamControlSection({ onOpenPlugin, onOpenPlugins }) {
           fromLayout={fromLayout} onDiscard={discard} onChoose={() => (setChoosing(true), setProblem(null))} onCancel={() => setChoosing(false)}
           onConfirm={saveWithLayout}
         />
-        <SchedulePanel schedule={page.schedule} streams={page.streams.filter((s) => s.chosen)} timeZone={page.timeZone} onSaved={take} />
+        <SchedulePanel
+          schedule={page.schedule} revision={page.scheduleRevision} streams={page.streams.filter((s) => s.chosen)} timeZone={page.timeZone}
+          onSaved={take} onRefused={refused}
+        />
       </div>
     </div>
     </div>
