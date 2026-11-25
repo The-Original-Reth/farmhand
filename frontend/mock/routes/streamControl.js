@@ -200,6 +200,62 @@ export function streamControlRoutes(ctx) {
     }
     return { ...page(), copied, problems: [`${p.name}'s music tracks weren't copied: add them under Music on this page.`] };
   });
+  // ------------------------------------------------------------------ clips (each pretend plugin's own, as its page's /api/clips)
+  // The stream is clipped from what has gone out while live (as if it had been live five minutes); a camera "records" for
+  // the length asked and then turns up in the list. The files are stand-ins (downloadRoutes).
+  const clipCams = [{ key: "1:Bed", label: "Voron 2.4" }, { key: "2:Bed", label: "Prusa MK4" }];
+  const clipsOf = (id) => {
+    const p = one(id);
+    if (!p.enabled) throw new HttpError(422, `${p.name} is switched off. Switch it on on the Plugins page first.`);
+    const all = (state().clips ||= {});
+    const k = (all[id] ||= { seconds: 3, recording: [], ended: [], clips: [{ name: "2026-11-17 16-06-05 (4 s).mp4", size: 1650753, made: "2026-11-18T00:06:05Z" }] });
+    for (const r of k.recording.filter((r) => r.until * 1000 <= Date.now())) {
+      const name = `${clipName(r.started)} ${r.label} (${r.seconds} s).mp4`;
+      k.clips.unshift({ name, size: r.seconds * 200000, made: new Date().toISOString() });
+      k.ended.unshift({ source: r.source, label: r.label, ok: true, text: `saved “${name}”.`, name });
+    }
+    k.recording = k.recording.filter((r) => r.until * 1000 > Date.now());
+    k.clips = k.clips.slice(0, 10);
+    return { p, k };
+  };
+  const clipName = (at) => new Date(at).toISOString().slice(0, 19).replace("T", " ").replaceAll(":", "-");
+  const clipsPage = (id) => {
+    const { p, k } = clipsOf(id);
+    const site = controlOf(p).site;
+    return {
+      plugin: id, site, seconds: k.seconds, least: 1, most: 300, held: state().live[id] ? 300 : 0,
+      sources: [{ key: "stream", label: "Stream" }, ...clipCams],
+      recording: k.recording.map(({ source, label, until }) => ({ source, label, until })), ended: k.ended.slice(0, 3),
+      folder: { path: "/clips", shown_as: `${String.raw`\\192.168.10.5\farmhand`}\\${site} clips`, problem: null }, clips: k.clips,
+    };
+  };
+  on("GET", "/stream-control/streams/:id/clips", ({ id }) => (sc(), clipsPage(id)));
+  on("PUT", "/stream-control/streams/:id/clips", ({ id }, body) => {
+    sc();
+    const { k } = clipsOf(id);
+    if (!Number.isInteger(body.seconds) || body.seconds < 1 || body.seconds > 300) throw new HttpError(422, "A clip is 1 second to 5 minutes long.");
+    k.seconds = body.seconds;
+    return clipsPage(id);
+  });
+  on("POST", "/stream-control/streams/:id/clips", ({ id }, body) => {
+    sc();
+    const { p, k } = clipsOf(id);
+    const seconds = body.seconds || k.seconds;
+    const source = body.source || "stream";
+    if (source === "stream") {
+      if (!state().live[id]) throw new HttpError(422, `Nothing has gone to ${controlOf(p).site} yet: go live first.`);
+      const name = `${clipName(Date.now())} (${seconds + 1} s).mp4`;
+      k.clips.unshift({ name, size: (seconds + 1) * 400000, made: new Date().toISOString() });
+      return { saved: { name, seconds: seconds + 1, size: (seconds + 1) * 400000 }, clips: clipsPage(id) };
+    }
+    const cam = clipCams.find((x) => x.key === source);
+    if (!cam) throw new HttpError(422, "That camera isn't one Farmhand can see.");
+    if (k.recording.some((r) => r.source === source)) throw new HttpError(422, `${cam.label} is being recorded already.`);
+    const job = { source, label: cam.label, seconds, started: Date.now(), until: Date.now() / 1000 + seconds };
+    k.recording.push(job);
+    return { recording: { source, label: cam.label, until: job.until }, clips: clipsPage(id) };
+  });
+  ctx.downloadRoutes.push([/^\/stream-control\/streams\/([^/]+)\/clips\/([^/]+)$/, (x) => (sc(), [decodeURIComponent(x[2])])]);
   on("POST", "/stream-control/streams/:id/:action", ({ id, action }) => {
     sc();
     if (!["start", "stop"].includes(action)) throw new HttpError(404, "Not Found");

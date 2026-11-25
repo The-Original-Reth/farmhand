@@ -474,6 +474,14 @@ runs:
 Stream control lists every added plugin with `stream_control`, asks each switched-on one every few seconds, and calls
 start and stop from its **Go live** and **Stop** buttons, **Go live everywhere**, **Stop all** and its schedule.
 
+**Clips (optional).** Stream control's **Clips** panel takes clips with a stream plugin brought into it through that
+plugin's own page API at `/api/clips` (as the YouTube and Twitch plugins have it): `GET` (`{seconds, least, most, held,
+sources: [{key, label}], recording, ended, folder: {path, shown_as, problem}, clips: [{name, size, made}]}`), `PUT
+{seconds}` (how long a clip is), `POST {source: "stream" | "printer id:camera name", seconds?, tz?}` (the stream's last
+stretch saved now, answering `{name, seconds, size}`; a camera's next stretch recorded in the background, answering
+`{recording: {source, label, until}}`) and `GET /api/clips/{name}` (the MP4). Refusals are 4xx with `{"detail": "why,
+in plain words"}`, shown as they are. A plugin without `/api/clips` (404) is shown as one that doesn't take clips.
+
 ## Keeping a copy of your settings (`stream:backup`)
 
 A plugin whose own settings would be hard to set up again (a stream plugin's layouts, stream key and sign-in) can keep
