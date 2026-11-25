@@ -10,7 +10,7 @@ import { UploadGcodeForm } from "../bundles/UploadGcodeForm.jsx";
 import { Modal } from "../components/common/dialogs.jsx";
 import { FieldSelect } from "../components/common/fields.jsx";
 import { DownloadButton } from "../components/common/ui.jsx";
-import { toolButton, uiText } from "../styles.js";
+import { buttonRow, rowButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, UploadDialog } from "./ProjectFiles.jsx";
 import { Card, CardTitle, EmptyBox, HeadingButton, InModelsTag, OlderToggle, PickDialog, TakeOutButton, VersionLine } from "./pieces.jsx";
 import { plural } from "../lib/format.js";
@@ -20,12 +20,12 @@ const THREEMF = FILE_KINDS.threemf;
 // The 3MF section's buttons: Add existing 3MF, and Upload 3MF
 export function ThreemfActions({ onAdd, onUpload }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <button data-testid="threemf-add-existing" onClick={onAdd} style={toolButton(12)}>
+    <div style={buttonRow()}>
+      <button data-testid="threemf-add-existing" onClick={onAdd} style={rowButton(12)}>
         <Plus size={12} />
         Add existing 3MF
       </button>
-      <button data-testid="threemf-upload" onClick={onUpload} style={toolButton(12)}>
+      <button data-testid="threemf-upload" onClick={onUpload} style={rowButton(12)}>
         <Upload size={12} />
         Upload 3MF
       </button>

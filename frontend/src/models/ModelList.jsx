@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { ArrowDown, ArrowUp, Search, Upload } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
-import { fieldBox, linkButton, toolButton, uiText } from "../styles.js";
+import { buttonRow, fieldBox, linkButton, rowButton, uiText } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { Upload3mfForm } from "../bundles/Upload3mfForm.jsx";
@@ -20,12 +20,12 @@ import { MODEL_SORTS, sortModelRows } from "./modelSort.js";
 // and the open dialog are kept by ModelsSection, so they're still there after opening a model and coming back.
 function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleLabel = "Upload 3MF" }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={buttonRow()}>
       {onScan && (
         <button
           onClick={onScan}
           title="Look through the STL folder for files that were added from outside Farmhand"
-          style={toolButton(13)}
+          style={rowButton(13)}
         >
           <Search size={13} />
           Scan STL folder
@@ -33,14 +33,14 @@ function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleL
       )}
       <button
         onClick={onUploadStl}
-        style={toolButton(13)}
+        style={rowButton(13)}
       >
         <Upload size={13} />
         Upload STL
       </button>
       <button
         onClick={onUploadBundle}
-        style={toolButton(13)}
+        style={rowButton(13)}
       >
         <Upload size={13} />
         {bundleLabel}
@@ -50,7 +50,7 @@ function UploadBar({ onUploadStl, onUploadBundle, onUploadGcode, onScan, bundleL
         onClick={onUploadGcode}
         disabled={!onUploadGcode}
         title={onUploadGcode ? "Upload a G-code sliced from one of the 3MF files" : "Upload a 3MF first: a G-code goes with one"}
-        style={toolButton(13, onUploadGcode ? undefined : { opacity: 0.55, cursor: "default" })}
+        style={rowButton(13, onUploadGcode ? undefined : { opacity: 0.55, cursor: "default" })}
       >
         <Upload size={13} />
         Upload G-code

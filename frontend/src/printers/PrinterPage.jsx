@@ -278,7 +278,7 @@ export function PrinterPage({ printerId, compareSelection, toggleCompareSelect, 
 
       <PrinterLive printer={printer} sections={sections} refreshPrinters={refreshPrinters}>
         <div data-testid="threemf-group">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sections.isOpen("threemf") ? 10 : 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", columnGap: 12, flexWrap: "wrap", marginBottom: sections.isOpen("threemf") ? 10 : 0 }}>
             <SectionToggle open={sections.isOpen("threemf")} onToggle={() => sections.toggle("threemf")} controlsId="threemf-body" testId="toggle-threemf">
               3MF files on {printer.name}
               <span style={{ color: c.textFaint }}>({allBundles.length})</span>

@@ -9,7 +9,7 @@ import { nameCollator } from "../lib/order.js";
 import { ConfirmDialog, DeleteWarning, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { TextField } from "../components/common/fields.jsx";
 import { Row, SectionToggle, TrashButton } from "../components/common/ui.jsx";
-import { panelBox, toolButton, uiText } from "../styles.js";
+import { panelBox, rowButton, toolButton, uiText } from "../styles.js";
 import { FILE_KINDS, FileCard, UploadDialog } from "./ProjectFiles.jsx";
 import { ScanProjectsDialog } from "./ScanProjects.jsx";
 import { StlActions, StlFiles } from "./StlSection.jsx";
@@ -131,13 +131,13 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
   // each section's buttons (shown while it's open) and what's in it
   const actions = {
     doc: (
-      <button data-testid="doc-upload" onClick={() => setDialog("doc-upload")} style={toolButton(12)}>
+      <button data-testid="doc-upload" onClick={() => setDialog("doc-upload")} style={rowButton(12)}>
         <Upload size={12} />
         Upload document
       </button>
     ),
     cad: (
-      <button data-testid="cad-upload" onClick={() => setDialog("cad-upload")} style={toolButton(12)}>
+      <button data-testid="cad-upload" onClick={() => setDialog("cad-upload")} style={rowButton(12)}>
         <Upload size={12} />
         Upload CAD
       </button>
@@ -195,7 +195,7 @@ function ProjectPage({ projectId, onDeleted, onOpenModel, onOpenPrinter }) {
         const bodyId = `project-section-${key}`;
         return (
           <div key={key} data-testid={`project-section-${key}`}>
-            <div style={{ minHeight: 26, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: open ? 6 : 0 }}>
+            <div style={{ minHeight: 26, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, rowGap: 6, flexWrap: "wrap", marginBottom: open ? 6 : 0 }}>
               <SectionToggle open={open} onToggle={() => sections.toggle(key)} controlsId={bodyId} testId={`project-toggle-${key}`}>
                 <Icon size={14} />
                 <span style={{ fontWeight: 700 }}>{label}</span>

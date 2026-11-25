@@ -7,7 +7,7 @@ import { useAction } from "../hooks/useAction.js";
 import { ConfirmDialog, Modal, ModalActions } from "../components/common/dialogs.jsx";
 import { Dropzone, TextField } from "../components/common/fields.jsx";
 import { TrashButton } from "../components/common/ui.jsx";
-import { panelBox, toolButton, uiText } from "../styles.js";
+import { buttonRow, panelBox, rowButton, toolButton, uiText } from "../styles.js";
 import { HaveNeed, HaveNeedLabel } from "./ProjectFiles.jsx";
 import { plural } from "../lib/format.js";
 import { downloadBlob } from "../lib/download.js";
@@ -23,21 +23,21 @@ function downloadTemplate() {
 // The BOM section's buttons, beside its heading: BOM Template (a CSV to fill in), Upload BOM, and Add part
 export function BomActions({ project, onUpload, onAdd }) {
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div style={buttonRow()}>
       <button
         data-testid="bom-template"
         onClick={downloadTemplate}
         title="Download a CSV to fill in (Part, Need, Have, Link, Notes), then Upload BOM"
-        style={toolButton(12)}
+        style={rowButton(12)}
       >
         <Download size={12} />
         BOM Template
       </button>
-      <button data-testid="bom-upload" onClick={onUpload} style={toolButton(12)}>
+      <button data-testid="bom-upload" onClick={onUpload} style={rowButton(12)}>
         <Upload size={12} />
         Upload BOM
       </button>
-      <button data-testid="part-add" onClick={onAdd} style={toolButton(12)}>
+      <button data-testid="part-add" onClick={onAdd} style={rowButton(12)}>
         <Plus size={12} />
         Add part
       </button>

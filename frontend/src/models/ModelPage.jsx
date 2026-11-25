@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, Lock, Printer, Upload } from "lucide-react";
 import { c, fs, mono, ui, fixed } from "../theme.js";
-import { monoText, toolButton, uiText } from "../styles.js";
+import { buttonRow, monoText, rowButton, toolButton, uiText } from "../styles.js";
 import { renameBundle, renameModel } from "../api.js";
 import { useData } from "../data.jsx";
 
@@ -55,15 +55,15 @@ export function ModelPage({ modelId, setPath, uploadModal, setUploadModal, expan
             <AddModelFileForm model={model} isNewVersion onClose={() => setNewVersionOpen(false)} />
           </Modal>
         )}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", columnGap: 12, flexWrap: "wrap", marginBottom: 10 }}>
           <SectionLabel>Model file</SectionLabel>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={buttonRow()}>
             {hasFile && (
               <button
                 data-testid="stl-new-version"
                 onClick={() => setNewVersionOpen(true)}
                 title="Upload a newer version of this model file"
-                style={toolButton(12, { marginBottom: 10 })}
+                style={rowButton(12, { marginBottom: 10 })}
               >
                 <Upload size={12} />
                 New version
@@ -79,15 +79,18 @@ export function ModelPage({ modelId, setPath, uploadModal, setUploadModal, expan
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              flexWrap: "wrap", // in a narrow window (a phone) the version count goes under the name rather than off the edge
+              columnGap: 12,
+              rowGap: 8,
               padding: "12px 16px",
               background: c.panelAlt,
               cursor: sourceRest.length > 0 ? "pointer" : "default",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
               <Thumb src={model.thumb} size={64} background={fixed.preview} placeholderIcon />
-              <div>
-                <div style={uiText(14, c.heading)}>
+              <div style={{ minWidth: 0 }}>
+                <div style={uiText(14, c.heading, { overflowWrap: "anywhere" })}>
                   <EditableName value={model.name} label="this model file" extension={{ STL: ".stl", OBJ: ".obj", STEP: ".step" }[model.type] || ".stl"} testId="model-name" textStyle={{ ...ui, fontSize: fs(14) }} onSave={async (name) => putModel(await renameModel(model.id, name))} />
                 </div>
                 <div style={{ marginTop: 5 }}>
@@ -95,8 +98,8 @@ export function ModelPage({ modelId, setPath, uploadModal, setUploadModal, expan
                 </div>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={uiText(12, c.textFaint)}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+              <span style={uiText(12, c.textFaint, { whiteSpace: "nowrap" })}>
                 {plural(sourceList.length, "version")}
               </span>
               {sourceRest.length > 0 && (
@@ -134,13 +137,13 @@ export function ModelPage({ modelId, setPath, uploadModal, setUploadModal, expan
       <NotesSection key={model.id} kind="model" owner={model} />
 
       <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", columnGap: 12, flexWrap: "wrap", marginBottom: 10 }}>
           <SectionLabel>3MF files by printer</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={buttonRow({ alignItems: "center", rowGap: 0 })}>
             <VersionsToggleAll bundleList={modelBundles} expansion={expansion} />
             <button
               onClick={() => setUploadModal("3mf")}
-              style={toolButton(12, { marginBottom: 10 })}
+              style={rowButton(12, { marginBottom: 10 })}
             >
               <Upload size={12} />
               Upload 3MF
@@ -150,7 +153,7 @@ export function ModelPage({ modelId, setPath, uploadModal, setUploadModal, expan
               onClick={() => setUploadModal("gcode")}
               disabled={modelBundles.length === 0}
               title={modelBundles.length ? "Upload a G-code sliced from one of these 3MF files" : "Upload a 3MF first: a G-code goes with one"}
-              style={toolButton(12, { marginBottom: 10, ...(modelBundles.length ? {} : { opacity: 0.55, cursor: "default" }) })}
+              style={rowButton(12, { marginBottom: 10, ...(modelBundles.length ? {} : { opacity: 0.55, cursor: "default" }) })}
             >
               <Upload size={12} />
               Upload G-code

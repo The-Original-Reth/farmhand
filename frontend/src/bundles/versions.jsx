@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { c, fs, ui } from "../theme.js";
-import { toolButton } from "../styles.js";
+import { rowButton } from "../styles.js";
 import { useData } from "../data.jsx";
 
 import { readStoredObject, writeStored } from "../lib/storage.js";
@@ -69,7 +69,7 @@ export function VersionsToggleAll({ bundleList, expansion }) {
     <button
       data-testid="versions-toggle-all"
       onClick={() => expansion.setMany(withOlder.map((b) => b.id), !anyOpen)}
-      style={toolButton(12, { marginBottom: 10 })}
+      style={rowButton(12, { marginBottom: 10 })}
     >
       <ChevronRight size={12} style={{ transform: anyOpen ? "rotate(90deg)" : "none" }} />
       {anyOpen ? "Collapse all versions" : "Expand all versions"}
