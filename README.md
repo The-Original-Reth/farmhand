@@ -791,11 +791,13 @@ Its page is the stream plugins' own editor, moved into Farmhand:
   own settings window), the links its own page has (YouTube: Watch, and Chat and analytics in YouTube Studio; Twitch:
   Watch, Chat, Stream Manager, Analytics), how many are watching (YouTube), and while it's live which cameras are live
   or down.
-- **Clips**: as on the YouTube and Twitch plugins' own pages. Choose the **Stream** (one brought in) and what to
-  **Clip**: **Stream** saves the last stretch of what went to its site at once (go live first), or a printer's camera
-  records the next stretch from it in the background (the panel counts it down and says how it ended). Type the
-  length, 1 second to 5 minutes (the plugin keeps it). Each stream plugin keeps its own clips, as MP4s in its own clips
-  folder (YouTube's "YouTube clips" in its save location); the newest are listed to download.
+- **Clips**: as on the YouTube and Twitch plugins' own pages, of the one stream designed here. Choose what to
+  **Clip**: **Stream** saves the last stretch of what went out at once (go live first), or a printer's camera records
+  the next stretch from it in the background (the panel counts it down and says how it ended). Type the length,
+  1 second to 5 minutes. Every stream sends the same picture, so Farmhand has one stream plugin take the clip: a live
+  one (the one holding the most footage), else the first one brought in. A line says which, and its clips folder
+  (YouTube's "YouTube clips" in its save location); that plugin keeps the clip and the length, and its newest clips
+  are listed to download.
 - **Schedule**: times on the days chosen when all the streams, or only some, go live and stop by themselves, in the
   farm's time zone (a stop earlier than its start is the next morning's). Farmhand has to be running then: a time it
   misses isn't done late.

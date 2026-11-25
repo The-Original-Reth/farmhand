@@ -4,12 +4,18 @@ import { primaryButton, uiText } from "../styles.js";
 import { errorText, getStreamClips, setStreamClipLength, streamClipUrl, takeStreamClip, timeZone } from "../api.js";
 import { box, heading, help, label12, panel } from "./streamStyles.js";
 
-// Clips, as on the stream plugins' own pages: each stream plugin keeps its own, saved as MP4s in its clips folder.
-// Stream: which one (YouTube, Twitch...: those brought in and switched on). Clip: what of it, the stream (the last
-// stretch of what went to its site, saved at once) or any camera Farmhand can see (the next stretch from it, recorded by
-// the plugin in the background: the panel says while it is, and how it ended). The length (1 s to 5 min) is the
-// plugin's, typed here. `streams`: as getStreamPlugins gives them.
+// Clips of Stream control's stream: every stream brought in sends the same picture, so the clip is taken by one of their
+// plugins, chosen here (clipper): a live one first (the one holding the most of its delay, so the most footage), else
+// the first one brought in. A small line says which, and where it keeps them (each plugin saves MP4s in its own clips
+// folder). Clip: the stream (the last stretch of what went out, saved at once) or any camera Farmhand can see (the next
+// stretch from it, recorded by that plugin in the background: the panel says while it is, and how it ended). The length
+// (1 s to 5 min) is that plugin's, typed here. `streams`: as getStreamPlugins gives them.
 const STREAM = "stream";
+const clipper = (streams) => {
+  const usable = streams.filter((s) => s.enabled && s.chosen);
+  const live = usable.filter((s) => s.live).sort((a, b) => (b.buffer?.held ?? 0) - (a.buffer?.held ?? 0));
+  return live[0] || usable[0] || null;
+};
 const size = (bytes) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} kB`);
 const length = (s) => (s < 60 ? `${s} s` : s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`);
 // "45", "90 s", "2:30", "3 min" -> seconds; null when it isn't a length
@@ -24,8 +30,7 @@ const parseLength = (text) => {
 };
 
 export function ClipsPanel({ streams }) {
-  const usable = streams.filter((s) => s.enabled && s.chosen);
-  const [plugin, setPlugin] = useState(null);
+  const by = clipper(streams);
   const [source, setSource] = useState(STREAM);
   const [clips, setClips] = useState(null);
   const [problem, setProblem] = useState(null); // the plugin couldn't be asked
@@ -33,7 +38,7 @@ export function ClipsPanel({ streams }) {
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState(null); // the length as being typed (null: as the plugin has it)
   const [, tick] = useState(0); // (a recording's seconds left count down)
-  const id = usable.some((s) => s.id === plugin) ? plugin : usable[0]?.id || null;
+  const id = by?.id || null;
 
   const load = (which = id) =>
     which &&
@@ -47,7 +52,7 @@ export function ClipsPanel({ streams }) {
         setProblem(errorText(e));
       });
   const recordingNow = (clips?.recording || []).length > 0;
-  const liveNow = !!usable.find((s) => s.id === id)?.live; // (asked again as it goes live or stops: what it holds changes)
+  const liveNow = !!by?.live; // (asked again as it goes live or stops: what it holds changes)
   useEffect(() => {
     if (!id) return undefined;
     load(id);
@@ -59,17 +64,8 @@ export function ClipsPanel({ streams }) {
     };
   }, [id, recordingNow, liveNow]);
 
-  const pick = (next) => {
-    setPlugin(next);
-    setClips(null);
-    setProblem(null);
-    setSaid(null);
-    setSource(STREAM);
-    setTyped(null);
-  };
-
   const here = clips && clips.plugin === id ? clips : null;
-  const site = usable.find((s) => s.id === id)?.site || "";
+  const site = by?.site || "";
   const where = here ? here.folder.shownAs || here.folder.path : "";
   const folderProblem = here?.folder.problem || null;
   const chosen = here ? here.sources.find((s) => s.key === source) || here.sources[0] : null;
@@ -112,23 +108,18 @@ export function ClipsPanel({ streams }) {
   return (
     <div data-testid="stream-control-clips" style={panel()}>
       <div style={heading}>Clips</div>
-      {!usable.length ? (
+      {!by ? (
         <div style={help}>Bring a stream in under Streams to take clips of it.</div>
       ) : (
         <>
           <div style={help}>
-            Save a clip as a video file: the last stretch of a stream as it went out, or the next stretch from any camera. Each
-            stream keeps its own clips{where ? <>, in <span style={{ color: c.textPrimary }}>{where}</span></> : ""}.
+            Save a clip as a video file: the last stretch of the stream as it went out, or the next stretch from any camera.
+          </div>
+          <div data-testid="stream-control-clip-by" style={uiText(12, c.textFaint, { lineHeight: 1.5 })}>
+            Saved by the {site} plugin{where ? <>, in <span style={{ color: c.textPrimary }}>{where}</span></> : ""}
+            {by.live ? "" : " (no stream is live)"}.
           </div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            <label style={label12}>
-              Stream
-              <select data-testid="stream-control-clip-stream" value={id || ""} onChange={(e) => pick(e.target.value)} style={{ ...box(), maxWidth: 200 }}>
-                {usable.map((s) => (
-                  <option key={s.id} value={s.id}>{s.site}</option>
-                ))}
-              </select>
-            </label>
             {here && (
               <label style={label12}>
                 Clip
