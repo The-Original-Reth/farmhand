@@ -1,21 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { c } from "../theme.js";
 import { primaryButton, uiText } from "../styles.js";
 import { errorText, getStreamClips, setStreamClipLength, streamClipUrl, takeStreamClip, timeZone } from "../api.js";
 import { box, heading, help, label12, panel } from "./streamStyles.js";
 
 // Clips of Stream control's stream: every stream brought in sends the same picture, so the clip is taken by one of their
-// plugins, chosen here (clipper): a live one first (the one holding the most of its delay, so the most footage), else
-// the first one brought in. A small line says which, and where it keeps them (each plugin saves MP4s in its own clips
+// plugins, chosen here (clipper): one that takes clips first (not one from before Stream control, nor one that said it
+// doesn't); of those, a live one (the one holding the most of its delay, so the most footage), else the first one
+// brought in. Once chosen it stays chosen while it's still live (or none is), so it doesn't flip while their delays fill. A small line says which, and where it keeps them (each plugin saves MP4s in its own clips
 // folder). Clip: the stream (the last stretch of what went out, saved at once) or any camera Farmhand can see (the next
 // stretch from it, recorded by that plugin in the background: the panel says while it is, and how it ended). The length
 // (1 s to 5 min) is that plugin's, typed here. `streams`: as getStreamPlugins gives them.
 const STREAM = "stream";
-const clipper = (streams) => {
+const clipper = (streams, before, noClips) => {
   const usable = streams.filter((s) => s.enabled && s.chosen);
-  const live = usable.filter((s) => s.live).sort((a, b) => (b.buffer?.held ?? 0) - (a.buffer?.held ?? 0));
-  return live[0] || usable[0] || null;
+  const takes = usable.filter((s) => !s.needsUpdate && !noClips.includes(s.id));
+  const pool = takes.length ? takes : usable;
+  const live = pool.filter((s) => s.live);
+  const kept = pool.find((s) => s.id === before);
+  if (kept && (kept.live || !live.length)) return kept;
+  return [...live].sort((a, b) => (b.buffer?.held ?? 0) - (a.buffer?.held ?? 0))[0] || pool[0] || null;
 };
+// (the words Farmhand answers with for a stream plugin that doesn't take clips)
+const NO_CLIPS = "doesn't take clips";
 const size = (bytes) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} kB`);
 const length = (s) => (s < 60 ? `${s} s` : s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`);
 // "45", "90 s", "2:30", "3 min" -> seconds; null when it isn't a length
@@ -30,7 +37,11 @@ const parseLength = (text) => {
 };
 
 export function ClipsPanel({ streams }) {
-  const by = clipper(streams);
+  const [noClips, setNoClips] = useState([]); // the plugins that said they don't take clips
+  const before = useRef(null);
+  const by = clipper(streams, before.current, noClips);
+  before.current = by?.id || null;
+  const asking = useRef(null); // the plugin chosen now: an answer about another one, come late, is let go
   const [source, setSource] = useState(STREAM);
   const [clips, setClips] = useState(null);
   const [problem, setProblem] = useState(null); // the plugin couldn't be asked
@@ -39,15 +50,21 @@ export function ClipsPanel({ streams }) {
   const [typed, setTyped] = useState(null); // the length as being typed (null: as the plugin has it)
   const [, tick] = useState(0); // (a recording's seconds left count down)
   const id = by?.id || null;
+  asking.current = id;
 
   const load = (which = id) =>
     which &&
     getStreamClips(which)
       .then((k) => {
-        if (k.plugin === which) setClips(k);
+        if (which !== asking.current) return;
+        setClips(k);
         setProblem(null);
       })
       .catch((e) => {
+        if (which !== asking.current) return;
+        if (e.status === 422 && errorText(e).includes(NO_CLIPS)) {
+          setNoClips((now) => (now.includes(which) ? now : [...now, which])); // (another one that does is chosen, if there is one)
+        }
         setClips(null);
         setProblem(errorText(e));
       });
@@ -82,23 +99,29 @@ export function ClipsPanel({ streams }) {
       setSaid({ text: `Type ${here.least} second to ${here.most / 60} minutes, e.g. 3, 45, 90 s, 2:30 or 3 min.`, tone: "bad" });
       return;
     }
+    const which = id;
     try {
-      setClips(await setStreamClipLength(id, s));
+      const got = await setStreamClipLength(which, s);
+      if (which !== asking.current) return;
+      setClips(got);
       setTyped(null);
       setSaid(null);
     } catch (e) {
-      setSaid({ text: errorText(e), tone: "bad" });
+      if (which === asking.current) setSaid({ text: errorText(e), tone: "bad" });
     }
   };
   const take = async () => {
+    const which = id;
     setBusy(true);
     setSaid(null);
     try {
-      const got = await takeStreamClip(id, chosen.key, timeZone);
-      setClips(got.clips);
+      const got = await takeStreamClip(which, chosen.key, timeZone);
+      if (which !== asking.current) return;
+      if (got.clips) setClips(got.clips);
+      else load(which); // (taken, but the plugin didn't then say its clips: asked again)
       if (got.saved) setSaid({ text: `Saved “${got.saved.name}” (${size(got.saved.size)}) in ${where}.`, tone: "good" });
     } catch (e) {
-      setSaid({ text: errorText(e), tone: "bad" });
+      if (which === asking.current) setSaid({ text: errorText(e), tone: "bad" });
     } finally {
       setBusy(false);
     }

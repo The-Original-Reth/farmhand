@@ -158,3 +158,18 @@ def test_clips_stay_out_of_the_settings_copy_and_go_with_stream_control(api, fak
     assert change_hooks._what_changed("/stream-control/streams/stream/clips") is None
     switch(api, on=False)
     assert api.get("/stream-control/streams/stream/clips").status_code == 404
+
+
+def test_a_clip_taken_is_said_to_be_taken_even_when_its_clips_then_dont_answer(api, fake, monkeypatch):
+    """The clip was saved by the plugin: a slow answer to "and your clips now?" mustn't turn that into a failure (the
+    page would take it again, twice over)."""
+    from app.services.stream_control import clips
+
+    def slow(db, plugin_id):
+        raise ValueError("YouTube: didn't answer in time.")
+
+    fake.held = 120.0
+    monkeypatch.setattr(clips, "state", slow)
+    r = api.post("/stream-control/streams/stream/clips", json={"source": "stream"})
+    assert r.status_code == 201, r.text
+    assert r.json()["saved"]["name"] == "2026-11-24 10-00-00 (4 s).mp4" and r.json()["clips"] is None

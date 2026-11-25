@@ -45,8 +45,9 @@ def stream_control_page(db: Session = Depends(get_db)):
 def save_design(body: dict = Body(...), db: Session = Depends(get_db)):
     """Save the stream's design: what's sent changes, the rest stays (see design.save). The stream plugins following
     it pick the change up themselves (its revision goes up by one). The stream folder is read again too, so a picture
-    or track replaced there by hand under its own name gets a new stamp, and the plugins copy it again."""
-    with answer_errors():
+    or track replaced there by hand under its own name gets a new stamp, and the plugins copy it again. With
+    base_revision (the design's revision as the page read it): **409** when it's been saved since, and nothing is saved."""
+    with answer_errors(codes={design.Changed: 409}):
         design.save(db, body)
     media.forget()
     return page(db)
@@ -166,17 +167,20 @@ def music_control(action: str, db: Session = Depends(get_db)):
 
 @router.put("/schedule")
 def save_schedule(body: dict = Body(...), db: Session = Depends(get_db)):
-    """{on, entries: [{days: [0 (Monday) to 6], start: "HH:MM" | null, stop: "HH:MM" | null, streams: "all" | [ids]}]}."""
-    with answer_errors():
+    """{on, entries: [{days: [0 (Monday) to 6], start: "HH:MM" | null, stop: "HH:MM" | null, streams: "all" | [ids]}],
+    base_revision (schedule_revision as the page read it: **409** when it's been saved since, and nothing is saved)}."""
+    with answer_errors(codes={design.Changed: 409}):
         schedule.save(db, body)
     return page(db, with_streams=False)
 
 
 @router.put("/layouts")
-def save_layouts(body: list = Body(...), db: Session = Depends(get_db)):
-    """The saved layouts, all of them (each named; anything that can't be one is left out)."""
-    with answer_errors():
-        layouts.save(db, body)
+def save_layouts(body: list = Body(...), base_revision: str | None = Query(None, max_length=40),
+                 db: Session = Depends(get_db)):
+    """The saved layouts, all of them (each named; anything that can't be one is left out). With ?base_revision=
+    (layouts_revision as the page read it): **409** when they've been saved since, and nothing is saved."""
+    with answer_errors(codes={design.Changed: 409}):
+        layouts.save(db, body, base_revision)
     return page(db, with_streams=False)
 
 

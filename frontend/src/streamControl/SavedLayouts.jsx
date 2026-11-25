@@ -57,7 +57,7 @@ export function SavedLayoutsPanel({ layouts, onSave, saved, switchTo, label }) {
       await onSave(layouts.filter((x) => x.name !== name));
       setSaid(`Deleted “${name}”.`);
     } catch (e) {
-      setError(e.message || String(e));
+      if (e.status !== 409) setError(e.message || String(e)); // (saved elsewhere since: said at the top, with Reload)
     } finally {
       setBusy(false);
       setRemoving(null);

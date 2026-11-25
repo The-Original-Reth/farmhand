@@ -80,7 +80,9 @@ const normalizePage = (p) => ({
   // deleted here); musicSources: [{ id, label, chosen, tracks, problem }], the folders there are to choose from
   media: { ...p.media, music: p.media.music || [], ownMusic: p.media.own_music || [], musicSources: p.media.music_sources || [], musicTracks: p.media.music_tracks || [] },
   layouts: p.layouts || [],
+  layoutsRevision: p.layouts_revision ?? null, // (sent back with a change to them: one saved elsewhere since is a 409)
   schedule: p.schedule,
+  scheduleRevision: p.schedule_revision ?? null,
   happened: normalizeHappened(p.happened),
   timeZone: p.time_zone || null,
   streams: p.streams ? p.streams.map(normalizeStreamPlugin) : null,
@@ -88,7 +90,9 @@ const normalizePage = (p) => ({
 
 export const getStreamControl = async () => normalizePage(await request("/stream-control"));
 
-// Save what's given of the design (camelCase, as normalizeDesign): anything left out stays as it was
+// Save what's given of the design (camelCase, as normalizeDesign): anything left out stays as it was. With baseRevision
+// (the design's revision as this page has it), one saved elsewhere since (another tab) isn't overwritten: it fails with
+// status 409, nothing saved.
 export const saveStreamDesign = async (s = {}) =>
   normalizePage(
     await request(
@@ -98,6 +102,7 @@ export const saveStreamDesign = async (s = {}) =>
         resolution: s.resolution, seconds_all: s.secondsAll, seconds_each: s.secondsEach, border_color: s.borderColor,
         background: s.background, font: s.font, color: s.color, music: s.music, music_volume: s.musicVolume,
         music_shuffle: s.musicShuffle, music_from: s.musicFrom, delay: s.delay, holding: s.holding, title: s.title, description: s.description,
+        base_revision: s.baseRevision,
       }),
     ),
   );
@@ -138,15 +143,25 @@ export const getStreamClips = async (id) => normalizeClips(await request(`/strea
 export const setStreamClipLength = async (id, seconds) =>
   normalizeClips(await request(`/stream-control/streams/${enc(id)}/clips`, jsonBody("PUT", { seconds })));
 // Take a clip: source "stream" saves the last stretch now ({ saved: { name, seconds, size } }); a camera starts recording
-// the next stretch ({ recording }). Either way with `clips` as afterwards. Fails (422) with the plugin's own word.
+// the next stretch ({ recording }). Either way with `clips` as afterwards (null when the plugin didn't answer that: the
+// clip was taken all the same; ask again). Fails (422) with the plugin's own word.
 export const takeStreamClip = async (id, source, tz) => {
   const r = await request(`/stream-control/streams/${enc(id)}/clips`, jsonBody("POST", { source, tz }));
-  return { saved: r.saved || null, recording: r.recording ? normalizeJob(r.recording) : null, clips: normalizeClips(r.clips) };
+  return { saved: r.saved || null, recording: r.recording ? normalizeJob(r.recording) : null, clips: r.clips ? normalizeClips(r.clips) : null };
 };
 export const streamClipUrl = (id, name) => `${API_BASE}/stream-control/streams/${enc(id)}/clips/${enc(name)}`;
 
-export const saveStreamSchedule = async (schedule) => normalizePage(await request("/stream-control/schedule", jsonBody("PUT", schedule)));
-export const saveStreamLayouts = async (layouts) => normalizePage(await request("/stream-control/layouts", jsonBody("PUT", layouts))).layouts;
+// The schedule and the saved layouts, each saved whole. With baseRevision (the page's scheduleRevision or
+// layoutsRevision), one saved elsewhere since (another tab) isn't overwritten: it fails with status 409, nothing saved.
+export const saveStreamSchedule = async (schedule, baseRevision) =>
+  normalizePage(await request("/stream-control/schedule", jsonBody("PUT", { ...schedule, base_revision: baseRevision ?? undefined })));
+// { layouts, layoutsRevision } as saved
+export const saveStreamLayouts = async (layouts, baseRevision) => {
+  const p = normalizePage(
+    await request(`/stream-control/layouts${baseRevision ? `?base_revision=${enc(baseRevision)}` : ""}`, jsonBody("PUT", layouts)),
+  );
+  return { layouts: p.layouts, layoutsRevision: p.layoutsRevision };
+};
 
 // The stream folder: single pictures in images/, each slideshow a folder in slideshows/, MP3s in music/ (PNG, JPEG,
 // WebP or SVG pictures under 10 MB; tracks under 50 MB). Files dropped into the folder by hand count too (Scan folder).

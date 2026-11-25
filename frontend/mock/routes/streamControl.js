@@ -120,8 +120,12 @@ export function streamControlRoutes(ctx) {
       music_sources: sources.map((s) => ({ ...s, chosen: musicFrom().includes(s.id) })),
     };
   };
+  // a save based on an older copy than what's saved (another tab) is refused, as the real API does (409, nothing saved)
+  const changed = (what) =>
+    new HttpError(409, `${what} changed somewhere else (another tab or another person) since this page loaded it, so nothing was saved. Reload to see what's saved now, then make your change again.`);
   const page = (withStreams = true) => ({
     design: design(), resolutions: RESOLUTIONS, fonts: FONTS, media: pageMedia(), layouts: state().layouts, schedule: state().schedule,
+    layouts_revision: `l${state().layoutsRevision || 0}`, schedule_revision: `s${state().scheduleRevision || 0}`,
     happened: state().happened, time_zone: farm.config.preferences?.time_zone ?? null,
     ...(withStreams && { streams: streamPlugins().map((p) => entry(p)) }),
   });
@@ -143,6 +147,7 @@ export function streamControlRoutes(ctx) {
     const p = (farm.plugins || []).find((x) => x.id === id);
     if (!p) throw new HttpError(404, "Plugin not found");
     if (!controlOf(p)) throw new HttpError(422, `${p.name} isn't a stream plugin Stream control can start and stop.`);
+    if (!p.enabled) throw new HttpError(422, `${p.name} is switched off. Switch it on on the Plugins page first.`);
     if (!isChosen(p.id)) throw new HttpError(422, `${p.name} isn't brought into Stream control. Tick it under Streams first.`);
     return p;
   };
@@ -159,6 +164,7 @@ export function streamControlRoutes(ctx) {
   on("GET", "/stream-control", () => (sc(), page()));
   on("PUT", "/stream-control", (_p, body) => {
     const s = sc();
+    if (body.base_revision != null && body.base_revision !== s.design.revision) throw changed("The stream's design was");
     const next = { ...s.design };
     for (const k of SAVED) if (body[k] !== undefined && body[k] !== null) next[k] = body[k];
     if (body.cameras && !body.cells) {
@@ -205,8 +211,7 @@ export function streamControlRoutes(ctx) {
   // the length asked and then turns up in the list. The files are stand-ins (downloadRoutes).
   const clipCams = [{ key: "1:Bed", label: "Voron 2.4" }, { key: "2:Bed", label: "Prusa MK4" }];
   const clipsOf = (id) => {
-    const p = one(id);
-    if (!p.enabled) throw new HttpError(422, `${p.name} is switched off. Switch it on on the Plugins page first.`);
+    const p = one(id); // (switched off, or not brought in: refused as the real API does)
     const all = (state().clips ||= {});
     const k = (all[id] ||= { seconds: 3, recording: [], ended: [], clips: [{ name: "2026-11-17 16-06-05 (4 s).mp4", size: 1650753, made: "2026-11-18T00:06:05Z" }] });
     for (const r of k.recording.filter((r) => r.until * 1000 <= Date.now())) {
@@ -219,13 +224,15 @@ export function streamControlRoutes(ctx) {
     return { p, k };
   };
   const clipName = (at) => new Date(at).toISOString().slice(0, 19).replace("T", " ").replaceAll(":", "-");
+  // a camera being recorded, or one that ended, as the real API passes them on: { source, label, until, ok, text, name }
+  const job = (r) => ({ source: r.source, label: r.label, until: r.until || 0, ok: r.ok === true, text: r.text || null, name: r.name || null });
   const clipsPage = (id) => {
     const { p, k } = clipsOf(id);
     const site = controlOf(p).site;
     return {
       plugin: id, site, seconds: k.seconds, least: 1, most: 300, held: state().live[id] ? 300 : 0,
       sources: [{ key: "stream", label: "Stream" }, ...clipCams],
-      recording: k.recording.map(({ source, label, until }) => ({ source, label, until })), ended: k.ended.slice(0, 3),
+      recording: k.recording.map(job), ended: k.ended.slice(0, 3).map(job),
       folder: { path: "/clips", shown_as: `${String.raw`\\192.168.10.5\farmhand`}\\${site} clips`, problem: null }, clips: k.clips,
     };
   };
@@ -251,9 +258,9 @@ export function streamControlRoutes(ctx) {
     const cam = clipCams.find((x) => x.key === source);
     if (!cam) throw new HttpError(422, "That camera isn't one Farmhand can see.");
     if (k.recording.some((r) => r.source === source)) throw new HttpError(422, `${cam.label} is being recorded already.`);
-    const job = { source, label: cam.label, seconds, started: Date.now(), until: Date.now() / 1000 + seconds };
-    k.recording.push(job);
-    return { recording: { source, label: cam.label, until: job.until }, clips: clipsPage(id) };
+    const recorded = { source, label: cam.label, seconds, started: Date.now(), until: Date.now() / 1000 + seconds };
+    k.recording.push(recorded);
+    return { recording: job(recorded), clips: clipsPage(id) };
   });
   ctx.downloadRoutes.push([/^\/stream-control\/streams\/([^/]+)\/clips\/([^/]+)$/, (x) => (sc(), [decodeURIComponent(x[2])])]);
   on("POST", "/stream-control/streams/:id/:action", ({ id, action }) => {
@@ -289,6 +296,7 @@ export function streamControlRoutes(ctx) {
 
   on("PUT", "/stream-control/schedule", (_p, body) => {
     const s = sc();
+    if (body.base_revision != null && body.base_revision !== `s${s.scheduleRevision || 0}`) throw changed("The schedule was");
     const entries = (body.entries || []).map((e) => {
       if (!Array.isArray(e.days) || !e.days.length) throw new HttpError(422, "Choose at least one day for each time in the schedule.");
       for (const k of ["start", "stop"]) if (e[k] && !TIME.test(e[k])) throw new HttpError(422, "The time has to be a time of day, like 08:00.");
@@ -297,12 +305,15 @@ export function streamControlRoutes(ctx) {
       return { days: [...new Set(e.days)].sort(), start: e.start || null, stop: e.stop || null, streams: e.streams };
     });
     s.schedule = { on: body.on === true, entries };
+    s.scheduleRevision = (s.scheduleRevision || 0) + 1;
     return page(false);
   });
-  on("PUT", "/stream-control/layouts", (_p, body) => {
+  on("PUT", "/stream-control/layouts", (_p, body, q) => {
     const s = sc();
     if (!Array.isArray(body)) throw new HttpError(422, "The saved layouts must be a list.");
+    if (q.get("base_revision") && q.get("base_revision") !== `l${s.layoutsRevision || 0}`) throw changed("The saved layouts were");
     s.layouts = body.filter((l) => l && typeof l.name === "string" && l.name.trim()).map((l) => ({ ...l, name: l.name.trim() }));
+    s.layoutsRevision = (s.layoutsRevision || 0) + 1;
     return page(false);
   });
 
@@ -337,8 +348,14 @@ export function streamControlRoutes(ctx) {
     const old = s.name;
     s.name = (body.name || "").trim() || old;
     const follow = (cells) => cells.forEach((c) => c && !c.camera && c.slideshow === old && (c.slideshow = s.name));
-    follow(state().design.cells);
-    state().layouts.forEach((l) => follow(l.cells));
+    if (state().design.cells.some((c) => c && !c.camera && c.slideshow === old)) {
+      follow(state().design.cells);
+      state().design = { ...state().design, revision: state().design.revision + 1, saved_at: new Date().toISOString() };
+    }
+    if (state().layouts.some((l) => l.cells.some((c) => c && !c.camera && c.slideshow === old))) {
+      state().layouts.forEach((l) => follow(l.cells));
+      state().layoutsRevision = (state().layoutsRevision || 0) + 1;
+    }
     return page(false);
   });
   on("DELETE", "/stream-control/slideshows/:name", ({ name }, _b, q) => {
