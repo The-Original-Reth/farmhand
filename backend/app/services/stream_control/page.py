@@ -10,7 +10,7 @@ from . import design, fonts, layouts, media, music_sources, schedule, streams
 def page(db: Session, with_streams: bool = True) -> dict:
     """
     {design (design.settings), resolutions, fonts, media (media.media: the stream folder's pictures, slideshows and
-    music), layouts (the saved ones), schedule ({on, entries}), happened (what the schedule did lately), time_zone (the
+    music), layouts (the saved ones), layouts_revision, schedule ({on, entries}), schedule_revision, happened (what the schedule did lately), time_zone (the
     farm's, which the schedule's times are in), streams (each stream plugin and how it's doing; left out when not asked,
     so a change to the stream folder doesn't wait on the plugins)}.
     """
@@ -25,7 +25,9 @@ def page(db: Session, with_streams: bool = True) -> dict:
         "media": {**found, "music": [t["name"] for t in playing], "own_music": found["music"], "music_tracks": playing,
                   "music_sources": music_sources.sources(db)},
         "layouts": layouts.layouts(db),
+        "layouts_revision": layouts.revision(db),  # (sent back with a change, so one saved since isn't overwritten)
         "schedule": schedule.schedule(db),
+        "schedule_revision": schedule.revision(db),
         "happened": schedule.happened(),
         "time_zone": farm_settings.get_config(db)["preferences"].get("time_zone"),
     }

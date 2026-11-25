@@ -33,12 +33,30 @@ MUSIC_FROM_MAX = 10
 COLOURS = {"border_color": "the border's colour", "color": "the colour of the stream's words", "background": "the stream's background colour"}
 
 
-def _saved(db: Session) -> dict:
+TRIES = 5  # a save that keeps meeting another one in between gives up after this many goes
+
+
+class Changed(Exception):
+    """Saved from somewhere else (another tab, another person) since the page sending a change read it: nothing was
+    overwritten (409)."""
+
+    def __init__(self, what: str = "The stream's design was"):
+        super().__init__(f"{what} changed somewhere else (another tab or another person) since this page loaded it, "
+                         "so nothing was saved. Reload to see what's saved now, then make your change again.")
+
+
+def _read(db: Session) -> tuple[str | None, dict]:
+    """(the row's text as stored right now, for _write to check it's unchanged; the design kept in it)."""
+    text = app_settings.fresh(db, DESIGN_KEY)
     try:
-        raw = json.loads(app_settings.get(db, DESIGN_KEY) or "{}")
+        raw = json.loads(text or "{}")
     except ValueError:
-        return {}
-    return raw if isinstance(raw, dict) else {}
+        return text, {}
+    return text, raw if isinstance(raw, dict) else {}
+
+
+def _saved(db: Session) -> dict:
+    return _read(db)[1]
 
 
 def _seconds(raw: dict, name: str) -> int:
@@ -125,7 +143,11 @@ def settings(db: Session) -> dict:
     100), music_shuffle, delay (seconds each plugin holds the stream before its site gets it), holding (the holding
     screen), title, description, revision (one more each save), saved_at}.
     """
-    raw = _saved(db)
+    return _settings_of(_saved(db))
+
+
+def _settings_of(raw: dict) -> dict:
+    """settings() of the design as kept in the row."""
     text = lambda name: raw.get(name) if isinstance(raw.get(name), str) else ""  # noqa: E731
     if isinstance(raw.get("cells"), list) and _side(raw.get("cols")) and _side(raw.get("rows")):
         cols, rows = raw["cols"], raw["rows"]
@@ -226,8 +248,28 @@ def save(db: Session, sent: dict) -> dict:
     Change what's sent (a key left out, or None, stays as it was). The grid comes as cols, rows and cells together;
     or `cameras`, a list of cameras, which makes a grid just big enough for them, in that order. Anything that can't be
     used is refused with why (ValueError).
+
+    `base_revision`, when sent, is the revision the page's copy was read at: if the design has been saved since (another
+    tab, another person), nothing is saved and Changed says so (409), rather than putting back what that save changed.
+    Two saves at the very same moment can't both write the same next revision (_write lets only one through; the other
+    is checked again against what it wrote).
     """
-    now = settings(db)
+    base = sent.get("base_revision")
+    if base is not None and type(base) is not int:
+        raise ValueError("The design's revision has to be a whole number.")
+    for _ in range(TRIES):
+        was, raw = _read(db)
+        now = _settings_of(raw)
+        if base is not None and base != now["revision"]:
+            raise Changed()
+        _apply(now, sent)
+        if _write(db, was, {k: now[k] for k in SAVED}, now["revision"]):
+            return settings(db)
+    raise Changed()
+
+
+def _apply(now: dict, sent: dict) -> None:
+    """What's sent changed in `now` (settings() as it stands), each checked (ValueError says why not)."""
     get = lambda k: sent.get(k)  # noqa: E731
     if any(get(k) is not None for k in ("cells", "cols", "rows")):
         cols = get("cols") if get("cols") is not None else now["cols"]
@@ -294,13 +336,13 @@ def save(db: Session, sent: dict) -> dict:
         now["title"] = _text(get("title"), TITLE_MAX, "title")
     if get("description") is not None:
         now["description"] = _text(get("description"), DESCRIPTION_MAX, "description")
-    _write(db, {k: now[k] for k in SAVED}, now["revision"])
-    return settings(db)
 
 
-def _write(db: Session, kept: dict, revision: int) -> None:
-    app_settings.put(db, DESIGN_KEY, json.dumps({**kept, "revision": revision + 1, "saved_at": utc_iso(utc_now())}))
-    db.commit()
+def _write(db: Session, was: str | None, kept: dict, revision: int) -> bool:
+    """Keep `kept` as the design at the next revision, if the row is still `was` (_read): False when another save got
+    there first (nothing written; read it again and redo the change)."""
+    text = json.dumps({**kept, "revision": revision + 1, "saved_at": utc_iso(utc_now())})
+    return app_settings.swap(db, DESIGN_KEY, was, text)
 
 
 def rename_slideshow(db: Session, old: str, new: str) -> int:
@@ -316,14 +358,21 @@ def rename_slideshow(db: Session, old: str, new: str) -> int:
                 n += 1
         return n
 
-    raw = _saved(db)
-    changed = follow(raw.get("cells") or [])
-    if changed:
-        _write(db, {k: v for k, v in raw.items() if k not in ("revision", "saved_at")}, settings(db)["revision"])
-    layouts = saved_layouts.layouts(db)
-    in_layouts = sum(follow(lay["cells"]) for lay in layouts)
-    if in_layouts:
-        saved_layouts.save(db, layouts)
+    changed = 0
+    for _ in range(TRIES):
+        was, raw = _read(db)
+        changed = follow(raw.get("cells") or [])
+        if not changed or _write(db, was, {k: v for k, v in raw.items() if k not in ("revision", "saved_at")},
+                                 _settings_of(raw)["revision"]):
+            break
+    in_layouts = 0
+
+    def in_saved(layouts: list[dict]) -> list[dict] | None:
+        nonlocal in_layouts
+        in_layouts = sum(follow(lay["cells"]) for lay in layouts)
+        return layouts if in_layouts else None
+
+    saved_layouts.change(db, in_saved)
     return changed + in_layouts
 
 
@@ -341,4 +390,7 @@ def rename_slideshow_folder(db: Session, old: str, name: str) -> str:
 def put_whole(db: Session, raw: dict) -> None:
     """A design brought back by Load all settings: kept as it was written (read through settings() as any other)."""
     if isinstance(raw, dict):
-        _write(db, {k: raw[k] for k in SAVED if k in raw}, settings(db)["revision"])
+        for _ in range(TRIES):
+            was, kept = _read(db)
+            if _write(db, was, {k: raw[k] for k in SAVED if k in raw}, _settings_of(kept)["revision"]):
+                return

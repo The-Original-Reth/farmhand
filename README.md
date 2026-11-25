@@ -769,8 +769,10 @@ Its page is the stream plugins' own editor, moved into Farmhand:
   font, colour and dark band, shown whenever that camera is, in the grid or on its own turn);
   the music (its volume and shuffling, and which music folders play: Stream control's own, YouTube's own, Twitch's own,
   any or all at once, a stream's tracks played from its own folder, never copied); the holding screen; and saved layouts to switch between. The preview
-  plays it in the browser; **Save** saves it, and each stream plugin following it picks the change up itself. The
-  music's **Back**, **Play/Pause** and **Next** work on the music going out while a stream is live (the track and time
+  plays it in the browser; **Save** saves what was changed on the page, and each stream plugin following it picks the
+  change up itself. If the design, the saved layouts or the schedule were saved from another tab (or by someone else)
+  since the page loaded them, nothing is overwritten: the page says so and offers **Reload** (changes not saved yet
+  stay, except ones to something the other save changed). The music's **Back**, **Play/Pause** and **Next** work on the music going out while a stream is live (the track and time
   shown as "On the stream", and with **Autoplay music** the page plays along with it); not live, they play the tracks
   in the browser.
 - **Title, description and delay**: what each site shows with the stream, and how long each plugin holds the stream

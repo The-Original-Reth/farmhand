@@ -118,14 +118,19 @@ def set_length(db: Session, plugin_id: str, seconds: int) -> dict:
 
 def take(db: Session, plugin_id: str, source: str, seconds: int | None, tz: str | None) -> dict:
     """Take a clip with that plugin: {saved: {name, seconds, size}} for the stream (saved at once), {recording: {...}} for
-    a camera (being recorded), and its clips afterwards (`clips`, as state())."""
+    a camera (being recorded), and its clips afterwards (`clips`, as state(); None when the plugin didn't answer that:
+    the clip was taken all the same, so the page asks again rather than the clip being taken twice)."""
     payload = {"source": source, "tz": tz, **({"seconds": seconds} if seconds else {})}
     code, body, site = _call(db, plugin_id, "POST", payload=payload, timeout=SAVE_TIMEOUT)
     if isinstance(body.get("recording"), dict):
         done = {"recording": _job(body["recording"])}
     else:
         done = {"saved": {"name": _text(body.get("name")), "seconds": _num(body.get("seconds")), "size": int(_num(body.get("size")))}}
-    return {**done, "clips": state(db, plugin_id)}
+    try:
+        after = state(db, plugin_id)
+    except (ValueError, NotFound):
+        after = None
+    return {**done, "clips": after}
 
 
 def download(db: Session, plugin_id: str, name: str) -> tuple[Iterator[bytes], dict]:
